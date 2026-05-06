@@ -1,0 +1,127 @@
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import * as SecureStore from 'expo-secure-store';
+
+import { api, setAuthToken } from '../api/client';
+
+const TOKEN_KEY = 'tr.token';
+const USER_KEY = 'tr.user';
+
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [token, setToken] = useState(null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Restore on launch.
+  useEffect(() => {
+    (async () => {
+      try {
+        const [savedToken, savedUserJson] = await Promise.all([
+          SecureStore.getItemAsync(TOKEN_KEY),
+          SecureStore.getItemAsync(USER_KEY),
+        ]);
+        if (savedToken) {
+          setAuthToken(savedToken);
+          setToken(savedToken);
+          if (savedUserJson) setUser(JSON.parse(savedUserJson));
+          // Verify the token is still valid against /me. If it's not,
+          // sign the user out cleanly so they see Login on next render.
+          try {
+            const me = await api.me();
+            setUser(me);
+            await SecureStore.setItemAsync(USER_KEY, JSON.stringify(me));
+          } catch {
+            await clearStored();
+            setAuthToken(null);
+            setToken(null);
+            setUser(null);
+          }
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const persist = async (t, u) => {
+    await Promise.all([
+      SecureStore.setItemAsync(TOKEN_KEY, t),
+      SecureStore.setItemAsync(USER_KEY, JSON.stringify(u)),
+    ]);
+  };
+
+  const clearStored = async () => {
+    await Promise.all([
+      SecureStore.deleteItemAsync(TOKEN_KEY),
+      SecureStore.deleteItemAsync(USER_KEY),
+    ]);
+  };
+
+  const signIn = useCallback(async (username, password) => {
+    const res = await api.login(username, password);
+    setAuthToken(res.access_token);
+    await persist(res.access_token, res.user);
+    setToken(res.access_token);
+    setUser(res.user);
+  }, []);
+
+  const signUp = useCallback(async (username, password) => {
+    const res = await api.signup(username, password);
+    setAuthToken(res.access_token);
+    await persist(res.access_token, res.user);
+    setToken(res.access_token);
+    setUser(res.user);
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await clearStored();
+    setAuthToken(null);
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  const updateUsername = useCallback(async (next) => {
+    const updated = await api.renameMe(next);
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(updated));
+    setUser(updated);
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    await api.deleteMe();
+    await clearStored();
+    setAuthToken(null);
+    setToken(null);
+    setUser(null);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      token,
+      user,
+      loading,
+      signedIn: !!token,
+      signIn,
+      signUp,
+      signOut,
+      updateUsername,
+      deleteAccount,
+    }),
+    [token, user, loading, signIn, signUp, signOut, updateUsername, deleteAccount]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
+  return ctx;
+}

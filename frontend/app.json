@@ -1,0 +1,63 @@
+{
+  "expo": {
+    "name": "Territory Run",
+    "slug": "territory-run",
+    "version": "1.0.0",
+    "scheme": "territoryrun",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0b0d0c"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.territoryrun.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Territory Run needs your location to track your run and turn the loop you make into your territory.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Territory Run needs background location so your run keeps recording when the screen is off.",
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "android": {
+      "package": "com.territoryrun.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0b0d0c"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Territory Run uses your location to record your run and award territory."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "extra": {
+      "apiBase": "https://displayed-characterized-lucas-answering.trycloudflare.com",
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+    }
+  }
+}

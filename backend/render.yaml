@@ -1,0 +1,31 @@
+# Render blueprint. Push this repo and import via Render → New → Blueprint.
+# Render provisions the Postgres DB and injects DATABASE_URL automatically.
+
+services:
+  - type: web
+    name: territory-run-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: territory-run-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "*"
+
+databases:
+  - name: territory-run-db
+    plan: starter
+    region: singapore
+    postgresMajorVersion: 16
+    # Render Postgres ships with PostGIS — enable via:
+    #   psql $DATABASE_URL -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+    # Then run schema.sql once.
