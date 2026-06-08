@@ -9,7 +9,7 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://displayed-characterized-lucas-answering.trycloudflare.com"
+        "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com"
       }
     },
     "preview": {
@@ -22,14 +22,14 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://api.territoryrun.example.com"
+        "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com"
       }
     },
     "production": {
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://api.territoryrun.example.com"
+        "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com"
       }
     }
   },

@@ -49,7 +49,7 @@
       "expo-secure-store"
     ],
     "extra": {
-      "apiBase": "https://cycles-markets-mar-executive.trycloudflare.com",
+      "apiBase": "https://run-mdlv.onrender.com",
       "eas": {
         "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
       }
