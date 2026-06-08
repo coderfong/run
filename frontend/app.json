@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.territoryrun.app",
+      "bundleIdentifier": "com.constanceow.territoryrun",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Territory Run needs your location to track your run and turn the loop you make into your territory.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Territory Run needs background location so your run keeps recording when the screen is off.",
