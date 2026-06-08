@@ -19,6 +19,10 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  // True only right after a brand-new account is created, so the app can
+  // run the onboarding intro once for that user. Existing users who log in
+  // (or are restored from a saved token) never see it.
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   // Restore on launch.
   useEffect(() => {
@@ -79,6 +83,11 @@ export function AuthProvider({ children }) {
     await persist(res.access_token, res.user);
     setToken(res.access_token);
     setUser(res.user);
+    setNeedsOnboarding(true); // new account → show the intro once
+  }, []);
+
+  const completeOnboarding = useCallback(() => {
+    setNeedsOnboarding(false);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -86,6 +95,7 @@ export function AuthProvider({ children }) {
     setAuthToken(null);
     setToken(null);
     setUser(null);
+    setNeedsOnboarding(false);
   }, []);
 
   const updateUsername = useCallback(async (next) => {
@@ -108,13 +118,26 @@ export function AuthProvider({ children }) {
       user,
       loading,
       signedIn: !!token,
+      needsOnboarding,
       signIn,
       signUp,
       signOut,
+      completeOnboarding,
       updateUsername,
       deleteAccount,
     }),
-    [token, user, loading, signIn, signUp, signOut, updateUsername, deleteAccount]
+    [
+      token,
+      user,
+      loading,
+      needsOnboarding,
+      signIn,
+      signUp,
+      signOut,
+      completeOnboarding,
+      updateUsername,
+      deleteAccount,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,24 +1,45 @@
-// Dark-mode design tokens adapted from the "GoRun" Figma kit
-// (lB9VXWJN2yqOTCq9Lgu0Eb). Used across every screen.
+// Territory Run — "visual v1" light design tokens.
+// Light is the default everywhere; `darkColors` is reserved for the active
+// Running screen (battery + outdoor visibility). There is NO global brand
+// accent — a user's team colour is their accent, so `colors.primary` falls
+// back to brand ink for team-agnostic surfaces (Auth, onboarding, neutral CTAs).
+
+export const teams = {
+  north: { key: 'north', name: 'North', fill: '#e9d5ff', stroke: '#9333ea', text: '#581c87', dm: '#f3e8ff' },
+  east:  { key: 'east',  name: 'East',  fill: '#bbf7d0', stroke: '#16a34a', text: '#14532d', dm: '#dcfce7' },
+  south: { key: 'south', name: 'South', fill: '#bfdbfe', stroke: '#2563eb', text: '#1e3a8a', dm: '#dbeafe' },
+  west:  { key: 'west',  name: 'West',  fill: '#fecaca', stroke: '#dc2626', text: '#7f1d1d', dm: '#fee2e2' },
+};
 
 export const colors = {
-  bg: '#0b0d0c',
-  bgElevated: '#15181a',
-  card: '#1b1f22',
-  cardAlt: '#23282c',
-  border: '#2a2f33',
+  bg: '#fafaf7',
+  bgElevated: '#f3f1ea',
+  card: '#ffffff',
+  cardAlt: '#f0eee7',
+  border: '#e5e1d8',
+  text: '#0d1117',
+  textMuted: 'rgba(13,17,23,0.60)',
+  textDim: 'rgba(13,17,23,0.40)',
+
+  primary: '#0d1117', // brand ink — neutral CTA where there is no team yet
+  primaryDark: '#000000',
+  primaryInk: '#ffffff',
+
+  danger: '#dc2626',
+  warn: '#d97706',
+  ok: '#16a34a',
+};
+
+// Active-run dark surface.
+export const darkColors = {
+  bg: '#0d1117',
+  bgElevated: '#161b22',
+  card: '#161b22',
+  cardAlt: '#1b2230',
+  border: 'rgba(255,255,255,0.10)',
   text: '#ffffff',
-  textMuted: '#9aa0a6',
-  textDim: '#6b7177',
-
-  // Lime/green accent that the GoRun kit uses for primary calls-to-action.
-  primary: '#c5fc4b',
-  primaryDark: '#9ad62a',
-  primaryInk: '#0b0d0c', // text colour to put ON primary
-
-  danger: '#ef4444',
-  warn: '#f59e0b',
-  ok: '#22c55e',
+  textMuted: 'rgba(255,255,255,0.66)',
+  textDim: 'rgba(255,255,255,0.42)',
 };
 
 export const radius = {
@@ -39,10 +60,10 @@ export const space = {
 };
 
 export const font = {
-  hero: { fontSize: 32, fontWeight: '800', color: colors.text },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text },
+  hero: { fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
+  title: { fontSize: 22, fontWeight: '800', color: colors.text },
   section: { fontSize: 16, fontWeight: '700', color: colors.text },
   body: { fontSize: 14, color: colors.text },
   muted: { fontSize: 13, color: colors.textMuted },
-  metric: { fontSize: 28, fontWeight: '800', color: colors.primary },
+  metric: { fontSize: 28, fontWeight: '800', color: colors.text },
 };

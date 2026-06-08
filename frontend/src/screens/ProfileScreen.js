@@ -71,8 +71,8 @@ export default function ProfileScreen() {
       contentContainerStyle={styles.container}
     >
       <View style={styles.header}>
-        <View style={[styles.avatar, { borderColor: team.color }]}>
-          <Text style={styles.avatarText}>
+        <View style={[styles.avatar, { borderColor: team.color, backgroundColor: team.fill }]}>
+          <Text style={[styles.avatarText, { color: team.text }]}>
             {(user?.username || '?').slice(0, 1).toUpperCase()}
           </Text>
         </View>
@@ -143,7 +143,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.fullBtn, { backgroundColor: '#3a1414', marginTop: space.md }]}
+        style={[styles.fullBtn, { backgroundColor: '#fee2e2', borderColor: '#f5c2c2', marginTop: space.md }]}
         activeOpacity={0.85}
         onPress={confirmDelete}
       >

@@ -45,10 +45,11 @@
           "locationAlwaysAndWhenInUsePermission": "Territory Run uses your location to record your run and award territory."
         }
       ],
+      "expo-notifications",
       "expo-secure-store"
     ],
     "extra": {
-      "apiBase": "https://displayed-characterized-lucas-answering.trycloudflare.com",
+      "apiBase": "https://cycles-markets-mar-executive.trycloudflare.com",
       "eas": {
         "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
       }

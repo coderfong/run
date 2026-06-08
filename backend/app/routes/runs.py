@@ -252,7 +252,7 @@ def _claim_territory(
                     SELECT g FROM parts ORDER BY ST_Area(g::geography) DESC LIMIT 1
                 )
                 INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at)
-                SELECT gen_random_uuid()::text, :uid, :rid, g,
+                SELECT gen_random_uuid(), :uid, :rid, g,
                        ST_Area(g::geography), now()
                 FROM biggest
                 RETURNING id, area_m2, created_at
@@ -271,7 +271,7 @@ def _claim_territory(
                 """
                 INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at)
                 VALUES (
-                    gen_random_uuid()::text,
+                    gen_random_uuid(),
                     :uid,
                     :rid,
                     ST_GeomFromText(:wkt, 4326),
@@ -290,7 +290,7 @@ def _claim_territory(
     row = db.execute(
         text(
             """
-            SELECT t.id, t.user_id, u.username, t.area_m2, t.created_at,
+            SELECT t.id::text, t.user_id::text, u.username, t.area_m2, t.created_at,
                    ST_AsText(t.polygon)
             FROM territories t
             JOIN users u ON u.id = t.user_id

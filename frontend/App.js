@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { ActivityIndicator, StatusBar, View } from 'react-native';
-import { DarkTheme, NavigationContainer } from '@react-navigation/native';
+import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RunningScreen from './src/screens/RunningScreen';
@@ -15,14 +15,14 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ToastHost } from './src/ui/toast';
-import { colors } from './src/theme';
+import { colors, darkColors } from './src/theme';
 
 const Stack = createNativeStackNavigator();
 
 const navTheme = {
-  ...DarkTheme,
+  ...DefaultTheme,
   colors: {
-    ...DarkTheme.colors,
+    ...DefaultTheme.colors,
     background: colors.bg,
     card: colors.bg,
     text: colors.text,
@@ -33,10 +33,19 @@ const navTheme = {
 
 const screenOptions = {
   headerStyle: { backgroundColor: colors.bg },
-  headerTitleStyle: { color: colors.text, fontWeight: '700' },
-  headerTintColor: colors.primary,
+  headerTitleStyle: { color: colors.text, fontWeight: '800' },
+  headerTintColor: colors.text,
   headerShadowVisible: false,
   contentStyle: { backgroundColor: colors.bg },
+};
+
+// The active run is the one dark screen — give it a matching dark header.
+const runScreenOptions = {
+  headerStyle: { backgroundColor: darkColors.bg },
+  headerTitleStyle: { color: darkColors.text, fontWeight: '800' },
+  headerTintColor: '#ffffff',
+  headerShadowVisible: false,
+  contentStyle: { backgroundColor: darkColors.bg },
 };
 
 function FullScreenSpinner() {
@@ -49,32 +58,16 @@ function FullScreenSpinner() {
         alignItems: 'center',
       }}
     >
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
 }
 
 function RootNavigator() {
-  const { signedIn, loading } = useAuth();
-  const [onboardingDone, setOnboardingDone] = useState(null);
+  const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const v = await AsyncStorage.getItem('tr.onboardingDone');
-        setOnboardingDone(v === '1');
-      } catch {
-        setOnboardingDone(true); // fail open
-      }
-    })();
-  }, []);
-
-  if (loading || onboardingDone === null) return <FullScreenSpinner />;
-
-  if (!onboardingDone) {
-    return <OnboardingScreen onDone={() => setOnboardingDone(true)} />;
-  }
+  if (loading) return <FullScreenSpinner />;
 
   if (!signedIn) {
     return (
@@ -84,6 +77,11 @@ function RootNavigator() {
         </Stack.Navigator>
       </NavigationContainer>
     );
+  }
+
+  // New accounts get the intro once, right after signing up.
+  if (needsOnboarding) {
+    return <OnboardingScreen onDone={completeOnboarding} />;
   }
 
   return (
@@ -97,7 +95,7 @@ function RootNavigator() {
         <Stack.Screen
           name="Running"
           component={RunningScreen}
-          options={{ title: 'Run' }}
+          options={{ title: 'Run', ...runScreenOptions }}
         />
         <Stack.Screen
           name="Result"
@@ -126,10 +124,12 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
-      <RootNavigator />
-      <ToastHost />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+        <RootNavigator />
+        <ToastHost />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

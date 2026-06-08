@@ -17,7 +17,7 @@ def leaderboard(db: Session = Depends(get_db), limit: int = Query(50, ge=1, le=5
     rows = db.execute(
         text(
             """
-            SELECT u.id, u.username,
+            SELECT u.id::text, u.username,
                    COALESCE(SUM(t.area_m2), 0) AS total_area,
                    COUNT(t.id) AS territory_count
             FROM users u

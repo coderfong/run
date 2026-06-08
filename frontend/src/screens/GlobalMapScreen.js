@@ -5,7 +5,7 @@ import * as Location from 'expo-location';
 
 import { api } from '../api/client';
 import { colors, font, radius, space } from '../theme';
-import { SG_REGIONS, SG_VIEW_REGION } from '../data/regions';
+import { SG_REGIONS, SG_VIEW_REGION, regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
 import { toast } from '../ui/toast';
 
@@ -20,8 +20,16 @@ function colorForUser(userId) {
   };
 }
 
+// '#2563eb' -> 'rgba(37,99,235,a)' for map fill colours.
+function hexToRgba(hex, a) {
+  const h = hex.replace('#', '');
+  const n = parseInt(h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
 export default function GlobalMapScreen() {
   const { user } = useAuth();
+  const myTeam = regionForUser(user.username);
   const [region, setRegion] = useState(null);
   const [territories, setTerritories] = useState([]);
   const lastFetchRef = useRef(0);
@@ -79,15 +87,17 @@ export default function GlobalMapScreen() {
         showsUserLocation
       >
         {/* Faint region tint underneath so the 5-team map style is consistent. */}
-        {SG_REGIONS.map((r) => (
-          <Polygon
-            key={`region-${r.key}`}
-            coordinates={r.coordinates}
-            strokeColor={`${r.color}66`}
-            strokeWidth={1}
-            fillColor={`${r.color}1a`}
-          />
-        ))}
+        {SG_REGIONS.flatMap((r) =>
+          r.polygons.map((coords, i) => (
+            <Polygon
+              key={`region-${r.key}-${i}`}
+              coordinates={coords}
+              strokeColor={`${r.color}66`}
+              strokeWidth={1}
+              fillColor={`${r.color}1a`}
+            />
+          )),
+        )}
 
         {territories.map((t) => {
           const c = colorForUser(t.user_id);
@@ -99,10 +109,10 @@ export default function GlobalMapScreen() {
             <Polygon
               key={t.id}
               coordinates={coords}
-              strokeColor={c.stroke}
-              strokeWidth={1.5}
+              strokeColor={t.user_id === user.id ? myTeam.stroke : c.stroke}
+              strokeWidth={t.user_id === user.id ? 2.5 : 1.5}
               fillColor={
-                t.user_id === user.id ? 'rgba(197, 252, 75, 0.45)' : c.fill
+                t.user_id === user.id ? hexToRgba(myTeam.stroke, 0.45) : c.fill
               }
             />
           );

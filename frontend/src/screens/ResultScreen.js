@@ -3,27 +3,54 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Polygon } from 'react-native-maps';
 
 import { colors, font, radius, space } from '../theme';
+import { regionForUser } from '../data/regions';
+import { useAuth } from '../auth/AuthContext';
+
+// Open-path conversion (brief §6): distance (km) × 0.05 km² — roughly a
+// 50m-wide strip painted along the route. Closing a loop always beats this,
+// but a partial run still earns land.
+const OPEN_PATH_RATE = 0.05;
+
+function hexToRgba(hex, a) {
+  const h = hex.replace('#', '');
+  const n = parseInt(h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
 
 export default function ResultScreen({ navigation, route }) {
   const { result } = route.params;
+  const { user } = useAuth();
+  const team = regionForUser(user?.username || '');
+  const accent = team.stroke;
   const t = result.territory;
 
   if (!t) {
+    const openKm = (result.distance_m / 1000) * OPEN_PATH_RATE;
     return (
       <View style={styles.center}>
-        <Text style={styles.headline}>No loop detected</Text>
-        <Text style={styles.body}>
-          Distance: {Math.round(result.distance_m)} m
+        <View style={[styles.eyebrow, { backgroundColor: team.fill }]}>
+          <Text style={[styles.eyebrowText, { color: team.text }]}>Distance converted</Text>
+        </View>
+        <Text style={styles.bigArea}>
+          {openKm.toFixed(2)}
+          <Text style={styles.bigUnit}> km²</Text>
         </Text>
         <Text style={styles.body}>
-          Duration: {Math.round(result.duration_s)} s
+          No closed loop this time — your {(result.distance_m / 1000).toFixed(2)} km converts to an open-path
+          strip for Team {team.name}. Close the loop next time to claim far more.
         </Text>
+
+        <View style={styles.metricsRow}>
+          <Metric label="Distance" value={`${Math.round(result.distance_m)} m`} accent={accent} />
+          <Metric label="Time" value={`${Math.round(result.duration_s)} s`} accent={accent} />
+        </View>
+
         <TouchableOpacity
-          style={styles.primaryBtn}
-          activeOpacity={0.85}
+          style={[styles.primaryBtn, { backgroundColor: accent }]}
+          activeOpacity={0.9}
           onPress={() => navigation.popToTop()}
         >
-          <Text style={styles.primaryBtnText}>Back</Text>
+          <Text style={styles.primaryBtnText}>Back to map</Text>
         </TouchableOpacity>
       </View>
     );
@@ -44,33 +71,27 @@ export default function ResultScreen({ navigation, route }) {
       <MapView style={styles.map} initialRegion={region}>
         <Polygon
           coordinates={coords}
-          strokeColor={colors.primary}
+          strokeColor={accent}
           strokeWidth={2.5}
-          fillColor="rgba(197, 252, 75, 0.30)"
+          fillColor={hexToRgba(accent, 0.32)}
         />
       </MapView>
 
       <View style={styles.summary}>
-        <Text style={styles.headline}>Loop captured!</Text>
+        <View style={[styles.eyebrow, { backgroundColor: team.fill, alignSelf: 'flex-start' }]}>
+          <Text style={[styles.eyebrowText, { color: team.text }]}>Loop captured · Team {team.name}</Text>
+        </View>
+        <Text style={styles.headline}>Land claimed!</Text>
 
         <View style={styles.metricsRow}>
-          <Metric
-            label="Area"
-            value={`${Math.round(t.area_m2).toLocaleString()} m²`}
-          />
-          <Metric
-            label="Distance"
-            value={`${Math.round(result.distance_m)} m`}
-          />
-          <Metric
-            label="Time"
-            value={`${Math.round(result.duration_s)} s`}
-          />
+          <Metric label="Area" value={`${Math.round(t.area_m2).toLocaleString()} m²`} accent={accent} />
+          <Metric label="Distance" value={`${Math.round(result.distance_m)} m`} accent={accent} />
+          <Metric label="Time" value={`${Math.round(result.duration_s)} s`} accent={accent} />
         </View>
 
         <TouchableOpacity
-          style={styles.primaryBtn}
-          activeOpacity={0.85}
+          style={[styles.primaryBtn, { backgroundColor: accent }]}
+          activeOpacity={0.9}
           onPress={() => navigation.popToTop()}
         >
           <Text style={styles.primaryBtnText}>Done</Text>
@@ -80,11 +101,13 @@ export default function ResultScreen({ navigation, route }) {
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, accent }) {
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={[styles.metricValue, { color: accent }]} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -100,6 +123,17 @@ const styles = StyleSheet.create({
   },
   map: { flex: 1 },
 
+  eyebrow: {
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: 6,
+    marginBottom: space.md,
+  },
+  eyebrowText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+
+  bigArea: { fontSize: 56, fontWeight: '800', color: colors.text, letterSpacing: -1 },
+  bigUnit: { fontSize: 22, fontWeight: '700', color: colors.textMuted },
+
   summary: {
     position: 'absolute',
     bottom: space.lg,
@@ -108,27 +142,45 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     padding: space.lg,
     borderRadius: radius.lg,
-    borderWidth: 1,
+    borderWidth: 0.5,
     borderColor: colors.border,
+    shadowColor: '#0d1117',
+    shadowOpacity: 0.14,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
 
   headline: { ...font.title, marginBottom: space.md },
-  body: { ...font.body, marginVertical: 2 },
+  body: {
+    ...font.body,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 21,
+    marginTop: space.sm,
+    marginBottom: space.lg,
+  },
 
   metricsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: space.lg,
+    gap: space.md,
   },
   metric: { flex: 1 },
-  metricLabel: { ...font.muted, marginBottom: 4 },
-  metricValue: { color: colors.primary, fontSize: 18, fontWeight: '800' },
+  metricLabel: {
+    fontSize: 10,
+    letterSpacing: 0.6,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  metricValue: { fontSize: 18, fontWeight: '800' },
 
   primaryBtn: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: radius.md,
+    paddingVertical: 16,
+    borderRadius: radius.pill,
     alignItems: 'center',
   },
-  primaryBtnText: { color: colors.primaryInk, fontWeight: '800', fontSize: 16 },
+  primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
 });

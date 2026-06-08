@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Territory Run — Design System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Boldonse&family=Manrope:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="territory-run.css">
+</head>
+<body>
+<main class="sheet">
+
+  <!-- ===================== MASTHEAD ===================== -->
+  <header class="masthead">
+    <div class="eyebrow">Territory Run · Visual system · v1</div>
+    <h1 class="disp">Claim the map, one loop at a time.</h1>
+    <p>The locked visual language for Territory Run — a GPS running game where Singapore is split into four regional teams and runners capture land by closing loops. Bold and playful: high-contrast team colors, confident type, game-y celebration. Light mode is primary; dark is reserved for the active run. Every screen we build next inherits from this sheet.</p>
+    <div class="meta">
+      <span>Reference width · 393px</span>
+      <span>Display · Boldonse</span>
+      <span>Body · Manrope</span>
+      <span>Sentence case only</span>
+      <span>No global accent — team color is the accent</span>
+    </div>
+  </header>
+
+  <!-- ===================== 01 · TEAM COLORS ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">01</span>
+      <h2>Team colors</h2>
+      <span class="note">The brand. Exact hex — must stay readable where zones touch.</span>
+    </div>
+    <div class="swatch-grid" id="swatches"></div>
+  </section>
+
+  <!-- ===================== 02 · NEUTRALS ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">02</span>
+      <h2>Brand neutrals</h2>
+      <span class="note">Off-white surfaces, near-black ink. No pure #fff or #000.</span>
+    </div>
+    <div class="neutral-grid">
+      <div class="neutral">
+        <div class="cap" style="background:#0d1117"></div>
+        <div class="body"><div class="nm">Brand dark</div><div class="hex">#0d1117</div></div>
+      </div>
+      <div class="neutral">
+        <div class="cap" style="background:#fafaf7"></div>
+        <div class="body"><div class="nm">Surface light</div><div class="hex">#fafaf7</div></div>
+      </div>
+      <div class="neutral">
+        <div class="cap" style="background:#161b22"></div>
+        <div class="body"><div class="nm">Surface dark</div><div class="hex">#161b22</div></div>
+      </div>
+      <div class="neutral">
+        <div class="cap" style="background:#e5e1d8"></div>
+        <div class="body"><div class="nm">Border light</div><div class="hex">#e5e1d8 · 0.5px</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 03 · TYPOGRAPHY ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">03</span>
+      <h2>Type ramp</h2>
+      <span class="note">Boldonse for numbers &amp; headings · Manrope for UI. Two weights.</span>
+    </div>
+    <div class="card type-card">
+      <div class="type-row">
+        <div class="meta">h1 · Boldonse<br>34 / 1.04</div>
+        <div class="disp" style="font-size:34px">Claim your ground</div>
+      </div>
+      <div class="type-row">
+        <div class="meta">h2 · Boldonse<br>24 / 1.1</div>
+        <div class="disp" style="font-size:24px">Three zones to go</div>
+      </div>
+      <div class="type-row">
+        <div class="meta">h3 · Manrope 700<br>18 / 1.3</div>
+        <div style="font-size:18px;font-weight:700">East is defending Bedok</div>
+      </div>
+      <div class="type-row">
+        <div class="meta">Body · Manrope 400<br>15 / 1.5</div>
+        <div style="font-size:15px;max-width:46ch;color:var(--ink-60)">Run a closed loop back to where you started to capture the land inside it. Leave the loop open and it only counts as distance.</div>
+      </div>
+      <div class="type-row">
+        <div class="meta">Caption · Manrope 500<br>12 / 1.4</div>
+        <div style="font-size:12px;font-weight:500;color:var(--ink-60)">Updated 2 min ago · Tampines loop</div>
+      </div>
+      <div class="type-row">
+        <div class="meta">In-run timer<br>Boldonse · 84</div>
+        <div>
+          <div class="timer-specimen">24:17</div>
+          <div class="lbl" style="margin-top:10px">Tabular numerals · used live on the dark run screen</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 04 · TOKENS ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">04</span>
+      <h2>Component tokens</h2>
+      <span class="note">Radius, spacing, border weight, touch targets, map strokes.</span>
+    </div>
+    <div class="token-grid">
+      <div class="card token-card">
+        <div class="ttl">Radius</div>
+        <div class="radius-demo">
+          <div><div class="b r12"><span class="cap">12</span></div></div>
+          <div><div class="b r16"><span class="cap">16</span></div></div>
+          <div><div class="b rpill"><span class="cap">pill · 999</span></div></div>
+        </div>
+        <div class="lbl" style="margin-top:16px">Card 12 · Hero card 16 · Pill fully rounded</div>
+      </div>
+
+      <div class="card token-card">
+        <div class="ttl">Spacing scale</div>
+        <div class="spacing-demo" id="spacing"></div>
+      </div>
+
+      <div class="card token-card">
+        <div class="ttl">Border weight</div>
+        <div class="border-demo">
+          <div><div class="box b05"></div><span class="cap">0.5 · default</span></div>
+          <div><div class="box b15"></div><span class="cap">1.5 · zone</span></div>
+          <div><div class="box b25"></div><span class="cap">2.5 · yours</span></div>
+        </div>
+        <div class="lbl" style="margin-top:16px">0.5px hairlines give the UI its refined feel</div>
+      </div>
+
+      <div class="card token-card">
+        <div class="ttl">Touch target · 44px min</div>
+        <div class="touch-demo">
+          <div class="t"><div class="in"></div></div>
+          <div class="t"><div class="in"></div></div>
+          <div class="t"><div class="in"></div></div>
+          <span class="txt">Visual icon sits inside a 44×44 hit area</span>
+        </div>
+        <div class="ttl" style="margin-top:26px">Map zone strokes</div>
+        <div class="stroke-demo" style="margin-top:12px">
+          <div style="text-align:center">
+            <svg width="80" height="56"><rect x="4" y="4" width="72" height="48" rx="8" fill="#bfdbfe" stroke="#2563eb" stroke-width="1.5"/></svg>
+            <span class="cap">1.5 · regular</span>
+          </div>
+          <div style="text-align:center">
+            <svg width="80" height="56"><rect x="4" y="4" width="72" height="48" rx="8" fill="#bfdbfe" stroke="#2563eb" stroke-width="2.5"/></svg>
+            <span class="cap">2.5 · yours</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 05 · BUTTONS ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">05</span>
+      <h2>Buttons</h2>
+      <span class="note">Primary CTA renders in the runner's own team color. Plus secondary &amp; disabled.</span>
+    </div>
+    <div class="btn-grid">
+      <div class="card">
+        <div class="lbl" style="margin-bottom:18px">Primary · filled · one per team</div>
+        <div class="btn-block">
+          <button class="btn btn-primary btn-north btn-full">Start run · North</button>
+          <button class="btn btn-primary btn-east btn-full">Start run · East</button>
+          <button class="btn btn-primary btn-south btn-full">Start run · South</button>
+          <button class="btn btn-primary btn-west btn-full">Start run · West</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="lbl" style="margin-bottom:18px">Secondary &amp; disabled</div>
+        <div class="btn-block">
+          <button class="btn btn-secondary btn-full" style="border-color:var(--south-stroke);color:var(--south-stroke)">View zone details</button>
+          <button class="btn btn-secondary btn-full" style="border-color:var(--ink-40);color:var(--ink)">Invite a teammate</button>
+          <button class="btn btn-disabled btn-full">Start run</button>
+          <span class="lbl" style="margin-top:2px">Secondary outline adopts team color for primary actions, ink for neutral ones. Disabled is colorless.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 06 · PILLS & STATS ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">06</span>
+      <h2>Pills, badges &amp; stat tiles</h2>
+      <span class="note">Status semantics + the stat tile used across Home, Running &amp; Result.</span>
+    </div>
+    <div class="cols">
+      <div class="card">
+        <div class="lbl" style="margin-bottom:16px">Badges &amp; status pills</div>
+        <div class="pill-row" style="margin-bottom:14px">
+          <span class="pill pill-team"><span class="pdot" style="background:var(--south-stroke)"></span>Team South</span>
+          <span class="pill pill-team" style="background:var(--north-fill);color:var(--north-text)"><span class="pdot" style="background:var(--north-stroke)"></span>Team North</span>
+          <span class="pill pill-team" style="background:var(--east-fill);color:var(--east-text)"><span class="pdot" style="background:var(--east-stroke)"></span>Team East</span>
+          <span class="pill pill-team" style="background:var(--west-fill);color:var(--west-text)"><span class="pdot" style="background:var(--west-stroke)"></span>Team West</span>
+        </div>
+        <div class="pill-row">
+          <span class="pill pill-captured">✓ Captured</span>
+          <span class="pill pill-defending">Defending</span>
+          <span class="pill pill-open">Open path</span>
+          <span class="pill pill-neutral">Unclaimed</span>
+        </div>
+        <div class="lbl" style="margin-top:18px">Captured = solid team. Defending = team tint + stroke. Open path = dashed neutral. Unclaimed = flat chip.</div>
+      </div>
+      <div class="card">
+        <div class="lbl" style="margin-bottom:16px">Stat tiles</div>
+        <div class="stat-grid">
+          <div class="stat"><div class="ey">Distance</div><div class="val">4.2<span class="u">km</span></div></div>
+          <div class="stat"><div class="ey">Pace</div><div class="val">5:38<span class="u">/km</span></div></div>
+          <div class="stat is-team"><div class="ey">Area</div><div class="val">0.8<span class="u">km²</span></div></div>
+          <div class="stat"><div class="ey">Time</div><div class="val">24:17</div></div>
+        </div>
+        <div class="lbl" style="margin-top:16px">Highlighted tile (Area) uses the team color to flag the captured-land metric.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 07 · MAP ZONES ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">07</span>
+      <h2>Map zone styles</h2>
+      <span class="note">How each team's land renders — light, dark, and the emphasized "this is mine".</span>
+    </div>
+    <div class="cols">
+      <div class="card">
+        <div class="lbl" style="margin-bottom:16px">On light map · 1.5px stroke</div>
+        <div class="zone-tiles" id="zones-light"></div>
+        <div class="lbl" style="margin:22px 0 16px">On dark map · run screen · dark-mode fill</div>
+        <div class="zone-tiles" id="zones-dark"></div>
+      </div>
+      <div class="card">
+        <div class="lbl" style="margin-bottom:16px">"This is mine" · 2.5px stroke bump</div>
+        <div style="display:flex;gap:18px;align-items:center">
+          <svg width="120" height="110" viewBox="0 0 120 110">
+            <polygon points="60,8 108,40 90,100 30,100 12,40" fill="#bfdbfe" stroke="#2563eb" stroke-width="1.5"/>
+          </svg>
+          <svg width="120" height="110" viewBox="0 0 120 110">
+            <polygon points="60,8 108,40 90,100 30,100 12,40" fill="#bfdbfe" stroke="#2563eb" stroke-width="2.5"/>
+            <circle cx="60" cy="58" r="9" fill="#2563eb"/>
+            <circle cx="60" cy="58" r="3.4" fill="#fff"/>
+          </svg>
+        </div>
+        <div class="map-legend" style="margin-top:20px">
+          <div class="li"><span class="sw" style="background:#bfdbfe;border:1.5px solid #2563eb"></span>Others' zone — normal stroke</div>
+          <div class="li"><span class="sw" style="background:#bfdbfe;border:2.5px solid #2563eb"></span>Your zone — heavier stroke + "you" dot</div>
+        </div>
+        <div class="lbl" style="margin-top:18px">Subtle 1px bump reads as ownership without a new color.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 08 · LOOP PREVIEW ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">08</span>
+      <h2>Loop-vs-strip preview</h2>
+      <span class="note">Live on the dark run screen. Dashed closing leg + semi-transparent team fill.</span>
+    </div>
+    <div class="frames">
+      <div class="frame-wrap">
+        <div class="flbl">Loop closing — area will capture</div>
+        <div class="frame dark">
+          <div class="frame-pad">
+            <div class="run-timer-bar">
+              <span class="t">24:17</span>
+              <span class="team">● Team South</span>
+            </div>
+            <svg width="353" height="220" viewBox="0 0 353 220" style="display:block">
+              <rect width="353" height="220" rx="14" fill="#161b22" stroke="rgba(255,255,255,0.08)"/>
+              <polygon points="90,60 250,50 290,130 170,180 70,140" fill="rgba(37,99,235,0.28)" stroke="#2563eb" stroke-width="2.5" stroke-linejoin="round"/>
+              <path d="M90,60 L70,140" fill="none" stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="7 7"/>
+              <circle cx="90" cy="60" r="6" fill="#fff" stroke="#2563eb" stroke-width="2.5"/>
+              <circle cx="70" cy="140" r="7" fill="#2563eb" stroke="#fff" stroke-width="2.5"/>
+              <text x="100" y="54" fill="#dbeafe" font-family="ui-monospace,monospace" font-size="11">start</text>
+            </svg>
+            <div class="close-hint"><span class="ping"></span>34 m from start — close the loop to claim 0.8 km²</div>
+            <div class="run-readout">
+              <div class="ro is-closed"><div class="k">Area if closed</div><div class="v">0.8<span class="u">km²</span></div></div>
+              <div class="ro"><div class="k">Distance</div><div class="v">4.2<span class="u">km</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="frame-wrap">
+        <div class="flbl">Open strip — counts as distance only</div>
+        <div class="frame dark">
+          <div class="frame-pad">
+            <div class="run-timer-bar">
+              <span class="t">11:42</span>
+              <span class="team">● Team South</span>
+            </div>
+            <svg width="353" height="220" viewBox="0 0 353 220" style="display:block">
+              <rect width="353" height="220" rx="14" fill="#161b22" stroke="rgba(255,255,255,0.08)"/>
+              <path d="M70,150 C120,80 180,180 240,90 300,40 300,40 300,40" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"/>
+              <circle cx="70" cy="150" r="7" fill="#2563eb" stroke="#fff" stroke-width="2.5"/>
+              <circle cx="300" cy="40" r="6" fill="#fff" stroke="#2563eb" stroke-width="2.5"/>
+            </svg>
+            <div class="close-hint" style="background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.12);color:var(--ink-dm-60)"><span class="ping" style="background:#6b7280"></span>No enclosed area yet — keep running to form a loop</div>
+            <div class="run-readout">
+              <div class="ro is-open"><div class="k">Area if closed</div><div class="v">—</div></div>
+              <div class="ro"><div class="k">Distance</div><div class="v">2.1<span class="u">km</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="frame-wrap" style="max-width:360px">
+        <div class="flbl">Spec</div>
+        <div class="card" style="background:var(--surface-light)">
+          <div class="spec">
+            <div class="si"><span><b>Solid leg</b> — the path you've actually run, 2.5px in team stroke color.</span></div>
+            <div class="si"><span><b>Dashed leg</b> — the projected closing line back to start, lighter team tint, 7/7 dash.</span></div>
+            <div class="si"><span><b>Fill</b> — enclosed polygon at ~28% team opacity; only appears once a loop is possible.</span></div>
+            <div class="si"><span><b>Start node</b> — white dot, team ring. <b>You</b> — solid team dot, white ring.</span></div>
+            <div class="si"><span><b>Open strip</b> — no fill, no closing dash, area reads "—".</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 09 · CELEBRATION ===================== -->
+  <section class="section">
+    <div class="section-head">
+      <span class="num">09</span>
+      <h2>First-capture celebration</h2>
+      <span class="note">Plays once per user on their first claimed zone. Tap replay to feel the timing.</span>
+    </div>
+    <div class="frames">
+      <div class="frame-wrap">
+        <div class="flbl">Burst — Team South</div>
+        <div class="burst-stage" id="burstStage">
+          <div class="sky"></div>
+          <div class="burst-core">
+            <div class="burst-badge">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="burst-text">
+              <div class="h">First land claimed!</div>
+              <div class="s">0.8 km² · Tanjong Pagar loop · Team South</div>
+            </div>
+          </div>
+          <button class="replay-btn" id="replayBtn">↻ Replay</button>
+        </div>
+      </div>
+      <div class="frame-wrap" style="max-width:360px">
+        <div class="flbl">Spec</div>
+        <div class="card" style="background:var(--surface-light)">
+          <div class="spec">
+            <div class="si"><span><b>Badge pop</b> — scales from 0 with a slight over-rotation settle (~0.7s, spring ease).</span></div>
+            <div class="si"><span><b>Confetti</b> — 14 shards in the four team colors, radial fly-out, fade by 0.9s.</span></div>
+            <div class="si"><span><b>Copy</b> — Boldonse headline, Manrope subline with area + zone + team. Sentence case.</span></div>
+            <div class="si"><span><b>Reduced motion</b> — settles instantly to the end frame, no fly-out.</span></div>
+            <div class="si"><span>Fires once, ever — celebrates the first capture, never repeats.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer style="margin-top:72px;padding-top:24px;border-top:var(--hair);font-family:var(--font-mono);font-size:11px;color:var(--ink-40);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <span>Territory Run · design system · locked v1</span>
+    <span>Boldonse + Manrope · 393px reference · sentence case</span>
+  </footer>
+
+</main>
+
+<script src="territory-run.js"></script>
+</body>
+</html>

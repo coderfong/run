@@ -15,6 +15,7 @@ import { toast } from '../ui/toast';
 
 export default function LeaderboardScreen() {
   const { user } = useAuth();
+  const myTeam = regionForUser(user?.username || '');
   const [rows, setRows] = useState(null);
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export default function LeaderboardScreen() {
         const isMe = item.user_id === user.id;
         const team = regionForUser(item.username);
         return (
-          <View style={[styles.row, isMe && styles.rowSelf]}>
+          <View style={[styles.row, isMe && [styles.rowSelf, { borderColor: myTeam.color }]]}>
             <Text style={styles.rank}>#{index + 1}</Text>
             <View style={[styles.teamDot, { backgroundColor: team.color }]} />
             <View style={{ flex: 1 }}>
@@ -62,7 +63,7 @@ export default function LeaderboardScreen() {
                 {team.name} · {item.territory_count} territories
               </Text>
             </View>
-            <Text style={styles.area}>
+            <Text style={[styles.area, { color: team.color }]}>
               {Math.round(item.total_area_m2).toLocaleString()} m²
             </Text>
           </View>

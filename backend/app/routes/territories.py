@@ -31,7 +31,7 @@ def map_polygons(
         rows = db.execute(
             text(
                 """
-                SELECT t.id, t.user_id, u.username, t.area_m2, t.created_at,
+                SELECT t.id::text, t.user_id::text, u.username, t.area_m2, t.created_at,
                        ST_AsText(t.polygon)
                 FROM territories t
                 JOIN users u ON u.id = t.user_id
@@ -55,7 +55,7 @@ def map_polygons(
         rows = db.execute(
             text(
                 """
-                SELECT t.id, t.user_id, u.username, t.area_m2, t.created_at,
+                SELECT t.id::text, t.user_id::text, u.username, t.area_m2, t.created_at,
                        ST_AsText(t.polygon)
                 FROM territories t
                 JOIN users u ON u.id = t.user_id
