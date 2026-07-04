@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { useAuth } from '../auth/AuthContext';
-import { colors, font, radius, space } from '../theme';
+import { colors, radius, space, type } from '../theme';
 import { toast } from '../ui/toast';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
@@ -146,28 +146,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginRight: 10,
   },
-  brandText: { ...font.section, fontSize: 18 },
+  brandText: { ...type.heading },
 
-  headline: { ...font.hero, marginBottom: space.sm },
-  subtle: { ...font.muted, marginBottom: space.xl },
+  headline: { ...type.display, marginBottom: space.sm },
+  subtle: { ...type.body, color: colors.textMuted, marginBottom: space.xl },
 
   label: {
-    ...font.muted,
+    ...type.labelSm,
     marginBottom: 6,
     marginTop: space.md,
-    textTransform: 'uppercase',
-    fontSize: 11,
-    letterSpacing: 0.6,
   },
   input: {
+    ...type.body,
     backgroundColor: colors.card,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radius.md,
     paddingHorizontal: space.md,
     paddingVertical: 14,
-    color: colors.text,
-    fontSize: 16,
   },
 
   primaryBtn: {
@@ -177,9 +173,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: space.xl,
   },
-  primaryBtnText: { color: colors.primaryInk, fontWeight: '800', fontSize: 16 },
+  primaryBtnText: { ...type.button },
   btnDisabled: { opacity: 0.6 },
 
   switch: { marginTop: space.lg, alignItems: 'center' },
-  switchText: { color: colors.textMuted, fontSize: 14 },
+  switchText: { ...type.body, color: colors.textMuted },
 });

@@ -1,52 +1,117 @@
-// Territory Run — "visual v1" light design tokens.
-// Light is the default everywhere; `darkColors` is reserved for the active
-// Running screen (battery + outdoor visibility). There is NO global brand
-// accent — a user's team colour is their accent, so `colors.primary` falls
-// back to brand ink for team-agnostic surfaces (Auth, onboarding, neutral CTAs).
+// Territory Run — design tokens (v1 "night run" system).
+//
+// One rule drives the whole palette: there is NO global brand accent.
+// A user's team colour IS their accent. `colors.primary` is neutral ink,
+// used only on team-agnostic surfaces (Auth, onboarding, neutral CTAs).
+//
+// Type: Space Grotesk for display/stats (tabular numerals on anything that
+// ticks), Inter for body/labels. Both loaded in App.js via expo-font.
 
-export const teams = {
-  north: { key: 'north', name: 'North', fill: '#e9d5ff', stroke: '#9333ea', text: '#581c87', dm: '#f3e8ff' },
-  east:  { key: 'east',  name: 'East',  fill: '#bbf7d0', stroke: '#16a34a', text: '#14532d', dm: '#dcfce7' },
-  south: { key: 'south', name: 'South', fill: '#bfdbfe', stroke: '#2563eb', text: '#1e3a8a', dm: '#dbeafe' },
-  west:  { key: 'west',  name: 'West',  fill: '#fecaca', stroke: '#dc2626', text: '#7f1d1d', dm: '#fee2e2' },
+// ---------------------------------------------------------------------------
+// Font families (must match the keys passed to useFonts in App.js)
+// ---------------------------------------------------------------------------
+
+export const fonts = {
+  display: 'SpaceGrotesk_700Bold',
+  displayMedium: 'SpaceGrotesk_500Medium',
+  body: 'Inter_400Regular',
+  bodyMedium: 'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
 };
 
-export const colors = {
-  bg: '#fafaf7',
-  bgElevated: '#f3f1ea',
-  card: '#ffffff',
-  cardAlt: '#f0eee7',
-  border: '#e5e1d8',
-  text: '#0d1117',
-  textMuted: 'rgba(13,17,23,0.60)',
-  textDim: 'rgba(13,17,23,0.40)',
+// ---------------------------------------------------------------------------
+// Team palettes — fill (translucent, territory polygons), stroke (saturated,
+// lines/chips/CTAs), glow (bright, dark-mode route glow + stat values),
+// tint (solid pastel, light-mode chips/avatars), text (dark, on tint).
+// Fills are tuned to ~20% alpha so overlapping rival territories stay legible.
+// ---------------------------------------------------------------------------
 
-  primary: '#0d1117', // brand ink — neutral CTA where there is no team yet
+export const teams = {
+  north: {
+    key: 'north', name: 'North',
+    fill: 'rgba(147,51,234,0.20)', stroke: '#9333ea', glow: '#c084fc',
+    tint: '#e9d5ff', text: '#581c87',
+  },
+  east: {
+    key: 'east', name: 'East',
+    fill: 'rgba(22,163,74,0.20)', stroke: '#16a34a', glow: '#4ade80',
+    tint: '#bbf7d0', text: '#14532d',
+  },
+  south: {
+    key: 'south', name: 'South',
+    fill: 'rgba(37,99,235,0.20)', stroke: '#2563eb', glow: '#60a5fa',
+    tint: '#bfdbfe', text: '#1e3a8a',
+  },
+  west: {
+    key: 'west', name: 'West',
+    fill: 'rgba(220,38,38,0.20)', stroke: '#dc2626', glow: '#f87171',
+    tint: '#fecaca', text: '#7f1d1d',
+  },
+};
+
+// '#2563eb' + 0.32 -> 'rgba(37,99,235,0.32)'. For map fill/stroke colours.
+export function withAlpha(hex, alpha) {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+// ---------------------------------------------------------------------------
+// Light theme — cool off-white, white cards, soft shadows.
+// ---------------------------------------------------------------------------
+
+export const colors = {
+  bg: '#f7f8fa',
+  bgElevated: '#eef0f4',
+  card: '#ffffff',
+  cardAlt: '#eef0f4',
+  border: '#e4e7ec',
+  text: '#16181d',
+  textMuted: '#6b7280',
+  textDim: '#9aa1ab',
+
+  primary: '#16181d', // brand ink — neutral CTA where there is no team yet
   primaryDark: '#000000',
   primaryInk: '#ffffff',
 
   danger: '#dc2626',
+  dangerSoft: '#fee2e2',
   warn: '#d97706',
   ok: '#16a34a',
 };
 
-// Active-run dark surface.
+// ---------------------------------------------------------------------------
+// Dark "night run" theme — Running screen + Result-after-run. True dark,
+// elevated surfaces, team colour used as glow.
+// ---------------------------------------------------------------------------
+
 export const darkColors = {
-  bg: '#0d1117',
-  bgElevated: '#161b22',
-  card: '#161b22',
-  cardAlt: '#1b2230',
+  bg: '#0b0d10',
+  bgElevated: '#15181d',
+  card: '#15181d',
+  cardAlt: '#1c2027',
   border: 'rgba(255,255,255,0.10)',
   text: '#ffffff',
   textMuted: 'rgba(255,255,255,0.66)',
   textDim: 'rgba(255,255,255,0.42)',
+
+  primary: '#ffffff',
+  primaryInk: '#0b0d10',
+
+  danger: '#ef4444',
+  dangerSoft: 'rgba(239,68,68,0.16)',
+  warn: '#f59e0b',
+  ok: '#22c55e',
 };
+
+// ---------------------------------------------------------------------------
+// Radius + spacing scales
+// ---------------------------------------------------------------------------
 
 export const radius = {
   sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 24,
+  md: 14,
+  lg: 22,
   pill: 999,
 };
 
@@ -59,11 +124,86 @@ export const space = {
   xxl: 32,
 };
 
-export const font = {
-  hero: { fontSize: 30, fontWeight: '800', color: colors.text, letterSpacing: -0.5 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.text },
-  section: { fontSize: 16, fontWeight: '700', color: colors.text },
-  body: { fontSize: 14, color: colors.text },
-  muted: { fontSize: 13, color: colors.textMuted },
-  metric: { fontSize: 28, fontWeight: '800', color: colors.text },
+// Soft shadows — never harsh. Use `card` for resting cards, `raised` for
+// floating panels/sheets, `glow(color)` for the dark-mode team glow.
+export const shadow = {
+  card: {
+    shadowColor: '#16181d',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  raised: {
+    shadowColor: '#16181d',
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  glow: (color) => ({
+    shadowColor: color,
+    shadowOpacity: 0.55,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  }),
 };
+
+// ---------------------------------------------------------------------------
+// Type scale. Every text style in the app comes from here — screens may
+// override `color` only. All live-updating numbers use the `stat*` styles
+// (tabular numerals so digits don't jitter as they tick).
+// ---------------------------------------------------------------------------
+
+const TABULAR = ['tabular-nums'];
+
+export const type = {
+  // Space Grotesk — display
+  display: { fontFamily: fonts.display, fontSize: 34, letterSpacing: -0.5, color: colors.text },
+  title: { fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.3, color: colors.text },
+  heading: { fontFamily: fonts.display, fontSize: 18, color: colors.text },
+
+  // Space Grotesk — stats (tabular)
+  statHero: { fontFamily: fonts.display, fontSize: 44, letterSpacing: -1, fontVariant: TABULAR, color: colors.text },
+  stat: { fontFamily: fonts.displayMedium, fontSize: 28, fontVariant: TABULAR, color: colors.text },
+  statMd: { fontFamily: fonts.displayMedium, fontSize: 22, fontVariant: TABULAR, color: colors.text },
+  statSm: { fontFamily: fonts.displayMedium, fontSize: 17, fontVariant: TABULAR, color: colors.text },
+
+  // Inter — body
+  body: { fontFamily: fonts.body, fontSize: 15, color: colors.text },
+  bodyMedium: { fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.text },
+  bodyBold: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+  bodySm: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.text },
+  bodySmBold: { fontFamily: fonts.bold, fontSize: 13, color: colors.text },
+
+  // Inter — labels/eyebrows (uppercase)
+  label: { fontFamily: fonts.semibold, fontSize: 13, letterSpacing: 0.4, textTransform: 'uppercase', color: colors.textMuted },
+  labelSm: { fontFamily: fonts.semibold, fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.textMuted },
+
+  // Inter — captions
+  caption: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
+  captionMedium: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
+
+  // Inter — buttons
+  button: { fontFamily: fonts.semibold, fontSize: 16, color: colors.primaryInk },
+  buttonSm: { fontFamily: fonts.semibold, fontSize: 14, color: colors.primaryInk },
+};
+
+// ---------------------------------------------------------------------------
+// Single tokens object — preferred import for new code.
+// ---------------------------------------------------------------------------
+
+export const tokens = {
+  fonts,
+  teams,
+  colors,
+  darkColors,
+  radius,
+  space,
+  shadow,
+  type,
+  withAlpha,
+};
+
+export default tokens;

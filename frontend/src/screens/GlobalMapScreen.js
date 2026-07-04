@@ -4,7 +4,7 @@ import MapView, { Polygon } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 import { api } from '../api/client';
-import { colors, font, radius, space } from '../theme';
+import { colors, radius, space, type } from '../theme';
 import { SG_REGIONS, SG_VIEW_REGION, regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
 import { toast } from '../ui/toast';
@@ -157,5 +157,5 @@ const styles = StyleSheet.create({
   },
   legendItem: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
-  legendLabel: { ...font.muted, color: colors.text, fontSize: 12, fontWeight: '600' },
+  legendLabel: { ...type.captionMedium, color: colors.text },
 });

@@ -1,8 +1,20 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, StatusBar, View } from 'react-native';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_700Bold,
+} from '@expo-google-fonts/space-grotesk';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RunningScreen from './src/screens/RunningScreen';
@@ -15,7 +27,10 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ToastHost } from './src/ui/toast';
-import { colors, darkColors } from './src/theme';
+import { colors, darkColors, fonts } from './src/theme';
+
+// Hold the splash until fonts are ready — avoids a flash of fallback type.
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Stack = createNativeStackNavigator();
 
@@ -33,7 +48,7 @@ const navTheme = {
 
 const screenOptions = {
   headerStyle: { backgroundColor: colors.bg },
-  headerTitleStyle: { color: colors.text, fontWeight: '800' },
+  headerTitleStyle: { color: colors.text, fontFamily: fonts.display },
   headerTintColor: colors.text,
   headerShadowVisible: false,
   contentStyle: { backgroundColor: colors.bg },
@@ -42,8 +57,8 @@ const screenOptions = {
 // The active run is the one dark screen — give it a matching dark header.
 const runScreenOptions = {
   headerStyle: { backgroundColor: darkColors.bg },
-  headerTitleStyle: { color: darkColors.text, fontWeight: '800' },
-  headerTintColor: '#ffffff',
+  headerTitleStyle: { color: darkColors.text, fontFamily: fonts.display },
+  headerTintColor: darkColors.text,
   headerShadowVisible: false,
   contentStyle: { backgroundColor: darkColors.bg },
 };
@@ -100,7 +115,7 @@ function RootNavigator() {
         <Stack.Screen
           name="Result"
           component={ResultScreen}
-          options={{ title: 'Result' }}
+          options={{ title: 'Result', ...runScreenOptions }}
         />
         <Stack.Screen
           name="GlobalMap"
@@ -123,6 +138,25 @@ function RootNavigator() {
 }
 
 export default function App() {
+  const [fontsLoaded, fontError] = useFonts({
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontError]);
+
+  // Keep the native splash up until type is ready (or failed — then we
+  // proceed with system fallbacks rather than blocking the app forever).
+  if (!fontsLoaded && !fontError) return null;
+
   return (
     <SafeAreaProvider>
       <AuthProvider>

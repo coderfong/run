@@ -6,7 +6,7 @@ import * as Location from 'expo-location';
 import { api } from '../api/client';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
-import { radius, space } from '../theme';
+import { darkColors, radius, space, type } from '../theme';
 import { toast } from '../ui/toast';
 
 const LOOP_CLOSE_DISTANCE_M = 25;
@@ -16,22 +16,22 @@ const MIN_DISTANCE_FOR_LOOP_M = 80;
 // i.e. a ~50m-wide strip painted along the route (brief §6).
 const OPEN_PATH_M2_PER_M = 50;
 
-// Active-run dark surface (the one dark screen in the app).
+// Night-run surface tokens.
 const D = {
-  bg: '#0d1117',
-  card: '#161b22',
-  border: 'rgba(255,255,255,0.10)',
-  text: '#ffffff',
-  muted: 'rgba(255,255,255,0.66)',
-  dim: 'rgba(255,255,255,0.42)',
-  danger: '#dc2626',
+  bg: darkColors.bg,
+  card: darkColors.card,
+  border: darkColors.border,
+  text: darkColors.text,
+  muted: darkColors.textMuted,
+  dim: darkColors.textDim,
+  danger: darkColors.danger,
 };
 
 const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#0d1117' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0d1117' }] },
+  { elementType: 'geometry', stylers: [{ color: darkColors.bg }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: darkColors.bg }] },
   { elementType: 'labels.text.fill', stylers: [{ color: '#6b7177' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1b2230' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: darkColors.cardAlt }] },
   { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'off' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a1622' }] },
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   promptDot: { width: 9, height: 9, borderRadius: 5 },
-  promptText: { color: D.text, fontSize: 13, fontWeight: '700', flex: 1 },
+  promptText: { ...type.bodySmBold, color: D.text, flex: 1 },
 
   panel: {
     position: 'absolute',
@@ -442,13 +442,11 @@ const styles = StyleSheet.create({
   metricsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.md },
   metric: { flex: 1 },
   metricLabel: {
-    fontSize: 10,
-    letterSpacing: 0.6,
+    ...type.labelSm,
     color: D.muted,
-    textTransform: 'uppercase',
     marginBottom: 4,
   },
-  metricValue: { fontSize: 22, fontWeight: '800' },
+  metricValue: { ...type.statMd },
 
   preview: {
     flexDirection: 'row',
@@ -460,17 +458,17 @@ const styles = StyleSheet.create({
   },
   previewItem: { flex: 1, alignItems: 'center' },
   previewDivider: { width: 1, alignSelf: 'stretch', backgroundColor: D.border },
-  previewVal: { fontSize: 17, fontWeight: '800' },
-  previewValMuted: { fontSize: 17, fontWeight: '800', color: D.muted },
-  previewLabel: { fontSize: 11, color: D.dim, marginTop: 3 },
+  previewVal: { ...type.statSm },
+  previewValMuted: { ...type.statSm, color: D.muted },
+  previewLabel: { ...type.caption, color: D.dim, marginTop: 3 },
 
   loopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: space.md },
   loopDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  loopText: { color: D.muted, fontSize: 13 },
+  loopText: { ...type.bodySm, color: D.muted },
 
   primaryBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
-  primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  primaryBtnText: { ...type.button, color: '#fff' },
 
   stopBtn: { backgroundColor: D.danger, paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
-  stopBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  stopBtnText: { ...type.button, color: '#fff' },
 });

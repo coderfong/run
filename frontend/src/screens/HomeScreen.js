@@ -18,17 +18,14 @@ import * as Notifications from 'expo-notifications';
 import { TEAMS, TEAM_BY_KEY, SG_BBOX, regionForUser } from '../data/regions';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { colors, radius, shadow, space, type } from '../theme';
 
-// ---------------------------------------------------------------------------
-// Light design-system tokens (Territory Run visual v1). Local to Home so the
-// remaining (dark) screens keep working untouched.
-// ---------------------------------------------------------------------------
-const INK = '#0d1117';
-const INK60 = 'rgba(13,17,23,0.60)';
-const INK40 = 'rgba(13,17,23,0.40)';
-const SURFACE = '#fafaf7';
-const BORDER = '#e5e1d8';
-const MAP_BG = '#f3f1ea';
+const INK = colors.text;
+const INK60 = colors.textMuted;
+const INK40 = colors.textDim;
+const SURFACE = colors.bg;
+const BORDER = colors.border;
+const MAP_BG = colors.bgElevated;
 
 const PEEK_VIS = 196; // px of the sheet visible when collapsed
 const FULL_FRAC = 0.78; // fraction of the screen the sheet covers when open
@@ -526,17 +523,13 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   home: { flex: 1, backgroundColor: MAP_BG },
   mapFull: { ...StyleSheet.absoluteFillObject },
-  veilTop: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'rgba(243,241,234,0.55)' },
+  veilTop: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'rgba(247,248,250,0.55)' },
 
   glass: {
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
     borderWidth: 0.5,
-    borderColor: 'rgba(13,17,23,0.06)',
-    shadowColor: '#0d1117',
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    borderColor: 'rgba(22,24,29,0.06)',
+    ...shadow.card,
   },
 
   floatTop: {
@@ -556,20 +549,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2.5,
   },
-  avaText: { fontSize: 13, fontWeight: '800' },
+  avaText: { ...type.bodySmBold },
   teamPill: {
     height: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 14,
-    borderRadius: 999,
+    borderRadius: radius.pill,
   },
-  teamPillText: { fontSize: 14, fontWeight: '700' },
+  teamPillText: { ...type.bodySmBold },
   dot: { width: 10, height: 10, borderRadius: 5 },
   live: { flexDirection: 'row', alignItems: 'center', gap: 5, marginLeft: 2 },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#16a34a' },
-  liveText: { fontSize: 10, color: INK60 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.ok },
+  liveText: { ...type.caption },
   locate: {
     marginLeft: 'auto',
     width: 44,
@@ -579,7 +572,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  greeting: { position: 'absolute', left: 16, zIndex: 5, fontSize: 13, fontWeight: '600', color: INK60 },
+  greeting: { position: 'absolute', left: space.lg, zIndex: 5, ...type.bodySm, color: INK60 },
 
   legend: {
     position: 'absolute',
@@ -595,7 +588,7 @@ const styles = StyleSheet.create({
   },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5, width: 64 },
   legendSw: { width: 11, height: 11, borderRadius: 3, borderWidth: 1.5 },
-  legendLabel: { fontSize: 10, color: INK60 },
+  legendLabel: { ...type.caption },
 
   worldBtn: {
     position: 'absolute',
@@ -608,7 +601,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
   },
-  worldBtnText: { fontSize: 13, fontWeight: '700', color: INK },
+  worldBtnText: { ...type.bodySmBold },
 
   sheet: {
     position: 'absolute',
@@ -617,23 +610,19 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 10,
     backgroundColor: SURFACE,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
     borderTopWidth: 0.5,
     borderColor: BORDER,
-    shadowColor: '#0d1117',
-    shadowOpacity: 0.16,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: -10 },
-    elevation: 24,
+    ...shadow.raised,
   },
   handleWrap: { paddingTop: 10, paddingBottom: 6, alignItems: 'center' },
-  handle: { width: 38, height: 5, borderRadius: 999, backgroundColor: '#d8d4ca' },
-  sheetFixed: { paddingHorizontal: 16, paddingBottom: 12, gap: 12 },
+  handle: { width: 38, height: 5, borderRadius: radius.pill, backgroundColor: colors.border },
+  sheetFixed: { paddingHorizontal: space.lg, paddingBottom: space.md, gap: space.md },
 
   startBtn: {
     height: 56,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -643,70 +632,72 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
-  startBtnText: { color: '#fff', fontWeight: '800', fontSize: 17 },
+  startBtnText: { ...type.button },
 
   summary: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 2 },
   rankBig: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
-  rankBigNum: { fontSize: 24, fontWeight: '800', lineHeight: 26 },
-  rankBigOrd: { fontSize: 12, color: INK60, marginBottom: 2 },
-  summaryT: { fontSize: 14, fontWeight: '700', color: INK },
-  summaryS: { fontSize: 12, color: INK60, marginTop: 2 },
+  rankBigNum: { ...type.statMd, lineHeight: 26 },
+  rankBigOrd: { ...type.caption, marginBottom: 2 },
+  summaryT: { ...type.bodySmBold },
+  summaryS: { ...type.caption, marginTop: 2 },
   chev: {
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#eceae3',
+    backgroundColor: colors.cardAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  sheetBody: { flex: 1, paddingHorizontal: 16 },
-  secH: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 2, marginTop: 8 },
-  secHTitle: { fontSize: 15, fontWeight: '700', color: INK },
-  secHSub: { fontSize: 11, color: INK60 },
+  sheetBody: { flex: 1, paddingHorizontal: space.lg },
+  secH: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 2, marginTop: space.sm },
+  secHTitle: { ...type.heading },
+  secHSub: { ...type.caption },
 
   stand: { marginTop: 6 },
-  standRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, paddingHorizontal: 8, borderRadius: 12 },
-  standRowActive: { backgroundColor: '#f0eee7' },
-  standRank: { fontSize: 12, color: INK40, width: 12 },
+  standRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, paddingHorizontal: space.sm, borderRadius: radius.md },
+  standRowActive: { backgroundColor: colors.cardAlt },
+  standRank: { ...type.caption, color: INK40, width: 12 },
   standDot: { width: 12, height: 12, borderRadius: 6 },
   standNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  standName: { fontSize: 14, fontWeight: '700' },
-  youTag: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2 },
-  youTagText: { fontSize: 9, letterSpacing: 0.5, color: '#fff', fontWeight: '700' },
-  bar: { height: 6, borderRadius: 999, backgroundColor: '#eceae3', marginTop: 7, overflow: 'hidden' },
-  barFill: { height: '100%', borderRadius: 999 },
+  standName: { ...type.bodySmBold },
+  youTag: { borderRadius: radius.pill, paddingHorizontal: 7, paddingVertical: 2 },
+  youTagText: { ...type.labelSm, color: '#fff' },
+  bar: { height: 6, borderRadius: radius.pill, backgroundColor: colors.bgElevated, marginTop: 7, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: radius.pill },
   standVal: { alignItems: 'flex-end' },
-  standArea: { fontSize: 16, fontWeight: '800' },
-  standUnit: { fontSize: 11, color: INK60, fontWeight: '400' },
-  standZones: { fontSize: 11, color: INK60, marginTop: 4 },
+  standArea: { ...type.statSm },
+  standUnit: { ...type.caption },
+  standZones: { ...type.caption, marginTop: 4 },
 
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     padding: 14,
-    borderRadius: 16,
-    backgroundColor: '#fff',
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
     borderWidth: 0.5,
     borderColor: BORDER,
-    marginTop: 16,
+    marginTop: space.lg,
+    ...shadow.card,
   },
-  bannerIc: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  bannerT: { fontSize: 13, fontWeight: '700', color: INK },
-  bannerS: { fontSize: 12, color: INK60, marginTop: 2 },
-  bannerGo: { fontSize: 18, color: INK40 },
+  bannerIc: { width: 38, height: 38, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  bannerT: { ...type.bodySmBold },
+  bannerS: { ...type.caption, marginTop: 2 },
+  bannerGo: { ...type.heading, color: INK40 },
 
-  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 36 },
+  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: space.xxl },
   stat: {
     width: '47.6%',
     flexGrow: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
     borderWidth: 0.5,
     borderColor: BORDER,
-    borderRadius: 12,
+    borderRadius: radius.md,
     padding: 14,
+    ...shadow.card,
   },
-  statEy: { fontSize: 10, letterSpacing: 0.6, color: INK60, textTransform: 'uppercase' },
-  statVal: { fontSize: 24, fontWeight: '800', color: INK, marginTop: 9 },
+  statEy: { ...type.labelSm },
+  statVal: { ...type.statMd, marginTop: 9 },
 });

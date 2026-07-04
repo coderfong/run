@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Polygon } from 'react-native-maps';
 
-import { colors, font, radius, space } from '../theme';
+import { colors, radius, space, type } from '../theme';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
 
@@ -129,10 +129,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginBottom: space.md,
   },
-  eyebrowText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  eyebrowText: { ...type.labelSm },
 
-  bigArea: { fontSize: 56, fontWeight: '800', color: colors.text, letterSpacing: -1 },
-  bigUnit: { fontSize: 22, fontWeight: '700', color: colors.textMuted },
+  bigArea: { ...type.statHero },
+  bigUnit: { ...type.statMd, color: colors.textMuted },
 
   summary: {
     position: 'absolute',
@@ -151,9 +151,9 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 
-  headline: { ...font.title, marginBottom: space.md },
+  headline: { ...type.title, marginBottom: space.md },
   body: {
-    ...font.body,
+    ...type.body,
     color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 21,
@@ -169,18 +169,15 @@ const styles = StyleSheet.create({
   },
   metric: { flex: 1 },
   metricLabel: {
-    fontSize: 10,
-    letterSpacing: 0.6,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
+    ...type.labelSm,
     marginBottom: 4,
   },
-  metricValue: { fontSize: 18, fontWeight: '800' },
+  metricValue: { ...type.statSm },
 
   primaryBtn: {
     paddingVertical: 16,
     borderRadius: radius.pill,
     alignItems: 'center',
   },
-  primaryBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  primaryBtnText: { ...type.button, color: '#fff' },
 });

@@ -11,7 +11,7 @@ import {
 import Svg, { Circle, Path } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, font, radius, space } from '../theme';
+import { colors, radius, space, type } from '../theme';
 
 const { width } = Dimensions.get('window');
 const BOX = 220; // illustration canvas size
@@ -445,16 +445,15 @@ const styles = StyleSheet.create({
 
   copy: { alignItems: 'center' },
   title: {
-    ...font.hero,
-    fontSize: 28,
+    ...type.title,
     textAlign: 'center',
     marginBottom: space.md,
   },
   body: {
+    ...type.body,
     color: colors.textMuted,
-    fontSize: 16,
     textAlign: 'center',
-    lineHeight: 23,
+    lineHeight: 22,
     paddingHorizontal: space.sm,
   },
 
@@ -479,12 +478,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: space.xl,
   },
-  skip: { color: colors.textMuted, fontSize: 15, fontWeight: '600' },
+  skip: { ...type.bodyMedium, color: colors.textMuted },
   cta: {
     backgroundColor: colors.primary,
     paddingHorizontal: space.xl,
     paddingVertical: 14,
     borderRadius: radius.pill,
   },
-  ctaText: { color: colors.primaryInk, fontWeight: '800', fontSize: 15 },
+  ctaText: { ...type.buttonSm },
 });

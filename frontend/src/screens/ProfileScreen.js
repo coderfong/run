@@ -12,7 +12,7 @@ import {
 
 import { useAuth } from '../auth/AuthContext';
 import { regionForUser } from '../data/regions';
-import { colors, font, radius, space } from '../theme';
+import { colors, radius, space, type } from '../theme';
 import { toast } from '../ui/toast';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
@@ -175,8 +175,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: space.md,
   },
-  avatarText: { color: colors.text, fontSize: 36, fontWeight: '800' },
-  username: { ...font.title, marginBottom: space.sm },
+  avatarText: { ...type.display, color: colors.text },
+  username: { ...type.title, marginBottom: space.sm },
   teamPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   teamDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  teamText: { color: colors.text, fontWeight: '700', fontSize: 12 },
+  teamText: { ...type.captionMedium, color: colors.text },
 
   card: {
     backgroundColor: colors.card,
@@ -196,22 +196,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  cardLabel: { ...font.muted, marginBottom: 6, textTransform: 'uppercase', fontSize: 11 },
-  cardValue: { ...font.body, fontSize: 16, fontWeight: '700' },
+  cardLabel: { ...type.labelSm, marginBottom: 6 },
+  cardValue: { ...type.bodyBold },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   input: {
+    ...type.body,
     backgroundColor: colors.bgElevated,
     borderColor: colors.border,
     borderWidth: 1,
     borderRadius: radius.sm,
     paddingHorizontal: space.md,
     paddingVertical: 12,
-    color: colors.text,
-    fontSize: 16,
     marginVertical: space.sm,
   },
 
@@ -223,9 +222,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primary: { backgroundColor: colors.primary, marginLeft: space.sm },
-  primaryText: { color: colors.primaryInk, fontWeight: '800' },
+  primaryText: { ...type.buttonSm },
   secondary: { backgroundColor: colors.cardAlt },
-  secondaryText: { color: colors.text, fontWeight: '700' },
+  secondaryText: { ...type.buttonSm, color: colors.text },
 
   fullBtn: {
     paddingVertical: 16,
@@ -234,11 +233,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  fullBtnText: { fontSize: 16, fontWeight: '700' },
+  fullBtnText: { ...type.button, color: colors.text },
 
   legal: {
+    ...type.caption,
     color: colors.textDim,
-    fontSize: 12,
     marginTop: space.xl,
     textAlign: 'center',
     paddingHorizontal: space.lg,

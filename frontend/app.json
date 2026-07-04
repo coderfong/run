@@ -19,7 +19,9 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Territory Run needs your location to track your run and turn the loop you make into your territory.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Territory Run needs background location so your run keeps recording when the screen is off.",
-        "UIBackgroundModes": ["location"]
+        "UIBackgroundModes": [
+          "location"
+        ]
       }
     },
     "android": {
@@ -46,7 +48,8 @@
         }
       ],
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font"
     ],
     "extra": {
       "apiBase": "https://cycles-markets-mar-executive.trycloudflare.com",

@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, space } from '../theme';
+import { colors, radius, space, type } from '../theme';
 
 let listener = null;
 
@@ -88,5 +88,5 @@ const styles = StyleSheet.create({
     minWidth: 180,
     maxWidth: '100%',
   },
-  text: { fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  text: { ...type.bodySm, textAlign: 'center' },
 });

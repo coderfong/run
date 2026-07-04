@@ -1,3 +1,5 @@
+import { teams as TEAM_TOKENS } from '../theme';
+
 // Singapore split into 5 EQUAL-LAND-AREA territory regions for the home map.
 // Generated from the real geoBoundaries SGP ADM0 coastline (mainland island),
 // clipped with shapely into a central core + 4 directional wedges, each exactly
@@ -76,19 +78,31 @@ export const SG_VIEW_REGION = {
   longitudeDelta: 0.47832,
 };
 
-// The four regional teams — the brand palette painted onto every map.
-// Pastel fill + saturated stroke; a user's OWN team colour is their accent,
-// so there is no separate brand colour anywhere in the app.
-export const TEAMS = [
-  { key: 'north', name: 'North', fill: '#e9d5ff', stroke: '#9333ea', text: '#581c87', color: '#9333ea' },
-  { key: 'east',  name: 'East',  fill: '#bbf7d0', stroke: '#16a34a', text: '#14532d', color: '#16a34a' },
-  { key: 'south', name: 'South', fill: '#bfdbfe', stroke: '#2563eb', text: '#1e3a8a', color: '#2563eb' },
-  { key: 'west',  name: 'West',  fill: '#fecaca', stroke: '#dc2626', text: '#7f1d1d', color: '#dc2626' },
-];
+// The four regional teams — sourced from the theme token palette so the map,
+// chips and CTAs all share one definition. A user's OWN team colour is their
+// accent; there is no separate brand colour anywhere in the app.
+// Shape per team: fill (solid pastel, chips/SVG), stroke (saturated),
+// glow (bright, dark mode), text (dark, on pastel), color (alias of stroke).
+export const TEAMS = ['north', 'east', 'south', 'west'].map((k) => {
+  const t = TEAM_TOKENS[k];
+  return {
+    key: t.key,
+    name: t.name,
+    fill: t.tint,
+    stroke: t.stroke,
+    glow: t.glow,
+    text: t.text,
+    color: t.stroke,
+  };
+});
 
 export const TEAM_BY_KEY = TEAMS.reduce((m, t) => ((m[t.key] = t), m), {});
 
-// Stable hash so the same username always lands on the same team.
+// -----------------------------------------------------------------------
+// Team assignment. This is the ONLY place the app decides which team a
+// user belongs to — v1 hashes the username; v1.1 will swap this to the
+// user's clan colours without touching any screen.
+// -----------------------------------------------------------------------
 export function regionForUser(username) {
   const s = String(username || '');
   let h = 0;

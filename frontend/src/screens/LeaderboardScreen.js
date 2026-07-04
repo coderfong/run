@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 
 import { api } from '../api/client';
-import { colors, font, radius, space } from '../theme';
+import { colors, radius, space, type } from '../theme';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
 import { toast } from '../ui/toast';
@@ -46,8 +46,10 @@ export default function LeaderboardScreen() {
       keyExtractor={(r) => r.user_id}
       ListHeaderComponent={
         <View style={styles.heading}>
-          <Text style={font.hero}>Leaderboard</Text>
-          <Text style={font.muted}>Top runners by territory area</Text>
+          <Text style={type.display}>Leaderboard</Text>
+          <Text style={{ ...type.body, color: colors.textMuted }}>
+            Top runners by territory area
+          </Text>
         </View>
       }
       renderItem={({ item, index }) => {
@@ -99,15 +101,13 @@ const styles = StyleSheet.create({
   rowSelf: { borderColor: colors.primary, borderWidth: 1.5 },
 
   rank: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '800',
+    ...type.statSm,
     width: 36,
   },
   teamDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
 
-  name: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  name: { ...type.bodyBold },
+  meta: { ...type.caption, marginTop: 2 },
 
-  area: { color: colors.primary, fontWeight: '800' },
+  area: { ...type.statSm },
 });
