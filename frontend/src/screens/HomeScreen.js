@@ -209,27 +209,32 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   // Live territory totals for the user.
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.mapPolygons({
-          minLon: SG_BBOX.minLon,
-          minLat: SG_BBOX.minLat,
-          maxLon: SG_BBOX.maxLon,
-          maxLat: SG_BBOX.maxLat,
-        });
-        const ts = data.territories || [];
-        setTerritoryCount(ts.length);
-        const mine = ts.filter((t) => t.user_id === user.id);
-        setMyZones(mine.length);
-        setMyArea(mine.reduce((s, t) => s + (t.area_m2 || 0), 0));
-      } catch {
-        setTerritoryCount(0);
-        setMyZones(0);
-        setMyArea(0);
-      }
-    })();
+  const [statsError, setStatsError] = useState(false);
+  const loadStats = React.useCallback(async () => {
+    try {
+      const data = await api.mapPolygons({
+        minLon: SG_BBOX.minLon,
+        minLat: SG_BBOX.minLat,
+        maxLon: SG_BBOX.maxLon,
+        maxLat: SG_BBOX.maxLat,
+      });
+      const ts = data.territories || [];
+      setTerritoryCount(ts.length);
+      const mine = ts.filter((t) => t.user_id === user.id);
+      setMyZones(mine.length);
+      setMyArea(mine.reduce((s, t) => s + (t.area_m2 || 0), 0));
+      setStatsError(false);
+    } catch {
+      setTerritoryCount(0);
+      setMyZones(0);
+      setMyArea(0);
+      setStatsError(true);
+    }
   }, [user.id]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   // Team standings, aggregated from the leaderboard by team.
   useEffect(() => {
@@ -504,7 +509,15 @@ export default function HomeScreen({ navigation }) {
           {/* your stats */}
           <View style={[styles.secH, { marginBottom: 10 }]}>
             <Text style={styles.secHTitle}>Your land</Text>
-            <Text style={styles.secHSub}>all time</Text>
+            {statsError ? (
+              <TouchableOpacity onPress={loadStats} accessibilityRole="button">
+                <Text style={[styles.secHSub, { color: accent }]}>
+                  couldn't load · retry
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.secHSub}>all time</Text>
+            )}
           </View>
           <View style={styles.statGrid}>
             <StatTile

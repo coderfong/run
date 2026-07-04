@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Constants from 'expo-constants';
 
 import { useAuth } from '../auth/AuthContext';
 import { regionForUser } from '../data/regions';
@@ -16,6 +17,8 @@ import { colors, radius, space, type } from '../theme';
 import { toast } from '../ui/toast';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
+// Slot for the hosted policy (see PRIVACY.md in the repo).
+const PRIVACY_POLICY_URL = 'https://territoryrun.app/privacy';
 
 export default function ProfileScreen() {
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
@@ -24,6 +27,10 @@ export default function ProfileScreen() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(user?.username || '');
   const [busy, setBusy] = useState(false);
+  // Delete flow: expanding confirm card that requires typing the username.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteDraft, setDeleteDraft] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const saveUsername = async () => {
     const u = draft.trim().toLowerCase();
@@ -43,26 +50,18 @@ export default function ProfileScreen() {
     }
   };
 
-  const confirmDelete = () => {
-    Alert.alert(
-      'Delete account?',
-      'This permanently removes your runs and territories. This cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteAccount();
-              toast.success('Account deleted');
-            } catch (e) {
-              toast.error(e.message || 'Could not delete account');
-            }
-          },
-        },
-      ]
-    );
+  const deleteMatches = deleteDraft.trim().toLowerCase() === user?.username;
+
+  const doDelete = async () => {
+    if (!deleteMatches) return;
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      toast.success('Account deleted');
+    } catch (e) {
+      toast.error(e.message || 'Could not delete account');
+      setDeleting(false);
+    }
   };
 
   return (
@@ -142,19 +141,82 @@ export default function ProfileScreen() {
         </Text>
       </TouchableOpacity>
 
+      {!confirmingDelete ? (
+        <TouchableOpacity
+          style={[styles.fullBtn, { backgroundColor: colors.dangerSoft, borderColor: '#f5c2c2', marginTop: space.md }]}
+          activeOpacity={0.85}
+          onPress={() => {
+            setConfirmingDelete(true);
+            setDeleteDraft('');
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Delete account"
+        >
+          <Text style={[styles.fullBtnText, { color: colors.danger }]}>
+            Delete account
+          </Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.deleteCard}>
+          <Text style={styles.deleteTitle}>Delete this account?</Text>
+          <Text style={styles.deleteBody}>
+            This permanently removes your runs and territories. It cannot be
+            undone. Type{' '}
+            <Text style={styles.deleteUsername}>{user?.username}</Text> to
+            confirm.
+          </Text>
+          <TextInput
+            value={deleteDraft}
+            onChangeText={setDeleteDraft}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder={user?.username}
+            placeholderTextColor={colors.textDim}
+            style={styles.input}
+            accessibilityLabel="Type your username to confirm deletion"
+          />
+          <View style={styles.row}>
+            <TouchableOpacity
+              style={[styles.smallBtn, styles.secondary]}
+              onPress={() => setConfirmingDelete(false)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.secondaryText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.smallBtn,
+                styles.deleteBtn,
+                (!deleteMatches || deleting) && { opacity: 0.4 },
+              ]}
+              onPress={doDelete}
+              disabled={!deleteMatches || deleting}
+              accessibilityRole="button"
+              accessibilityLabel="Permanently delete account"
+            >
+              {deleting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.deleteBtnText}>Delete forever</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       <TouchableOpacity
-        style={[styles.fullBtn, { backgroundColor: '#fee2e2', borderColor: '#f5c2c2', marginTop: space.md }]}
-        activeOpacity={0.85}
-        onPress={confirmDelete}
+        style={styles.linkRow}
+        onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})}
+        accessibilityRole="link"
+        accessibilityLabel="Privacy policy"
       >
-        <Text style={[styles.fullBtnText, { color: colors.danger }]}>
-          Delete account
-        </Text>
+        <Text style={styles.linkText}>Privacy Policy</Text>
       </TouchableOpacity>
 
       <Text style={styles.legal}>
-        By using Territory Run you accept our Terms of Service and Privacy
-        Policy.
+        Territory Run v{Constants.expoConfig?.version || '1.0.0'}
+        {'\n'}By using Territory Run you accept our Terms of Service and
+        Privacy Policy.
       </Text>
     </ScrollView>
   );
@@ -243,4 +305,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.lg,
     lineHeight: 18,
   },
+
+  deleteCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: '#f5c2c2',
+    padding: space.lg,
+    marginTop: space.md,
+  },
+  deleteTitle: { ...type.heading, color: colors.danger, marginBottom: space.sm },
+  deleteBody: { ...type.bodySm, color: colors.textMuted, lineHeight: 19 },
+  deleteUsername: { ...type.bodySmBold, color: colors.text },
+  deleteBtn: { backgroundColor: colors.danger, marginLeft: space.sm },
+  deleteBtnText: { ...type.buttonSm, color: '#fff' },
+
+  linkRow: { marginTop: space.xl, alignItems: 'center' },
+  linkText: { ...type.bodyMedium, color: colors.textMuted, textDecorationLine: 'underline' },
 });

@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, space, type } from '../theme';
@@ -16,33 +16,28 @@ import { colors, radius, space, type } from '../theme';
 const { width } = Dimensions.get('window');
 const BOX = 220; // illustration canvas size
 
+// Three slides: the game, the rivalry, the safety contract. The last slide
+// flows straight into the location pre-permission explainer.
 const SLIDES = [
   {
     key: 'run',
-    title: 'Run a closed loop',
+    title: 'Run. Close the loop. Claim the land.',
     body:
-      'Trace any path you want. The moment your route closes back near where you started, you complete a loop.',
+      'Trace any route you like. Close it back near where you started and everything inside the loop becomes your territory.',
     accent: '#2563eb',
   },
   {
-    key: 'claim',
-    title: 'Claim the land inside it',
-    body:
-      'Whatever ground your loop encloses becomes your territory. Bigger loops, bigger land.',
-    accent: '#16a34a',
-  },
-  {
     key: 'compete',
-    title: 'Steal it from rivals',
+    title: 'Four teams. One city.',
     body:
-      'Run over someone else’s territory and the overlap becomes yours. Singapore is divided into 4 teams — pick your side.',
+      'Singapore is split into North, East, South and West. Run over a rival’s land and the overlap becomes yours — captures are validated on our servers, so what you see is what you keep.',
     accent: '#9333ea',
   },
   {
-    key: 'permission',
-    title: 'We need GPS',
+    key: 'safety',
+    title: 'Territory can wait. Traffic can’t.',
     body:
-      'Territory Run only works while tracking your run. We never share your location and you can revoke permission anytime.',
+      'Obey every crossing, signal and barrier — a loop is never worth a red light. Runs are checked server-side, so there’s no prize for cutting corners. Heads up, eyes on the road.',
     accent: '#d97706',
   },
 ];
@@ -104,58 +99,7 @@ function IllustrationLoop({ accent }) {
   );
 }
 
-// Step 2: the loop fills in with claimed land, pulsing.
-function IllustrationClaim({ accent }) {
-  const fill = useRef(new Animated.Value(0)).current;
-  const R = 78;
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(fill, {
-          toValue: 1,
-          duration: 1100,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.delay(700),
-        Animated.timing(fill, {
-          toValue: 0,
-          duration: 450,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.delay(250),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [fill]);
-
-  const scale = fill.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] });
-  const opacity = fill.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] });
-  const D = R * 2;
-
-  return (
-    <View style={styles.illo}>
-      <Animated.View
-        style={{
-          position: 'absolute',
-          width: D,
-          height: D,
-          borderRadius: R,
-          backgroundColor: accent,
-          opacity,
-          transform: [{ scale }],
-        }}
-      />
-      <Svg width={BOX} height={BOX}>
-        <Circle cx={BOX / 2} cy={BOX / 2} r={R} stroke={accent} strokeWidth={4} fill="none" />
-      </Svg>
-    </View>
-  );
-}
-
-// Step 3: two overlapping territories; the captured overlap flips to your colour.
+// Step 2: two overlapping territories; the captured overlap flips to your colour.
 function IllustrationSteal() {
   const rival = '#9333ea';
   const you = '#2563eb';
@@ -219,62 +163,62 @@ function IllustrationSteal() {
   );
 }
 
-// Step 4: a location pin with expanding radar pulses.
-function IllustrationGps({ accent }) {
-  const r0 = useRef(new Animated.Value(0)).current;
-  const r1 = useRef(new Animated.Value(0)).current;
-  const r2 = useRef(new Animated.Value(0)).current;
-
+// Step 3: a crossing signal — the amber lamp pulses while a runner dot
+// waits at the stop line. Safety is part of the game's contract.
+function IllustrationSafety({ accent }) {
+  const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const make = (v, delay) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(v, {
-            toValue: 1,
-            duration: 2000,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
-      );
-    const anims = [make(r0, 0), make(r1, 650), make(r2, 1300)];
-    anims.forEach((a) => a.start());
-    return () => anims.forEach((a) => a.stop());
-  }, [r0, r1, r2]);
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 700,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 700,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [pulse]);
 
-  const ring = (v) => ({
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: accent,
-    opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] }),
-    transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.3, 2.2] }) }],
-  });
+  const lampOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
+  const lampScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] });
 
   return (
     <View style={styles.illo}>
-      <Animated.View style={ring(r0)} />
-      <Animated.View style={ring(r1)} />
-      <Animated.View style={ring(r2)} />
-      <Svg width={70} height={84} viewBox="0 0 24 28">
-        <Path
-          d="M12 0C6.5 0 2 4.5 2 10c0 7 10 18 10 18s10-11 10-18C22 4.5 17.5 0 12 0z"
-          fill={accent}
+      {/* signal housing */}
+      <View style={[styles.signalHousing, { borderColor: accent }]}>
+        <View style={[styles.signalLamp, { backgroundColor: colors.bgElevated }]} />
+        <Animated.View
+          style={[
+            styles.signalLamp,
+            {
+              backgroundColor: accent,
+              opacity: lampOpacity,
+              transform: [{ scale: lampScale }],
+            },
+          ]}
         />
-        <Circle cx={12} cy={10} r={3.6} fill={colors.bg} />
-      </Svg>
+        <View style={[styles.signalLamp, { backgroundColor: colors.bgElevated }]} />
+      </View>
+      {/* stop line + waiting runner dot */}
+      <View style={styles.stopLine} />
+      <View style={[styles.waitingRunner, { backgroundColor: accent }]} />
     </View>
   );
 }
 
 const ILLUSTRATIONS = {
   run: IllustrationLoop,
-  claim: IllustrationClaim,
   compete: IllustrationSteal,
-  permission: IllustrationGps,
+  safety: IllustrationSafety,
 };
 
 // ---------------------------------------------------------------------------
@@ -441,6 +385,33 @@ const styles = StyleSheet.create({
     height: 100,
     borderRadius: 50,
     borderWidth: 2,
+  },
+  signalHousing: {
+    width: 62,
+    height: 150,
+    borderRadius: radius.lg,
+    borderWidth: 3,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+  },
+  signalLamp: { width: 30, height: 30, borderRadius: 15 },
+  stopLine: {
+    position: 'absolute',
+    bottom: 18,
+    left: 20,
+    right: 20,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+  },
+  waitingRunner: {
+    position: 'absolute',
+    bottom: 30,
+    left: 48,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
 
   copy: { alignItems: 'center' },

@@ -1,8 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
-import Animated, { SlideInUp, SlideOutUp } from 'react-native-reanimated';
+import Svg, { Circle } from 'react-native-svg';
+import Animated, {
+  cancelAnimation,
+  Easing,
+  runOnJS,
+  SlideInUp,
+  SlideOutUp,
+  useAnimatedProps,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { api } from '../api/client';
 import { regionForUser } from '../data/regions';
@@ -103,6 +113,92 @@ function formatArea(m2) {
   return `${Math.round(m2).toLocaleString()} m²`;
 }
 
+// GPS quality: green under 10m, amber under 25m, red beyond.
+const GPS_GOOD_M = 10;
+const GPS_OK_M = 25;
+
+function gpsColor(accuracyM) {
+  if (accuracyM == null) return darkColors.textDim;
+  if (accuracyM < GPS_GOOD_M) return darkColors.ok;
+  if (accuracyM < GPS_OK_M) return darkColors.warn;
+  return darkColors.danger;
+}
+
+// -----------------------------------------------------------------------
+// Press-and-hold Finish button: a radial ring fills during the hold so an
+// accidental tap mid-run can't end the session.
+// -----------------------------------------------------------------------
+
+const HOLD_TO_FINISH_MS = 1200;
+const RING_R = 12;
+const RING_C = 2 * Math.PI * RING_R;
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+function HoldToFinishButton({ onFinish }) {
+  const progress = useSharedValue(0);
+  const [holding, setHolding] = useState(false);
+
+  const ringProps = useAnimatedProps(() => ({
+    strokeDashoffset: RING_C * (1 - progress.value),
+  }));
+
+  const start = () => {
+    setHolding(true);
+    progress.value = withTiming(
+      1,
+      { duration: HOLD_TO_FINISH_MS, easing: Easing.linear },
+      (finished) => {
+        if (finished) runOnJS(onFinish)();
+      }
+    );
+  };
+
+  const cancel = () => {
+    setHolding(false);
+    cancelAnimation(progress);
+    progress.value = withTiming(0, { duration: 150 });
+  };
+
+  return (
+    <Pressable
+      onPressIn={start}
+      onPressOut={cancel}
+      accessibilityRole="button"
+      accessibilityLabel="Finish run"
+      accessibilityHint="Press and hold to finish the run"
+    >
+      <View style={styles.stopBtn}>
+        <Svg width={30} height={30} viewBox="0 0 30 30">
+          <Circle
+            cx={15}
+            cy={15}
+            r={RING_R}
+            stroke="rgba(255,255,255,0.35)"
+            strokeWidth={3}
+            fill="none"
+          />
+          <AnimatedCircle
+            cx={15}
+            cy={15}
+            r={RING_R}
+            stroke="#ffffff"
+            strokeWidth={3}
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={`${RING_C} ${RING_C}`}
+            animatedProps={ringProps}
+            transform="rotate(-90 15 15)"
+          />
+        </Svg>
+        <Text style={styles.stopBtnText}>
+          {holding ? 'Keep holding…' : 'Hold to finish'}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function RunningScreen({ navigation }) {
   const { user } = useAuth();
   const team = useMemo(() => regionForUser(user.username), [user.username]);
@@ -127,6 +223,7 @@ export default function RunningScreen({ navigation }) {
   const [distance, setDistance] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [closedArea, setClosedArea] = useState(0);
+  const [accuracyM, setAccuracyM] = useState(null);
   // Celebration: pill visibility + captured-polygon fill alpha (0 -> 0.25).
   const [celebration, setCelebration] = useState(null); // { areaM2 }
   const [capturedFillAlpha, setCapturedFillAlpha] = useState(0.25);
@@ -184,6 +281,7 @@ export default function RunningScreen({ navigation }) {
       timestamp: Date.now(),
     };
     setCurrentLocation(point);
+    setAccuracyM(location.coords.accuracy ?? null);
     mapRef.current?.animateToRegion(
       { latitude: point.latitude, longitude: point.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
       500
@@ -229,6 +327,7 @@ export default function RunningScreen({ navigation }) {
           timestamp: Date.now(),
         };
         setCurrentLocation(nextPoint);
+        setAccuracyM(location.coords.accuracy ?? null);
 
         const oldPath = pathRef.current;
         const previousPoint = oldPath[oldPath.length - 1];
@@ -283,30 +382,42 @@ export default function RunningScreen({ navigation }) {
   }
 
   async function finishRun() {
+    haptic.light();
+    stopWatchingLocation();
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    setIsRunning(false);
+
+    const run = runRef.current;
+    const finalPath = pathRef.current;
+    if (!run) {
+      Alert.alert('No active run', 'Start a run first.');
+      return;
+    }
+    if (finalPath.length < 2) {
+      Alert.alert('Too short', 'Move around first before ending the run.');
+      return;
+    }
+    await commitRun(run, finalPath);
+  }
+
+  // The recorded path stays in memory whatever the network does — a failed
+  // /end-run is retryable, never fatal to the run data.
+  async function commitRun(run, finalPath) {
     try {
-      haptic.light();
-      stopWatchingLocation();
-      if (tickRef.current) {
-        clearInterval(tickRef.current);
-        tickRef.current = null;
-      }
-      setIsRunning(false);
-
-      const run = runRef.current;
-      const finalPath = pathRef.current;
-      if (!run) {
-        Alert.alert('No active run', 'Start a run first.');
-        return;
-      }
-      if (finalPath.length < 2) {
-        Alert.alert('Too short', 'Move around first before ending the run.');
-        return;
-      }
-
       const result = await api.endRun(run.id, toApiPoints(finalPath));
       navigation.navigate('Result', { result, run: result, loopClosed, path: finalPath, polygon });
     } catch (err) {
-      toast.error(err.message || 'Could not end run');
+      Alert.alert(
+        "Couldn't save your run",
+        `${err.message || 'Network error'}. Your route is still on this phone.`,
+        [
+          { text: 'Retry', onPress: () => commitRun(run, finalPath) },
+          { text: 'Later', style: 'cancel' },
+        ]
+      );
     }
   }
 
@@ -369,6 +480,30 @@ export default function RunningScreen({ navigation }) {
         {path.length > 0 && <Marker coordinate={path[0]} title="Start" pinColor={accent} />}
       </MapView>
 
+      {/* slim glass status bar: GPS quality, elapsed time, tracking state */}
+      <View style={styles.topBar}>
+        <View style={styles.topItem}>
+          <View style={[styles.gpsDot, { backgroundColor: gpsColor(accuracyM) }]} />
+          <Text style={styles.topText}>
+            {accuracyM == null ? 'GPS' : `±${Math.round(accuracyM)}m`}
+          </Text>
+        </View>
+        <Text style={[styles.topTime, isRunning && { color: D.text }]}>
+          {formatDuration(elapsedMs)}
+        </Text>
+        <View style={styles.topItem}>
+          <View
+            style={[
+              styles.gpsDot,
+              { backgroundColor: loopClosed ? accent : isRunning ? D.muted : D.dim },
+            ]}
+          />
+          <Text style={styles.topText}>
+            {loopClosed ? 'Captured' : isRunning ? `${path.length} pts` : 'Ready'}
+          </Text>
+        </View>
+      </View>
+
       {/* close-the-loop prompt */}
       {nearStart && !celebration && (
         <View style={[styles.prompt, { borderColor: accent }]}>
@@ -394,31 +529,23 @@ export default function RunningScreen({ navigation }) {
       )}
 
       <View style={styles.panel}>
+        {/* the three live stats — glow in the team colour */}
         <View style={styles.metricsRow}>
           <Metric label="Distance" value={`${(distance / 1000).toFixed(2)} km`} accent={accent} />
-          <Metric label="Time" value={formatDuration(elapsedMs)} accent={accent} />
           <Metric label="Pace" value={paceText} accent={accent} />
+          <Metric
+            label={loopClosed ? 'Captured' : 'If closed'}
+            value={formatArea(closedArea)}
+            accent={accent}
+          />
         </View>
 
-        {/* loop vs strip — the core mechanic, live */}
-        <View style={styles.preview}>
-          <View style={styles.previewItem}>
-            <Text style={[styles.previewVal, { color: accent }]}>{formatArea(closedArea)}</Text>
-            <Text style={styles.previewLabel}>{loopClosed ? 'captured' : 'if you close the loop'}</Text>
-          </View>
-          <View style={styles.previewDivider} />
-          <View style={styles.previewItem}>
-            <Text style={styles.previewValMuted}>{formatArea(openArea)}</Text>
-            <Text style={styles.previewLabel}>as an open path</Text>
-          </View>
-        </View>
-
-        <View style={styles.loopRow}>
-          <View style={[styles.loopDot, { backgroundColor: loopClosed ? accent : D.dim }]} />
-          <Text style={styles.loopText}>
-            {loopClosed ? 'Loop closed — territory captured' : `Tracking · ${path.length} points`}
-          </Text>
-        </View>
+        {/* the open-path fallback, quietly */}
+        <Text style={styles.openPathLine}>
+          {loopClosed
+            ? 'Loop closed — keep running or hold Finish to bank it.'
+            : `Open path so far converts to ${formatArea(openArea)}.`}
+        </Text>
 
         {!isRunning ? (
           <PressableScale
@@ -430,14 +557,7 @@ export default function RunningScreen({ navigation }) {
             <Text style={styles.primaryBtnText}>Start run</Text>
           </PressableScale>
         ) : (
-          <PressableScale
-            style={styles.stopBtn}
-            onPress={finishRun}
-            accessibilityRole="button"
-            accessibilityLabel="Finish run"
-          >
-            <Text style={styles.stopBtnText}>Finish run</Text>
-          </PressableScale>
+          <HoldToFinishButton onFinish={finishRun} />
         )}
       </View>
     </View>
@@ -459,9 +579,29 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: D.bg },
   map: { flex: 1 },
 
+  topBar: {
+    position: 'absolute',
+    top: space.md,
+    left: space.md,
+    right: space.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(21,24,29,0.82)',
+    borderWidth: 1,
+    borderColor: D.border,
+    borderRadius: radius.pill,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+  },
+  topItem: { flexDirection: 'row', alignItems: 'center', gap: 6, width: 92 },
+  gpsDot: { width: 8, height: 8, borderRadius: 4 },
+  topText: { ...type.caption, color: D.muted },
+  topTime: { ...type.statSm, color: D.muted },
+
   prompt: {
     position: 'absolute',
-    top: space.lg,
+    top: 64,
     left: space.md,
     right: space.md,
     flexDirection: 'row',
@@ -508,27 +648,19 @@ const styles = StyleSheet.create({
   },
   metricValue: { ...type.statMd },
 
-  preview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: radius.md,
-    paddingVertical: space.md,
-    marginBottom: space.md,
-  },
-  previewItem: { flex: 1, alignItems: 'center' },
-  previewDivider: { width: 1, alignSelf: 'stretch', backgroundColor: D.border },
-  previewVal: { ...type.statSm },
-  previewValMuted: { ...type.statSm, color: D.muted },
-  previewLabel: { ...type.caption, color: D.dim, marginTop: 3 },
-
-  loopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: space.md },
-  loopDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  loopText: { ...type.bodySm, color: D.muted },
+  openPathLine: { ...type.caption, color: D.dim, marginBottom: space.md },
 
   primaryBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
   primaryBtnText: { ...type.button, color: '#fff' },
 
-  stopBtn: { backgroundColor: D.danger, paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
+  stopBtn: {
+    backgroundColor: D.danger,
+    paddingVertical: 13,
+    borderRadius: radius.pill,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   stopBtnText: { ...type.button, color: '#fff' },
 });

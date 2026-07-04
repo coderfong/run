@@ -27,6 +27,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { MotionProvider } from './src/ui/motion';
+import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
 import { colors, darkColors, fonts } from './src/theme';
 
@@ -164,6 +165,7 @@ export default function App() {
         <AuthProvider>
           <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
           <RootNavigator />
+          <OfflineBanner />
           <ToastHost />
         </AuthProvider>
       </MotionProvider>

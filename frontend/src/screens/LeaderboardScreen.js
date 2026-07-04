@@ -12,6 +12,13 @@ import { toast } from '../ui/toast';
 
 const RANKS_KEY = 'tr.lastRanks'; // { [user_id]: rank } from the previous visit
 
+// Subtle podium treatment for the top three.
+const PODIUM = {
+  1: { rankColor: '#b45309', bg: 'rgba(234,179,8,0.10)' },
+  2: { rankColor: '#6b7280', bg: 'rgba(148,163,184,0.12)' },
+  3: { rankColor: '#9a3412', bg: 'rgba(180,83,9,0.08)' },
+};
+
 function RankDelta({ delta }) {
   if (!delta) return null;
   const up = delta > 0;
@@ -50,7 +57,14 @@ export default function LeaderboardScreen() {
   const reduceMotion = useReduceMotion();
   const [rows, setRows] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [myRowVisible, setMyRowVisible] = useState(true);
   const prevRanksRef = useRef(null);
+
+  // Pin the signed-in user's row to the bottom whenever it's off-screen.
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    setMyRowVisible(viewableItems.some((v) => v.item?.user_id === user.id));
+  }).current;
 
   const load = useCallback(
     async (isRefresh = false) => {
@@ -101,12 +115,18 @@ export default function LeaderboardScreen() {
     );
   }
 
+  const myRow = rows.find((r) => r.user_id === user.id);
+  const showPinned = myRow && !myRowVisible;
+
   return (
+    <View style={styles.wrap}>
     <FlatList
       style={styles.list}
-      contentContainerStyle={styles.listContent}
+      contentContainerStyle={[styles.listContent, showPinned && { paddingBottom: 96 }]}
       data={rows}
       keyExtractor={(r) => r.user_id}
+      onViewableItemsChanged={onViewableItemsChanged}
+      viewabilityConfig={viewabilityConfig}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -126,6 +146,7 @@ export default function LeaderboardScreen() {
       renderItem={({ item, index }) => {
         const isMe = item.user_id === user.id;
         const team = regionForUser(item.username);
+        const podium = PODIUM[item.rank];
         return (
           <Animated.View
             entering={
@@ -133,9 +154,15 @@ export default function LeaderboardScreen() {
                 ? undefined
                 : FadeInDown.delay(Math.min(index, 12) * 30).duration(260)
             }
-            style={[styles.row, isMe && [styles.rowSelf, { borderColor: myTeam.color }]]}
+            style={[
+              styles.row,
+              podium && { backgroundColor: podium.bg },
+              isMe && [styles.rowSelf, { borderColor: myTeam.color }],
+            ]}
           >
-            <Text style={styles.rank}>#{item.rank}</Text>
+            <Text style={[styles.rank, podium && { color: podium.rankColor }]}>
+              #{item.rank}
+            </Text>
             <RankDelta delta={item.delta} />
             <View style={[styles.teamDot, { backgroundColor: team.color }]} />
             <View style={{ flex: 1 }}>
@@ -151,10 +178,29 @@ export default function LeaderboardScreen() {
         );
       }}
     />
+
+    {/* your row, pinned while it's scrolled out of view */}
+    {showPinned && (
+      <View style={[styles.pinned, { borderColor: myTeam.color }]}>
+        <Text style={styles.rank}>#{myRow.rank}</Text>
+        <View style={[styles.teamDot, { backgroundColor: myTeam.color }]} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name}>{myRow.username} (you)</Text>
+          <Text style={styles.meta}>
+            {myTeam.name} · {myRow.territory_count} territories
+          </Text>
+        </View>
+        <Text style={[styles.area, { color: myTeam.color }]}>
+          {Math.round(myRow.total_area_m2).toLocaleString()} m²
+        </Text>
+      </View>
+    )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrap: { flex: 1, backgroundColor: colors.bg },
   list: { backgroundColor: colors.bg },
   listContent: { padding: space.lg, paddingBottom: space.xxl },
 
@@ -195,4 +241,19 @@ const styles = StyleSheet.create({
   meta: { ...type.caption, marginTop: 2 },
 
   area: { ...type.statSm },
+
+  pinned: {
+    position: 'absolute',
+    left: space.lg,
+    right: space.lg,
+    bottom: space.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    ...shadow.raised,
+  },
 });
