@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
+import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
 import Animated, {
@@ -88,11 +89,17 @@ function polygonAreaM2(points) {
   return Math.abs(sum) / 2;
 }
 
+// Per-point sensor metadata rides along for server-side validation:
+// mocked (Android mock-provider flag; iOS has no equivalent -> false),
+// accuracy and speed when the platform reports them.
 function toApiPoints(points) {
   return points.map((p) => ({
     lat: p.latitude,
     lon: p.longitude,
     t: new Date(p.timestamp).toISOString(),
+    mocked: p.mocked ?? false,
+    accuracy_m: p.accuracyM ?? null,
+    speed_mps: p.speedMps ?? null,
   }));
 }
 
@@ -228,6 +235,10 @@ export default function RunningScreen({ navigation }) {
   const pendingModeRef = useRef({ mode: null, count: 0 });
   const recentSpeedsRef = useRef([]);
   const restartingWatchRef = useRef(false);
+  // Pedometer: cumulative steps during the run, sent with /end-run so the
+  // server can sanity-check stride length.
+  const stepCountRef = useRef(0);
+  const pedometerSubRef = useRef(null);
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [path, setPath] = useState([]);
@@ -251,10 +262,28 @@ export default function RunningScreen({ navigation }) {
     })();
     return () => {
       stopWatchingLocation();
+      stopPedometer();
       if (tickRef.current) clearInterval(tickRef.current);
       if (fillAnimRef.current) clearInterval(fillAnimRef.current);
     };
   }, []);
+
+  async function startPedometer() {
+    stepCountRef.current = 0;
+    try {
+      if (!(await Pedometer.isAvailableAsync())) return;
+      pedometerSubRef.current = Pedometer.watchStepCount((result) => {
+        stepCountRef.current = result.steps;
+      });
+    } catch {
+      // No pedometer (or permission refused) — steps just stay null.
+    }
+  }
+
+  function stopPedometer() {
+    pedometerSubRef.current?.remove?.();
+    pedometerSubRef.current = null;
+  }
 
   // ---- crash resilience -------------------------------------------------
   // The in-progress run is snapshotted every ~N points; if the OS killed
@@ -314,6 +343,7 @@ export default function RunningScreen({ navigation }) {
       setElapsedMs(Date.now() - startedAtRef.current);
     }, 250);
     await startWatchingLocation('high');
+    await startPedometer();
   }
 
   // The money moment: strong haptic, fill blooms in, dashed line snaps
@@ -398,6 +428,7 @@ export default function RunningScreen({ navigation }) {
       }, 250);
 
       await startWatchingLocation('high');
+      await startPedometer();
     } catch (err) {
       toast.error(err.message || 'Could not start run');
     }
@@ -478,6 +509,13 @@ export default function RunningScreen({ navigation }) {
       latitude: location.coords.latitude,
       longitude: location.coords.longitude,
       timestamp: Date.now(),
+      // Android exposes the mock-provider flag as `mocked`; iOS never does.
+      mocked: location.mocked ?? false,
+      accuracyM: location.coords.accuracy ?? null,
+      speedMps:
+        location.coords.speed != null && location.coords.speed >= 0
+          ? location.coords.speed
+          : null,
     };
     setCurrentLocation(nextPoint);
     setAccuracyM(location.coords.accuracy ?? null);
@@ -550,6 +588,7 @@ export default function RunningScreen({ navigation }) {
   async function finishRun() {
     haptic.light();
     stopWatchingLocation();
+    stopPedometer();
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
@@ -573,7 +612,11 @@ export default function RunningScreen({ navigation }) {
   // /end-run is retryable, never fatal to the run data.
   async function commitRun(run, finalPath) {
     try {
-      const result = await api.endRun(run.id, toApiPoints(finalPath));
+      const result = await api.endRun(
+        run.id,
+        toApiPoints(finalPath),
+        stepCountRef.current > 0 ? stepCountRef.current : null
+      );
       clearActiveRun();
       navigation.navigate('Result', { result, run: result, loopClosed, path: finalPath, polygon });
     } catch (err) {

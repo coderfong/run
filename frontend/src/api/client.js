@@ -87,10 +87,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ run_id: runId, points }),
     }),
-  endRun: (runId, points) =>
+  endRun: (runId, points, stepCount = null) =>
     request('/end-run', {
       method: 'POST',
-      body: JSON.stringify({ run_id: runId, points }),
+      body: JSON.stringify({ run_id: runId, points, step_count: stepCount }),
     }),
 
   // ----- territories + leaderboard -------------------------------------

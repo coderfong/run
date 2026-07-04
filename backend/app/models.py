@@ -2,8 +2,8 @@ import uuid
 from datetime import datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -45,6 +45,12 @@ class Run(Base):
     distance_m = Column(Float, nullable=True)
     duration_s = Column(Float, nullable=True)
 
+    # Anti-cheat: shadow flag. Flagged runs look normal to the submitter but
+    # their territories are hidden from everyone else. flag_reasons is
+    # server-side only — never returned by the API.
+    verified = Column(Boolean, nullable=False, default=True, server_default="true")
+    flag_reasons = Column(ARRAY(Text), nullable=True)
+
     user = relationship("User", back_populates="runs")
     territory = relationship("Territory", back_populates="run", uselist=False)
 
@@ -64,6 +70,9 @@ class Territory(Base):
 
     polygon = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)
     area_m2 = Column(Float, nullable=False)
+
+    # Mirrors the owning run's verified flag at claim time.
+    verified = Column(Boolean, nullable=False, default=True, server_default="true")
 
     user = relationship("User", back_populates="territories")
     run = relationship("Run", back_populates="territory")

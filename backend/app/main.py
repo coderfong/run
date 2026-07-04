@@ -1,10 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from .config import settings
+from .ratelimit import limiter
 from .routes import auth, leaderboard, runs, territories, users
 
 app = FastAPI(title="Territory Run API", version="1.0.0")
+
+# Rate limiting: per-route limits on auth/run endpoints, a sane default
+# everywhere else. 429s carry Retry-After.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 origins = (
     ["*"]

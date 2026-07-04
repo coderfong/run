@@ -10,15 +10,18 @@ authoritative territory write still happens at /end-run.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from geoalchemy2.shape import from_shape
 from shapely.geometry import LineString
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..anticheat import is_verified, validate_run
+from ..config import settings
 from ..database import get_db
 from ..geospatial import clean_path, detect_loop, polygon_to_lonlat_ring
+from ..ratelimit import limiter
 from ..security import current_user
 
 router = APIRouter()
@@ -39,7 +42,10 @@ def start_run(
 
 
 @router.post("/submit-path")
+@limiter.limit(settings.rate_limit_submit_path)
 def submit_path(
+    request: Request,
+    response: Response,
     payload: schemas.SubmitPathIn,
     user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
@@ -67,7 +73,10 @@ def submit_path(
 
 
 @router.post("/end-run", response_model=schemas.RunResultOut)
+@limiter.limit(settings.rate_limit_end_run)
 def end_run(
+    request: Request,
+    response: Response,
     payload: schemas.EndRunIn,
     user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
@@ -100,6 +109,13 @@ def end_run(
     run.distance_m = cleaned.distance_m
     run.duration_s = (run.ended_at - run.started_at).total_seconds()
 
+    # Anti-cheat on the RAW submitted points (clean_path scrubs exactly the
+    # samples that betray a spoof). Shadow-flag: the response below looks
+    # identical either way; flag_reasons never leaves the server.
+    reasons = validate_run(payload.points, cleaned.distance_m, payload.step_count)
+    run.flag_reasons = reasons or None
+    run.verified = is_verified(reasons)
+
     loop = detect_loop(cleaned)
     territory_out = None
 
@@ -110,6 +126,7 @@ def end_run(
             run_id=run.id,
             polygon_wgs=loop.polygon_wgs,
             initial_area_m2=loop.area_m2,
+            verified=run.verified,
         )
 
     db.commit()
@@ -129,6 +146,7 @@ def _claim_territory(
     run_id: str,
     polygon_wgs,
     initial_area_m2: float,
+    verified: bool = True,
 ) -> schemas.TerritoryOut | None:
     """Insert the new polygon, resolving overlaps with existing territories.
 
@@ -141,6 +159,9 @@ def _claim_territory(
       * The new territory is stored as the original polygon minus any
         re-unioned same-user territory (to avoid double-counted area).
         Then any same-user union geometry is folded into the new row.
+      * SHADOW-FLAGGED runs (verified=False) get a standalone unverified
+        row: no stealing from rivals, no merging into verified land. The
+        submitter still sees a normal-looking territory in the response.
 
     All overlap math is done in PostGIS (server-side) to keep it
     transactional and to use the GIST index on territories.polygon.
@@ -149,6 +170,29 @@ def _claim_territory(
     """
     new_geom_wkt = polygon_wgs.wkt  # WGS84
 
+    if not verified:
+        # Flagged: insert the row for the owner's eyes only and stop —
+        # a cheat must not damage anyone else's land.
+        new_row = db.execute(
+            text(
+                """
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified)
+                VALUES (
+                    gen_random_uuid(),
+                    :uid,
+                    :rid,
+                    ST_GeomFromText(:wkt, 4326),
+                    ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
+                    now(),
+                    false
+                )
+                RETURNING id, area_m2, created_at
+                """
+            ),
+            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt},
+        ).fetchone()
+        return _territory_out(db, new_row[0])
+
     # Pull rivals (other users) that intersect.
     rivals = db.execute(
         text(
@@ -156,6 +200,7 @@ def _claim_territory(
             SELECT id, user_id
             FROM territories
             WHERE user_id <> :uid
+              AND verified
               AND ST_Intersects(polygon, ST_GeomFromText(:wkt, 4326))
             """
         ),
@@ -200,6 +245,7 @@ def _claim_territory(
             """
             DELETE FROM territories
             WHERE user_id <> :uid
+              AND verified
               AND (polygon IS NULL OR ST_IsEmpty(polygon) OR area_m2 < :min_area)
             """
         ),
@@ -213,6 +259,7 @@ def _claim_territory(
             SELECT ST_AsText(ST_Union(polygon))
             FROM territories
             WHERE user_id = :uid
+              AND verified
               AND ST_Intersects(polygon, ST_GeomFromText(:wkt, 4326))
             """
         ),
@@ -226,6 +273,7 @@ def _claim_territory(
                 """
                 DELETE FROM territories
                 WHERE user_id = :uid
+                  AND verified
                   AND ST_Intersects(polygon, ST_GeomFromText(:wkt, 4326))
                 """
             ),
@@ -251,9 +299,9 @@ def _claim_territory(
                 biggest AS (
                     SELECT g FROM parts ORDER BY ST_Area(g::geography) DESC LIMIT 1
                 )
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified)
                 SELECT gen_random_uuid(), :uid, :rid, g,
-                       ST_Area(g::geography), now()
+                       ST_Area(g::geography), now(), true
                 FROM biggest
                 RETURNING id, area_m2, created_at
                 """
@@ -269,14 +317,15 @@ def _claim_territory(
         new_row = db.execute(
             text(
                 """
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified)
                 VALUES (
                     gen_random_uuid(),
                     :uid,
                     :rid,
                     ST_GeomFromText(:wkt, 4326),
                     ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
-                    now()
+                    now(),
+                    true
                 )
                 RETURNING id, area_m2, created_at
                 """
@@ -284,9 +333,11 @@ def _claim_territory(
             {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt},
         ).fetchone()
 
-    tid, area_m2, created_at = new_row
+    return _territory_out(db, new_row[0])
 
-    # Read it back to produce the response polygon.
+
+def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:
+    """Read a territory back and shape it for the API response."""
     row = db.execute(
         text(
             """

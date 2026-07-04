@@ -13,7 +13,10 @@ class GpsPoint(BaseModel):
     lat: float = Field(..., ge=-90.0, le=90.0)
     lon: float = Field(..., ge=-180.0, le=180.0)
     t: datetime = Field(..., alias="timestamp")
+    # Sensor metadata for anti-cheat — all optional so old clients still work.
     accuracy_m: Optional[float] = None
+    mocked: Optional[bool] = None       # Android mock-provider flag; iOS false
+    speed_mps: Optional[float] = None   # platform-reported speed if available
 
     @field_validator("t", mode="before")
     @classmethod
@@ -36,6 +39,8 @@ class StartRunOut(BaseModel):
 class EndRunIn(BaseModel):
     run_id: str
     points: List[GpsPoint]
+    # Cumulative pedometer steps during the run (anti-cheat stride check).
+    step_count: Optional[int] = Field(None, ge=0)
 
 
 # A single live-stream submission. The frontend can call /submit-path

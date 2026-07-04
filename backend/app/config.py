@@ -22,6 +22,27 @@ class Settings(BaseSettings):
     simplify_tolerance_m: float = 1.5  # douglas-peucker tolerance for cleanup
     max_speed_mps: float = 12.0        # ~43 km/h, drop GPS points exceeding this
 
+    # ---- anti-cheat (validate_run) -------------------------------------
+    # Flagged runs are shadow-flagged: the submitter sees normal success,
+    # but their territories are hidden from everyone else. Never surface
+    # which rule fired.
+    cheat_max_mock_fraction: float = 0.05   # >5% mock-provider points -> flag
+    cheat_teleport_speed_mps: float = 12.0  # sustained speed implying teleport
+    cheat_teleport_min_points: int = 3      # ...over at least this many consecutive gaps
+    cheat_pace_floor_s_per_km: float = 170.0  # 2:50/km — faster sustained is inhuman
+    cheat_pace_window_m: float = 500.0      # rolling window for the pace floor
+    cheat_stride_min_m: float = 0.5         # distance/steps below this -> flag
+    cheat_stride_max_m: float = 2.0         # distance/steps above this -> flag
+    cheat_clean_min_points: int = 120       # only long runs checked for "too clean"
+    cheat_clean_spacing_cv: float = 0.05    # near-zero spacing variance = spoof-ish
+    cheat_clean_accuracy_var: float = 0.01  # near-zero accuracy variance = spoof-ish
+
+    # ---- rate limiting ---------------------------------------------------
+    rate_limit_auth: str = "10/minute"
+    rate_limit_submit_path: str = "60/minute"
+    rate_limit_end_run: str = "6/minute"
+    rate_limit_default: str = "120/minute"
+
     class Config:
         env_file = ".env"
 

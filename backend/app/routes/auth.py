@@ -6,12 +6,14 @@ Password rules: 8-128 chars, at least one letter and one digit.
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..config import settings
 from ..database import get_db
+from ..ratelimit import limiter
 from ..security import (
     create_access_token,
     current_user,
@@ -65,7 +67,8 @@ def _user_dict(user: models.User) -> dict:
 
 
 @router.post("/signup", response_model=TokenOut)
-def signup(payload: Credentials, db: Session = Depends(get_db)):
+@limiter.limit(settings.rate_limit_auth)
+def signup(request: Request, response: Response, payload: Credentials, db: Session = Depends(get_db)):
     username = _validate_username(payload.username)
     _validate_password(payload.password)
 
@@ -85,7 +88,8 @@ def signup(payload: Credentials, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenOut)
-def login(payload: Credentials, db: Session = Depends(get_db)):
+@limiter.limit(settings.rate_limit_auth)
+def login(request: Request, response: Response, payload: Credentials, db: Session = Depends(get_db)):
     username = payload.username.strip().lower()
     user = (
         db.query(models.User).filter(models.User.username == username).one_or_none()

@@ -52,3 +52,24 @@ def current_user(
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "user not found")
     return user
+
+
+def current_user_optional(
+    token: Optional[str] = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+) -> Optional[models.User]:
+    """Like current_user, but anonymous/invalid tokens yield None instead of
+    401. Used by public reads that reveal extra rows to their owner (e.g.
+    shadow-flagged territories)."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(
+            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+        )
+        user_id = payload.get("sub")
+        if user_id is None:
+            return None
+    except JWTError:
+        return None
+    return db.get(models.User, user_id)

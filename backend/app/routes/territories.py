@@ -1,4 +1,8 @@
-"""GET /map-polygons — every territory in the world, optionally bounded by a bbox."""
+"""GET /map-polygons — every territory in the world, optionally bounded by a bbox.
+
+Shadow-flagging: unverified territories are omitted for everyone except
+their owner (identified via an optional bearer token).
+"""
 
 from typing import Optional
 
@@ -7,9 +11,10 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import schemas
+from .. import models, schemas
 from ..database import get_db
 from ..geospatial import polygon_to_lonlat_ring
+from ..security import current_user_optional
 
 router = APIRouter()
 
@@ -22,11 +27,13 @@ def map_polygons(
     max_lon: Optional[float] = Query(None),
     max_lat: Optional[float] = Query(None),
     limit: int = Query(2000, ge=1, le=10000),
+    viewer: Optional[models.User] = Depends(current_user_optional),
 ):
     """Return all territories. If a bbox is supplied, use ST_Intersects with
     ST_MakeEnvelope so the GIST index on `polygon` is used. We intentionally
     do *not* simplify here — the polygon vertices are already small after
     Douglas-Peucker at insert time, and clients can decimate further if needed."""
+    viewer_id = viewer.id if viewer else None
     if all(v is not None for v in (min_lon, min_lat, max_lon, max_lat)):
         rows = db.execute(
             text(
@@ -35,7 +42,8 @@ def map_polygons(
                        ST_AsText(t.polygon)
                 FROM territories t
                 JOIN users u ON u.id = t.user_id
-                WHERE ST_Intersects(
+                WHERE (t.verified OR t.user_id = :viewer_id)
+                  AND ST_Intersects(
                     t.polygon,
                     ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)
                 )
@@ -49,6 +57,7 @@ def map_polygons(
                 "max_lon": max_lon,
                 "max_lat": max_lat,
                 "limit": limit,
+                "viewer_id": viewer_id,
             },
         ).fetchall()
     else:
@@ -59,11 +68,12 @@ def map_polygons(
                        ST_AsText(t.polygon)
                 FROM territories t
                 JOIN users u ON u.id = t.user_id
+                WHERE (t.verified OR t.user_id = :viewer_id)
                 ORDER BY t.area_m2 DESC
                 LIMIT :limit
                 """
             ),
-            {"limit": limit},
+            {"limit": limit, "viewer_id": viewer_id},
         ).fetchall()
 
     out = []
