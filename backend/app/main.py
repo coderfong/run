@@ -15,7 +15,7 @@ from sqlalchemy import text
 from .config import settings
 from .database import SessionLocal
 from .ratelimit import limiter
-from .routes import auth, leaderboard, runs, territories, users
+from .routes import auth, clans, leaderboard, runs, territories, users
 
 # ---------------------------------------------------------------------------
 # Config hygiene — fail LOUDLY at boot, not quietly at 3am.
@@ -125,6 +125,7 @@ app.include_router(users.router, tags=["users"])
 app.include_router(runs.router, tags=["runs"])
 app.include_router(territories.router, tags=["territories"])
 app.include_router(leaderboard.router, tags=["leaderboard"])
+app.include_router(clans.router)
 
 
 @app.get("/health")

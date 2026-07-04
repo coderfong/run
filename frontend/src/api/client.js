@@ -95,6 +95,23 @@ export const api = {
     }),
 
   // ----- territories + leaderboard -------------------------------------
+  // ----- clans (v1.1 groundwork — no UI yet) ----------------------------
+  createClan: ({ name, tag, colorFill, colorStroke, colorGlow }) =>
+    request('/clans', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        tag,
+        color_fill: colorFill,
+        color_stroke: colorStroke,
+        color_glow: colorGlow,
+      }),
+    }),
+  getClan: (clanId) => request(`/clans/${clanId}`),
+  joinClan: (clanId) => request(`/clans/${clanId}/join`, { method: 'POST', body: '{}' }),
+  leaveClan: () => request('/clans/leave', { method: 'POST', body: '{}' }),
+  clanLeaderboard: () => request('/leaderboard/clans'),
+
   mapPolygons: (bbox) => {
     const qs = bbox
       ? `?min_lon=${bbox.minLon}&min_lat=${bbox.minLat}&max_lon=${bbox.maxLon}&max_lat=${bbox.maxLat}`

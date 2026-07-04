@@ -127,6 +127,7 @@ def end_run(
             polygon_wgs=loop.polygon_wgs,
             initial_area_m2=loop.area_m2,
             verified=run.verified,
+            clan_id=user.clan_id,
         )
 
     db.commit()
@@ -147,6 +148,7 @@ def _claim_territory(
     polygon_wgs,
     initial_area_m2: float,
     verified: bool = True,
+    clan_id: str | None = None,
 ) -> schemas.TerritoryOut | None:
     """Insert the new polygon, resolving overlaps with existing territories.
 
@@ -176,7 +178,7 @@ def _claim_territory(
         new_row = db.execute(
             text(
                 """
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id)
                 VALUES (
                     gen_random_uuid(),
                     :uid,
@@ -184,12 +186,13 @@ def _claim_territory(
                     ST_Multi(ST_GeomFromText(:wkt, 4326)),
                     ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
                     now(),
-                    false
+                    false,
+                    :clan_id
                 )
                 RETURNING id, area_m2, created_at
                 """
             ),
-            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt},
+            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id},
         ).fetchone()
         return _territory_out(db, new_row[0])
 
@@ -306,9 +309,9 @@ def _claim_territory(
                         ST_GeomFromText(:old_wkt, 4326)
                     )), 3)) AS g
                 )
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id)
                 SELECT gen_random_uuid(), :uid, :rid, g,
-                       ST_Area(g::geography), now(), true
+                       ST_Area(g::geography), now(), true, :clan_id
                 FROM merged
                 RETURNING id, area_m2, created_at
                 """
@@ -318,13 +321,14 @@ def _claim_territory(
                 "rid": run_id,
                 "new_wkt": new_geom_wkt,
                 "old_wkt": same_user_union,
+                "clan_id": clan_id,
             },
         ).fetchone()
     else:
         new_row = db.execute(
             text(
                 """
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id)
                 VALUES (
                     gen_random_uuid(),
                     :uid,
@@ -332,12 +336,13 @@ def _claim_territory(
                     ST_Multi(ST_GeomFromText(:wkt, 4326)),
                     ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
                     now(),
-                    true
+                    true,
+                    :clan_id
                 )
                 RETURNING id, area_m2, created_at
                 """
             ),
-            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt},
+            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id},
         ).fetchone()
 
     return _territory_out(db, new_row[0])

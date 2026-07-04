@@ -16,6 +16,22 @@ CREATE TABLE users (
     created_at      TIMESTAMP NOT NULL DEFAULT now()
 );
 
+-- v1.1 clans groundwork (rev 0003): real run-club clans replace hash-based
+-- teams later; for now only schema + minimal API exist.
+CREATE TABLE clans (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT UNIQUE NOT NULL CHECK (char_length(name) BETWEEN 3 AND 32),
+    tag          TEXT UNIQUE NOT NULL CHECK (char_length(tag) BETWEEN 2 AND 5),
+    color_fill   TEXT NOT NULL,
+    color_stroke TEXT NOT NULL,
+    color_glow   TEXT NOT NULL,
+    created_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT now()
+);
+
+ALTER TABLE users ADD COLUMN clan_id UUID REFERENCES clans(id) ON DELETE SET NULL;
+CREATE INDEX users_clan_idx ON users(clan_id);
+
 CREATE TABLE runs (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -43,8 +59,11 @@ CREATE TABLE territories (
     area_m2     DOUBLE PRECISION NOT NULL,
     created_at  TIMESTAMP NOT NULL DEFAULT now(),
     -- Mirrors the owning run's verified flag at claim time.
-    verified    BOOLEAN NOT NULL DEFAULT true
+    verified    BOOLEAN NOT NULL DEFAULT true,
+    -- Denormalized from the runner at claim time (rev 0003).
+    clan_id     UUID REFERENCES clans(id) ON DELETE SET NULL
 );
+CREATE INDEX territories_clan_idx ON territories(clan_id);
 
 CREATE INDEX territories_polygon_gix ON territories USING GIST (polygon);
 CREATE INDEX territories_user_idx ON territories(user_id);

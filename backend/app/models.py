@@ -13,6 +13,22 @@ def _uuid():
     return str(uuid.uuid4())
 
 
+class Clan(Base):
+    """A run club. v1.1 will replace hash-based teams with clan colours;
+    v1 only lays the schema + minimal API groundwork (no UI)."""
+
+    __tablename__ = "clans"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    name = Column(String(32), unique=True, nullable=False)
+    tag = Column(String(5), unique=True, nullable=False)
+    color_fill = Column(Text, nullable=False)
+    color_stroke = Column(Text, nullable=False)
+    color_glow = Column(Text, nullable=False)
+    created_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -20,6 +36,7 @@ class User(Base):
     username = Column(String(64), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    clan_id = Column(UUID(as_uuid=False), ForeignKey("clans.id", ondelete="SET NULL"), nullable=True, index=True)
 
     runs = relationship("Run", back_populates="user")
     territories = relationship("Territory", back_populates="user")
@@ -74,6 +91,9 @@ class Territory(Base):
 
     # Mirrors the owning run's verified flag at claim time.
     verified = Column(Boolean, nullable=False, default=True, server_default="true")
+
+    # Denormalized from the runner at claim time (nullable — no clan yet).
+    clan_id = Column(UUID(as_uuid=False), ForeignKey("clans.id", ondelete="SET NULL"), nullable=True, index=True)
 
     user = relationship("User", back_populates="territories")
     run = relationship("Run", back_populates="territory")

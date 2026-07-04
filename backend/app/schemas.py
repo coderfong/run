@@ -81,3 +81,36 @@ class LeaderboardEntry(BaseModel):
 
 class MapPolygonsOut(BaseModel):
     territories: List[TerritoryOut]
+
+
+# ---- clans (v1.1 groundwork — schema + minimal API, no UI yet) -----------
+
+class ClanCreate(BaseModel):
+    name: str = Field(..., min_length=3, max_length=32)
+    tag: str = Field(..., min_length=2, max_length=5)
+    # Colour triple mirroring the team palette shape (fill/stroke/glow).
+    color_fill: str = Field(..., max_length=32)
+    color_stroke: str = Field(..., max_length=32)
+    color_glow: str = Field(..., max_length=32)
+
+
+class ClanOut(BaseModel):
+    id: str
+    name: str
+    tag: str
+    color_fill: str
+    color_stroke: str
+    color_glow: str
+    created_by: Optional[str] = None
+    created_at: datetime
+    member_count: int = 0
+
+
+class ClanLeaderboardEntry(BaseModel):
+    clan_id: str
+    name: str
+    tag: str
+    color_stroke: str
+    total_area_m2: float
+    territory_count: int
+    member_count: int
