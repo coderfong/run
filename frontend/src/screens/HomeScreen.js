@@ -318,6 +318,8 @@ export default function HomeScreen({ navigation }) {
           style={[styles.glass, styles.ava, { backgroundColor: myTeam.fill, borderColor: accent }]}
           activeOpacity={0.85}
           onPress={() => navigation.navigate('Profile')}
+          accessibilityRole="button"
+          accessibilityLabel="Open profile"
         >
           <Text style={[styles.avaText, { color: myTeam.text }]}>
             {(user.username || '?').slice(0, 2).toUpperCase()}
@@ -337,6 +339,8 @@ export default function HomeScreen({ navigation }) {
           style={[styles.glass, styles.locate]}
           activeOpacity={0.8}
           onPress={() => setFocus((f) => (f === myTeam.key ? null : myTeam.key))}
+          accessibilityRole="button"
+          accessibilityLabel="Highlight my team's territory"
         >
           <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
             <Circle cx={12} cy={12} r={3.4} fill={accent} />
@@ -365,6 +369,8 @@ export default function HomeScreen({ navigation }) {
         style={[styles.glass, styles.worldBtn, { bottom: PEEK_VIS + 14 }]}
         activeOpacity={0.85}
         onPress={() => navigation.navigate('GlobalMap')}
+        accessibilityRole="button"
+        accessibilityLabel="Open world map"
       >
         <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
           <Circle cx={12} cy={12} r={9} stroke={INK} strokeWidth={1.7} />
@@ -424,7 +430,12 @@ export default function HomeScreen({ navigation }) {
           {/* standings */}
           <View style={styles.secH}>
             <Text style={styles.secHTitle}>Team standings</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Leaderboard')}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Leaderboard')}
+              accessibilityRole="button"
+              accessibilityLabel="Open full leaderboard"
+              hitSlop={10}
+            >
               <Text style={styles.secHSub}>full leaderboard ›</Text>
             </TouchableOpacity>
           </View>
@@ -476,6 +487,8 @@ export default function HomeScreen({ navigation }) {
             style={styles.banner}
             activeOpacity={0.85}
             onPress={() => navigation.navigate('Running')}
+            accessibilityRole="button"
+            accessibilityLabel="Start a run"
           >
             <View style={[styles.bannerIc, { backgroundColor: myTeam.fill }]}>
               <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">

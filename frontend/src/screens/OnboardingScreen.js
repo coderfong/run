@@ -330,10 +330,21 @@ export default function OnboardingScreen({ onDone }) {
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>
-        <TouchableOpacity onPress={finish} hitSlop={12}>
+        <TouchableOpacity
+          onPress={finish}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel="Skip intro"
+        >
           <Text style={styles.skip}>Skip</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.cta} activeOpacity={0.85} onPress={next}>
+        <TouchableOpacity
+          style={styles.cta}
+          activeOpacity={0.85}
+          onPress={next}
+          accessibilityRole="button"
+          accessibilityLabel={last ? 'Finish intro' : 'Next slide'}
+        >
           <Text style={styles.ctaText}>{last ? "Let's go" : 'Next'}</Text>
         </TouchableOpacity>
       </View>

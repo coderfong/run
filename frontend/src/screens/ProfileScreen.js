@@ -102,6 +102,8 @@ export default function ProfileScreen() {
                   setEditing(false);
                   setDraft(user?.username || '');
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel username change"
               >
                 <Text style={styles.secondaryText}>Cancel</Text>
               </TouchableOpacity>
@@ -109,6 +111,8 @@ export default function ProfileScreen() {
                 style={[styles.smallBtn, styles.primary, busy && { opacity: 0.6 }]}
                 onPress={saveUsername}
                 disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel="Save username"
               >
                 {busy ? (
                   <ActivityIndicator color={colors.primaryInk} />
@@ -124,6 +128,8 @@ export default function ProfileScreen() {
             <TouchableOpacity
               style={[styles.smallBtn, styles.secondary]}
               onPress={() => setEditing(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Change username"
             >
               <Text style={styles.secondaryText}>Change</Text>
             </TouchableOpacity>
@@ -135,6 +141,8 @@ export default function ProfileScreen() {
         style={[styles.fullBtn, { backgroundColor: colors.card }]}
         activeOpacity={0.85}
         onPress={signOut}
+        accessibilityRole="button"
+        accessibilityLabel="Sign out"
       >
         <Text style={[styles.fullBtnText, { color: colors.text }]}>
           Sign out

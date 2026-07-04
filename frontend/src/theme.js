@@ -34,8 +34,10 @@ export const teams = {
     tint: '#e9d5ff', text: '#581c87',
   },
   east: {
+    // Stroke is green-700 (not 600 like the others): #16a34a only hits
+    // 3.3:1 on white cards — 4.5:1 needed for AA text.
     key: 'east', name: 'East',
-    fill: 'rgba(22,163,74,0.20)', stroke: '#16a34a', glow: '#4ade80',
+    fill: 'rgba(21,128,61,0.20)', stroke: '#15803d', glow: '#4ade80',
     tint: '#bbf7d0', text: '#14532d',
   },
   south: {

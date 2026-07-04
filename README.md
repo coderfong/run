@@ -195,11 +195,18 @@ Replace `REPLACE_WITH_EAS_PROJECT_ID` in `app.json` after `eas init`. The Apple 
 
 ## Known gaps before App Store submission
 
-These are out of scope for the beta cut and are not implemented yet:
+Resolved in the v1 hardening pass: Sentry (both sides, DSN-gated),
+crash-resilient run persistence + end-run retry (runs are no longer lost
+offline), privacy policy stub (`PRIVACY.md`, linked from Profile), release
+runbook (`RELEASE.md`), icons/splash, accessibility labels + contrast fixes.
 
-- **Background GPS** (`expo-task-manager`) — runs currently pause if the app is backgrounded long enough.
-- **Crash/error telemetry** (Sentry).
-- **Privacy policy + Terms of Service** must be hosted on a public URL and linked from the listing and from `ProfileScreen`.
-- **Store screenshots + listing copy.**
-- **Offline queue** — runs that complete with no connectivity are lost.
-- **Tests** beyond the manual smoke path.
+Still open:
+
+- **Background GPS via `expo-task-manager`** — `UIBackgroundModes` covers
+  screen-off recording during an active run, but a full background task
+  would survive longer OS suspensions.
+- **Privacy policy hosting** — `PRIVACY.md` must be finalized and hosted at
+  a public URL (the Profile link currently points at a placeholder).
+- **Store screenshots + listing copy** (no emulator/hypervisor on the dev
+  machine — capture on a real device).
+- **Automated tests** beyond `smoke_test.py`.
