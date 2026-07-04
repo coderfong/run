@@ -75,6 +75,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
+  refresh: () => request('/auth/refresh', { method: 'POST', body: '{}' }),
   me: () => request('/me'),
   renameMe: (username) =>
     request('/me', { method: 'PATCH', body: JSON.stringify({ username }) }),

@@ -13,6 +13,21 @@ import { api, setAuthToken } from '../api/client';
 const TOKEN_KEY = 'tr.token';
 const USER_KEY = 'tr.user';
 
+// Silently swap the token for a fresh one when it's this close to expiry.
+const REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Seconds-since-epoch expiry from a JWT, or null if unparseable.
+function tokenExpiryMs(token) {
+  try {
+    const payload = token.split('.')[1];
+    const b64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const { exp } = JSON.parse(globalThis.atob(b64));
+    return exp ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -42,6 +57,19 @@ export function AuthProvider({ children }) {
             const me = await api.me();
             setUser(me);
             await SecureStore.setItemAsync(USER_KEY, JSON.stringify(me));
+
+            // Silent refresh: if the 30-day token is inside the renewal
+            // window, swap it for a fresh one. Failure is non-fatal — the
+            // old token still works until it actually expires.
+            const expMs = tokenExpiryMs(savedToken);
+            if (expMs && expMs - Date.now() < REFRESH_WINDOW_MS) {
+              try {
+                const refreshed = await api.refresh();
+                setAuthToken(refreshed.access_token);
+                setToken(refreshed.access_token);
+                await SecureStore.setItemAsync(TOKEN_KEY, refreshed.access_token);
+              } catch {}
+            }
           } catch {
             await clearStored();
             setAuthToken(null);

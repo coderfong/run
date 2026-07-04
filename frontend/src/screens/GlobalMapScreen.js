@@ -122,15 +122,18 @@ export default function GlobalMapScreen() {
           )),
         )}
 
-        {/* Player territories in their team colours; yours pops a little. */}
-        {list.map((t) => {
+        {/* Player territories in their team colours; yours pops a little.
+            MultiPolygon territories arrive as `rings` — render every piece
+            (fall back to the legacy single `polygon` ring). */}
+        {list.flatMap((t) => {
           const team = regionForUser(t.username);
           const mine = t.user_id === user.id;
           const isSel = selected?.id === t.id;
-          return (
+          const rings = t.rings?.length ? t.rings : [t.polygon];
+          return rings.map((ring, ri) => (
             <Polygon
-              key={t.id}
-              coordinates={t.polygon.map(([lon, lat]) => ({
+              key={`${t.id}-${ri}`}
+              coordinates={ring.map(([lon, lat]) => ({
                 latitude: lat,
                 longitude: lon,
               }))}
@@ -143,7 +146,7 @@ export default function GlobalMapScreen() {
                 setSelected(t);
               }}
             />
-          );
+          ));
         })}
       </MapView>
 

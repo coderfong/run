@@ -56,9 +56,12 @@ class TerritoryOut(BaseModel):
     username: str
     area_m2: float
     created_at: datetime
-    # GeoJSON-style ring: list of [lon, lat] pairs (exterior only — we don't
-    # currently emit holes since territories are stored as simple polygons).
+    # LEGACY field — the exterior ring of the LARGEST piece, kept populated
+    # so pre-MultiPolygon clients keep working. New clients should read
+    # `rings` instead.
     polygon: List[Tuple[float, float]]
+    # All exterior rings of the (Multi)Polygon: [[[lon, lat], ...], ...].
+    rings: List[List[Tuple[float, float]]] = []
 
 
 class RunResultOut(BaseModel):

@@ -291,3 +291,15 @@ def detect_loop(cleaned: CleanedPath) -> Optional[LoopResult]:
 def polygon_to_lonlat_ring(poly: Polygon) -> List[Tuple[float, float]]:
     """Exterior ring as [(lon, lat), ...]. Used for API responses."""
     return [(x, y) for x, y in poly.exterior.coords]
+
+
+def geometry_to_rings(geom) -> List[List[Tuple[float, float]]]:
+    """All exterior rings of a Polygon or MultiPolygon, largest-first.
+    Shape: [[[lon, lat], ...], ...] — one entry per piece."""
+    if geom.geom_type == "Polygon":
+        parts = [geom]
+    elif geom.geom_type == "MultiPolygon":
+        parts = sorted(geom.geoms, key=lambda g: g.area, reverse=True)
+    else:
+        return []
+    return [polygon_to_lonlat_ring(p) for p in parts]

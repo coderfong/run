@@ -1,6 +1,6 @@
--- Bootstrap script for the territory-run database.
--- Run:
---   psql -U postgres -d territory_run -f schema.sql
+-- DOCUMENTATION ONLY. The schema is owned by Alembic (backend/alembic/);
+-- fresh databases should run `alembic upgrade head`, not this file.
+-- This file is kept in sync with the latest migration for readability.
 
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -38,7 +38,8 @@ CREATE TABLE territories (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     run_id      UUID REFERENCES runs(id) ON DELETE SET NULL,
-    polygon     geometry(Polygon, 4326) NOT NULL,
+    -- MultiPolygon since rev 0002: steals keep every surviving fragment.
+    polygon     geometry(MultiPolygon, 4326) NOT NULL,
     area_m2     DOUBLE PRECISION NOT NULL,
     created_at  TIMESTAMP NOT NULL DEFAULT now(),
     -- Mirrors the owning run's verified flag at claim time.

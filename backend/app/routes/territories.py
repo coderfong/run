@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..geospatial import polygon_to_lonlat_ring
+from ..geospatial import geometry_to_rings
 from ..security import current_user_optional
 
 router = APIRouter()
@@ -78,9 +78,8 @@ def map_polygons(
 
     out = []
     for tid, uid, username, area_m2, created_at, wkt in rows:
-        poly = shapely_wkt.loads(wkt)
-        if poly.geom_type == "MultiPolygon":
-            poly = max(poly.geoms, key=lambda g: g.area)
+        geom = shapely_wkt.loads(wkt)
+        rings = geometry_to_rings(geom)  # largest-first
         out.append(
             schemas.TerritoryOut(
                 id=tid,
@@ -88,7 +87,8 @@ def map_polygons(
                 username=username,
                 area_m2=float(area_m2),
                 created_at=created_at,
-                polygon=polygon_to_lonlat_ring(poly),
+                polygon=rings[0] if rings else [],  # legacy: largest ring
+                rings=rings,
             )
         )
 

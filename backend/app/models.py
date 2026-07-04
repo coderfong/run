@@ -68,7 +68,8 @@ class Territory(Base):
     run_id = Column(UUID(as_uuid=False), ForeignKey("runs.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    polygon = Column(Geometry(geometry_type="POLYGON", srid=4326), nullable=False)
+    # MultiPolygon: steals can shatter land; every surviving fragment is kept.
+    polygon = Column(Geometry(geometry_type="MULTIPOLYGON", srid=4326), nullable=False)
     area_m2 = Column(Float, nullable=False)
 
     # Mirrors the owning run's verified flag at claim time.

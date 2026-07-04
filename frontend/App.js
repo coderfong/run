@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, View } from 'react-native';
 import * as Location from 'expo-location';
+import Constants from 'expo-constants';
+import * as Sentry from '@sentry/react-native';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -32,6 +34,15 @@ import { MotionProvider } from './src/ui/motion';
 import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
 import { colors, darkColors, fonts } from './src/theme';
+
+// Crash telemetry — a strict no-op unless a DSN is provided via env/extra.
+const SENTRY_DSN =
+  process.env.EXPO_PUBLIC_SENTRY_DSN ||
+  Constants?.expoConfig?.extra?.sentryDsn ||
+  '';
+if (SENTRY_DSN) {
+  Sentry.init({ dsn: SENTRY_DSN, tracesSampleRate: 0.1 });
+}
 
 // Hold the splash until fonts are ready — avoids a flash of fallback type.
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -165,7 +176,7 @@ function RootNavigator() {
   );
 }
 
-export default function App() {
+function App() {
   const [fontsLoaded, fontError] = useFonts({
     SpaceGrotesk_500Medium,
     SpaceGrotesk_700Bold,
@@ -198,3 +209,5 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+export default SENTRY_DSN ? Sentry.wrap(App) : App;

@@ -20,7 +20,7 @@ from .. import models, schemas
 from ..anticheat import is_verified, validate_run
 from ..config import settings
 from ..database import get_db
-from ..geospatial import clean_path, detect_loop, polygon_to_lonlat_ring
+from ..geospatial import clean_path, detect_loop, geometry_to_rings, polygon_to_lonlat_ring
 from ..ratelimit import limiter
 from ..security import current_user
 
@@ -181,7 +181,7 @@ def _claim_territory(
                     gen_random_uuid(),
                     :uid,
                     :rid,
-                    ST_GeomFromText(:wkt, 4326),
+                    ST_Multi(ST_GeomFromText(:wkt, 4326)),
                     ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
                     now(),
                     false
@@ -208,12 +208,9 @@ def _claim_territory(
     ).fetchall()
 
     for rid, _ruid in rivals:
-        # Subtract the new polygon from the rival's territory. ST_Difference
-        # may return a MultiPolygon; since territories.polygon is typed
-        # `Polygon`, we keep the *largest* surviving piece. The other
-        # fragments are discarded — for an MVP this is the right tradeoff
-        # (simple schema, predictable lookups). A richer game would store
-        # MultiPolygon and keep all fragments.
+        # Subtract the new polygon from the rival's territory. ALL surviving
+        # fragments are kept as one MultiPolygon — only sub-1m² slivers are
+        # dropped. A rival row that loses everything is deleted below.
         db.execute(
             text(
                 """
@@ -226,17 +223,35 @@ def _claim_territory(
                 parts AS (
                     SELECT (ST_Dump(ST_CollectionExtract(g, 3))).geom AS g FROM diff
                 ),
-                biggest AS (
-                    SELECT g FROM parts ORDER BY ST_Area(g::geography) DESC LIMIT 1
+                kept AS (
+                    SELECT ST_Multi(ST_Collect(g)) AS g
+                    FROM parts
+                    WHERE ST_Area(g::geography) >= :min_area
                 )
                 UPDATE territories t
-                SET polygon = biggest.g,
-                    area_m2 = ST_Area(biggest.g::geography)
-                FROM biggest
-                WHERE t.id = :rid AND biggest.g IS NOT NULL
+                SET polygon = kept.g,
+                    area_m2 = ST_Area(kept.g::geography)
+                FROM kept
+                WHERE t.id = :rid AND kept.g IS NOT NULL
                 """
             ),
-            {"wkt": new_geom_wkt, "rid": rid},
+            {"wkt": new_geom_wkt, "rid": rid, "min_area": 1.0},
+        )
+        # Fully consumed (nothing above the sliver floor survived): the
+        # UPDATE above no-ops, so remove the row explicitly.
+        db.execute(
+            text(
+                """
+                DELETE FROM territories
+                WHERE id = :rid
+                  AND ST_Area(
+                        ST_MakeValid(
+                            ST_Difference(polygon, ST_GeomFromText(:wkt, 4326))
+                        )::geography
+                      ) < :min_area
+                """
+            ),
+            {"wkt": new_geom_wkt, "rid": rid, "min_area": 1.0},
         )
 
     # Drop rival rows that became empty/sliver after subtraction.
@@ -279,30 +294,22 @@ def _claim_territory(
             ),
             {"uid": user_id, "wkt": new_geom_wkt},
         )
-        # Union new polygon with the existing same-user union. The union
-        # may be multi-piece (the new run could bridge two previously
-        # disjoint territories of the same user), so we ST_Dump and
-        # collapse to the *largest* polygon for simplicity. A future
-        # iteration could insert one row per piece.
+        # Union new polygon with the existing same-user union. ST_Union may
+        # naturally yield a MultiPolygon (e.g. the new run doesn't bridge
+        # two previously disjoint territories) — we keep every piece.
         new_row = db.execute(
             text(
                 """
                 WITH merged AS (
-                    SELECT ST_Union(
+                    SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Union(
                         ST_GeomFromText(:new_wkt, 4326),
                         ST_GeomFromText(:old_wkt, 4326)
-                    ) AS g
-                ),
-                parts AS (
-                    SELECT (ST_Dump(g)).geom AS g FROM merged
-                ),
-                biggest AS (
-                    SELECT g FROM parts ORDER BY ST_Area(g::geography) DESC LIMIT 1
+                    )), 3)) AS g
                 )
                 INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified)
                 SELECT gen_random_uuid(), :uid, :rid, g,
                        ST_Area(g::geography), now(), true
-                FROM biggest
+                FROM merged
                 RETURNING id, area_m2, created_at
                 """
             ),
@@ -322,7 +329,7 @@ def _claim_territory(
                     gen_random_uuid(),
                     :uid,
                     :rid,
-                    ST_GeomFromText(:wkt, 4326),
+                    ST_Multi(ST_GeomFromText(:wkt, 4326)),
                     ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
                     now(),
                     true
@@ -355,14 +362,10 @@ def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:
         return None
 
     _id, uid, username, a, created, wkt = row
-    # Parse the polygon WKT back through Shapely just to extract the ring.
     from shapely import wkt as shapely_wkt
 
-    poly = shapely_wkt.loads(wkt)
-    # If it's a MultiPolygon (very rare here since we ST_Dump'd, but possible
-    # via downstream operations), pick the largest piece for display.
-    if poly.geom_type == "MultiPolygon":
-        poly = max(poly.geoms, key=lambda g: g.area)
+    geom = shapely_wkt.loads(wkt)
+    rings = geometry_to_rings(geom)  # largest-first
 
     return schemas.TerritoryOut(
         id=_id,
@@ -370,5 +373,6 @@ def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:
         username=username,
         area_m2=float(a),
         created_at=created,
-        polygon=polygon_to_lonlat_ring(poly),
+        polygon=rings[0] if rings else [],  # legacy: largest ring
+        rings=rings,
     )

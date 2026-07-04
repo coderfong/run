@@ -51,7 +51,8 @@
       ],
       "expo-notifications",
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      "@sentry/react-native"
     ],
     "extra": {
       "apiBase": "https://cycles-markets-mar-executive.trycloudflare.com",

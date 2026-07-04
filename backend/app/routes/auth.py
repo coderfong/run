@@ -105,6 +105,18 @@ def login(request: Request, response: Response, payload: Credentials, db: Sessio
     return TokenOut(access_token=create_access_token(user.id), user=_user_dict(user))
 
 
+@router.post("/refresh", response_model=TokenOut)
+@limiter.limit(settings.rate_limit_auth)
+def refresh(
+    request: Request,
+    response: Response,
+    user: models.User = Depends(current_user),
+):
+    """Issue a fresh 30-day token from a still-valid one. Clients call this
+    silently when their token is within jwt_refresh_window_days of expiry."""
+    return TokenOut(access_token=create_access_token(user.id), user=_user_dict(user))
+
+
 @me_router.get("/me")
 def get_me(user: models.User = Depends(current_user)):
     return _user_dict(user)

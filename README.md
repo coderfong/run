@@ -57,6 +57,26 @@ run/
 
 The token is a 30-day HS256 JWT signed with `JWT_SECRET`. The frontend stores it in `expo-secure-store` and replays it on every request via `Authorization: Bearer …`. `AuthContext.js` verifies the token against `/me` on launch and signs out on 401.
 
+## Database migrations (Alembic)
+
+The schema is owned by **Alembic** (`backend/alembic/`). `schema.sql` and
+`backend/migrations/*.sql` are kept as **documentation only** — do not apply
+them to new databases.
+
+```bash
+cd backend
+# Fresh database: creates extensions + all tables at the current revision.
+alembic upgrade head
+
+# Existing database that predates Alembic (already has users/runs/territories
+# with the anti-cheat columns): mark the baseline, then apply the rest.
+alembic stamp 0001
+alembic upgrade head
+```
+
+New schema changes must be added as Alembic revisions (`alembic revision`),
+with `schema.sql` updated in the same commit as documentation.
+
 ## Local backend setup
 
 ```bash

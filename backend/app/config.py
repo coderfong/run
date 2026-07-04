@@ -2,15 +2,28 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # "development" or "production". Production enforces config hygiene at
+    # startup: a real JWT_SECRET and explicit CORS origins (see main.py).
+    env: str = "development"
+
     database_url: str = "postgresql://run:run@localhost:5432/run"
 
     # JWT — MUST be overridden via env var in production.
     jwt_secret: str = "dev-only-change-me-in-prod"
     jwt_algorithm: str = "HS256"
     jwt_expire_days: int = 30
+    # Clients silently refresh when this close to expiry (see /auth/refresh).
+    jwt_refresh_window_days: int = 7
 
-    # CORS — comma-separated list of allowed origins, or "*" to allow all.
+    # CORS — comma-separated list of allowed origins, or "*" to allow all
+    # (dev only; production refuses to boot with "*").
     cors_origins: str = "*"
+
+    # Sentry — no-op when unset.
+    sentry_dsn: str = ""
+
+    # App version reported by GET /version (override per deploy).
+    app_version: str = "1.0.0"
 
     # Loop / polygon validation thresholds.
     # Tuned to filter out GPS jitter and trivial micro-loops.

@@ -27,10 +27,13 @@ const D = darkColors;
 // SVG has no shadows on native).
 // ---------------------------------------------------------------------------
 
-function polygonToSvgPath(ring, size, pad) {
-  if (!ring || ring.length < 3) return null;
-  const lats = ring.map(([, lat]) => lat);
-  const lons = ring.map(([lon]) => lon);
+// All rings share one bounding box so multi-piece territories keep their
+// true relative positions.
+function ringsToSvgPath(rings, size, pad) {
+  const pts = rings.flat();
+  if (pts.length < 3) return null;
+  const lats = pts.map(([, lat]) => lat);
+  const lons = pts.map(([lon]) => lon);
   const minLat = Math.min(...lats);
   const maxLat = Math.max(...lats);
   const minLon = Math.min(...lons);
@@ -45,16 +48,20 @@ function polygonToSvgPath(ring, size, pad) {
   const oy = (size - h * scale) / 2;
 
   let d = '';
-  ring.forEach(([lon, lat], i) => {
-    const x = ox + (lon - minLon) * kx * scale;
-    const y = size - (oy + (lat - minLat) * scale); // flip y
-    d += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)} `;
+  rings.forEach((ring) => {
+    if (!ring || ring.length < 3) return;
+    ring.forEach(([lon, lat], i) => {
+      const x = ox + (lon - minLon) * kx * scale;
+      const y = size - (oy + (lat - minLat) * scale); // flip y
+      d += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)} `;
+    });
+    d += 'Z ';
   });
-  return d + 'Z';
+  return d || null;
 }
 
-function GlowPolygon({ ring, team, size = 240 }) {
-  const d = useMemo(() => polygonToSvgPath(ring, size, 22), [ring, size]);
+function GlowPolygon({ rings, team, size = 240 }) {
+  const d = useMemo(() => ringsToSvgPath(rings, size, 22), [rings, size]);
   if (!d) return null;
   return (
     <Svg width={size} height={size}>
@@ -104,11 +111,11 @@ export default function ResultScreen({ navigation, route }) {
   const t = result.territory;
   const captured = !!t;
 
-  // Ring for the SVG: server polygon if we captured, otherwise the client
-  // path passed by the Running screen (drawn as an open glow-line shape).
-  const ring = captured
-    ? t.polygon
-    : (route.params.path || []).map((p) => [p.longitude, p.latitude]);
+  // Rings for the SVG: server geometry if we captured (all pieces of a
+  // MultiPolygon), otherwise the client path from the Running screen.
+  const rings = captured
+    ? (t.rings?.length ? t.rings : [t.polygon])
+    : [(route.params.path || []).map((p) => [p.longitude, p.latitude])];
 
   const openAreaKm2 = (result.distance_m / 1000) * OPEN_PATH_RATE;
   const heroAreaM2 = captured ? t.area_m2 : openAreaKm2 * 1e6;
@@ -141,9 +148,9 @@ export default function ResultScreen({ navigation, route }) {
           </Text>
         </View>
 
-        {ring.length >= 3 && (
+        {rings[0]?.length >= 3 && (
           <View style={styles.polyWrap}>
-            <GlowPolygon ring={ring} team={team} />
+            <GlowPolygon rings={rings} team={team} />
           </View>
         )}
 
