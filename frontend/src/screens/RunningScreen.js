@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
+import Animated, { SlideInUp, SlideOutUp } from 'react-native-reanimated';
 
 import { api } from '../api/client';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
-import { darkColors, radius, space, type } from '../theme';
+import { darkColors, radius, space, type, withAlpha } from '../theme';
+import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
 
 const LOOP_CLOSE_DISTANCE_M = 25;
@@ -105,6 +107,7 @@ export default function RunningScreen({ navigation }) {
   const { user } = useAuth();
   const team = useMemo(() => regionForUser(user.username), [user.username]);
   const accent = team.stroke;
+  const reduceMotion = useReduceMotion();
 
   const mapRef = useRef(null);
   const watchRef = useRef(null);
@@ -113,6 +116,7 @@ export default function RunningScreen({ navigation }) {
   const loopClosedRef = useRef(false);
   const startedAtRef = useRef(null);
   const tickRef = useRef(null);
+  const fillAnimRef = useRef(null);
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [path, setPath] = useState([]);
@@ -123,14 +127,46 @@ export default function RunningScreen({ navigation }) {
   const [distance, setDistance] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [closedArea, setClosedArea] = useState(0);
+  // Celebration: pill visibility + captured-polygon fill alpha (0 -> 0.25).
+  const [celebration, setCelebration] = useState(null); // { areaM2 }
+  const [capturedFillAlpha, setCapturedFillAlpha] = useState(0.25);
 
   useEffect(() => {
     prepareLocation();
     return () => {
       stopWatchingLocation();
       if (tickRef.current) clearInterval(tickRef.current);
+      if (fillAnimRef.current) clearInterval(fillAnimRef.current);
     };
   }, []);
+
+  // The money moment: strong haptic, fill blooms in, dashed line snaps
+  // solid (loopClosed flips the render below), pill drops from the top.
+  // Non-blocking — the run keeps recording throughout.
+  function celebrateLoopClosed(areaM2) {
+    haptic.success();
+    setCelebration({ areaM2 });
+    setTimeout(() => setCelebration(null), 3500);
+
+    if (reduceMotion) {
+      setCapturedFillAlpha(0.25);
+      return;
+    }
+    // Map polygons can't be driven by Reanimated, so step the fill alpha
+    // with a short overshoot-and-settle ramp (spring feel, ~700ms total).
+    const STEPS = [0.05, 0.11, 0.18, 0.25, 0.3, 0.27, 0.25];
+    let i = 0;
+    setCapturedFillAlpha(0);
+    if (fillAnimRef.current) clearInterval(fillAnimRef.current);
+    fillAnimRef.current = setInterval(() => {
+      setCapturedFillAlpha(STEPS[i]);
+      i += 1;
+      if (i >= STEPS.length) {
+        clearInterval(fillAnimRef.current);
+        fillAnimRef.current = null;
+      }
+    }, 100);
+  }
 
   async function prepareLocation() {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -156,6 +192,7 @@ export default function RunningScreen({ navigation }) {
 
   async function startRun() {
     try {
+      haptic.light();
       const createdRun = await api.startRun();
       runRef.current = createdRun;
       pathRef.current = [];
@@ -224,10 +261,7 @@ export default function RunningScreen({ navigation }) {
           setLoopClosed(true);
           setNearStart(false);
           setPolygon(newPath);
-          Alert.alert(
-            'Loop closed!',
-            `You captured ${formatArea(polygonAreaM2(newPath))} for Team ${team.name}.`
-          );
+          celebrateLoopClosed(polygonAreaM2(newPath));
         }
 
         if (runRef.current && newPath.length % 5 === 0) {
@@ -250,6 +284,7 @@ export default function RunningScreen({ navigation }) {
 
   async function finishRun() {
     try {
+      haptic.light();
       stopWatchingLocation();
       if (tickRef.current) {
         clearInterval(tickRef.current);
@@ -295,7 +330,7 @@ export default function RunningScreen({ navigation }) {
       : '—';
 
   const openArea = distance * OPEN_PATH_M2_PER_M;
-  const fill = `${accent}40`; // 25% alpha — supported in maps fillColor
+  const fill = withAlpha(accent, capturedFillAlpha); // blooms in on loop close
 
   return (
     <View style={styles.container}>
@@ -335,13 +370,27 @@ export default function RunningScreen({ navigation }) {
       </MapView>
 
       {/* close-the-loop prompt */}
-      {nearStart && (
+      {nearStart && !celebration && (
         <View style={[styles.prompt, { borderColor: accent }]}>
           <View style={[styles.promptDot, { backgroundColor: accent }]} />
           <Text style={styles.promptText}>
             Close the loop! Head back to start to capture {formatArea(closedArea)}
           </Text>
         </View>
+      )}
+
+      {/* loop-closed celebration pill — drops in, run keeps going */}
+      {celebration && (
+        <Animated.View
+          entering={reduceMotion ? undefined : SlideInUp.springify().damping(16)}
+          exiting={reduceMotion ? undefined : SlideOutUp.duration(220)}
+          style={[styles.prompt, styles.celebrationPill, { borderColor: accent }]}
+        >
+          <View style={[styles.promptDot, { backgroundColor: accent }]} />
+          <Text style={[styles.promptText, { color: accent }]}>
+            Loop closed · ~{formatArea(celebration.areaM2)} for Team {team.name}
+          </Text>
+        </Animated.View>
       )}
 
       <View style={styles.panel}>
@@ -372,13 +421,23 @@ export default function RunningScreen({ navigation }) {
         </View>
 
         {!isRunning ? (
-          <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: accent }]} activeOpacity={0.9} onPress={startRun}>
+          <PressableScale
+            style={[styles.primaryBtn, { backgroundColor: accent }]}
+            onPress={startRun}
+            accessibilityRole="button"
+            accessibilityLabel="Start run"
+          >
             <Text style={styles.primaryBtnText}>Start run</Text>
-          </TouchableOpacity>
+          </PressableScale>
         ) : (
-          <TouchableOpacity style={styles.stopBtn} activeOpacity={0.9} onPress={finishRun}>
+          <PressableScale
+            style={styles.stopBtn}
+            onPress={finishRun}
+            accessibilityRole="button"
+            accessibilityLabel="Finish run"
+          >
             <Text style={styles.stopBtnText}>Finish run</Text>
-          </TouchableOpacity>
+          </PressableScale>
         )}
       </View>
     </View>
@@ -421,6 +480,7 @@ const styles = StyleSheet.create({
   },
   promptDot: { width: 9, height: 9, borderRadius: 5 },
   promptText: { ...type.bodySmBold, color: D.text, flex: 1 },
+  celebrationPill: { borderWidth: 2 },
 
   panel: {
     position: 'absolute',

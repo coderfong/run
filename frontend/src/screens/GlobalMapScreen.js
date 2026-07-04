@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Polygon } from 'react-native-maps';
 import * as Location from 'expo-location';
 
 import { api } from '../api/client';
-import { colors, radius, space, type } from '../theme';
+import { colors, radius, shadow, space, type } from '../theme';
 import { SG_REGIONS, SG_VIEW_REGION, regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
+import { Skeleton } from '../ui/motion';
 import { toast } from '../ui/toast';
 
 // Stable color per user — same player's territories share a hue.
@@ -31,7 +32,7 @@ export default function GlobalMapScreen() {
   const { user } = useAuth();
   const myTeam = regionForUser(user.username);
   const [region, setRegion] = useState(null);
-  const [territories, setTerritories] = useState([]);
+  const [territories, setTerritories] = useState(null); // null = first load
   const lastFetchRef = useRef(0);
 
   useEffect(() => {
@@ -71,12 +72,18 @@ export default function GlobalMapScreen() {
   };
 
   if (!region) {
+    // Map-shaped skeleton while we resolve the start viewport.
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <Skeleton width="88%" height={300} style={{ borderRadius: radius.lg }} />
+        <Skeleton width="60%" height={16} style={{ marginTop: space.lg }} />
+        <Skeleton width="42%" height={12} style={{ marginTop: space.sm }} />
       </View>
     );
   }
+
+  const loaded = territories !== null;
+  const list = territories || [];
 
   return (
     <View style={styles.container}>
@@ -99,7 +106,7 @@ export default function GlobalMapScreen() {
           )),
         )}
 
-        {territories.map((t) => {
+        {list.map((t) => {
           const c = colorForUser(t.user_id);
           const coords = t.polygon.map(([lon, lat]) => ({
             latitude: lat,
@@ -118,6 +125,14 @@ export default function GlobalMapScreen() {
           );
         })}
       </MapView>
+
+      {/* empty state — no claimed land in this view yet */}
+      {loaded && list.length === 0 && (
+        <View style={styles.emptyPill}>
+          <Text style={styles.emptyPillTitle}>No territory here yet.</Text>
+          <Text style={styles.emptyPillBody}>Close a loop to claim the first.</Text>
+        </View>
+      )}
 
       <View style={styles.legend}>
         {SG_REGIONS.map((r) => (
@@ -158,4 +173,20 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   legendLabel: { ...type.captionMedium, color: colors.text },
+
+  emptyPill: {
+    position: 'absolute',
+    top: space.lg,
+    left: space.xl,
+    right: space.xl,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 0.5,
+    borderColor: colors.border,
+    padding: space.lg,
+    alignItems: 'center',
+    ...shadow.raised,
+  },
+  emptyPillTitle: { ...type.heading },
+  emptyPillBody: { ...type.caption, marginTop: 2 },
 });

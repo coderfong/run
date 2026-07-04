@@ -1,39 +1,102 @@
-import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { api } from '../api/client';
-import { colors, radius, space, type } from '../theme';
+import { colors, radius, shadow, space, type } from '../theme';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
+import { Skeleton, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
+
+const RANKS_KEY = 'tr.lastRanks'; // { [user_id]: rank } from the previous visit
+
+function RankDelta({ delta }) {
+  if (!delta) return null;
+  const up = delta > 0;
+  return (
+    <Text style={[styles.rankDelta, { color: up ? colors.ok : colors.danger }]}>
+      {up ? '▲' : '▼'}
+    </Text>
+  );
+}
+
+function LeaderboardSkeleton() {
+  return (
+    <View style={styles.listContent}>
+      <View style={styles.heading}>
+        <Skeleton width={220} height={34} />
+        <Skeleton width={170} height={14} style={{ marginTop: 10 }} />
+      </View>
+      {Array.from({ length: 8 }).map((_, i) => (
+        <View key={i} style={styles.row}>
+          <Skeleton width={28} height={18} />
+          <View style={{ width: 10 }} />
+          <View style={{ flex: 1 }}>
+            <Skeleton width="55%" height={15} />
+            <Skeleton width="35%" height={11} style={{ marginTop: 6 }} />
+          </View>
+          <Skeleton width={72} height={17} />
+        </View>
+      ))}
+    </View>
+  );
+}
 
 export default function LeaderboardScreen() {
   const { user } = useAuth();
   const myTeam = regionForUser(user?.username || '');
+  const reduceMotion = useReduceMotion();
   const [rows, setRows] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const prevRanksRef = useRef(null);
 
-  useEffect(() => {
-    (async () => {
+  const load = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
       try {
+        // Previous visit's ranks -> movement arrows.
+        if (prevRanksRef.current === null) {
+          try {
+            prevRanksRef.current =
+              JSON.parse(await AsyncStorage.getItem(RANKS_KEY)) || {};
+          } catch {
+            prevRanksRef.current = {};
+          }
+        }
         const data = await api.leaderboard();
-        setRows(data);
+        const withDelta = (data || []).map((r, i) => {
+          const prev = prevRanksRef.current[r.user_id];
+          return { ...r, rank: i + 1, delta: prev ? prev - (i + 1) : 0 };
+        });
+        setRows(withDelta);
+        const ranks = {};
+        withDelta.forEach((r) => (ranks[r.user_id] = r.rank));
+        AsyncStorage.setItem(RANKS_KEY, JSON.stringify(ranks)).catch(() => {});
       } catch (e) {
         toast.error(e.message || 'Could not load leaderboard');
-        setRows([]);
+        setRows((prev) => prev || []);
+      } finally {
+        if (isRefresh) setRefreshing(false);
       }
-    })();
-  }, []);
+    },
+    []
+  );
 
-  if (!rows) {
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (!rows) return <LeaderboardSkeleton />;
+
+  if (rows.length === 0) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={styles.empty}>
+        <Text style={styles.emptyTitle}>Nobody has claimed land yet.</Text>
+        <Text style={styles.emptyBody}>
+          Be first — run a loop and the ground inside is yours.
+        </Text>
       </View>
     );
   }
@@ -44,6 +107,14 @@ export default function LeaderboardScreen() {
       contentContainerStyle={styles.listContent}
       data={rows}
       keyExtractor={(r) => r.user_id}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => load(true)}
+          tintColor={myTeam.stroke}
+          colors={[myTeam.stroke]}
+        />
+      }
       ListHeaderComponent={
         <View style={styles.heading}>
           <Text style={type.display}>Leaderboard</Text>
@@ -56,8 +127,16 @@ export default function LeaderboardScreen() {
         const isMe = item.user_id === user.id;
         const team = regionForUser(item.username);
         return (
-          <View style={[styles.row, isMe && [styles.rowSelf, { borderColor: myTeam.color }]]}>
-            <Text style={styles.rank}>#{index + 1}</Text>
+          <Animated.View
+            entering={
+              reduceMotion
+                ? undefined
+                : FadeInDown.delay(Math.min(index, 12) * 30).duration(260)
+            }
+            style={[styles.row, isMe && [styles.rowSelf, { borderColor: myTeam.color }]]}
+          >
+            <Text style={styles.rank}>#{item.rank}</Text>
+            <RankDelta delta={item.delta} />
             <View style={[styles.teamDot, { backgroundColor: team.color }]} />
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>{item.username}</Text>
@@ -68,7 +147,7 @@ export default function LeaderboardScreen() {
             <Text style={[styles.area, { color: team.color }]}>
               {Math.round(item.total_area_m2).toLocaleString()} m²
             </Text>
-          </View>
+          </Animated.View>
         );
       }}
     />
@@ -78,14 +157,18 @@ export default function LeaderboardScreen() {
 const styles = StyleSheet.create({
   list: { backgroundColor: colors.bg },
   listContent: { padding: space.lg, paddingBottom: space.xxl },
-  center: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
 
   heading: { marginBottom: space.lg },
+
+  empty: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: space.xl,
+  },
+  emptyTitle: { ...type.title, textAlign: 'center', marginBottom: space.sm },
+  emptyBody: { ...type.body, color: colors.textMuted, textAlign: 'center' },
 
   row: {
     flexDirection: 'row',
@@ -97,13 +180,15 @@ const styles = StyleSheet.create({
     marginBottom: space.sm,
     borderWidth: 1,
     borderColor: colors.border,
+    ...shadow.card,
   },
-  rowSelf: { borderColor: colors.primary, borderWidth: 1.5 },
+  rowSelf: { borderWidth: 1.5 },
 
   rank: {
     ...type.statSm,
     width: 36,
   },
+  rankDelta: { ...type.caption, width: 14 },
   teamDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
 
   name: { ...type.bodyBold },

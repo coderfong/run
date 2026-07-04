@@ -19,6 +19,7 @@ import { TEAMS, TEAM_BY_KEY, SG_BBOX, regionForUser } from '../data/regions';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { colors, radius, shadow, space, type } from '../theme';
+import { haptic, PressableScale } from '../ui/motion';
 
 const INK = colors.text;
 const INK60 = colors.textMuted;
@@ -377,16 +378,20 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <View style={styles.sheetFixed}>
-          <TouchableOpacity
+          <PressableScale
             style={[styles.startBtn, { backgroundColor: accent, shadowColor: accent }]}
-            activeOpacity={0.9}
-            onPress={() => navigation.navigate('Running')}
+            onPress={() => {
+              haptic.light();
+              navigation.navigate('Running');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Start run"
           >
             <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
               <Path d="M7 4l13 8-13 8V4z" fill="#fff" />
             </Svg>
             <Text style={styles.startBtnText}>Start run</Text>
-          </TouchableOpacity>
+          </PressableScale>
 
           <Pressable style={styles.summary} onPress={() => snapTo(!expanded)}>
             <View style={styles.rankBig}>

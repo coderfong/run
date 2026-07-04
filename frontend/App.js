@@ -26,6 +26,7 @@ import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
+import { MotionProvider } from './src/ui/motion';
 import { ToastHost } from './src/ui/toast';
 import { colors, darkColors, fonts } from './src/theme';
 
@@ -159,11 +160,13 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
-        <RootNavigator />
-        <ToastHost />
-      </AuthProvider>
+      <MotionProvider>
+        <AuthProvider>
+          <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+          <RootNavigator />
+          <ToastHost />
+        </AuthProvider>
+      </MotionProvider>
     </SafeAreaProvider>
   );
 }
