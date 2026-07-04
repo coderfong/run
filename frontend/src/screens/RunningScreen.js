@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
 import * as Location from 'expo-location';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
 import Animated, {
   cancelAnimation,
@@ -17,16 +18,12 @@ import Animated, {
 import { api } from '../api/client';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
-import { darkColors, radius, space, type, withAlpha } from '../theme';
+import { darkColors, radius, runTuning as T, space, type, withAlpha } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
 
-const LOOP_CLOSE_DISTANCE_M = 25;
-const MIN_POINTS_FOR_LOOP = 15;
-const MIN_DISTANCE_FOR_LOOP_M = 80;
-// Distance (m) → open-path area (m²): 0.05 km² per km == 50 m² per metre,
-// i.e. a ~50m-wide strip painted along the route (brief §6).
-const OPEN_PATH_M2_PER_M = 50;
+// In-progress run persisted here so an OS kill / crash can't lose a run.
+const ACTIVE_RUN_KEY = 'tr.activeRun';
 
 // Night-run surface tokens.
 const D = {
@@ -113,15 +110,29 @@ function formatArea(m2) {
   return `${Math.round(m2).toLocaleString()} m²`;
 }
 
-// GPS quality: green under 10m, amber under 25m, red beyond.
-const GPS_GOOD_M = 10;
-const GPS_OK_M = 25;
-
+// GPS quality chip (thresholds in theme.runTuning).
 function gpsColor(accuracyM) {
   if (accuracyM == null) return darkColors.textDim;
-  if (accuracyM < GPS_GOOD_M) return darkColors.ok;
-  if (accuracyM < GPS_OK_M) return darkColors.warn;
+  if (accuracyM < T.gpsGoodM) return darkColors.ok;
+  if (accuracyM < T.gpsOkM) return darkColors.warn;
   return darkColors.danger;
+}
+
+// Closest distance (m) from point p to segment ab (all lat/lng points),
+// via a local equirectangular projection — used for "closure near" checks.
+function pointToSegmentMeters(a, b, p) {
+  const lat0 = toRad(p.latitude);
+  const mPerLat = 110540;
+  const mPerLon = 111320 * Math.cos(lat0);
+  const ax = a.longitude * mPerLon, ay = a.latitude * mPerLat;
+  const bx = b.longitude * mPerLon, by = b.latitude * mPerLat;
+  const px = p.longitude * mPerLon, py = p.latitude * mPerLat;
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  let t = lenSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * dx, cy = ay + t * dy;
+  return Math.hypot(px - cx, py - cy);
 }
 
 // -----------------------------------------------------------------------
@@ -129,7 +140,6 @@ function gpsColor(accuracyM) {
 // accidental tap mid-run can't end the session.
 // -----------------------------------------------------------------------
 
-const HOLD_TO_FINISH_MS = 1200;
 const RING_R = 12;
 const RING_C = 2 * Math.PI * RING_R;
 
@@ -147,7 +157,7 @@ function HoldToFinishButton({ onFinish }) {
     setHolding(true);
     progress.value = withTiming(
       1,
-      { duration: HOLD_TO_FINISH_MS, easing: Easing.linear },
+      { duration: T.holdToFinishMs, easing: Easing.linear },
       (finished) => {
         if (finished) runOnJS(onFinish)();
       }
@@ -213,6 +223,11 @@ export default function RunningScreen({ navigation }) {
   const startedAtRef = useRef(null);
   const tickRef = useRef(null);
   const fillAnimRef = useRef(null);
+  // Adaptive-sampling bookkeeping.
+  const gpsModeRef = useRef('high'); // 'high' | 'relaxed'
+  const pendingModeRef = useRef({ mode: null, count: 0 });
+  const recentSpeedsRef = useRef([]);
+  const restartingWatchRef = useRef(false);
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [path, setPath] = useState([]);
@@ -224,18 +239,82 @@ export default function RunningScreen({ navigation }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [closedArea, setClosedArea] = useState(0);
   const [accuracyM, setAccuracyM] = useState(null);
+  const [permDenied, setPermDenied] = useState(false);
   // Celebration: pill visibility + captured-polygon fill alpha (0 -> 0.25).
   const [celebration, setCelebration] = useState(null); // { areaM2 }
   const [capturedFillAlpha, setCapturedFillAlpha] = useState(0.25);
 
   useEffect(() => {
-    prepareLocation();
+    (async () => {
+      const granted = await prepareLocation();
+      if (granted) await checkOrphanedRun();
+    })();
     return () => {
       stopWatchingLocation();
       if (tickRef.current) clearInterval(tickRef.current);
       if (fillAnimRef.current) clearInterval(fillAnimRef.current);
     };
   }, []);
+
+  // ---- crash resilience -------------------------------------------------
+  // The in-progress run is snapshotted every ~N points; if the OS killed
+  // the app mid-run, offer to resume or submit what was recorded.
+
+  function persistActiveRun(path) {
+    const run = runRef.current;
+    if (!run) return;
+    AsyncStorage.setItem(
+      ACTIVE_RUN_KEY,
+      JSON.stringify({ runId: run.id, startedAt: startedAtRef.current, path })
+    ).catch(() => {});
+  }
+
+  function clearActiveRun() {
+    AsyncStorage.removeItem(ACTIVE_RUN_KEY).catch(() => {});
+  }
+
+  async function checkOrphanedRun() {
+    let saved = null;
+    try {
+      saved = JSON.parse(await AsyncStorage.getItem(ACTIVE_RUN_KEY));
+    } catch {}
+    if (!saved || !saved.runId || !Array.isArray(saved.path) || saved.path.length < 2) {
+      clearActiveRun();
+      return;
+    }
+    Alert.alert(
+      'Unfinished run found',
+      `A run with ${saved.path.length} recorded points didn't finish. Resume it, or submit what was recorded?`,
+      [
+        { text: 'Resume run', onPress: () => resumeRun(saved) },
+        {
+          text: 'Submit as-is',
+          onPress: () => commitRun({ id: saved.runId }, saved.path),
+        },
+        { text: 'Discard', style: 'destructive', onPress: clearActiveRun },
+      ]
+    );
+  }
+
+  async function resumeRun(saved) {
+    runRef.current = { id: saved.runId };
+    pathRef.current = saved.path;
+    loopClosedRef.current = false;
+    startedAtRef.current = saved.startedAt || Date.now();
+    recentSpeedsRef.current = [];
+    gpsModeRef.current = 'high';
+
+    setPath(saved.path);
+    setDistance(totalDistanceMeters(saved.path));
+    setClosedArea(polygonAreaM2(saved.path));
+    setElapsedMs(Date.now() - startedAtRef.current);
+    setIsRunning(true);
+
+    tickRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - startedAtRef.current);
+    }, 250);
+    await startWatchingLocation('high');
+  }
 
   // The money moment: strong haptic, fill blooms in, dashed line snaps
   // solid (loopClosed flips the render below), pill drops from the top.
@@ -266,36 +345,41 @@ export default function RunningScreen({ navigation }) {
   }
 
   async function prepareLocation() {
+    // When In Use only. The explainer screen normally granted this already;
+    // if we're still undetermined (user skipped), ask now — with context.
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
-        'Location permission needed',
-        'Please allow location access so the app can track your run.'
-      );
-      return;
+      setPermDenied(true);
+      return false;
     }
-    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    const point = {
-      latitude: location.coords.latitude,
-      longitude: location.coords.longitude,
-      timestamp: Date.now(),
-    };
-    setCurrentLocation(point);
-    setAccuracyM(location.coords.accuracy ?? null);
-    mapRef.current?.animateToRegion(
-      { latitude: point.latitude, longitude: point.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
-      500
-    );
+    setPermDenied(false);
+    try {
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const point = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        timestamp: Date.now(),
+      };
+      setCurrentLocation(point);
+      setAccuracyM(location.coords.accuracy ?? null);
+      mapRef.current?.animateToRegion(
+        { latitude: point.latitude, longitude: point.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
+        500
+      );
+    } catch {}
+    return true;
   }
 
   async function startRun() {
     try {
       haptic.light();
       const createdRun = await api.startRun();
-      runRef.current = createdRun;
+      // API returns { run_id, started_at }; older builds returned { id }.
+      runRef.current = { id: createdRun.run_id || createdRun.id };
       pathRef.current = [];
       loopClosedRef.current = false;
       startedAtRef.current = Date.now();
+      persistActiveRun([]); // a fresh snapshot replaces any stale orphan
 
       setPath([]);
       setPolygon([]);
@@ -305,73 +389,155 @@ export default function RunningScreen({ navigation }) {
       setNearStart(false);
       setLoopClosed(false);
       setIsRunning(true);
+      recentSpeedsRef.current = [];
+      gpsModeRef.current = 'high';
+      pendingModeRef.current = { mode: null, count: 0 };
 
       tickRef.current = setInterval(() => {
         setElapsedMs(Date.now() - startedAtRef.current);
       }, 250);
 
-      await startWatchingLocation();
+      await startWatchingLocation('high');
     } catch (err) {
       toast.error(err.message || 'Could not start run');
     }
   }
 
-  async function startWatchingLocation() {
-    stopWatchingLocation();
-    watchRef.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 3 },
-      async (location) => {
-        const nextPoint = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          timestamp: Date.now(),
-        };
-        setCurrentLocation(nextPoint);
-        setAccuracyM(location.coords.accuracy ?? null);
+  // ---- adaptive GPS sampling ---------------------------------------------
+  // High accuracy + tight interval while pace is changing or a loop closure
+  // is near; relaxed during steady straight-line running to save battery.
 
-        const oldPath = pathRef.current;
-        const previousPoint = oldPath[oldPath.length - 1];
-        if (previousPoint && distanceMeters(previousPoint, nextPoint) < 2) return;
+  function decideGpsMode(newPath, nextPoint, speedMps) {
+    // Early run: always high until a loop is even possible.
+    if (newPath.length < T.minPointsForLoop) return 'high';
 
-        const newPath = [...oldPath, nextPoint];
-        pathRef.current = newPath;
-        setPath(newPath);
+    // Pace changing?
+    const speeds = recentSpeedsRef.current;
+    if (speedMps != null) {
+      speeds.push(speedMps);
+      if (speeds.length > 6) speeds.shift();
+    }
+    const avg = speeds.length ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
+    const paceChanging =
+      speedMps != null && speeds.length >= 3 && Math.abs(speedMps - avg) > T.paceChangeMps;
 
-        const newDistance = totalDistanceMeters(newPath);
-        setDistance(newDistance);
-        setClosedArea(polygonAreaM2(newPath));
-
-        mapRef.current?.animateToRegion(
-          { latitude: nextPoint.latitude, longitude: nextPoint.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
-          300
-        );
-
-        const startPoint = newPath[0];
-        const distanceToStart = distanceMeters(startPoint, nextPoint);
-        const hasEnoughPoints = newPath.length >= MIN_POINTS_FOR_LOOP;
-        const hasRunEnoughDistance = newDistance >= MIN_DISTANCE_FOR_LOOP_M;
-        const eligible = hasEnoughPoints && hasRunEnoughDistance;
-
-        // "Close the loop!" hint: eligible and getting close, but not yet closed.
-        setNearStart(eligible && !loopClosedRef.current && distanceToStart <= LOOP_CLOSE_DISTANCE_M * 3);
-
-        if (!loopClosedRef.current && eligible && distanceToStart <= LOOP_CLOSE_DISTANCE_M) {
-          loopClosedRef.current = true;
-          setLoopClosed(true);
-          setNearStart(false);
-          setPolygon(newPath);
-          celebrateLoopClosed(polygonAreaM2(newPath));
-        }
-
-        if (runRef.current && newPath.length % 5 === 0) {
-          try {
-            await api.submitPath(runRef.current.id, toApiPoints(newPath));
-          } catch (err) {
-            // non-fatal — the final commit on /end-run is what matters
-          }
-        }
+    // Closure near? (any earlier, non-recent segment within closureNearM)
+    let closureNear = false;
+    for (let k = 0; k < newPath.length - 4; k++) {
+      if (pointToSegmentMeters(newPath[k], newPath[k + 1], nextPoint) <= T.closureNearM) {
+        closureNear = true;
+        break;
       }
+    }
+
+    return paceChanging || closureNear ? 'high' : 'relaxed';
+  }
+
+  async function maybeSwitchGpsMode(desired) {
+    if (desired === gpsModeRef.current) {
+      pendingModeRef.current = { mode: null, count: 0 };
+      return;
+    }
+    const pending = pendingModeRef.current;
+    if (pending.mode === desired) pending.count += 1;
+    else pendingModeRef.current = { mode: desired, count: 1 };
+
+    // Only switch once the desired mode has been stable for a few points —
+    // restarting the OS watcher has a cost of its own.
+    if (pendingModeRef.current.count >= T.modeStablePoints && !restartingWatchRef.current) {
+      restartingWatchRef.current = true;
+      gpsModeRef.current = desired;
+      pendingModeRef.current = { mode: null, count: 0 };
+      try {
+        await startWatchingLocation(desired);
+      } finally {
+        restartingWatchRef.current = false;
+      }
+    }
+  }
+
+  async function startWatchingLocation(mode = 'high') {
+    stopWatchingLocation();
+    const cfg =
+      mode === 'high'
+        ? {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: T.gpsHigh.timeIntervalMs,
+            distanceInterval: T.gpsHigh.distanceIntervalM,
+          }
+        : {
+            accuracy: Location.Accuracy.High,
+            timeInterval: T.gpsRelaxed.timeIntervalMs,
+            distanceInterval: T.gpsRelaxed.distanceIntervalM,
+          };
+    watchRef.current = await Location.watchPositionAsync(cfg, handleLocation);
+  }
+
+  async function handleLocation(location) {
+    const nextPoint = {
+      latitude: location.coords.latitude,
+      longitude: location.coords.longitude,
+      timestamp: Date.now(),
+    };
+    setCurrentLocation(nextPoint);
+    setAccuracyM(location.coords.accuracy ?? null);
+
+    const oldPath = pathRef.current;
+    const previousPoint = oldPath[oldPath.length - 1];
+    // Sub-2m jitter filter.
+    if (previousPoint && distanceMeters(previousPoint, nextPoint) < T.minStepM) return;
+
+    const newPath = [...oldPath, nextPoint];
+    pathRef.current = newPath;
+    setPath(newPath);
+
+    const newDistance = totalDistanceMeters(newPath);
+    setDistance(newDistance);
+    setClosedArea(polygonAreaM2(newPath));
+
+    // Crash snapshot every N accepted points.
+    if (newPath.length % T.persistEveryNPoints === 0) persistActiveRun(newPath);
+
+    mapRef.current?.animateToRegion(
+      { latitude: nextPoint.latitude, longitude: nextPoint.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
+      300
     );
+
+    const startPoint = newPath[0];
+    const distanceToStart = distanceMeters(startPoint, nextPoint);
+    const hasEnoughPoints = newPath.length >= T.minPointsForLoop;
+    const hasRunEnoughDistance = newDistance >= T.minDistanceForLoopM;
+    const eligible = hasEnoughPoints && hasRunEnoughDistance;
+
+    // "Close the loop!" hint: eligible and getting close, but not yet closed.
+    setNearStart(eligible && !loopClosedRef.current && distanceToStart <= T.loopCloseDistanceM * 3);
+
+    if (!loopClosedRef.current && eligible && distanceToStart <= T.loopCloseDistanceM) {
+      loopClosedRef.current = true;
+      setLoopClosed(true);
+      setNearStart(false);
+      setPolygon(newPath);
+      persistActiveRun(newPath);
+      celebrateLoopClosed(polygonAreaM2(newPath));
+    }
+
+    // Adaptive sampling decision.
+    const speedMps =
+      location.coords.speed != null && location.coords.speed >= 0
+        ? location.coords.speed
+        : previousPoint
+        ? distanceMeters(previousPoint, nextPoint) /
+          Math.max((nextPoint.timestamp - previousPoint.timestamp) / 1000, 0.001)
+        : null;
+    maybeSwitchGpsMode(decideGpsMode(newPath, nextPoint, speedMps));
+
+    if (runRef.current && newPath.length % 5 === 0) {
+      try {
+        await api.submitPath(runRef.current.id, toApiPoints(newPath));
+      } catch (err) {
+        // non-fatal — GPS keeps recording; /end-run reconciles the full path
+      }
+    }
   }
 
   function stopWatchingLocation() {
@@ -408,6 +574,7 @@ export default function RunningScreen({ navigation }) {
   async function commitRun(run, finalPath) {
     try {
       const result = await api.endRun(run.id, toApiPoints(finalPath));
+      clearActiveRun();
       navigation.navigate('Result', { result, run: result, loopClosed, path: finalPath, polygon });
     } catch (err) {
       Alert.alert(
@@ -440,8 +607,38 @@ export default function RunningScreen({ navigation }) {
         })()
       : '—';
 
-  const openArea = distance * OPEN_PATH_M2_PER_M;
+  const openArea = distance * T.openPathM2PerM;
   const fill = withAlpha(accent, capturedFillAlpha); // blooms in on loop close
+
+  // Location denied: a way forward, not a dead end.
+  if (permDenied) {
+    return (
+      <View style={[styles.container, styles.deniedWrap]}>
+        <Text style={styles.deniedTitle}>Location is off</Text>
+        <Text style={styles.deniedBody}>
+          Territory Run records your route only during an active run — without
+          location there's nothing to trace. Enable it in Settings and come
+          back.
+        </Text>
+        <PressableScale
+          style={[styles.primaryBtn, { backgroundColor: accent, alignSelf: 'stretch' }]}
+          onPress={() => Linking.openSettings().catch(() => {})}
+          accessibilityRole="button"
+          accessibilityLabel="Open Settings"
+        >
+          <Text style={styles.primaryBtnText}>Open Settings</Text>
+        </PressableScale>
+        <PressableScale
+          style={styles.deniedBack}
+          onPress={() => prepareLocation()}
+          accessibilityRole="button"
+          accessibilityLabel="Check permission again"
+        >
+          <Text style={styles.deniedBackText}>I've enabled it — check again</Text>
+        </PressableScale>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -663,4 +860,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stopBtnText: { ...type.button, color: '#fff' },
+
+  deniedWrap: { alignItems: 'center', justifyContent: 'center', padding: space.xl },
+  deniedTitle: { ...type.title, color: D.text, marginBottom: space.md, textAlign: 'center' },
+  deniedBody: {
+    ...type.body,
+    color: D.muted,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: space.xl,
+  },
+  deniedBack: { marginTop: space.lg },
+  deniedBackText: { ...type.bodyMedium, color: D.muted },
 });

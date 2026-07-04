@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, View } from 'react-native';
+import * as Location from 'expo-location';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -24,6 +25,7 @@ import LeaderboardScreen from './src/screens/LeaderboardScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { MotionProvider } from './src/ui/motion';
@@ -83,6 +85,17 @@ function FullScreenSpinner() {
 
 function RootNavigator() {
   const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
+  // Location permission gate: the OS prompt only ever fires from the
+  // explainer screen, never cold from a random screen mount.
+  const [locStatus, setLocStatus] = useState(null);
+  const [locHandled, setLocHandled] = useState(false);
+
+  useEffect(() => {
+    if (!signedIn) return;
+    Location.getForegroundPermissionsAsync()
+      .then((r) => setLocStatus(r.status))
+      .catch(() => setLocStatus('granted')); // fail open — Running re-checks
+  }, [signedIn]);
 
   if (loading) return <FullScreenSpinner />;
 
@@ -99,6 +112,19 @@ function RootNavigator() {
   // New accounts get the intro once, right after signing up.
   if (needsOnboarding) {
     return <OnboardingScreen onDone={completeOnboarding} />;
+  }
+
+  // Pre-permission explainer flows straight out of onboarding (or first
+  // launch after sign-in) while permission is still undetermined.
+  if (locStatus === 'undetermined' && !locHandled) {
+    return (
+      <LocationPermissionScreen
+        onDone={(granted) => {
+          setLocHandled(true);
+          setLocStatus(granted ? 'granted' : 'denied');
+        }}
+      />
+    );
   }
 
   return (

@@ -23,7 +23,8 @@ export default function GlobalMapScreen() {
 
   useEffect(() => {
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      // Read-only check — the OS prompt only fires from the explainer screen.
+      const { status } = await Location.getForegroundPermissionsAsync();
       if (status === 'granted') {
         try {
           const loc = await Location.getCurrentPositionAsync({});
@@ -67,7 +68,7 @@ export default function GlobalMapScreen() {
 
   const locateMe = async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') return;
       const loc = await Location.getCurrentPositionAsync({});
       mapRef.current?.animateToRegion(

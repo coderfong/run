@@ -191,6 +191,40 @@ export const type = {
 };
 
 // ---------------------------------------------------------------------------
+// Run-recording tuning (frontend magic numbers live here by convention;
+// backend thresholds live in backend/app/config.py).
+// ---------------------------------------------------------------------------
+
+export const runTuning = {
+  // Loop detection (client-side preview; the server is authoritative).
+  loopCloseDistanceM: 25,
+  minPointsForLoop: 15,
+  minDistanceForLoopM: 80,
+  openPathM2PerM: 50, // 0.05 km² per km == a ~50m strip along the route
+
+  // Jitter filter: drop points that moved less than this.
+  minStepM: 2,
+
+  // Adaptive GPS sampling. High while pace is changing or a closure is
+  // near; relaxed during steady straight-line running (battery).
+  gpsHigh: { timeIntervalMs: 1000, distanceIntervalM: 3 },
+  gpsRelaxed: { timeIntervalMs: 3000, distanceIntervalM: 8 },
+  closureNearM: 100, // within this of an earlier segment -> stay high
+  paceChangeMps: 0.6, // speed delta vs recent average that counts as "changing"
+  modeStablePoints: 4, // points a mode switch must persist before applying
+
+  // GPS accuracy chip thresholds.
+  gpsGoodM: 10,
+  gpsOkM: 25,
+
+  // Crash resilience: persist the in-progress run every N accepted points.
+  persistEveryNPoints: 20,
+
+  // Hold-to-finish.
+  holdToFinishMs: 1200,
+};
+
+// ---------------------------------------------------------------------------
 // Single tokens object — preferred import for new code.
 // ---------------------------------------------------------------------------
 
@@ -203,6 +237,7 @@ export const tokens = {
   space,
   shadow,
   type,
+  runTuning,
   withAlpha,
 };
 

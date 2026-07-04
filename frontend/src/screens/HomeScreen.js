@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import Svg, { Circle, Path, Rect, G } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 
 import { TEAMS, TEAM_BY_KEY, SG_BBOX, regionForUser } from '../data/regions';
@@ -195,12 +194,10 @@ export default function HomeScreen({ navigation }) {
   const [myZones, setMyZones] = useState(null);
   const [standings, setStandings] = useState(null);
 
-  // Permissions up front (safe to call repeatedly; OS only prompts once).
+  // Notification permission only — location goes through the dedicated
+  // pre-permission explainer (App.js gate), never a cold OS prompt here.
   useEffect(() => {
     (async () => {
-      try {
-        await Location.requestForegroundPermissionsAsync();
-      } catch {}
       try {
         const { status } = await Notifications.getPermissionsAsync();
         if (status !== 'granted') await Notifications.requestPermissionsAsync();
