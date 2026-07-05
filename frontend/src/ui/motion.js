@@ -6,6 +6,7 @@ import { AccessibilityInfo, Pressable, TextInput } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedProps,
+  useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSpring,
@@ -85,6 +86,12 @@ export function PressableScale({ children, style, onPress, disabled, scaleTo = 0
   const reduced = useReduceMotion();
   const scale = useSharedValue(1);
 
+  // useAnimatedStyle keeps the shared-value read on the UI thread —
+  // reading `scale` inline in the render would trip Reanimated strict mode.
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
   return (
     <Pressable
       onPressIn={() => {
@@ -97,9 +104,7 @@ export function PressableScale({ children, style, onPress, disabled, scaleTo = 0
       disabled={disabled}
       {...rest}
     >
-      <Animated.View style={[style, { transform: [{ scale }] }]}>
-        {children}
-      </Animated.View>
+      <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>
     </Pressable>
   );
 }
@@ -177,6 +182,8 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
     );
   }, [reduced, opacity]);
 
+  const pulse = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
   return (
     <Animated.View
       style={[
@@ -185,8 +192,8 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
           height,
           borderRadius: radius.sm,
           backgroundColor: dark ? 'rgba(255,255,255,0.08)' : colors.bgElevated,
-          opacity,
         },
+        pulse,
         style,
       ]}
     />

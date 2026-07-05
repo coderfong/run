@@ -55,7 +55,7 @@
       "@sentry/react-native"
     ],
     "extra": {
-      "apiBase": "https://cycles-markets-mar-executive.trycloudflare.com",
+      "apiBase": "https://chargers-use-asylum-composed.trycloudflare.com",
       "eas": {
         "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
       }
