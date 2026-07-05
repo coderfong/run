@@ -1,90 +1,109 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Polygon } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { api } from '../api/client';
 import { colors, radius, shadow, space, type, withAlpha } from '../theme';
-import { SG_REGIONS, SG_VIEW_REGION, regionForUser } from '../data/regions';
+import { cityBbox } from '../config/cities';
+import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
 import { PressableScale, Skeleton } from '../ui/motion';
+import GameMap, { MAP_READY, TerritoryLayer } from '../components/GameMap';
+
+// Build one GeoJSON FeatureCollection for the whole board — every ring is a
+// feature carrying its own colors + the owning territory id (for taps).
+function toFeatureCollection(territories, userId) {
+  const features = [];
+  for (const t of territories) {
+    const team = regionForUser(t.username);
+    const mine = t.user_id === userId;
+    const rings = t.rings?.length ? t.rings : [t.polygon];
+    rings.forEach((ring, ri) => {
+      if (!ring || ring.length < 3) return;
+      const coords = ring.map(([lon, lat]) => [lon, lat]);
+      if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
+        coords.push(coords[0]);
+      }
+      features.push({
+        type: 'Feature',
+        id: `${t.id}-${ri}`,
+        geometry: { type: 'Polygon', coordinates: [coords] },
+        properties: {
+          territoryId: t.id,
+          fillColor: team.stroke,
+          strokeColor: team.stroke,
+          fillOpacity: mine ? 0.4 : 0.2,
+        },
+      });
+    });
+  }
+  return { type: 'FeatureCollection', features };
+}
 
 export default function GlobalMapScreen() {
   const { user } = useAuth();
   const myTeam = regionForUser(user.username);
   const mapRef = useRef(null);
-  const [region, setRegion] = useState(null);
   const [territories, setTerritories] = useState(null); // null = first load
   const [loadError, setLoadError] = useState(false);
-  const [selected, setSelected] = useState(null); // tapped territory
-  const lastFetchRef = useRef(0);
-  const lastRegionRef = useRef(null);
+  const [selected, setSelected] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      // Read-only check — the OS prompt only fires from the explainer screen.
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status === 'granted') {
-        try {
-          const loc = await Location.getCurrentPositionAsync({});
-          setRegion({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          });
-          return;
-        } catch {}
-      }
-      setRegion(SG_VIEW_REGION);
-    })();
-  }, []);
-
-  const fetchForRegion = async (r) => {
-    lastRegionRef.current = r;
-    const half_lon = r.longitudeDelta / 2;
-    const half_lat = r.latitudeDelta / 2;
+  const load = async () => {
     try {
-      const data = await api.mapPolygons({
-        minLon: r.longitude - half_lon,
-        minLat: r.latitude - half_lat,
-        maxLon: r.longitude + half_lon,
-        maxLat: r.latitude + half_lat,
-      });
+      const data = await api.mapPolygons(cityBbox());
       setTerritories(data.territories);
       setLoadError(false);
     } catch (e) {
       setLoadError(true);
+      setTerritories((prev) => prev || []);
     }
   };
 
-  const onRegionChangeComplete = (r) => {
-    const now = Date.now();
-    if (now - lastFetchRef.current < 500) return;
-    lastFetchRef.current = now;
-    fetchForRegion(r);
-  };
+  useEffect(() => {
+    load();
+  }, []);
 
   const locateMe = async () => {
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') return;
       const loc = await Location.getCurrentPositionAsync({});
-      mapRef.current?.animateToRegion(
-        {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        400
+      mapRef.current?.flyTo(
+        { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+        14
       );
     } catch {}
   };
 
-  if (!region) {
-    // Map-shaped skeleton while we resolve the start viewport.
+  const list = territories || [];
+  const featureCollection = useMemo(
+    () => toFeatureCollection(list, user.id),
+    [list, user.id]
+  );
+  const selectedTeam = selected ? regionForUser(selected.username) : null;
+  const loaded = territories !== null;
+
+  const onTerritoryPress = (e) => {
+    const id = e?.features?.[0]?.properties?.territoryId;
+    const t = list.find((x) => x.id === id);
+    if (t) setSelected(t);
+  };
+
+  if (!MAP_READY) {
+    // Dev builds without a Mapbox token yet — explain rather than show blank.
+    return (
+      <View style={styles.center}>
+        <Text style={styles.noticeTitle}>Map needs a Mapbox token</Text>
+        <Text style={[styles.noticeBody, { textAlign: 'center', marginTop: space.sm }]}>
+          Set EXPO_PUBLIC_MAPBOX_TOKEN and rebuild the dev client.{'\n'}See
+          SETUP_MAPBOX.md.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!loaded) {
     return (
       <View style={styles.center}>
         <Skeleton width="88%" height={300} style={{ borderRadius: radius.lg }} />
@@ -94,77 +113,33 @@ export default function GlobalMapScreen() {
     );
   }
 
-  const loaded = territories !== null;
-  const list = territories || [];
-  const selectedTeam = selected ? regionForUser(selected.username) : null;
-
   return (
     <View style={styles.container}>
-      <MapView
+      <GameMap
         ref={mapRef}
-        style={styles.map}
-        initialRegion={region}
-        onRegionChangeComplete={onRegionChangeComplete}
-        onPress={() => setSelected(null)}
+        theme="light"
         showsUserLocation
-        showsMyLocationButton={false}
+        onPress={() => setSelected(null)}
       >
-        {/* Faint region tint underneath so the 5-team map style is consistent. */}
-        {SG_REGIONS.flatMap((r) =>
-          r.polygons.map((coords, i) => (
-            <Polygon
-              key={`region-${r.key}-${i}`}
-              coordinates={coords}
-              strokeColor={`${r.color}66`}
-              strokeWidth={1}
-              fillColor={`${r.color}1a`}
-            />
-          )),
-        )}
+        <TerritoryLayer
+          featureCollection={featureCollection}
+          onPress={onTerritoryPress}
+        />
+      </GameMap>
 
-        {/* Player territories in their team colours; yours pops a little.
-            MultiPolygon territories arrive as `rings` — render every piece
-            (fall back to the legacy single `polygon` ring). */}
-        {list.flatMap((t) => {
-          const team = regionForUser(t.username);
-          const mine = t.user_id === user.id;
-          const isSel = selected?.id === t.id;
-          const rings = t.rings?.length ? t.rings : [t.polygon];
-          return rings.map((ring, ri) => (
-            <Polygon
-              key={`${t.id}-${ri}`}
-              coordinates={ring.map(([lon, lat]) => ({
-                latitude: lat,
-                longitude: lon,
-              }))}
-              strokeColor={team.stroke}
-              strokeWidth={isSel ? 3.5 : mine ? 2.5 : 1.5}
-              fillColor={withAlpha(team.stroke, mine ? 0.4 : 0.2)}
-              tappable
-              onPress={(e) => {
-                e.stopPropagation?.();
-                setSelected(t);
-              }}
-            />
-          ));
-        })}
-      </MapView>
-
-      {/* empty state — no claimed land in this view yet */}
       {loaded && list.length === 0 && !loadError && (
         <View style={styles.noticePill}>
-          <Text style={styles.noticeTitle}>No territory here yet.</Text>
-          <Text style={styles.noticeBody}>Close a loop to claim the first.</Text>
+          <Text style={styles.noticeTitle}>Unclaimed. Be first.</Text>
+          <Text style={styles.noticeBody}>Close a loop to claim the first land here.</Text>
         </View>
       )}
 
-      {/* load error + retry */}
       {loadError && (
         <View style={styles.noticePill}>
           <Text style={styles.noticeTitle}>Couldn't load territories.</Text>
           <PressableScale
             style={styles.retryBtn}
-            onPress={() => lastRegionRef.current && fetchForRegion(lastRegionRef.current)}
+            onPress={load}
             accessibilityRole="button"
             accessibilityLabel="Retry loading territories"
           >
@@ -173,7 +148,6 @@ export default function GlobalMapScreen() {
         </View>
       )}
 
-      {/* locate-me FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={locateMe}
@@ -193,7 +167,6 @@ export default function GlobalMapScreen() {
         </Svg>
       </TouchableOpacity>
 
-      {/* tapped-territory card */}
       {selected && selectedTeam && (
         <View style={styles.card}>
           <View style={[styles.cardChip, { backgroundColor: selectedTeam.fill }]}>
@@ -222,17 +195,6 @@ export default function GlobalMapScreen() {
           </TouchableOpacity>
         </View>
       )}
-
-      {!selected && (
-        <View style={styles.legend}>
-          {SG_REGIONS.map((r) => (
-            <View key={r.key} style={styles.legendItem}>
-              <View style={[styles.dot, { backgroundColor: r.color }]} />
-              <Text style={styles.legendLabel}>{r.name}</Text>
-            </View>
-          ))}
-        </View>
-      )}
     </View>
   );
 }
@@ -244,27 +206,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: space.xl,
   },
-  map: { flex: 1 },
-
-  legend: {
-    position: 'absolute',
-    left: space.md,
-    right: space.md,
-    bottom: space.lg,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.md,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadow.card,
-  },
-  legendItem: { flexDirection: 'row', alignItems: 'center' },
-  dot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
-  legendLabel: { ...type.captionMedium, color: colors.text },
 
   noticePill: {
     position: 'absolute',

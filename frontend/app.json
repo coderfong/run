@@ -52,7 +52,8 @@
       "expo-notifications",
       "expo-secure-store",
       "expo-font",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "@rnmapbox/maps"
     ],
     "extra": {
       "apiBase": "https://chargers-use-asylum-composed.trycloudflare.com",

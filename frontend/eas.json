@@ -9,7 +9,8 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://displayed-characterized-lucas-answering.trycloudflare.com"
+        "EXPO_PUBLIC_API_BASE": "https://chargers-use-asylum-composed.trycloudflare.com",
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "REPLACE_WITH_pk_TOKEN"
       }
     },
     "preview": {

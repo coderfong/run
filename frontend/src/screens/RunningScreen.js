@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polygon, Polyline } from 'react-native-maps';
+import GameMap, {
+  ClosingLine,
+  MapPoint,
+  TerritoryFill,
+  Trail,
+} from '../components/GameMap';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,7 +24,7 @@ import Animated, {
 import { api } from '../api/client';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
-import { darkColors, radius, runTuning as T, space, type, withAlpha } from '../theme';
+import { darkColors, radius, runTuning as T, space, type } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
 
@@ -37,16 +42,8 @@ const D = {
   danger: darkColors.danger,
 };
 
-const DARK_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: darkColors.bg }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: darkColors.bg }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#6b7177' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: darkColors.cardAlt }] },
-  { featureType: 'road', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0a1622' }] },
-  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-];
+// The dark game-board look now comes from the Mapbox dark style URL
+// (see config/map.js + SETUP_MAPBOX.md), not an inline tile-style array.
 
 function toRad(value) {
   return (value * Math.PI) / 180;
@@ -392,10 +389,7 @@ export default function RunningScreen({ navigation }) {
       };
       setCurrentLocation(point);
       setAccuracyM(location.coords.accuracy ?? null);
-      mapRef.current?.animateToRegion(
-        { latitude: point.latitude, longitude: point.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
-        500
-      );
+      mapRef.current?.flyTo({ latitude: point.latitude, longitude: point.longitude }, 16, 500);
     } catch {}
     return true;
   }
@@ -536,10 +530,7 @@ export default function RunningScreen({ navigation }) {
     // Crash snapshot every N accepted points.
     if (newPath.length % T.persistEveryNPoints === 0) persistActiveRun(newPath);
 
-    mapRef.current?.animateToRegion(
-      { latitude: nextPoint.latitude, longitude: nextPoint.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 },
-      300
-    );
+    mapRef.current?.flyTo({ latitude: nextPoint.latitude, longitude: nextPoint.longitude }, undefined, 300);
 
     const startPoint = newPath[0];
     const distanceToStart = distanceMeters(startPoint, nextPoint);
@@ -631,15 +622,6 @@ export default function RunningScreen({ navigation }) {
     }
   }
 
-  const initialRegion = currentLocation
-    ? {
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }
-    : { latitude: 1.3521, longitude: 103.8198, latitudeDelta: 0.1, longitudeDelta: 0.1 };
-
   const paceText =
     distance > 50 && elapsedMs > 1000
       ? (() => {
@@ -651,7 +633,6 @@ export default function RunningScreen({ navigation }) {
       : '—';
 
   const openArea = distance * T.openPathM2PerM;
-  const fill = withAlpha(accent, capturedFillAlpha); // blooms in on loop close
 
   // Location denied: a way forward, not a dead end.
   if (permDenied) {
@@ -685,40 +666,25 @@ export default function RunningScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={initialRegion}
-        showsUserLocation
-        showsMyLocationButton={false}
-        customMapStyle={DARK_MAP_STYLE}
-        userInterfaceStyle="dark"
-      >
-        {path.length > 1 && <Polyline coordinates={path} strokeWidth={5} strokeColor={accent} />}
-
-        {/* live "if closed" preview: dashed line back to start + tinted fill */}
+      <GameMap ref={mapRef} theme="dark" style={styles.map} showsUserLocation initialZoom={16}>
+        {/* live "if closed" preview: tinted fill + dashed line back to start */}
         {!loopClosed && path.length >= 3 && (
           <>
-            <Polygon
-              coordinates={path}
-              strokeWidth={0}
-              fillColor={`${accent}1f`}
-            />
-            <Polyline
-              coordinates={[path[path.length - 1], path[0]]}
-              strokeWidth={2.5}
-              strokeColor={accent}
-              lineDashPattern={[6, 8]}
-            />
+            <TerritoryFill id="preview" points={path} fillColor={accent} strokeColor={accent} fillOpacity={0.12} />
+            <ClosingLine id="closing" from={path[path.length - 1]} to={path[0]} color={accent} />
           </>
         )}
 
+        {/* the signature: the route glows in the clan colour */}
+        {path.length > 1 && <Trail id="route" points={path} color={accent} width={5} glow />}
+
+        {/* captured territory blooms in on loop close (alpha animates 0→0.25) */}
         {polygon.length >= 3 && (
-          <Polygon coordinates={polygon} strokeWidth={3} strokeColor={accent} fillColor={fill} />
+          <TerritoryFill id="captured" points={polygon} fillColor={accent} strokeColor={accent} fillOpacity={capturedFillAlpha} glow />
         )}
 
-        {path.length > 0 && <Marker coordinate={path[0]} title="Start" pinColor={accent} />}
-      </MapView>
+        {path.length > 0 && <MapPoint id="start" point={path[0]} color={accent} />}
+      </GameMap>
 
       {/* slim glass status bar: GPS quality, elapsed time, tracking state */}
       <View style={styles.topBar}>
