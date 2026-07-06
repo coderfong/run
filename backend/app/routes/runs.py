@@ -142,9 +142,12 @@ def end_run(
     )
 
     # Advance the runner's clan weekly goal + season stats (no-op if clanless).
-    goal_reached, clan_id = record_clan_activity(
-        db, user, distance_m=run.distance_m, closed_loop=loop is not None, stolen=stolen_m2
-    )
+    # Flagged (unverified) runs never contribute to clan stats or goals.
+    goal_reached, clan_id = (False, None)
+    if run.verified:
+        goal_reached, clan_id = record_clan_activity(
+            db, user, distance_m=run.distance_m, closed_loop=loop is not None, stolen=stolen_m2
+        )
 
     db.commit()
 
