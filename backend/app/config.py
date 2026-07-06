@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
 
     # App version reported by GET /version (override per deploy).
-    app_version: str = "1.0.0"
+    app_version: str = "2.0.0"
 
     # Loop / polygon validation thresholds.
     # Tuned to filter out GPS jitter and trivial micro-loops.

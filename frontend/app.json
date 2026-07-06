@@ -2,7 +2,7 @@
   "expo": {
     "name": "Territory Run",
     "slug": "territory-run",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "scheme": "territoryrun",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -15,7 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.territoryrun.app",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Territory Run records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Territory Run records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
@@ -29,7 +29,7 @@
     },
     "android": {
       "package": "com.territoryrun.app",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0b0d10"
