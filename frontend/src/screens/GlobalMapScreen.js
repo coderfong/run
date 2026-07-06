@@ -1,19 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
-import Svg, { Circle, Path } from 'react-native-svg';
+import { Flame, Layers, Navigation, X } from 'lucide-react-native';
 
 import { api } from '../api/client';
-import { colors, radius, shadow, space, type, withAlpha } from '../theme';
+import { colors, radius, shadow, space, type } from '../theme';
 import { cityBbox } from '../config/cities';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
-import { PressableScale, Skeleton } from '../ui/motion';
-import GameMap, { MAP_READY, TerritoryLayer } from '../components/GameMap';
+import { useReduceMotion } from '../ui/motion';
+import { Card, Pill, Sheet } from '../components/ui';
+import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer } from '../components/GameMap';
 
-// Build one GeoJSON FeatureCollection for the whole board — every ring is a
-// feature carrying its own colors + the owning territory id (for taps).
-function toFeatureCollection(territories, userId) {
+// Build the whole-board GeoJSON once per data change. Each ring is a feature
+// carrying its colors, owning territory id, team key, and contested flag.
+function toFeatures(territories, userId) {
   const features = [];
   for (const t of territories) {
     const team = regionForUser(t.username);
@@ -31,123 +32,176 @@ function toFeatureCollection(territories, userId) {
         geometry: { type: 'Polygon', coordinates: [coords] },
         properties: {
           territoryId: t.id,
+          teamKey: team.key,
           fillColor: team.stroke,
           strokeColor: team.stroke,
-          fillOpacity: mine ? 0.4 : 0.2,
+          // Constitution: territory fill ~35%; your own clan a touch higher.
+          fillOpacity: mine ? 0.45 : 0.35,
+          contested: !!t.contested,
         },
       });
     });
   }
-  return { type: 'FeatureCollection', features };
+  return features;
+}
+
+// Tile-ish cache key so returning to a viewport is instant.
+function viewportKey(bbox, zoom) {
+  const r = (n) => n.toFixed(2);
+  return `${Math.round(zoom)}:${r(bbox.minLon)},${r(bbox.minLat)},${r(bbox.maxLon)},${r(bbox.maxLat)}`;
 }
 
 export default function GlobalMapScreen() {
   const { user } = useAuth();
   const myTeam = regionForUser(user.username);
+  const reduce = useReduceMotion();
   const mapRef = useRef(null);
-  const [territories, setTerritories] = useState(null); // null = first load
+  const cacheRef = useRef(new Map());
+  const lastKeyRef = useRef(null);
+
+  const [list, setList] = useState(null); // null = first load
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [zoom, setZoom] = useState(12);
+  const [heatOn, setHeatOn] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [pulse, setPulse] = useState(0.85);
 
-  const load = async () => {
-    try {
-      const data = await api.mapPolygons(cityBbox());
-      setTerritories(data.territories);
+  // Pulse the contested outline while heat is on (Reduce Motion → steady).
+  useEffect(() => {
+    if (!heatOn || reduce) return;
+    const id = setInterval(() => setPulse((p) => (p > 0.6 ? 0.35 : 0.9)), 650);
+    return () => clearInterval(id);
+  }, [heatOn, reduce]);
+
+  const fetchViewport = async (bbox, z) => {
+    const key = viewportKey(bbox, z);
+    if (key === lastKeyRef.current) return;
+    lastKeyRef.current = key;
+    if (cacheRef.current.has(key)) {
+      setList(cacheRef.current.get(key));
       setLoadError(false);
-    } catch (e) {
+      return;
+    }
+    try {
+      const data = await api.mapPolygons(bbox, z);
+      cacheRef.current.set(key, data.territories);
+      setList(data.territories);
+      setLoadError(false);
+    } catch {
       setLoadError(true);
-      setTerritories((prev) => prev || []);
+      setList((prev) => prev || []);
     }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  const onIdle = ({ bounds, zoom: z }) => {
+    if (z != null) setZoom(z);
+    const bbox = {
+      minLon: bounds.sw[0],
+      minLat: bounds.sw[1],
+      maxLon: bounds.ne[0],
+      maxLat: bounds.ne[1],
+    };
+    fetchViewport(bbox, z ?? zoom);
+  };
 
   const locateMe = async () => {
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') return;
       const loc = await Location.getCurrentPositionAsync({});
-      mapRef.current?.flyTo(
-        { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-        14
-      );
+      mapRef.current?.flyTo({ latitude: loc.coords.latitude, longitude: loc.coords.longitude }, 14);
     } catch {}
   };
 
-  const list = territories || [];
-  const featureCollection = useMemo(
-    () => toFeatureCollection(list, user.id),
-    [list, user.id]
+  const rows = list || [];
+  const features = useMemo(() => toFeatures(rows, user.id), [rows, user.id]);
+  const contestedFC = useMemo(
+    () => ({ type: 'FeatureCollection', features: features.filter((f) => f.properties.contested) }),
+    [features]
   );
-  const selectedTeam = selected ? regionForUser(selected.username) : null;
-  const loaded = territories !== null;
+  const baseFC = useMemo(() => ({ type: 'FeatureCollection', features }), [features]);
+
+  // Top teams in the current view, by summed area (legend).
+  const topTeams = useMemo(() => {
+    const acc = {};
+    for (const t of rows) {
+      const team = regionForUser(t.username);
+      acc[team.key] = acc[team.key] || { team, area: 0, count: 0 };
+      acc[team.key].area += t.area_m2 || 0;
+      acc[team.key].count += 1;
+    }
+    return Object.values(acc).sort((a, b) => b.area - a.area).slice(0, 4);
+  }, [rows]);
+
+  const focusTeam = (teamKey) => {
+    const pts = [];
+    for (const t of rows) {
+      if (regionForUser(t.username).key !== teamKey) continue;
+      (t.rings?.length ? t.rings : [t.polygon]).forEach((ring) =>
+        ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
+      );
+    }
+    if (pts.length) mapRef.current?.fitToPoints(pts, 60);
+    setLegendOpen(false);
+  };
 
   const onTerritoryPress = (e) => {
     const id = e?.features?.[0]?.properties?.territoryId;
-    const t = list.find((x) => x.id === id);
+    const t = rows.find((x) => x.id === id);
     if (t) setSelected(t);
   };
 
   if (!MAP_READY) {
-    // Dev builds without a Mapbox token yet — explain rather than show blank.
     return (
       <View style={styles.center}>
-        <Text style={styles.noticeTitle}>Map needs a Mapbox token</Text>
-        <Text style={[styles.noticeBody, { textAlign: 'center', marginTop: space.sm }]}>
-          Set EXPO_PUBLIC_MAPBOX_TOKEN and rebuild the dev client.{'\n'}See
-          SETUP_MAPBOX.md.
+        <Text style={type.heading}>Map needs a Mapbox token</Text>
+        <Text style={[type.caption, { textAlign: 'center', marginTop: space.sm }]}>
+          Set EXPO_PUBLIC_MAPBOX_TOKEN and rebuild the dev client (SETUP_MAPBOX.md).
         </Text>
       </View>
     );
   }
 
-  if (!loaded) {
-    return (
-      <View style={styles.center}>
-        <Skeleton width="88%" height={300} style={{ borderRadius: radius.lg }} />
-        <Skeleton width="60%" height={16} style={{ marginTop: space.lg }} />
-        <Skeleton width="42%" height={12} style={{ marginTop: space.sm }} />
-      </View>
-    );
-  }
+  const selectedTeam = selected ? regionForUser(selected.username) : null;
+  const loaded = list !== null;
+  const showEmpty = loaded && rows.length === 0 && !loadError;
 
   return (
     <View style={styles.container}>
-      <GameMap
-        ref={mapRef}
-        theme="light"
-        showsUserLocation
-        onPress={() => setSelected(null)}
-      >
-        <TerritoryLayer
-          featureCollection={featureCollection}
-          onPress={onTerritoryPress}
-        />
+      <GameMap ref={mapRef} theme="light" showsUserLocation onIdle={onIdle} onPress={() => setSelected(null)}>
+        <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} />
+        {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
       </GameMap>
 
-      {loaded && list.length === 0 && !loadError && (
+      {/* top controls: heat + legend */}
+      <View style={styles.topControls}>
+        <TouchableOpacity
+          style={[styles.roundBtn, heatOn && { backgroundColor: colors.warn }]}
+          onPress={() => setHeatOn((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle contested zones"
+        >
+          <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.roundBtn}
+          onPress={() => setLegendOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Show clans in view"
+        >
+          <Layers size={20} color={colors.text} strokeWidth={2} />
+        </TouchableOpacity>
+      </View>
+
+      {showEmpty && (
         <View style={styles.noticePill}>
-          <Text style={styles.noticeTitle}>Unclaimed. Be first.</Text>
-          <Text style={styles.noticeBody}>Close a loop to claim the first land here.</Text>
+          <Text style={type.heading}>Unclaimed. Be first.</Text>
+          <Text style={[type.caption, { marginTop: 2 }]}>Close a loop here to claim the first land.</Text>
         </View>
       )}
 
-      {loadError && (
-        <View style={styles.noticePill}>
-          <Text style={styles.noticeTitle}>Couldn't load territories.</Text>
-          <PressableScale
-            style={styles.retryBtn}
-            onPress={load}
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading territories"
-          >
-            <Text style={styles.retryText}>Retry</Text>
-          </PressableScale>
-        </View>
-      )}
-
+      {/* locate-me FAB */}
       <TouchableOpacity
         style={styles.fab}
         onPress={locateMe}
@@ -155,125 +209,93 @@ export default function GlobalMapScreen() {
         accessibilityRole="button"
         accessibilityLabel="Center map on my location"
       >
-        <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-          <Circle cx={12} cy={12} r={3.2} fill={myTeam.stroke} />
-          <Circle cx={12} cy={12} r={7} stroke={myTeam.stroke} strokeWidth={1.8} />
-          <Path
-            d="M12 2v3M12 19v3M2 12h3M19 12h3"
-            stroke={myTeam.stroke}
-            strokeWidth={1.8}
-            strokeLinecap="round"
-          />
-        </Svg>
+        <Navigation size={20} color={myTeam.stroke} strokeWidth={2} fill={myTeam.stroke} />
       </TouchableOpacity>
 
+      {/* tapped-territory card */}
       {selected && selectedTeam && (
-        <View style={styles.card}>
-          <View style={[styles.cardChip, { backgroundColor: selectedTeam.fill }]}>
-            <View style={[styles.cardDot, { backgroundColor: selectedTeam.stroke }]} />
-            <Text style={[styles.cardChipText, { color: selectedTeam.text }]}>
-              {selectedTeam.name}
-            </Text>
+        <Card style={styles.card}>
+          <View style={styles.cardRow}>
+            <Pill label={selectedTeam.name} color={selectedTeam.stroke} dot />
+            <TouchableOpacity onPress={() => setSelected(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
+              <X size={18} color={colors.textDim} />
+            </TouchableOpacity>
           </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.cardName} numberOfLines={1}>
-              {selected.username}
-              {selected.user_id === user.id ? ' (you)' : ''}
-            </Text>
-            <Text style={styles.cardMeta}>
-              {Math.round(selected.area_m2).toLocaleString()} m² · captured{' '}
-              {new Date(selected.created_at).toLocaleDateString()}
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => setSelected(null)}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Close territory details"
-          >
-            <Text style={styles.cardClose}>✕</Text>
-          </TouchableOpacity>
-        </View>
+          <Text style={[type.bodyBold, { marginTop: space.sm }]} numberOfLines={1}>
+            {selected.username}
+            {selected.user_id === user.id ? ' (you)' : ''}
+          </Text>
+          <Text style={[type.caption, { marginTop: 2 }]}>
+            {Math.round(selected.area_m2).toLocaleString()} m² · held since{' '}
+            {new Date(selected.created_at).toLocaleDateString()}
+            {selected.contested ? ' · contested' : ''}
+          </Text>
+        </Card>
       )}
+
+      {/* legend: top clans in view */}
+      <Sheet visible={legendOpen} onClose={() => setLegendOpen(false)}>
+        <Text style={[type.heading, { marginBottom: space.md }]}>Clans in view</Text>
+        {topTeams.length === 0 ? (
+          <Text style={[type.caption, { marginBottom: space.md }]}>No claimed land in view yet.</Text>
+        ) : (
+          topTeams.map(({ team, area, count }) => (
+            <TouchableOpacity key={team.key} style={styles.legendRow} onPress={() => focusTeam(team.key)}>
+              <View style={[styles.legendDot, { backgroundColor: team.stroke }]} />
+              <Text style={[type.bodyBold, { flex: 1 }]}>{team.name}</Text>
+              <Text style={type.captionMedium}>
+                {(area / 1e6).toFixed(2)} km² · {count}
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
+      </Sheet>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  center: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
+  center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', padding: space.xl },
+
+  topControls: { position: 'absolute', top: space.xxl, right: space.gutter, gap: space.md },
+  roundBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
     alignItems: 'center',
-    padding: space.xl,
+    justifyContent: 'center',
+    ...shadow.raised,
   },
 
   noticePill: {
     position: 'absolute',
-    top: space.lg,
-    left: space.xl,
-    right: space.xl,
+    top: space.xxl,
+    left: space.gutter,
+    right: 76,
     backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 0.5,
-    borderColor: colors.border,
+    borderRadius: radius.card,
     padding: space.lg,
-    alignItems: 'center',
     ...shadow.raised,
   },
-  noticeTitle: { ...type.heading },
-  noticeBody: { ...type.caption, marginTop: 2 },
-  retryBtn: {
-    marginTop: space.md,
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.xl,
-    paddingVertical: space.sm,
-  },
-  retryText: { ...type.buttonSm },
 
   fab: {
     position: 'absolute',
-    right: space.lg,
-    bottom: 76,
+    right: space.gutter,
+    bottom: 96,
     width: 48,
     height: 48,
     borderRadius: 24,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 0.5,
-    borderColor: colors.border,
     ...shadow.raised,
   },
 
-  card: {
-    position: 'absolute',
-    left: space.md,
-    right: space.md,
-    bottom: space.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 0.5,
-    borderColor: colors.border,
-    padding: space.lg,
-    ...shadow.raised,
-  },
-  cardChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: 6,
-  },
-  cardDot: { width: 8, height: 8, borderRadius: 4 },
-  cardChipText: { ...type.bodySmBold },
-  cardName: { ...type.bodyBold },
-  cardMeta: { ...type.caption, marginTop: 2 },
-  cardClose: { ...type.heading, color: colors.textDim },
+  card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
+  cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56 },
+  legendDot: { width: 12, height: 12, borderRadius: 6 },
 });

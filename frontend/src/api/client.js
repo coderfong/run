@@ -112,10 +112,18 @@ export const api = {
   leaveClan: () => request('/clans/leave', { method: 'POST', body: '{}' }),
   clanLeaderboard: () => request('/leaderboard/clans'),
 
-  mapPolygons: (bbox) => {
-    const qs = bbox
-      ? `?min_lon=${bbox.minLon}&min_lat=${bbox.minLat}&max_lon=${bbox.maxLon}&max_lat=${bbox.maxLat}`
-      : '';
+  mapPolygons: (bbox, zoom) => {
+    const parts = [];
+    if (bbox) {
+      parts.push(
+        `min_lon=${bbox.minLon}`,
+        `min_lat=${bbox.minLat}`,
+        `max_lon=${bbox.maxLon}`,
+        `max_lat=${bbox.maxLat}`
+      );
+    }
+    if (zoom != null) parts.push(`zoom=${zoom.toFixed(1)}`);
+    const qs = parts.length ? `?${parts.join('&')}` : '';
     return request(`/map-polygons${qs}`);
   },
   leaderboard: () => request('/leaderboard'),

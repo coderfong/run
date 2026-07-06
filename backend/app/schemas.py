@@ -62,6 +62,8 @@ class TerritoryOut(BaseModel):
     polygon: List[Tuple[float, float]]
     # All exterior rings of the (Multi)Polygon: [[[lon, lat], ...], ...].
     rings: List[List[Tuple[float, float]]] = []
+    # Claimed within the contested window (the map "heat" signal).
+    contested: bool = False
 
 
 class RunResultOut(BaseModel):

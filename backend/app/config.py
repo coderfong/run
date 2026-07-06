@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     rate_limit_end_run: str = "6/minute"
     rate_limit_default: str = "120/minute"
 
+    # ---- map viewport simplification -------------------------------------
+    # Server-side ST_SimplifyPreserveTopology tolerance (WGS84 degrees) and a
+    # feature cap, chosen by the client's map zoom so low zooms send far
+    # fewer/lighter polygons. ~0.0001 deg ~= 11m at Singapore's latitude.
+    map_zoom_mid: float = 15.0
+    map_zoom_low: float = 13.0
+    map_zoom_vlow: float = 11.0
+    map_tol_high: float = 0.00003   # zoom >= mid  : near-full detail
+    map_tol_mid: float = 0.00015    # low  <= zoom < mid
+    map_tol_low: float = 0.0004     # vlow <= zoom < low
+    map_tol_vlow: float = 0.0009    # zoom < vlow
+    map_cap_low_zoom: int = 400     # feature cap once zoomed out past `low`
+
+    # ---- contested / "changed hands" window ------------------------------
+    contested_days: int = 7         # a territory claimed within N days reads as hot
+
     class Config:
         env_file = ".env"
 

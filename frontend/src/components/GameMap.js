@@ -59,10 +59,19 @@ function polygonFeature(points) {
 // --- the map container -----------------------------------------------------
 
 const GameMap = forwardRef(function GameMap(
-  { theme = 'light', onPress, showsUserLocation = false, children, style, initialCenter, initialZoom },
+  { theme = 'light', onPress, onIdle, showsUserLocation = false, children, style, initialCenter, initialZoom },
   ref
 ) {
   const cameraRef = useRef(null);
+
+  // Map settled → hand the viewport (bounds + zoom) up so screens can query
+  // /map-polygons for what's visible. Fires only when movement stops.
+  const handleIdle = (state) => {
+    if (!onIdle) return;
+    const p = state?.properties || {};
+    if (!p.bounds) return;
+    onIdle({ bounds: p.bounds, zoom: p.zoom, center: p.center });
+  };
 
   // Imperative API screens use instead of touching Mapbox directly.
   useImperativeHandle(ref, () => ({
@@ -93,6 +102,7 @@ const GameMap = forwardRef(function GameMap(
       style={[styles.map, style]}
       styleURL={styleForTheme(theme)}
       onPress={onPress}
+      onMapIdle={handleIdle}
       scaleBarEnabled={false}
       logoEnabled={false}
       attributionEnabled
@@ -194,6 +204,20 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
         <LineLayer id={`${id}-glow`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 5, lineOpacity: 0.35, lineBlur: 3 }} />
       )}
       <LineLayer id={`${id}-stroke`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 2 }} />
+    </ShapeSource>
+  );
+}
+
+// Contested-zone outline: a bright per-feature stroke whose opacity the
+// screen pulses. Rendered above the base board for recently-claimed land.
+export function ContestedOutline({ id = 'contested', featureCollection, opacity = 0.8 }) {
+  if (!featureCollection?.features?.length) return null;
+  return (
+    <ShapeSource id={`${id}-src`} shape={featureCollection}>
+      <LineLayer
+        id={`${id}-line`}
+        style={{ lineColor: ['get', 'strokeColor'], lineWidth: 3.5, lineOpacity: opacity, lineCap: 'round', lineJoin: 'round' }}
+      />
     </ShapeSource>
   );
 }
