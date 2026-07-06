@@ -1,4 +1,4 @@
-// Thin fetch wrapper for the Territory Run API.
+// Thin fetch wrapper for the PACER API.
 // - Auth: Bearer token managed via setAuthToken().
 // - Errors: throws ApiError with .status and .message; UI catches and toasts.
 // - Base URL: from EXPO_PUBLIC_API_BASE if set, otherwise the dev tunnel.

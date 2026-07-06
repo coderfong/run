@@ -1,4 +1,4 @@
-# Territory Run — Privacy Policy (stub, v2)
+# PACER — Privacy Policy (stub, v2)
 
 _Last updated: 2026-07-06. Finalize and host at a public URL (linked from the
 app's You → Settings and both store listings) before submission._

@@ -191,7 +191,7 @@ def weekly_recap(background: BackgroundTasks, db: Session = Depends(get_db)):
     ).fetchall()
     for uid, dist, claims in rows:
         background.add_task(
-            notify, [uid], "recap", "Last week on Territory Run",
+            notify, [uid], "recap", "Last week on PACER",
             f"{(dist or 0) / 1000:.1f} km · {int(claims or 0)} claims. Keep the streak alive.",
         )
     return {"ok": True, "users": len(rows)}

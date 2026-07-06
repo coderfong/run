@@ -1,4 +1,4 @@
-// Deep-link target for territoryrun://clan/join/:code — join by invite.
+// Deep-link target for pacer://clan/join/:code — join by invite.
 
 import React, { useState } from 'react';
 import { Text, View } from 'react-native';

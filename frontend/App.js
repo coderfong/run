@@ -67,10 +67,10 @@ const navTheme = {
   },
 };
 
-// territoryrun:// deep links. Run-result links land in Phase 6 once a
-// standalone run-detail route exists.
+// pacer:// deep links (territoryrun:// kept as a legacy prefix for older
+// invite links and installed builds).
 const linking = {
-  prefixes: ['territoryrun://'],
+  prefixes: ['pacer://', 'territoryrun://'],
   config: {
     screens: {
       Tabs: {

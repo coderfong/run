@@ -74,7 +74,7 @@ def _user_id_from_auth_header(request: Request):
         return None
 
 
-app = FastAPI(title="Territory Run API", version=settings.app_version)
+app = FastAPI(title="PACER API", version=settings.app_version)
 
 # Rate limiting: per-route limits on auth/run endpoints, a sane default
 # everywhere else. 429s carry Retry-After.

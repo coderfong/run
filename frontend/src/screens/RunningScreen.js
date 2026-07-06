@@ -693,7 +693,7 @@ export default function RunningScreen({ navigation }) {
       <View style={[styles.container, styles.deniedWrap]}>
         <Text style={styles.deniedTitle}>Location is off</Text>
         <Text style={styles.deniedBody}>
-          Territory Run records your route only during an active run — without
+          PACER records your route only during an active run — without
           location there's nothing to trace. Enable it in Settings and come
           back.
         </Text>

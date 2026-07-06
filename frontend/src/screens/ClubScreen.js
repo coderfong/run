@@ -173,7 +173,7 @@ function MemberHub({ clanId }) {
   const invite = async () => {
     try {
       const inv = await api.createInvite(clanId);
-      await Share.share({ message: `Join ${clan.tag} on Territory Run: ${inv.url}` });
+      await Share.share({ message: `Join ${clan.tag} on PACER: ${inv.url}` });
     } catch (e) {
       toast.error(e.message || 'Could not create invite');
     }

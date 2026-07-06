@@ -383,7 +383,7 @@ def create_invite(request: Request, response: Response, clan_id: str,
     )
     db.commit()
     return schemas.ClanInviteOut(code=code, expires_at=expires, max_uses=25, uses=0,
-                                 url=f"territoryrun://clan/join/{code}")
+                                 url=f"pacer://clan/join/{code}")
 
 
 @router.post("/clans/leave")

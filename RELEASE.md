@@ -1,4 +1,4 @@
-# Territory Run v2 — Release Runbook
+# PACER — Release Runbook
 
 ## Environment variables
 
@@ -33,13 +33,14 @@ documented in **SETUP_MAPBOX.md**.
 
 ```bash
 cd backend
-alembic upgrade head          # fresh DB: creates everything (0001..0005)
+alembic upgrade head          # fresh DB: creates everything (0001..0006)
 # DB predating Alembic: alembic stamp 0001 && alembic upgrade head
 ```
 
 Revisions: 0001 baseline · 0002 MultiPolygon · 0003 clan groundwork ·
 0004 full clan system (seasons/leagues/weekly goals; seeds Season 1) ·
-0005 fitness (splits, PRs, kudos, push tokens, notif prefs).
+0005 fitness (splits, PRs, kudos, push tokens, notif prefs) ·
+0006 PACER (XP, notifications inbox, clan join requests).
 
 ### Seed / cron
 
@@ -74,7 +75,7 @@ Render: New → Blueprint with `backend/render.yaml`, set the same env, run
 
 ```bash
 cd frontend
-eas login && eas init         # project 01ac36c0 is already linked
+eas login && eas init         # project 2ebf801e (@jonfong78/pacer) is linked
 eas secret:create --scope project --name MAPBOX_DOWNLOAD_TOKEN --value sk.…
 
 # Dev client (iterate):
@@ -89,7 +90,7 @@ eas submit --profile production --platform android   # Play internal track
 ```
 
 Bump `version` / `buildNumber` / `versionCode` in `app.json` per submission
-(currently 2.0.0 / 3 / 3).
+(currently 2.0.0 / 1 / 1 — counters reset with the com.pacerrun.app identity).
 
 ### Health sync native modules (optional)
 

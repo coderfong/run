@@ -1,9 +1,9 @@
 {
   "expo": {
     "name": "PACER",
-    "slug": "territory-run",
+    "slug": "pacer",
     "version": "2.0.0",
-    "scheme": "territoryrun",
+    "scheme": "pacer",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "icon": "./assets/icon.png",
@@ -14,22 +14,22 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.territoryrun.app",
-      "buildNumber": "3",
+      "bundleIdentifier": "com.pacerrun.app",
+      "buildNumber": "1",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Territory Run records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Territory Run records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
+        "NSLocationWhenInUseUsageDescription": "PACER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "PACER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
         "NSMotionUsageDescription": "Motion data verifies your runs are on foot.",
-        "NSHealthShareUsageDescription": "Territory Run does not read your health data.",
-        "NSHealthUpdateUsageDescription": "Territory Run can save your finished runs to Apple Health when you turn on Health sync.",
+        "NSHealthShareUsageDescription": "PACER does not read your health data.",
+        "NSHealthUpdateUsageDescription": "PACER can save your finished runs to Apple Health when you turn on Health sync.",
         "UIBackgroundModes": [
           "location"
         ]
       }
     },
     "android": {
-      "package": "com.territoryrun.app",
-      "versionCode": 3,
+      "package": "com.pacerrun.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0b0d10"
@@ -47,8 +47,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Territory Run records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
-          "locationAlwaysAndWhenInUsePermission": "Territory Run records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off."
+          "locationWhenInUsePermission": "PACER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
+          "locationAlwaysAndWhenInUsePermission": "PACER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off."
         }
       ],
       "expo-notifications",
@@ -63,14 +63,14 @@
       "mapStyleLight": "",
       "mapStyleDark": "",
       "eas": {
-        "projectId": "01ac36c0-e240-4cf7-9f66-d4fd603403a6"
+        "projectId": "2ebf801e-4026-49f3-8748-ead66db2156e"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/01ac36c0-e240-4cf7-9f66-d4fd603403a6"
+      "url": "https://u.expo.dev/2ebf801e-4026-49f3-8748-ead66db2156e"
     }
   }
 }

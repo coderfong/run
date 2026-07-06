@@ -32,7 +32,7 @@ const NOTIF_ROWS = [
 ];
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
-const PRIVACY_POLICY_URL = 'https://territoryrun.app/privacy';
+const PRIVACY_POLICY_URL = 'https://pacerrun.app/privacy';
 
 const km = (m) => (m / 1000).toFixed(1);
 const km2 = (m2) => (m2 / 1e6).toFixed(2);
@@ -303,7 +303,7 @@ export default function ProfileScreen({ navigation }) {
       <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Privacy policy">
         <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Privacy Policy</Text>
       </TouchableOpacity>
-      <Text style={styles.legal}>Territory Run v{Constants.expoConfig?.version || '2.0.0'}</Text>
+      <Text style={styles.legal}>PACER v{Constants.expoConfig?.version || '2.0.0'}</Text>
     </Screen>
   );
 }
