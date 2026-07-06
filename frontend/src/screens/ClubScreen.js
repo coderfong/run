@@ -40,11 +40,15 @@ function Directory({ navigation }) {
   }, [search]);
 
   const join = async (clan) => {
-    if (clan.privacy !== 'open') return toast.error('This clan is invite-only.');
     try {
-      await api.joinClan(clan.id);
-      await refresh();
-      toast.success(`Joined ${clan.tag}`);
+      if (clan.privacy === 'open') {
+        await api.joinClan(clan.id);
+        await refresh();
+        toast.success(`Joined ${clan.tag}`);
+      } else {
+        await api.requestJoin(clan.id);
+        toast.success(`Request sent to ${clan.tag}`);
+      }
     } catch (e) {
       toast.error(e.message || 'Could not join');
     }
@@ -68,7 +72,7 @@ function Directory({ navigation }) {
         Solo land is grey. Clan land conquers.
       </Text>
 
-      <Button title="Create a clan" icon={<UserPlus size={18} color="#fff" />} onPress={() => navigation.navigate('ClubCreate')} />
+      <Button title="Create a clan" variant="gradient" icon={<UserPlus size={18} color="#fff" />} onPress={() => navigation.navigate('ClubCreate')} />
 
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
         <TextInput
@@ -108,7 +112,8 @@ function Directory({ navigation }) {
                   <View>
                     <Text style={type.bodyBold}>[{c.tag}] {c.name}</Text>
                     <Text style={type.caption}>
-                      {c.member_count} members{c.league ? ` · ${LEAGUE_LABEL[c.league]}` : ''}{c.privacy !== 'open' ? ' · invite only' : ''}
+                      {c.member_count} members{c.league ? ` · ${LEAGUE_LABEL[c.league]}` : ''}
+                      {c.privacy !== 'open' ? ' · tap to request' : ' · tap to join'}
                     </Text>
                   </View>
                 </Row>
@@ -130,11 +135,16 @@ function MemberHub({ clanId }) {
   const { user } = useAuth();
   const { refresh } = useClan();
   const [clan, setClan] = useState(null);
+  const [requests, setRequests] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setClan(await api.getClan(clanId));
+      const c = await api.getClan(clanId);
+      setClan(c);
+      if (c.my_role === 'leader' || c.my_role === 'officer') {
+        api.listJoinRequests(clanId).then(setRequests).catch(() => setRequests([]));
+      }
     } catch {
       setClan(null);
     } finally {
@@ -227,6 +237,24 @@ function MemberHub({ clanId }) {
           <GoalBar label={`Distance ${km(goal.progress_distance_m)}/${km(goal.target_distance_m)} km`} pct={distPct} accent={accent} mine={goal.my_distance_m / Math.max(1, goal.target_distance_m)} />
           <GoalBar label={`Claims ${goal.progress_claims}/${goal.target_claims}`} pct={claimPct} accent={accent} mine={goal.my_claims / Math.max(1, goal.target_claims)} />
         </Card>
+      )}
+
+      {/* pending join requests (officer+) */}
+      {canManage && requests.length > 0 && (
+        <>
+          <SectionHeader title="Join requests" style={{ marginTop: space.xl, marginBottom: space.md }} />
+          <Card padded={false}>
+            {requests.map((r, i) => (
+              <View key={r.id} style={[styles.memberRow, i > 0 && styles.divider, { flexDirection: 'row', alignItems: 'center', gap: space.md }]}>
+                <Text style={[type.bodyBold, { flex: 1 }]}>{r.username}</Text>
+                <Button title="Approve" size="sm" full={false} accent={accent}
+                  onPress={() => act(async () => { await api.actOnJoinRequest(clanId, r.id, 'approve'); toast.success(`${r.username} joined`); })} />
+                <Button title="Deny" size="sm" variant="secondary" full={false}
+                  onPress={() => act(() => api.actOnJoinRequest(clanId, r.id, 'deny'))} />
+              </View>
+            ))}
+          </Card>
+        </>
       )}
 
       {/* members */}

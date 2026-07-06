@@ -77,7 +77,7 @@ export default function RunDetailScreen({ route }) {
       {/* map */}
       <View style={styles.map}>
         {MAP_READY && path.length > 1 ? (
-          <GameMap theme="light" initialCenter={path[0]} initialZoom={14}>
+          <GameMap theme="dark" initialCenter={path[0]} initialZoom={14}>
             {ring.length >= 3 && <TerritoryFill id="d-terr" points={ring} fillColor={c.stroke} strokeColor={c.stroke} fillOpacity={0.35} />}
             <Trail id="d-trail" points={path} color={c.stroke} width={5} />
             <MapPoint id="d-start" point={path[0]} color={c.stroke} />

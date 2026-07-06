@@ -5,13 +5,23 @@ import React, { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 
+import { Award, Flame, Medal, Trophy } from 'lucide-react-native';
+
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
 import { getHealthEnabled, setHealthEnabled, requestHealthPermission } from '../health';
-import { colors, radius, space, type } from '../theme';
+import { colors, radius, space, type, withAlpha } from '../theme';
 import { Screen, Card, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
 import { toast } from '../ui/toast';
+
+// Trophy shelf — derived from live stats; earned trophies glow in the accent.
+const TROPHIES = [
+  { key: 'first_claim', label: 'First claim', icon: Flame, earned: (s) => (s.territory_count || 0) >= 1 },
+  { key: 'big_claim', label: '10k m² claim', icon: Trophy, earned: (s) => (s.biggest_claim_m2 || 0) >= 10000 },
+  { key: 'ten_zones', label: '10 zones', icon: Medal, earned: (s) => (s.territory_count || 0) >= 10 },
+  { key: 'streak4', label: '4-week streak', icon: Award, earned: (s) => (s.current_streak_weeks || 0) >= 4 },
+];
 
 const NOTIF_ROWS = [
   ['stolen', 'Land under attack'],
@@ -110,6 +120,31 @@ export default function ProfileScreen({ navigation }) {
         </View>
         <Text style={[type.title, { marginTop: space.md }]}>{user?.username}</Text>
         <Pill label={clan?.tag ? `[${clan.tag}]` : 'Solo'} color={accent} dot style={{ marginTop: space.sm }} />
+
+        {/* level + XP bar */}
+        {stats && (
+          <View style={styles.xpWrap}>
+            <View style={[styles.levelBadge, { borderColor: accent }]}>
+              <Text style={[type.statSm, { color: accent }]}>{stats.level ?? 0}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={styles.xpTrack}>
+                <View
+                  style={[
+                    styles.xpFill,
+                    {
+                      backgroundColor: accent,
+                      width: `${Math.min(100, ((stats.xp || 0) / Math.max(1, stats.next_level_xp || 100)) * 100)}%`,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[type.caption, { marginTop: 4 }]}>
+                {(stats.xp || 0).toLocaleString()} / {(stats.next_level_xp || 100).toLocaleString()} XP
+              </Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {/* stat wall */}
@@ -130,8 +165,24 @@ export default function ProfileScreen({ navigation }) {
         )}
       </View>
 
+      {/* trophies */}
+      <SectionHeader title="Trophies" style={{ marginTop: space.sm, marginBottom: space.md }} />
+      <View style={styles.trophyRow}>
+        {TROPHIES.map(({ key, label, icon: Icon, earned }) => {
+          const got = stats ? earned(stats) : false;
+          return (
+            <View key={key} style={[styles.trophy, got && { backgroundColor: withAlpha(accent, 0.12) }]}>
+              <Icon size={24} color={got ? accent : colors.textDim} strokeWidth={2} />
+              <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? colors.text : colors.textDim }]}>
+                {label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
       {/* recent runs */}
-      <SectionHeader title="Recent runs" style={{ marginTop: space.sm, marginBottom: space.md }} />
+      <SectionHeader title="Recent runs" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card padded={false}>
         {!runs ? (
           <View style={{ padding: space.lg }}>
@@ -263,6 +314,28 @@ const styles = StyleSheet.create({
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: { width: '31.5%', marginBottom: space.md },
+
+  xpWrap: { flexDirection: 'row', alignItems: 'center', gap: space.md, alignSelf: 'stretch', marginTop: space.lg },
+  levelBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+  },
+  xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden' },
+  xpFill: { height: '100%', borderRadius: 4 },
+
+  trophyRow: { flexDirection: 'row', gap: space.sm },
+  trophy: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    paddingVertical: space.md,
+    alignItems: 'center',
+  },
 
   runRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
   runDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },

@@ -100,7 +100,7 @@ export default function ClubCreateScreen({ navigation }) {
         style={{ marginBottom: space.xl }}
       />
 
-      <Button title="Create clan" onPress={create} loading={busy} disabled={!valid} accent={accent} />
+      <Button title="Create clan" variant="gradient" onPress={create} loading={busy} disabled={!valid} />
     </Screen>
   );
 }

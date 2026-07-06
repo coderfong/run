@@ -1,42 +1,59 @@
-// Home — the feed + season surface. Flat season banner, a [Feed | Leaderboard]
-// segmented control, then either the activity feed or the leaderboard.
-//
-// The season banner is a Phase-4 placeholder (static window); Phase 5 wires it
-// to real seasons + your clan's league and rank. Route thumbnails on feed
-// cards need run geometry (not carried in the feed) — deferred.
+// Home — PACER header (wordmark + bell), the season banner card over the
+// Marina Bay art, then [Feed | Leaderboard].
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, Text, View } from 'react-native';
+import { FlatList, ImageBackground, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Footprints } from 'lucide-react-native';
+import { Bell, Footprints } from 'lucide-react-native';
 
 import { api } from '../api/client';
-import { colors, space, type } from '../theme';
-import { useReduceMotion } from '../ui/motion';
+import { brand, colors, radius, space, type } from '../theme';
+import { useReduceMotion, PressableScale } from '../ui/motion';
 import { Segmented, EmptyState, Skeleton } from '../components/ui';
 import FeedCard from '../components/FeedCard';
 import LeaderboardView from '../components/LeaderboardView';
 import { useAccent } from '../hooks/useAccent';
 
-// Placeholder season (Phase 5 replaces with the real seasons table).
-const SEASON_NAME = 'Monsoon';
-const SEASON_NO = 1;
-const SEASON_END = new Date('2026-09-30T00:00:00Z');
+// Season window (matches the seeded Season 1; Phase-next: read from the API).
+const SEASON_NO = '01';
+const SEASON_CITY = 'SINGAPORE';
+const SEASON_END = new Date('2026-10-04T00:00:00Z');
+
+function countdown() {
+  const ms = Math.max(0, SEASON_END - Date.now());
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
+  return `ENDS IN ${d}D ${String(h).padStart(2, '0')}H`;
+}
 
 function SeasonBanner() {
-  const days = Math.max(0, Math.ceil((SEASON_END - Date.now()) / 86400000));
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-      <View>
-        <Text style={type.labelSm}>Season {SEASON_NO}</Text>
-        <Text style={[type.title, { marginTop: 2 }]}>{SEASON_NAME}</Text>
+    <ImageBackground
+      source={require('../../assets/art/season-banner.png')}
+      style={styles.season}
+      imageStyle={{ borderRadius: radius.card }}
+      resizeMode="cover"
+    >
+      <LinearGradient
+        colors={['rgba(11,13,16,0.82)', 'rgba(11,13,16,0.25)']}
+        start={{ x: 0, y: 0.5 }}
+        end={{ x: 1, y: 0.5 }}
+        style={[StyleSheet.absoluteFill, { borderRadius: radius.card }]}
+      />
+      <View style={{ padding: space.lg, flex: 1, justifyContent: 'space-between' }}>
+        <View>
+          <Text style={[type.labelSm, { color: 'rgba(255,255,255,0.7)' }]}>Season {SEASON_NO}</Text>
+          <Text style={[type.display, { color: '#fff', marginTop: 2 }]}>{SEASON_CITY}</Text>
+          <Text style={[type.labelSm, { color: brand.pink, marginTop: 4 }]}>{countdown()}</Text>
+        </View>
+        <View style={[styles.seasonChip, { backgroundColor: brand.pink }]}>
+          <Text style={[type.buttonSm, { color: '#fff' }]}>View season</Text>
+        </View>
       </View>
-      <View style={{ alignItems: 'flex-end' }}>
-        <Text style={type.statMd}>{days}</Text>
-        <Text style={type.caption}>days left</Text>
-      </View>
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -122,10 +139,31 @@ function FeedList({ navigation }) {
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState('feed');
+  const [unread, setUnread] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      api.notifications().then((d) => setUnread(d.unread || 0)).catch(() => {});
+    }, [])
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
       <View style={{ paddingHorizontal: space.gutter, paddingTop: space.sm }}>
+        {/* header: wordmark + bell */}
+        <View style={styles.header}>
+          <Text style={styles.wordmark}>{brand.name}</Text>
+          <PressableScale
+            style={styles.bell}
+            onPress={() => { setUnread(0); navigation.navigate('Notifications'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
+          >
+            <Bell size={22} color={colors.text} strokeWidth={2} />
+            {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
+          </PressableScale>
+        </View>
+
         <SeasonBanner />
         <Segmented
           options={[{ key: 'feed', label: 'Feed' }, { key: 'leaderboard', label: 'Leaderboard' }]}
@@ -138,3 +176,23 @@ export default function HomeScreen({ navigation }) {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.md,
+  },
+  wordmark: { ...type.title, transform: [{ skewX: '-6deg' }] },
+  bell: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  bellDot: { position: 'absolute', top: 7, right: 8, width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, borderColor: colors.bg },
+
+  season: { height: 150, borderRadius: radius.card, overflow: 'hidden' },
+  seasonChip: {
+    alignSelf: 'flex-start',
+    borderRadius: radius.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: 7,
+  },
+});

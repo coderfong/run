@@ -10,7 +10,7 @@ import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAccent } from '../hooks/useAccent';
 import { useReduceMotion } from '../ui/motion';
-import { Card, Pill, Sheet } from '../components/ui';
+import { Button, Card, Pill, Sheet } from '../components/ui';
 import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer } from '../components/GameMap';
 
 // Build the whole-board GeoJSON once per data change. Each ring is a feature
@@ -171,7 +171,7 @@ export default function GlobalMapScreen() {
 
   return (
     <View style={styles.container}>
-      <GameMap ref={mapRef} theme="light" showsUserLocation onIdle={onIdle} onPress={() => setSelected(null)}>
+      <GameMap ref={mapRef} theme="dark" showsUserLocation onIdle={onIdle} onPress={() => setSelected(null)}>
         <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} />
         {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
       </GameMap>
@@ -224,14 +224,28 @@ export default function GlobalMapScreen() {
             </TouchableOpacity>
           </View>
           <Text style={[type.bodyBold, { marginTop: space.sm }]} numberOfLines={1}>
-            {selected.username}
+            Captured by {selected.username}
             {selected.user_id === user.id ? ' (you)' : ''}
           </Text>
           <Text style={[type.caption, { marginTop: 2 }]}>
-            {Math.round(selected.area_m2).toLocaleString()} m² · held since{' '}
-            {new Date(selected.created_at).toLocaleDateString()}
+            {Math.round(selected.area_m2).toLocaleString()} m² ·{' '}
+            {selected.defenders > 1 ? `${selected.defenders} defenders · ` : ''}
+            held since {new Date(selected.created_at).toLocaleDateString()}
             {selected.contested ? ' · contested' : ''}
           </Text>
+          <Button
+            title="View territory"
+            variant="gradient"
+            size="sm"
+            onPress={() => {
+              const pts = [];
+              (selected.rings?.length ? selected.rings : [selected.polygon]).forEach((ring) =>
+                ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
+              );
+              if (pts.length) mapRef.current?.fitToPoints(pts, 70);
+            }}
+            style={{ marginTop: space.md }}
+          />
         </Card>
       )}
 

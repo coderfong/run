@@ -130,4 +130,7 @@ export const runTuning = {
 
   persistEveryNPoints: 20,
   holdToFinishMs: 1200,
+
+  // Calories estimate (until profile weight exists): kcal/kg/km × weight.
+  defaultWeightKg: 70,
 };

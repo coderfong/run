@@ -9,7 +9,9 @@ import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 
-import { darkColors, radius, shadow, space, type, withAlpha } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+
+import { brand, darkColors, radius, shadow, space, type, withAlpha } from '../theme';
 import { useClan } from '../state/clan';
 import { CountUpText, haptic, PressableScale } from '../ui/motion';
 import LoopMark from '../components/LoopMark';
@@ -244,13 +246,20 @@ export default function ResultScreen({ navigation, route }) {
 
       <View style={styles.actions}>
         <PressableScale
-          style={[styles.shareBtn, { backgroundColor: team.stroke }, shadow.glow(team.glow)]}
+          style={shadow.glow(brand.pink)}
           onPress={share}
           disabled={sharing}
           accessibilityRole="button"
           accessibilityLabel="Share result card"
         >
-          <Text style={styles.shareBtnText}>{sharing ? 'Preparing…' : 'Share'}</Text>
+          <LinearGradient
+            colors={brand.gradient}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={styles.shareBtn}
+          >
+            <Text style={styles.shareBtnText}>{sharing ? 'Preparing…' : 'Share'}</Text>
+          </LinearGradient>
         </PressableScale>
         <PressableScale
           style={styles.doneBtn}

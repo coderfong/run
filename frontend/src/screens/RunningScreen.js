@@ -10,6 +10,7 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
+import { Lock, Pause, Play } from 'lucide-react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -251,6 +252,10 @@ export default function RunningScreen({ navigation }) {
   const [closedArea, setClosedArea] = useState(0);
   const [accuracyM, setAccuracyM] = useState(null);
   const [permDenied, setPermDenied] = useState(false);
+  // Pause freezes the clock + GPS; lock swallows touches until long-press.
+  const [paused, setPaused] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const pausedAtRef = useRef(null);
   // Celebration: pill visibility + captured-polygon fill alpha (0 -> 0.25).
   const [celebration, setCelebration] = useState(null); // { areaM2 }
   const [capturedFillAlpha, setCapturedFillAlpha] = useState(0.25);
@@ -417,6 +422,8 @@ export default function RunningScreen({ navigation }) {
       setClosedArea(0);
       setNearStart(false);
       setLoopClosed(false);
+      setPaused(false);
+      setLocked(false);
       setIsRunning(true);
       setRecording(true);
       recentSpeedsRef.current = [];
@@ -582,8 +589,39 @@ export default function RunningScreen({ navigation }) {
     }
   }
 
+  // ---- pause / resume -----------------------------------------------------
+  // Pausing stops GPS + pedometer and freezes the elapsed clock; resuming
+  // shifts the start reference by the paused duration so time stays honest.
+
+  function pauseRun() {
+    if (paused) return;
+    pausedAtRef.current = Date.now();
+    stopWatchingLocation();
+    stopPedometer();
+    if (tickRef.current) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+    setPaused(true);
+  }
+
+  async function resumeFromPause() {
+    if (!paused) return;
+    const pausedFor = Date.now() - (pausedAtRef.current || Date.now());
+    startedAtRef.current += pausedFor;
+    setElapsedMs(Date.now() - startedAtRef.current);
+    tickRef.current = setInterval(() => {
+      setElapsedMs(Date.now() - startedAtRef.current);
+    }, 250);
+    await startWatchingLocation(gpsModeRef.current);
+    await startPedometer();
+    setPaused(false);
+  }
+
   async function finishRun() {
     haptic.light();
+    setPaused(false);
+    setLocked(false);
     stopWatchingLocation();
     stopPedometer();
     if (tickRef.current) {
@@ -646,6 +684,8 @@ export default function RunningScreen({ navigation }) {
       : '—';
 
   const openArea = distance * T.openPathM2PerM;
+  // Rough energy estimate: ~1.036 kcal per kg per km at a 70 kg default.
+  const caloriesKcal = 1.036 * T.defaultWeightKg * (distance / 1000);
 
   // Location denied: a way forward, not a dead end.
   if (permDenied) {
@@ -748,15 +788,19 @@ export default function RunningScreen({ navigation }) {
       )}
 
       <View style={styles.panel}>
-        {/* the three live stats — glow in the team colour */}
-        <View style={styles.metricsRow}>
-          <Metric label="Distance" value={`${(distance / 1000).toFixed(2)} km`} accent={accent} />
-          <Metric label="Pace" value={paceText} accent={accent} />
-          <Metric
-            label={loopClosed ? 'Captured' : 'If closed'}
-            value={formatArea(closedArea)}
-            accent={accent}
-          />
+        {/* hero distance + supporting stats (PACER layout) */}
+        <View style={styles.heroRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.heroValue, { color: accent }]} numberOfLines={1}>
+              {(distance / 1000).toFixed(2)}
+            </Text>
+            <Text style={styles.heroUnit}>km</Text>
+          </View>
+          <View style={styles.sideStats}>
+            <Metric label="Pace" value={paceText} accent={D.text} />
+            <Metric label={loopClosed ? 'Captured' : 'If closed'} value={formatArea(closedArea)} accent={accent} />
+            <Metric label="Calories" value={`${Math.round(caloriesKcal)} kcal`} accent={D.text} />
+          </View>
         </View>
 
         {/* the open-path fallback, quietly */}
@@ -776,9 +820,47 @@ export default function RunningScreen({ navigation }) {
             <Text style={styles.primaryBtnText}>Start run</Text>
           </PressableScale>
         ) : (
-          <HoldToFinishButton onFinish={finishRun} />
+          <View style={styles.controlsRow}>
+            <PressableScale
+              style={[styles.roundCtl, paused && { backgroundColor: accent, borderColor: accent }]}
+              onPress={() => { haptic.light(); paused ? resumeFromPause() : pauseRun(); }}
+              accessibilityRole="button"
+              accessibilityLabel={paused ? 'Resume run' : 'Pause run'}
+            >
+              {paused ? <Play size={22} color="#fff" fill="#fff" /> : <Pause size={22} color={D.text} fill={D.text} />}
+            </PressableScale>
+
+            <View style={{ flex: 1 }}>
+              <HoldToFinishButton onFinish={finishRun} />
+            </View>
+
+            <PressableScale
+              style={styles.roundCtl}
+              onPress={() => { haptic.light(); setLocked(true); }}
+              accessibilityRole="button"
+              accessibilityLabel="Lock screen controls"
+            >
+              <Lock size={20} color={D.text} />
+            </PressableScale>
+          </View>
         )}
       </View>
+
+      {/* lock overlay: swallow touches until a long-press unlock */}
+      {locked && (
+        <View style={styles.lockOverlay} pointerEvents="auto">
+          <Pressable
+            style={styles.unlockBtn}
+            delayLongPress={700}
+            onLongPress={() => { haptic.light(); setLocked(false); }}
+            accessibilityRole="button"
+            accessibilityLabel="Hold to unlock"
+          >
+            <Lock size={22} color="#fff" />
+            <Text style={[type.bodySmBold, { color: '#fff' }]}>Hold to unlock</Text>
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -856,6 +938,41 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
     elevation: 16,
+  },
+
+  heroRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: space.sm },
+  heroValue: { ...type.statHero, fontSize: 56, lineHeight: 60 },
+  heroUnit: { ...type.labelSm, color: D.muted },
+  sideStats: { width: 132, gap: space.sm },
+
+  controlsRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  roundCtl: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    borderColor: D.border,
+    backgroundColor: D.cardAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11,13,16,0.55)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 64,
+  },
+  unlockBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(21,24,29,0.95)',
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+    paddingHorizontal: space.xl,
+    paddingVertical: 14,
   },
 
   metricsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: space.md },

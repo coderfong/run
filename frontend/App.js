@@ -32,6 +32,7 @@ import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
 import RunDetailScreen from './src/screens/RunDetailScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 import ClubScreen from './src/screens/ClubScreen';
 import ClubJoinScreen from './src/screens/ClubJoinScreen';
 import ClubCreateScreen from './src/screens/ClubCreateScreen';
@@ -101,6 +102,11 @@ function HomeStack() {
         name="RunDetail"
         component={RunDetailScreen}
         options={{ headerShown: true, title: 'Run', ...headerLight }}
+      />
+      <HomeStackNav.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{ headerShown: true, title: 'Notifications', ...headerLight }}
       />
     </HomeStackNav.Navigator>
   );

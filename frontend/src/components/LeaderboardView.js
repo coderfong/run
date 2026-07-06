@@ -7,6 +7,8 @@ import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
+import { Crown } from 'lucide-react-native';
+
 import { api } from '../api/client';
 import { colors, radius, shadow, space, type, withAlpha } from '../theme';
 import { NEUTRAL } from '../state/clan';
@@ -163,16 +165,59 @@ export default function LeaderboardView() {
   }
 
   const myRow = rows.find((r) => r.user_id === user.id);
-  const showPinned = myRow && !myVisible;
+  // Podium members are always visible in the header — never pin them.
+  const showPinned = myRow && myRow.rank > 3 && !myVisible;
+  const podiumRows = rows.slice(0, 3);
+  const listRows = rows.slice(3);
+
+  // Visual order silver–gold–bronze, gold centered and raised.
+  const podiumOrder = [podiumRows[1], podiumRows[0], podiumRows[2]].filter(Boolean);
+
+  const podium = (
+    <View style={styles.podium}>
+      {podiumOrder.map((r) => {
+        const c = r.clan_color || NEUTRAL;
+        const isFirst = r.rank === 1;
+        return (
+          <View key={r.user_id} style={[styles.podiumCol, isFirst && styles.podiumFirst]}>
+            {isFirst && <Crown size={18} color="#eab308" fill="#eab308" style={{ marginBottom: 4 }} />}
+            <View
+              style={[
+                styles.podiumAvatar,
+                { backgroundColor: c.fill, borderColor: c.stroke },
+                isFirst && { width: 72, height: 72, borderRadius: 36 },
+              ]}
+            >
+              <Text style={[isFirst ? type.title : type.bodyBold, { color: c.stroke }]}>
+                {(r.username || '?').slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+            <Text style={[type.caption, { marginTop: 6 }]}>#{r.rank}</Text>
+            <Text style={type.bodySmBold} numberOfLines={1}>
+              {r.username}
+            </Text>
+            <Text style={[type.captionMedium, { color: c.stroke }]}>
+              {Math.round(r.total_area_m2).toLocaleString()}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
 
   return (
     <View style={{ flex: 1 }}>
       <FlatList
         style={styles.list}
         contentContainerStyle={[styles.listContent, showPinned && { paddingBottom: 96 }]}
-        data={rows}
+        data={listRows}
         keyExtractor={(r) => r.user_id}
-        ListHeaderComponent={header}
+        ListHeaderComponent={
+          <View>
+            {header}
+            {podium}
+          </View>
+        }
         onViewableItemsChanged={onViewable}
         viewabilityConfig={viewabilityConfig}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={accent} colors={[accent]} />}
@@ -247,5 +292,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     borderRadius: radius.md,
     ...shadow.raised,
+  },
+
+  podium: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: space.xl,
+    marginBottom: space.lg,
+  },
+  podiumCol: { alignItems: 'center', width: 88 },
+  podiumFirst: { marginBottom: space.sm },
+  podiumAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
