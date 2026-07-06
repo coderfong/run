@@ -56,13 +56,19 @@
       "@rnmapbox/maps"
     ],
     "extra": {
-      "apiBase": "https://chargers-use-asylum-composed.trycloudflare.com"
+      "apiBase": "https://chargers-use-asylum-composed.trycloudflare.com",
+      "mapboxPublicToken": "",
+      "mapStyleLight": "",
+      "mapStyleDark": "",
+      "eas": {
+        "projectId": "01ac36c0-e240-4cf7-9f66-d4fd603403a6"
+      }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+      "url": "https://u.expo.dev/01ac36c0-e240-4cf7-9f66-d4fd603403a6"
     }
   }
 }
