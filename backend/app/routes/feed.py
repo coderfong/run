@@ -35,7 +35,9 @@ def feed(
                    r.distance_m, r.duration_s, r.ended_at,
                    COALESCE(t.area_m2, 0) AS area_m2,
                    (t.id IS NOT NULL) AS closed_loop,
-                   c.tag, c.color_key
+                   c.tag, c.color_key,
+                   (SELECT COUNT(*) FROM run_kudos k WHERE k.run_id = r.id) AS kudos_count,
+                   EXISTS(SELECT 1 FROM run_kudos k WHERE k.run_id = r.id AND k.user_id = :uid) AS kudoed
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -66,6 +68,8 @@ def feed(
             closed_loop=bool(r[7]),
             clan_tag=r[8],
             clan_color=schemas.ClanColor(**color_triple(r[9])) if r[9] else None,
+            kudos_count=int(r[10] or 0),
+            kudoed=bool(r[11]),
         )
         for r in rows
     ]

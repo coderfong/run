@@ -2,15 +2,24 @@
 // Trophy shelf (PRs + badges) and tap-through run detail arrive in Phase 6.
 
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
+import { getHealthEnabled, setHealthEnabled, requestHealthPermission } from '../health';
 import { colors, radius, space, type } from '../theme';
 import { Screen, Card, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
 import { toast } from '../ui/toast';
+
+const NOTIF_ROWS = [
+  ['stolen', 'Land under attack'],
+  ['clan_goal', 'Clan weekly goal'],
+  ['kudos', 'Kudos received'],
+  ['season', 'Season & promotion'],
+  ['recap', 'Weekly recap'],
+];
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
 const PRIVACY_POLICY_URL = 'https://territoryrun.app/privacy';
@@ -26,13 +35,15 @@ function StatTile({ label, value, unit, accent }) {
   );
 }
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ navigation }) {
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
   const { color, clan } = useClan();
   const accent = color.stroke;
 
   const [stats, setStats] = useState(null);
   const [runs, setRuns] = useState(null);
+  const [prefs, setPrefs] = useState(null);
+  const [healthOn, setHealthOn] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(user?.username || '');
   const [busy, setBusy] = useState(false);
@@ -43,7 +54,22 @@ export default function ProfileScreen() {
   useEffect(() => {
     api.meStats().then(setStats).catch(() => setStats({}));
     api.meRuns().then(setRuns).catch(() => setRuns([]));
+    api.getNotifPrefs().then(setPrefs).catch(() => setPrefs(null));
+    getHealthEnabled().then(setHealthOn);
   }, []);
+
+  const togglePref = async (key) => {
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    try { await api.setNotifPrefs(next); } catch { setPrefs(prefs); }
+  };
+
+  const toggleHealth = async () => {
+    const next = !healthOn;
+    setHealthOn(next);
+    await setHealthEnabled(next);
+    if (next) requestHealthPermission();
+  };
 
   const saveUsername = async () => {
     const u = draft.trim().toLowerCase();
@@ -115,7 +141,13 @@ export default function ProfileScreen() {
           <Text style={[type.caption, { padding: space.lg }]}>No runs yet.</Text>
         ) : (
           runs.slice(0, 8).map((r, i) => (
-            <View key={r.run_id} style={[styles.runRow, i > 0 && styles.runDivider]}>
+            <TouchableOpacity
+              key={r.run_id}
+              style={[styles.runRow, i > 0 && styles.runDivider]}
+              onPress={() => navigation.navigate('RunDetail', { runId: r.run_id })}
+              accessibilityRole="button"
+              accessibilityLabel="Open run detail"
+            >
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{new Date(r.created_at).toLocaleDateString()}</Text>
                 <Text style={type.caption}>
@@ -123,7 +155,7 @@ export default function ProfileScreen() {
                 </Text>
               </View>
               {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </Card>
@@ -156,7 +188,35 @@ export default function ProfileScreen() {
         )}
       </Card>
 
-      <Button title="Sign out" variant="secondary" onPress={signOut} style={{ marginTop: space.md }} />
+      {/* notifications */}
+      <SectionHeader title="Notifications" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <Card padded={false}>
+        {NOTIF_ROWS.map(([key, label], i) => (
+          <View key={key} style={[styles.toggleRow, i > 0 && styles.runDivider]}>
+            <Text style={type.body}>{label}</Text>
+            <Switch
+              value={prefs ? !!prefs[key] : true}
+              onValueChange={() => prefs && togglePref(key)}
+              trackColor={{ true: accent }}
+              disabled={!prefs}
+            />
+          </View>
+        ))}
+      </Card>
+
+      {/* health sync */}
+      <SectionHeader title="Health" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <Card>
+        <View style={styles.toggleRowInner}>
+          <View style={{ flex: 1, paddingRight: space.md }}>
+            <Text style={type.body}>Sync runs to Health</Text>
+            <Text style={type.caption}>Write each finished run to Apple Health / Health Connect. We never read your health data.</Text>
+          </View>
+          <Switch value={healthOn} onValueChange={toggleHealth} trackColor={{ true: accent }} />
+        </View>
+      </Card>
+
+      <Button title="Sign out" variant="secondary" onPress={signOut} style={{ marginTop: space.xl }} />
 
       {!confirmingDelete ? (
         <Button
@@ -207,6 +267,8 @@ const styles = StyleSheet.create({
   runRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
   runDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   claimDot: { width: 8, height: 8, borderRadius: 4 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
+  toggleRowInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
   input: {
     ...type.body,

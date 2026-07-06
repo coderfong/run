@@ -30,6 +30,7 @@ import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
+import RunDetailScreen from './src/screens/RunDetailScreen';
 import ClubScreen from './src/screens/ClubScreen';
 import ClubJoinScreen from './src/screens/ClubJoinScreen';
 import ClubCreateScreen from './src/screens/ClubCreateScreen';
@@ -42,6 +43,7 @@ import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
 import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import { usePushRegistration } from './src/hooks/usePush';
 import { colors, darkColors, fonts } from './src/theme';
 
 // Crash telemetry — a strict no-op unless a DSN is provided via env/extra.
@@ -94,6 +96,11 @@ function HomeStack() {
         component={LeaderboardScreen}
         options={{ headerShown: true, title: 'Leaderboard', ...headerLight }}
       />
+      <HomeStackNav.Screen
+        name="RunDetail"
+        component={RunDetailScreen}
+        options={{ headerShown: true, title: 'Run', ...headerLight }}
+      />
     </HomeStackNav.Navigator>
   );
 }
@@ -131,6 +138,11 @@ function YouStack() {
   return (
     <YouStackNav.Navigator screenOptions={{ headerShown: false }}>
       <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
+      <YouStackNav.Screen
+        name="RunDetail"
+        component={RunDetailScreen}
+        options={{ headerShown: true, title: 'Run', ...headerLight }}
+      />
     </YouStackNav.Navigator>
   );
 }
@@ -254,6 +266,7 @@ function RootNavigator() {
   const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
+  usePushRegistration(signedIn);
 
   useEffect(() => {
     if (!signedIn) return;

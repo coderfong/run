@@ -100,6 +100,14 @@ export const api = {
   meStats: () => request('/me/stats'),
   meRuns: () => request('/me/runs'),
 
+  // ----- run detail + social -------------------------------------------
+  runDetail: (runId) => request(`/runs/${runId}`),
+  toggleKudos: (runId) => request(`/runs/${runId}/kudos`, { method: 'POST', body: '{}' }),
+  registerPushToken: (token, platform) =>
+    request('/me/push-token', { method: 'POST', body: JSON.stringify({ token, platform }) }),
+  getNotifPrefs: () => request('/me/notif-prefs'),
+  setNotifPrefs: (prefs) => request('/me/notif-prefs', { method: 'PUT', body: JSON.stringify(prefs) }),
+
   // ----- territories + leaderboard -------------------------------------
   // ----- clans ----------------------------------------------------------
   myClan: () => request('/me/clan'),

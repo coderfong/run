@@ -10,15 +10,16 @@ authoritative territory write still happens at /end-run.
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from geoalchemy2.shape import from_shape
 from shapely.geometry import LineString
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import fitness, models, schemas
 from ..anticheat import is_verified, validate_run
-from .clans import record_clan_activity
+from ..notifications import notify
+from .clans import clan_member_ids, record_clan_activity
 from ..config import settings
 from ..database import get_db
 from ..geospatial import clean_path, detect_loop, geometry_to_rings, polygon_to_lonlat_ring
@@ -79,6 +80,7 @@ def end_run(
     request: Request,
     response: Response,
     payload: schemas.EndRunIn,
+    background: BackgroundTasks,
     user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
@@ -133,16 +135,34 @@ def end_run(
             clan_id=user.clan_id,
         )
 
+    # Server-side splits + personal records (records only on verified runs).
+    area_claimed = territory_out.area_m2 if territory_out else 0.0
+    achievements = fitness.record_splits_and_prs(
+        db, run.id, run.user_id, cleaned, run.distance_m, area_claimed, run.verified
+    )
+
     # Advance the runner's clan weekly goal + season stats (no-op if clanless).
-    record_clan_activity(
-        db,
-        user,
-        distance_m=run.distance_m,
-        closed_loop=loop is not None,
-        stolen=stolen_m2,
+    goal_reached, clan_id = record_clan_activity(
+        db, user, distance_m=run.distance_m, closed_loop=loop is not None, stolen=stolen_m2
     )
 
     db.commit()
+
+    # Best-effort push notifications, off the request path.
+    if stolen_m2 > 0 and stolen_from:
+        victim = db.execute(
+            text("SELECT id::text FROM users WHERE username = :u"), {"u": stolen_from}
+        ).fetchone()
+        if victim:
+            background.add_task(
+                notify, [victim[0]], "stolen", "Your land is under attack",
+                f"{user.username} took {round(stolen_m2):,} m² of your territory.",
+            )
+    if goal_reached and clan_id:
+        background.add_task(
+            notify, clan_member_ids(db, clan_id, exclude=user.id), "clan_goal",
+            "Weekly goal reached!", "Your clan hit this week's goal. Badge frame unlocked.",
+        )
 
     return schemas.RunResultOut(
         run_id=run.id,
@@ -152,6 +172,7 @@ def end_run(
         territory=territory_out,
         stolen_m2=stolen_m2,
         stolen_from=stolen_from,
+        achievements=achievements,
     )
 
 

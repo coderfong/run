@@ -191,12 +191,14 @@ def _require_role(db, clan_id, user_id, allowed):
 # ---------------------------------------------------------------------------
 
 def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool, stolen: float):
-    """On end-run: advance the weekly goal + season stats for the runner's clan."""
+    """On end-run: advance the weekly goal + season stats for the runner's
+    clan. Returns (goal_reached_now, clan_id) so the caller can notify."""
     m = _membership(db, user.id)
     if not m:
-        return
+        return (False, None)
     clan_id = m[0]
     goal, ws = _ensure_week_goal(db, clan_id)
+    was_reached = bool(goal[5])
     db.execute(
         text(
             """
@@ -243,6 +245,16 @@ def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool
             {"sid": season[0], "cid": clan_id, "area": float(area or 0),
              "st": 1 if stolen > 0 else 0, "dist": distance_m},
         )
+
+    now_reached = db.execute(
+        text("SELECT reached FROM clan_week_goals WHERE id = :gid"), {"gid": goal[0]}
+    ).scalar()
+    return (bool(now_reached) and not was_reached, clan_id)
+
+
+def clan_member_ids(db: Session, clan_id: str, exclude=None):
+    rows = db.execute(text("SELECT user_id::text FROM clan_members WHERE clan_id = :c"), {"c": clan_id}).fetchall()
+    return [r[0] for r in rows if r[0] != exclude]
 
 
 # ---------------------------------------------------------------------------

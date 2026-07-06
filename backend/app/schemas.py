@@ -116,6 +116,8 @@ class FeedItem(BaseModel):
     created_at: datetime
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
+    kudos_count: int = 0
+    kudoed: bool = False
 
 
 class FeedOut(BaseModel):
@@ -139,6 +141,43 @@ class RunSummary(BaseModel):
     area_m2: float
     closed_loop: bool
     created_at: datetime
+
+
+class RunSplit(BaseModel):
+    km: int
+    seconds: float
+
+
+class RunDetail(BaseModel):
+    run_id: str
+    user_id: str
+    username: str
+    is_you: bool
+    distance_m: float
+    duration_s: float
+    area_m2: float
+    closed_loop: bool
+    created_at: datetime
+    clan_tag: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
+    path: List[Tuple[float, float]] = []      # [lon, lat]
+    territory_rings: List[List[Tuple[float, float]]] = []
+    splits: List[RunSplit] = []
+    kudos_count: int = 0
+    kudoed: bool = False
+
+
+class PushTokenIn(BaseModel):
+    token: str
+    platform: Optional[str] = None
+
+
+class NotifPrefs(BaseModel):
+    stolen: bool = True
+    clan_goal: bool = True
+    kudos: bool = True
+    season: bool = True
+    recap: bool = True
 
 
 # ---- clans (Phase 5) ------------------------------------------------------

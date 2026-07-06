@@ -3,11 +3,14 @@
 // adds kudos. Route thumbnails need the run geometry (not carried in the
 // feed) — deferred to keep the feed lightweight.
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Text, View } from 'react-native';
+import { Heart } from 'lucide-react-native';
 
+import { api } from '../api/client';
 import { colors, space, type } from '../theme';
 import { NEUTRAL } from '../state/clan';
+import { PressableScale, haptic } from '../ui/motion';
 import { Card, Row, StatValue } from './ui';
 
 function timeAgo(iso) {
@@ -31,10 +34,27 @@ function formatArea(m2) {
   return `${Math.round(m2).toLocaleString()} m²`;
 }
 
-export default function FeedCard({ item }) {
+export default function FeedCard({ item, navigation }) {
   const c = item.clan_color || NEUTRAL;
+  const [kudoed, setKudoed] = useState(item.kudoed);
+  const [count, setCount] = useState(item.kudos_count || 0);
+
+  const kudos = async () => {
+    haptic.light();
+    setKudoed((k) => !k);
+    setCount((n) => n + (kudoed ? -1 : 1));
+    try {
+      const r = await api.toggleKudos(item.id);
+      setKudoed(r.kudoed);
+      setCount(r.kudos_count);
+    } catch {
+      setKudoed(item.kudoed);
+      setCount(item.kudos_count || 0);
+    }
+  };
+
   return (
-    <Card style={{ marginBottom: space.md }}>
+    <Card onPress={() => navigation?.navigate('RunDetail', { runId: item.id })} style={{ marginBottom: space.md }}>
       <Row between>
         <Row gap={10}>
           <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
@@ -52,6 +72,10 @@ export default function FeedCard({ item }) {
             </Text>
           </View>
         </Row>
+        <PressableScale onPress={kudos} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, padding: 4 }} accessibilityRole="button" accessibilityLabel="Give kudos">
+          <Heart size={18} color={kudoed ? c.stroke : colors.textDim} fill={kudoed ? c.stroke : 'transparent'} />
+          {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
+        </PressableScale>
       </Row>
 
       <Row between style={{ marginTop: space.md }}>

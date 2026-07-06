@@ -25,6 +25,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
 import { useRecording } from '../state/recording';
+import { writeWorkout } from '../health';
 import { darkColors, radius, runTuning as T, space, type } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
@@ -615,6 +616,12 @@ export default function RunningScreen({ navigation }) {
         stepCountRef.current > 0 ? stepCountRef.current : null
       );
       clearActiveRun();
+      // Optional, write-only health sync (no-op unless enabled + module present).
+      writeWorkout({
+        startMs: startedAtRef.current || Date.now(),
+        endMs: Date.now(),
+        distanceM: totalDistanceMeters(finalPath),
+      }).catch(() => {});
       navigation.navigate('Result', { result, run: result, loopClosed, path: finalPath, polygon });
     } catch (err) {
       Alert.alert(

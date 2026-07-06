@@ -112,7 +112,7 @@ function FeedList({ navigation }) {
       onEndReachedThreshold={0.5}
       renderItem={({ item, index }) => (
         <Animated.View entering={reduce ? undefined : FadeInDown.delay(Math.min(index, 12) * 30).duration(240)}>
-          <FeedCard item={item} />
+          <FeedCard item={item} navigation={navigation} />
         </Animated.View>
       )}
     />
