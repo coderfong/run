@@ -1,43 +1,54 @@
-import React, { useState } from 'react';
-import {
-  ActivityIndicator,
-  Linking,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+// You — profile + your stats. Header, stat wall, recent runs, and settings.
+// Trophy shelf (PRs + badges) and tap-through run detail arrive in Phase 6.
+
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 
+import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { regionForUser } from '../data/regions';
+import { useAccent } from '../hooks/useAccent';
 import { colors, radius, space, type } from '../theme';
+import { Screen, Card, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
 import { toast } from '../ui/toast';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
-// Slot for the hosted policy (see PRIVACY.md in the repo).
 const PRIVACY_POLICY_URL = 'https://territoryrun.app/privacy';
+
+const km = (m) => (m / 1000).toFixed(1);
+const km2 = (m2) => (m2 / 1e6).toFixed(2);
+
+function StatTile({ label, value, unit, accent }) {
+  return (
+    <Card style={styles.tile} padded>
+      <StatValue size="md" label={label} value={value} unit={unit} color={accent} />
+    </Card>
+  );
+}
 
 export default function ProfileScreen() {
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
   const team = regionForUser(user?.username || '');
+  const accent = useAccent();
 
+  const [stats, setStats] = useState(null);
+  const [runs, setRuns] = useState(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(user?.username || '');
   const [busy, setBusy] = useState(false);
-  // Delete flow: expanding confirm card that requires typing the username.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteDraft, setDeleteDraft] = useState('');
   const [deleting, setDeleting] = useState(false);
 
+  useEffect(() => {
+    api.meStats().then(setStats).catch(() => setStats({}));
+    api.meRuns().then(setRuns).catch(() => setRuns([]));
+  }, []);
+
   const saveUsername = async () => {
     const u = draft.trim().toLowerCase();
-    if (!USERNAME_RE.test(u)) {
-      toast.error('Username: 3-32 chars (a-z, 0-9, _).');
-      return;
-    }
+    if (!USERNAME_RE.test(u)) return toast.error('Username: 3-32 chars (a-z, 0-9, _).');
     setBusy(true);
     try {
       await updateUsername(u);
@@ -51,7 +62,6 @@ export default function ProfileScreen() {
   };
 
   const deleteMatches = deleteDraft.trim().toLowerCase() === user?.username;
-
   const doDelete = async () => {
     if (!deleteMatches) return;
     setDeleting(true);
@@ -65,27 +75,66 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.container}
-    >
+    <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
+      {/* header */}
       <View style={styles.header}>
-        <View style={[styles.avatar, { borderColor: team.color, backgroundColor: team.fill }]}>
-          <Text style={[styles.avatarText, { color: team.text }]}>
+        <View style={[styles.avatar, { backgroundColor: team.fill }]}>
+          <Text style={[type.display, { color: team.text }]}>
             {(user?.username || '?').slice(0, 1).toUpperCase()}
           </Text>
         </View>
-        <Text style={styles.username}>{user?.username}</Text>
-        <View style={[styles.teamPill, { borderColor: team.color }]}>
-          <View style={[styles.teamDot, { backgroundColor: team.color }]} />
-          <Text style={styles.teamText}>Team {team.name}</Text>
-        </View>
+        <Text style={[type.title, { marginTop: space.md }]}>{user?.username}</Text>
+        <Pill label={`Team ${team.name}`} color={accent} dot style={{ marginTop: space.sm }} />
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>Username</Text>
+      {/* stat wall */}
+      <View style={styles.wall}>
+        {!stats ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} width="31%" height={80} style={{ borderRadius: 16, marginBottom: space.md }} />
+          ))
+        ) : (
+          <>
+            <StatTile label="Area held" value={km2(stats.total_area_m2 || 0)} unit="km²" accent={accent} />
+            <StatTile label="Distance" value={km(stats.career_distance_m || 0)} unit="km" />
+            <StatTile label="Runs" value={String(stats.runs_count || 0)} />
+            <StatTile label="Biggest claim" value={Math.round(stats.biggest_claim_m2 || 0).toLocaleString()} unit="m²" accent={accent} />
+            <StatTile label="Streak" value={String(stats.current_streak_weeks || 0)} unit="wk" />
+            <StatTile label="Zones" value={String(stats.territory_count || 0)} />
+          </>
+        )}
+      </View>
+
+      {/* recent runs */}
+      <SectionHeader title="Recent runs" style={{ marginTop: space.sm, marginBottom: space.md }} />
+      <Card padded={false}>
+        {!runs ? (
+          <View style={{ padding: space.lg }}>
+            <Skeleton width="100%" height={16} />
+          </View>
+        ) : runs.length === 0 ? (
+          <Text style={[type.caption, { padding: space.lg }]}>No runs yet.</Text>
+        ) : (
+          runs.slice(0, 8).map((r, i) => (
+            <View key={r.run_id} style={[styles.runRow, i > 0 && styles.runDivider]}>
+              <View style={{ flex: 1 }}>
+                <Text style={type.bodyBold}>{new Date(r.created_at).toLocaleDateString()}</Text>
+                <Text style={type.caption}>
+                  {km(r.distance_m)} km · {r.closed_loop ? `${Math.round(r.area_m2).toLocaleString()} m² claimed` : 'no loop'}
+                </Text>
+              </View>
+              {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
+            </View>
+          ))
+        )}
+      </Card>
+
+      {/* settings */}
+      <SectionHeader title="Settings" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <Card>
+        <Text style={type.labelSm}>Username</Text>
         {editing ? (
-          <View>
+          <>
             <TextInput
               value={draft}
               onChangeText={setDraft}
@@ -95,83 +144,34 @@ export default function ProfileScreen() {
               style={styles.input}
               placeholderTextColor={colors.textDim}
             />
-            <View style={styles.row}>
-              <TouchableOpacity
-                style={[styles.smallBtn, styles.secondary]}
-                onPress={() => {
-                  setEditing(false);
-                  setDraft(user?.username || '');
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel username change"
-              >
-                <Text style={styles.secondaryText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.smallBtn, styles.primary, busy && { opacity: 0.6 }]}
-                onPress={saveUsername}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel="Save username"
-              >
-                {busy ? (
-                  <ActivityIndicator color={colors.primaryInk} />
-                ) : (
-                  <Text style={styles.primaryText}>Save</Text>
-                )}
-              </TouchableOpacity>
+            <View style={styles.btnRow}>
+              <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => { setEditing(false); setDraft(user?.username || ''); }} />
+              <Button title="Save" size="sm" full={false} loading={busy} onPress={saveUsername} accent={accent} />
             </View>
-          </View>
+          </>
         ) : (
-          <View style={styles.row}>
-            <Text style={styles.cardValue}>{user?.username}</Text>
-            <TouchableOpacity
-              style={[styles.smallBtn, styles.secondary]}
-              onPress={() => setEditing(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Change username"
-            >
-              <Text style={styles.secondaryText}>Change</Text>
-            </TouchableOpacity>
+          <View style={styles.settingRow}>
+            <Text style={type.bodyBold}>{user?.username}</Text>
+            <Button title="Change" variant="secondary" size="sm" full={false} onPress={() => setEditing(true)} />
           </View>
         )}
-      </View>
+      </Card>
 
-      <TouchableOpacity
-        style={[styles.fullBtn, { backgroundColor: colors.card }]}
-        activeOpacity={0.85}
-        onPress={signOut}
-        accessibilityRole="button"
-        accessibilityLabel="Sign out"
-      >
-        <Text style={[styles.fullBtnText, { color: colors.text }]}>
-          Sign out
-        </Text>
-      </TouchableOpacity>
+      <Button title="Sign out" variant="secondary" onPress={signOut} style={{ marginTop: space.md }} />
 
       {!confirmingDelete ? (
-        <TouchableOpacity
-          style={[styles.fullBtn, { backgroundColor: colors.dangerSoft, borderColor: '#f5c2c2', marginTop: space.md }]}
-          activeOpacity={0.85}
-          onPress={() => {
-            setConfirmingDelete(true);
-            setDeleteDraft('');
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Delete account"
-        >
-          <Text style={[styles.fullBtnText, { color: colors.danger }]}>
-            Delete account
-          </Text>
-        </TouchableOpacity>
+        <Button
+          title="Delete account"
+          variant="destructive"
+          onPress={() => { setConfirmingDelete(true); setDeleteDraft(''); }}
+          style={{ marginTop: space.md, backgroundColor: colors.dangerSoft }}
+        />
       ) : (
-        <View style={styles.deleteCard}>
-          <Text style={styles.deleteTitle}>Delete this account?</Text>
-          <Text style={styles.deleteBody}>
-            This permanently removes your runs and territories. It cannot be
-            undone. Type{' '}
-            <Text style={styles.deleteUsername}>{user?.username}</Text> to
-            confirm.
+        <Card style={{ marginTop: space.md, borderWidth: 1, borderColor: '#f5c2c2' }}>
+          <Text style={[type.heading, { color: colors.danger, marginBottom: space.sm }]}>Delete this account?</Text>
+          <Text style={[type.bodySm, { color: colors.textMuted, lineHeight: 19 }]}>
+            This permanently removes your runs and territories. It cannot be undone. Type{' '}
+            <Text style={[type.bodySmBold]}>{user?.username}</Text> to confirm.
           </Text>
           <TextInput
             value={deleteDraft}
@@ -183,96 +183,32 @@ export default function ProfileScreen() {
             style={styles.input}
             accessibilityLabel="Type your username to confirm deletion"
           />
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={[styles.smallBtn, styles.secondary]}
-              onPress={() => setConfirmingDelete(false)}
-              accessibilityRole="button"
-            >
-              <Text style={styles.secondaryText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.smallBtn,
-                styles.deleteBtn,
-                (!deleteMatches || deleting) && { opacity: 0.4 },
-              ]}
-              onPress={doDelete}
-              disabled={!deleteMatches || deleting}
-              accessibilityRole="button"
-              accessibilityLabel="Permanently delete account"
-            >
-              {deleting ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.deleteBtnText}>Delete forever</Text>
-              )}
-            </TouchableOpacity>
+          <View style={styles.btnRow}>
+            <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => setConfirmingDelete(false)} />
+            <Button title="Delete forever" variant="destructive" size="sm" full={false} disabled={!deleteMatches} loading={deleting} onPress={doDelete} />
           </View>
-        </View>
+        </Card>
       )}
 
-      <TouchableOpacity
-        style={styles.linkRow}
-        onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})}
-        accessibilityRole="link"
-        accessibilityLabel="Privacy policy"
-      >
-        <Text style={styles.linkText}>Privacy Policy</Text>
+      <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Privacy policy">
+        <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Privacy Policy</Text>
       </TouchableOpacity>
-
-      <Text style={styles.legal}>
-        Territory Run v{Constants.expoConfig?.version || '1.0.0'}
-        {'\n'}By using Territory Run you accept our Terms of Service and
-        Privacy Policy.
-      </Text>
-    </ScrollView>
+      <Text style={styles.legal}>Territory Run v{Constants.expoConfig?.version || '2.0.0'}</Text>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: space.lg, paddingBottom: space.xxl },
+  header: { alignItems: 'center', marginTop: space.md, marginBottom: space.xl },
+  avatar: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
 
-  header: { alignItems: 'center', marginBottom: space.xl },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.card,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: space.md,
-  },
-  avatarText: { ...type.display, color: colors.text },
-  username: { ...type.title, marginBottom: space.sm },
-  teamPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: space.md,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-  },
-  teamDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  teamText: { ...type.captionMedium, color: colors.text },
+  wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  tile: { width: '31.5%', marginBottom: space.md },
 
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: space.lg,
-    marginBottom: space.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cardLabel: { ...type.labelSm, marginBottom: 6 },
-  cardValue: { ...type.bodyBold },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+  runRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
+  runDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  claimDot: { width: 8, height: 8, borderRadius: 4 },
+
   input: {
     ...type.body,
     backgroundColor: colors.bgElevated,
@@ -283,51 +219,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginVertical: space.sm,
   },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm },
+  btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm, marginTop: space.sm },
 
-  smallBtn: {
-    paddingHorizontal: space.md,
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    minWidth: 84,
-    alignItems: 'center',
-  },
-  primary: { backgroundColor: colors.primary, marginLeft: space.sm },
-  primaryText: { ...type.buttonSm },
-  secondary: { backgroundColor: colors.cardAlt },
-  secondaryText: { ...type.buttonSm, color: colors.text },
-
-  fullBtn: {
-    paddingVertical: 16,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  fullBtnText: { ...type.button, color: colors.text },
-
-  legal: {
-    ...type.caption,
-    color: colors.textDim,
-    marginTop: space.xl,
-    textAlign: 'center',
-    paddingHorizontal: space.lg,
-    lineHeight: 18,
-  },
-
-  deleteCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: '#f5c2c2',
-    padding: space.lg,
-    marginTop: space.md,
-  },
-  deleteTitle: { ...type.heading, color: colors.danger, marginBottom: space.sm },
-  deleteBody: { ...type.bodySm, color: colors.textMuted, lineHeight: 19 },
-  deleteUsername: { ...type.bodySmBold, color: colors.text },
-  deleteBtn: { backgroundColor: colors.danger, marginLeft: space.sm },
-  deleteBtnText: { ...type.buttonSm, color: '#fff' },
-
-  linkRow: { marginTop: space.xl, alignItems: 'center' },
-  linkText: { ...type.bodyMedium, color: colors.textMuted, textDecorationLine: 'underline' },
+  link: { marginTop: space.xl, alignItems: 'center' },
+  legal: { ...type.caption, color: colors.textDim, marginTop: space.md, textAlign: 'center' },
 });

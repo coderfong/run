@@ -12,3 +12,4 @@ export { default as SectionHeader } from './SectionHeader';
 export { default as EmptyState } from './EmptyState';
 export { default as Skeleton } from './Skeleton';
 export { default as Sheet } from './Sheet';
+export { default as Segmented } from './Segmented';

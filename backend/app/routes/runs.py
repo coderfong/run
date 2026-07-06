@@ -118,9 +118,11 @@ def end_run(
 
     loop = detect_loop(cleaned)
     territory_out = None
+    stolen_m2 = 0.0
+    stolen_from = None
 
     if loop is not None:
-        territory_out = _claim_territory(
+        territory_out, stolen_m2, stolen_from = _claim_territory(
             db=db,
             user_id=run.user_id,
             run_id=run.id,
@@ -138,6 +140,8 @@ def end_run(
         duration_s=run.duration_s,
         closed_loop=loop is not None,
         territory=territory_out,
+        stolen_m2=stolen_m2,
+        stolen_from=stolen_from,
     )
 
 
@@ -149,7 +153,7 @@ def _claim_territory(
     initial_area_m2: float,
     verified: bool = True,
     clan_id: str | None = None,
-) -> schemas.TerritoryOut | None:
+):  # -> (TerritoryOut | None, stolen_m2, stolen_from)
     """Insert the new polygon, resolving overlaps with existing territories.
 
     Rules:
@@ -194,7 +198,7 @@ def _claim_territory(
             ),
             {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id},
         ).fetchone()
-        return _territory_out(db, new_row[0])
+        return _territory_out(db, new_row[0]), 0.0, None
 
     # Pull rivals (other users) that intersect.
     rivals = db.execute(
@@ -210,7 +214,30 @@ def _claim_territory(
         {"uid": user_id, "wkt": new_geom_wkt},
     ).fetchall()
 
+    # Steal summary for the Result screen: total area taken from rivals + the
+    # rival who lost the most.
+    stolen_total = 0.0
+    best_steal = 0.0
+    stolen_from = None
+
     for rid, _ruid in rivals:
+        steal = db.execute(
+            text(
+                """
+                SELECT ST_Area(ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))::geography),
+                       u.username
+                FROM territories t JOIN users u ON u.id = t.user_id
+                WHERE t.id = :rid
+                """
+            ),
+            {"wkt": new_geom_wkt, "rid": rid},
+        ).fetchone()
+        if steal and steal[0]:
+            stolen_total += float(steal[0])
+            if float(steal[0]) > best_steal:
+                best_steal = float(steal[0])
+                stolen_from = steal[1]
+
         # Subtract the new polygon from the rival's territory. ALL surviving
         # fragments are kept as one MultiPolygon — only sub-1m² slivers are
         # dropped. A rival row that loses everything is deleted below.
@@ -345,7 +372,7 @@ def _claim_territory(
             {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id},
         ).fetchone()
 
-    return _territory_out(db, new_row[0])
+    return _territory_out(db, new_row[0]), stolen_total, stolen_from
 
 
 def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:

@@ -94,6 +94,12 @@ export const api = {
       body: JSON.stringify({ run_id: runId, points, step_count: stepCount }),
     }),
 
+  // ----- feed + profile stats ------------------------------------------
+  feed: (cursor) =>
+    request(`/feed${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
+  meStats: () => request('/me/stats'),
+  meRuns: () => request('/me/runs'),
+
   // ----- territories + leaderboard -------------------------------------
   // ----- clans (v1.1 groundwork — no UI yet) ----------------------------
   createClan: ({ name, tag, colorFill, colorStroke, colorGlow }) =>

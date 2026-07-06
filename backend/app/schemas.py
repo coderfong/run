@@ -72,6 +72,11 @@ class RunResultOut(BaseModel):
     duration_s: float
     closed_loop: bool
     territory: Optional[TerritoryOut] = None
+    # Steal summary (populated at claim time).
+    stolen_m2: float = 0.0
+    stolen_from: Optional[str] = None
+    # Phase 6 fills these server-side; empty meanwhile.
+    achievements: List[str] = []
 
 
 class LeaderboardEntry(BaseModel):
@@ -83,6 +88,44 @@ class LeaderboardEntry(BaseModel):
 
 class MapPolygonsOut(BaseModel):
     territories: List[TerritoryOut]
+
+
+# ---- feed + profile stats (Phase 4) --------------------------------------
+
+class FeedItem(BaseModel):
+    id: str
+    kind: str = "run"  # 'run' | (Phase 5) 'claim' | 'clan' | 'goal'
+    user_id: str
+    username: str
+    is_you: bool = False
+    distance_m: float
+    duration_s: float
+    area_m2: float = 0.0
+    closed_loop: bool = False
+    created_at: datetime
+
+
+class FeedOut(BaseModel):
+    items: List[FeedItem]
+    next_cursor: Optional[datetime] = None
+
+
+class MeStats(BaseModel):
+    total_area_m2: float
+    territory_count: int
+    biggest_claim_m2: float
+    runs_count: int
+    career_distance_m: float
+    current_streak_weeks: int
+
+
+class RunSummary(BaseModel):
+    run_id: str
+    distance_m: float
+    duration_s: float
+    area_m2: float
+    closed_loop: bool
+    created_at: datetime
 
 
 # ---- clans (v1.1 groundwork — schema + minimal API, no UI yet) -----------

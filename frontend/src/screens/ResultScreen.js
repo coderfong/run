@@ -1,10 +1,10 @@
-// Post-run result — the shareable artifact. Dark "night run" card: captured
-// polygon glowing in the team colour, area as the hero stat (count-up),
-// distance/pace/duration as a quiet row, then the territory delta.
-// The card itself is captured via react-native-view-shot for sharing.
+// Post-run result — the shareable artifact + the run's detail. Dark card
+// (captured polygon glowing, area hero count-up, quiet stat row, steal
+// summary, loop-mark watermark) is the shared image; splits and any PRs sit
+// below it. A run without a loop still gets a dignified result.
 
 import React, { useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
@@ -13,46 +13,32 @@ import { darkColors, radius, shadow, space, type, withAlpha } from '../theme';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
 import { CountUpText, haptic, PressableScale } from '../ui/motion';
+import LoopMark from '../components/LoopMark';
 import { toast } from '../ui/toast';
 
-// Open-path conversion (brief §6): distance (km) × 0.05 km² — roughly a
-// 50m-wide strip painted along the route. Closing a loop always beats this,
-// but a partial run still earns land.
 const OPEN_PATH_RATE = 0.05;
-
 const D = darkColors;
 
-// ---------------------------------------------------------------------------
-// Polygon -> centered SVG path with a team-colour glow (layered strokes —
-// SVG has no shadows on native).
-// ---------------------------------------------------------------------------
+// --- geometry / splits -----------------------------------------------------
 
-// All rings share one bounding box so multi-piece territories keep their
-// true relative positions.
 function ringsToSvgPath(rings, size, pad) {
   const pts = rings.flat();
   if (pts.length < 3) return null;
   const lats = pts.map(([, lat]) => lat);
   const lons = pts.map(([lon]) => lon);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons);
-  const maxLon = Math.max(...lons);
-  const latMid = (minLat + maxLat) / 2;
-  // Correct for longitude compression so shapes aren't squashed.
-  const kx = Math.cos((latMid * Math.PI) / 180);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const kx = Math.cos(((minLat + maxLat) / 2) * (Math.PI / 180));
   const w = Math.max((maxLon - minLon) * kx, 1e-9);
   const h = Math.max(maxLat - minLat, 1e-9);
   const scale = (size - pad * 2) / Math.max(w, h);
-  const ox = (size - w * scale) / 2;
-  const oy = (size - h * scale) / 2;
-
+  const ox = (size - w * scale) / 2, oy = (size - h * scale) / 2;
   let d = '';
   rings.forEach((ring) => {
     if (!ring || ring.length < 3) return;
     ring.forEach(([lon, lat], i) => {
       const x = ox + (lon - minLon) * kx * scale;
-      const y = size - (oy + (lat - minLat) * scale); // flip y
+      const y = size - (oy + (lat - minLat) * scale);
       d += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)} `;
     });
     d += 'Z ';
@@ -65,7 +51,6 @@ function GlowPolygon({ rings, team, size = 240 }) {
   if (!d) return null;
   return (
     <Svg width={size} height={size}>
-      {/* glow halo: wide translucent strokes underneath the core line */}
       <Path d={d} fill={team.fill} stroke={withAlpha(team.glow, 0.16)} strokeWidth={14} strokeLinejoin="round" />
       <Path d={d} fill="none" stroke={withAlpha(team.glow, 0.35)} strokeWidth={7} strokeLinejoin="round" />
       <Path d={d} fill="none" stroke={team.glow} strokeWidth={2.5} strokeLinejoin="round" />
@@ -73,21 +58,54 @@ function GlowPolygon({ rings, team, size = 240 }) {
   );
 }
 
-// ---------------------------------------------------------------------------
+function haversine(a, b) {
+  const R = 6371000, toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude), dLon = toRad(b.longitude - a.longitude);
+  const la1 = toRad(a.latitude), la2 = toRad(b.latitude);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+// Per-km splits from the recorded path (client-side; Phase 6 makes these
+// server-authoritative alongside PRs).
+function computeSplits(path) {
+  if (!path || path.length < 2) return [];
+  const splits = [];
+  let kmDist = 0, kmTime = 0, kmIndex = 1;
+  for (let i = 1; i < path.length; i++) {
+    let segD = haversine(path[i - 1], path[i]);
+    let segT = (path[i].timestamp - path[i - 1].timestamp) / 1000;
+    if (segT <= 0 || !isFinite(segD)) continue;
+    while (kmDist + segD >= 1000) {
+      const need = 1000 - kmDist;
+      const frac = need / segD;
+      splits.push({ km: kmIndex, seconds: kmTime + segT * frac });
+      kmIndex += 1;
+      segD -= need;
+      segT -= segT * frac;
+      kmDist = 0;
+      kmTime = 0;
+    }
+    kmDist += segD;
+    kmTime += segT;
+  }
+  return splits;
+}
+
+function paceStr(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 function formatPace(distanceM, durationS) {
   if (!distanceM || distanceM < 50 || !durationS) return '—';
-  const minPerKm = durationS / 60 / (distanceM / 1000);
-  const m = Math.floor(minPerKm);
-  const s = Math.round((minPerKm - m) * 60);
-  return `${m}:${String(s).padStart(2, '0')} /km`;
+  return `${paceStr((durationS / (distanceM / 1000)))} /km`;
 }
 
 function formatDuration(durationS) {
   const total = Math.max(0, Math.round(durationS));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
   const pad = (n) => String(n).padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
@@ -101,6 +119,25 @@ function QuietStat({ label, value }) {
   );
 }
 
+function Splits({ splits, accent }) {
+  if (!splits.length) return null;
+  const slowest = Math.max(...splits.map((s) => s.seconds));
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Splits</Text>
+      {splits.map((s) => (
+        <View key={s.km} style={styles.splitRow}>
+          <Text style={styles.splitKm}>{s.km} km</Text>
+          <View style={styles.splitBarTrack}>
+            <View style={[styles.splitBar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: accent }]} />
+          </View>
+          <Text style={styles.splitPace}>{paceStr(s.seconds)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function ResultScreen({ navigation, route }) {
   const { result } = route.params;
   const { user } = useAuth();
@@ -110,26 +147,24 @@ export default function ResultScreen({ navigation, route }) {
 
   const t = result.territory;
   const captured = !!t;
+  const path = route.params.path || [];
 
-  // Rings for the SVG: server geometry if we captured (all pieces of a
-  // MultiPolygon), otherwise the client path from the Running screen.
   const rings = captured
     ? (t.rings?.length ? t.rings : [t.polygon])
-    : [(route.params.path || []).map((p) => [p.longitude, p.latitude])];
+    : [path.map((p) => [p.longitude, p.latitude])];
 
-  const openAreaKm2 = (result.distance_m / 1000) * OPEN_PATH_RATE;
-  const heroAreaM2 = captured ? t.area_m2 : openAreaKm2 * 1e6;
+  const heroAreaM2 = captured ? t.area_m2 : (result.distance_m / 1000) * OPEN_PATH_RATE * 1e6;
+  const splits = useMemo(() => computeSplits(path), [path]);
+  const stolen = result.stolen_m2 || 0;
+  const achievements = result.achievements || [];
 
   const share = async () => {
     try {
       setSharing(true);
       haptic.light();
       const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'image/png' });
-      } else {
-        toast.error('Sharing is not available on this device.');
-      }
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: 'image/png' });
+      else toast.error('Sharing is not available on this device.');
     } catch (e) {
       toast.error(e.message || 'Could not share');
     } finally {
@@ -138,7 +173,7 @@ export default function ResultScreen({ navigation, route }) {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={{ flex: 1, backgroundColor: D.bg }} contentContainerStyle={styles.scroll}>
       {/* the shareable card */}
       <View ref={cardRef} collapsable={false} style={styles.card}>
         <View style={[styles.eyebrow, { borderColor: team.glow }]}>
@@ -155,16 +190,13 @@ export default function ResultScreen({ navigation, route }) {
         )}
 
         <View style={styles.heroRow}>
-          <CountUpText
-            value={heroAreaM2}
-            style={[styles.heroArea, { color: team.glow }]}
-          />
+          <CountUpText value={heroAreaM2} style={[styles.heroArea, { color: team.glow }]} />
           <Text style={styles.heroUnit}> m²</Text>
         </View>
         <Text style={styles.heroCaption}>
           {captured
             ? 'claimed for your team'
-            : `open path — ${(result.distance_m / 1000).toFixed(2)} km converted at strip rate`}
+            : `no loop this time — close your path to claim land`}
         </Text>
 
         <View style={styles.quietRow}>
@@ -173,15 +205,42 @@ export default function ResultScreen({ navigation, route }) {
           <QuietStat label="Duration" value={formatDuration(result.duration_s)} />
         </View>
 
-        <View style={styles.deltaRow}>
-          <Text style={[styles.deltaText, { color: team.glow }]}>
-            +{Math.round(heroAreaM2).toLocaleString()} m²
-          </Text>
-          <Text style={styles.deltaMuted}>  ·  Team {team.name} grows</Text>
-        </View>
+        {(captured || stolen > 0) && (
+          <View style={styles.deltaRow}>
+            {stolen > 0 ? (
+              <Text style={[styles.deltaText, { color: team.glow }]}>
+                Stole {Math.round(stolen).toLocaleString()} m²{result.stolen_from ? ` from ${result.stolen_from}` : ''}
+              </Text>
+            ) : (
+              <Text style={[styles.deltaText, { color: team.glow }]}>
+                +{Math.round(heroAreaM2).toLocaleString()} m² · Team {team.name} holds more
+              </Text>
+            )}
+          </View>
+        )}
 
-        <Text style={styles.watermark}>TERRITORY RUN</Text>
+        <View style={styles.watermark}>
+          <LoopMark size={16} />
+          <Text style={styles.watermarkText}>TERRITORY RUN</Text>
+        </View>
       </View>
+
+      {/* PRs (Phase 6 fills achievements) */}
+      {achievements.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Personal records</Text>
+          <View style={styles.prWrap}>
+            {achievements.map((a) => (
+              <View key={a} style={[styles.prChip, { borderColor: team.glow }]}>
+                <Text style={[styles.prText, { color: team.glow }]}>{a}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* splits */}
+      <Splits splits={splits} accent={team.glow} />
 
       <View style={styles.actions}>
         <PressableScale
@@ -202,17 +261,12 @@ export default function ResultScreen({ navigation, route }) {
           <Text style={styles.doneBtnText}>Done</Text>
         </PressableScale>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: D.bg,
-    padding: space.lg,
-    justifyContent: 'center',
-  },
+  scroll: { padding: space.lg, paddingBottom: space.xxl },
 
   card: {
     backgroundColor: D.card,
@@ -222,59 +276,45 @@ const styles = StyleSheet.create({
     padding: space.xl,
     alignItems: 'center',
   },
-
   eyebrow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    borderWidth: 1,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: 6,
-    marginBottom: space.md,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    borderWidth: 1, borderRadius: radius.pill,
+    paddingHorizontal: space.md, paddingVertical: 6, marginBottom: space.md,
   },
   eyebrowDot: { width: 7, height: 7, borderRadius: 4 },
   eyebrowText: { ...type.labelSm },
-
   polyWrap: { marginVertical: space.sm },
-
   heroRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: space.sm },
   heroArea: { ...type.statHero },
   heroUnit: { ...type.statMd, color: D.textMuted, marginBottom: 6 },
-  heroCaption: { ...type.caption, color: D.textDim, marginTop: 2 },
-
+  heroCaption: { ...type.caption, color: D.textDim, marginTop: 2, textAlign: 'center' },
   quietRow: {
-    flexDirection: 'row',
-    alignSelf: 'stretch',
-    justifyContent: 'space-between',
-    marginTop: space.xl,
-    paddingTop: space.lg,
-    borderTopWidth: 1,
-    borderTopColor: D.border,
+    flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'space-between',
+    marginTop: space.xl, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: D.border,
   },
   quietStat: { flex: 1, alignItems: 'center' },
   quietLabel: { ...type.labelSm, color: D.textDim, marginBottom: 4 },
   quietValue: { ...type.statSm, color: D.text },
+  deltaRow: { marginTop: space.lg },
+  deltaText: { ...type.bodySmBold, textAlign: 'center' },
+  watermark: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: space.lg },
+  watermarkText: { ...type.labelSm, color: D.textDim, letterSpacing: 2 },
 
-  deltaRow: { flexDirection: 'row', alignItems: 'center', marginTop: space.lg },
-  deltaText: { ...type.bodySmBold },
-  deltaMuted: { ...type.bodySm, color: D.textMuted },
+  section: { marginTop: space.xl },
+  sectionTitle: { ...type.label, color: D.textMuted, marginBottom: space.md },
+  splitRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
+  splitKm: { ...type.statSm, color: D.text, width: 52 },
+  splitBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: D.cardAlt, overflow: 'hidden' },
+  splitBar: { height: '100%', borderRadius: 4 },
+  splitPace: { ...type.statSm, color: D.textMuted, width: 52, textAlign: 'right' },
 
-  watermark: { ...type.labelSm, color: D.textDim, marginTop: space.lg, letterSpacing: 2 },
+  prWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  prChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 },
+  prText: { ...type.bodySmBold },
 
   actions: { marginTop: space.xl, gap: space.md },
-  shareBtn: {
-    paddingVertical: 16,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-  },
+  shareBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
   shareBtnText: { ...type.button, color: '#fff' },
-  doneBtn: {
-    paddingVertical: 16,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: D.border,
-  },
+  doneBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center', borderWidth: 1, borderColor: D.border },
   doneBtnText: { ...type.button, color: D.text },
 });
