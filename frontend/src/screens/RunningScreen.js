@@ -24,6 +24,7 @@ import Animated, {
 import { api } from '../api/client';
 import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
+import { useRecording } from '../state/recording';
 import { darkColors, radius, runTuning as T, space, type } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
@@ -215,6 +216,7 @@ function HoldToFinishButton({ onFinish }) {
 
 export default function RunningScreen({ navigation }) {
   const { user } = useAuth();
+  const { setRecording } = useRecording();
   const team = useMemo(() => regionForUser(user.username), [user.username]);
   const accent = team.stroke;
   const reduceMotion = useReduceMotion();
@@ -260,6 +262,7 @@ export default function RunningScreen({ navigation }) {
     return () => {
       stopWatchingLocation();
       stopPedometer();
+      setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
       if (fillAnimRef.current) clearInterval(fillAnimRef.current);
     };
@@ -335,6 +338,7 @@ export default function RunningScreen({ navigation }) {
     setClosedArea(polygonAreaM2(saved.path));
     setElapsedMs(Date.now() - startedAtRef.current);
     setIsRunning(true);
+    setRecording(true);
 
     tickRef.current = setInterval(() => {
       setElapsedMs(Date.now() - startedAtRef.current);
@@ -413,6 +417,7 @@ export default function RunningScreen({ navigation }) {
       setNearStart(false);
       setLoopClosed(false);
       setIsRunning(true);
+      setRecording(true);
       recentSpeedsRef.current = [];
       gpsModeRef.current = 'high';
       pendingModeRef.current = { mode: null, count: 0 };
@@ -585,6 +590,7 @@ export default function RunningScreen({ navigation }) {
       tickRef.current = null;
     }
     setIsRunning(false);
+    setRecording(false);
 
     const run = runRef.current;
     const finalPath = pathRef.current;

@@ -195,7 +195,7 @@ export default function ResultScreen({ navigation, route }) {
         </PressableScale>
         <PressableScale
           style={styles.doneBtn}
-          onPress={() => navigation.popToTop()}
+          onPress={() => navigation.getParent()?.goBack()}
           accessibilityRole="button"
           accessibilityLabel="Back to home"
         >

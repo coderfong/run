@@ -10,7 +10,7 @@
       "channel": "development",
       "env": {
         "EXPO_PUBLIC_API_BASE": "https://chargers-use-asylum-composed.trycloudflare.com",
-        "EXPO_PUBLIC_MAPBOX_TOKEN": "REPLACE_WITH_pk_TOKEN"
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2hhaWdlbiIsImEiOiJjbXI4NjI4cnYxa3p5MndvcDZkN2FtaXlwIn0.2wPGUM_PG_Rq0Q7sN8dvqw"
       }
     },
     "preview": {

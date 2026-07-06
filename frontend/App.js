@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, View } from 'react-native';
+import { ActivityIndicator, Alert, StatusBar, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import { X } from 'lucide-react-native';
 import {
   SpaceGrotesk_500Medium,
   SpaceGrotesk_700Bold,
@@ -28,26 +30,23 @@ import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
+import ClubScreen from './src/screens/ClubScreen';
+import ClubJoinScreen from './src/screens/ClubJoinScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { MotionProvider } from './src/ui/motion';
+import { RecordingProvider, useRecording } from './src/state/recording';
 import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
+import TabBar from './src/navigation/TabBar';
 import { colors, darkColors, fonts } from './src/theme';
 
 // Crash telemetry — a strict no-op unless a DSN is provided via env/extra.
 const SENTRY_DSN =
-  process.env.EXPO_PUBLIC_SENTRY_DSN ||
-  Constants?.expoConfig?.extra?.sentryDsn ||
-  '';
-if (SENTRY_DSN) {
-  Sentry.init({ dsn: SENTRY_DSN, tracesSampleRate: 0.1 });
-}
+  process.env.EXPO_PUBLIC_SENTRY_DSN || Constants?.expoConfig?.extra?.sentryDsn || '';
+if (SENTRY_DSN) Sentry.init({ dsn: SENTRY_DSN, tracesSampleRate: 0.1 });
 
-// Hold the splash until fonts are ready — avoids a flash of fallback type.
 SplashScreen.preventAutoHideAsync().catch(() => {});
-
-const Stack = createNativeStackNavigator();
 
 const navTheme = {
   ...DefaultTheme,
@@ -61,33 +60,168 @@ const navTheme = {
   },
 };
 
-const screenOptions = {
+// territoryrun:// deep links. Run-result links land in Phase 6 once a
+// standalone run-detail route exists.
+const linking = {
+  prefixes: ['territoryrun://'],
+  config: {
+    screens: {
+      Tabs: {
+        screens: {
+          Home: { screens: { HomeMain: 'home', Leaderboard: 'leaderboard' } },
+          Map: 'map',
+          Club: { screens: { ClubMain: 'club', ClubJoin: 'clan/join/:code' } },
+          You: 'you',
+        },
+      },
+      Record: 'record',
+    },
+  },
+};
+
+// --- per-tab stacks --------------------------------------------------------
+
+const HomeStackNav = createNativeStackNavigator();
+function HomeStack() {
+  return (
+    <HomeStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <HomeStackNav.Screen name="HomeMain" component={HomeScreen} />
+      <HomeStackNav.Screen
+        name="Leaderboard"
+        component={LeaderboardScreen}
+        options={{ headerShown: true, title: 'Leaderboard', ...headerLight }}
+      />
+    </HomeStackNav.Navigator>
+  );
+}
+
+const MapStackNav = createNativeStackNavigator();
+function MapStack() {
+  return (
+    <MapStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <MapStackNav.Screen name="MapMain" component={GlobalMapScreen} />
+    </MapStackNav.Navigator>
+  );
+}
+
+const ClubStackNav = createNativeStackNavigator();
+function ClubStack() {
+  return (
+    <ClubStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <ClubStackNav.Screen name="ClubMain" component={ClubScreen} />
+      <ClubStackNav.Screen
+        name="ClubJoin"
+        component={ClubJoinScreen}
+        options={{ headerShown: true, title: 'Join clan', ...headerLight }}
+      />
+    </ClubStackNav.Navigator>
+  );
+}
+
+const YouStackNav = createNativeStackNavigator();
+function YouStack() {
+  return (
+    <YouStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
+    </YouStackNav.Navigator>
+  );
+}
+
+const headerLight = {
   headerStyle: { backgroundColor: colors.bg },
   headerTitleStyle: { color: colors.text, fontFamily: fonts.display },
   headerTintColor: colors.text,
   headerShadowVisible: false,
-  contentStyle: { backgroundColor: colors.bg },
 };
 
-// The active run is the one dark screen — give it a matching dark header.
-const runScreenOptions = {
-  headerStyle: { backgroundColor: darkColors.bg },
-  headerTitleStyle: { color: darkColors.text, fontFamily: fonts.display },
-  headerTintColor: darkColors.text,
-  headerShadowVisible: false,
-  contentStyle: { backgroundColor: darkColors.bg },
-};
+// --- tabs ------------------------------------------------------------------
+
+const Tab = createBottomTabNavigator();
+function MainTabs() {
+  return (
+    <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <TabBar {...props} />}>
+      <Tab.Screen name="Home" component={HomeStack} />
+      <Tab.Screen name="Map" component={MapStack} />
+      <Tab.Screen name="Club" component={ClubStack} />
+      <Tab.Screen name="You" component={YouStack} />
+    </Tab.Navigator>
+  );
+}
+
+// --- record modal (Record → Result owns the screen) ------------------------
+
+function CloseRecordButton({ navigation }) {
+  const { isRecording } = useRecording();
+  const dismiss = () => navigation.getParent()?.goBack();
+  const onPress = () => {
+    if (isRecording) {
+      Alert.alert('Discard run?', "Your route won't be saved.", [
+        { text: 'Keep running', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: dismiss },
+      ]);
+    } else {
+      dismiss();
+    }
+  };
+  return (
+    <TouchableOpacity onPress={onPress} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close run">
+      <X size={24} color={darkColors.text} />
+    </TouchableOpacity>
+  );
+}
+
+const RecordStackNav = createNativeStackNavigator();
+function RecordModal() {
+  return (
+    <RecordStackNav.Navigator
+      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: darkColors.bg } }}
+    >
+      <RecordStackNav.Screen
+        name="Record"
+        component={RunningScreen}
+        options={({ navigation }) => ({
+          headerShown: true,
+          headerTransparent: false,
+          headerTitle: '',
+          headerStyle: { backgroundColor: darkColors.bg },
+          headerShadowVisible: false,
+          headerTintColor: darkColors.text,
+          headerLeft: () => <CloseRecordButton navigation={navigation} />,
+        })}
+      />
+      <RecordStackNav.Screen name="Result" component={ResultScreen} options={{ headerShown: false }} />
+    </RecordStackNav.Navigator>
+  );
+}
+
+// --- root ------------------------------------------------------------------
+
+const AuthStackNav = createNativeStackNavigator();
+function AuthNavigator() {
+  return (
+    <AuthStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <AuthStackNav.Screen name="Auth" component={AuthScreen} />
+    </AuthStackNav.Navigator>
+  );
+}
+
+const RootStackNav = createNativeStackNavigator();
+function RootStack() {
+  return (
+    <RootStackNav.Navigator screenOptions={{ headerShown: false }}>
+      <RootStackNav.Screen name="Tabs" component={MainTabs} />
+      <RootStackNav.Screen
+        name="Record"
+        component={RecordModal}
+        options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+      />
+    </RootStackNav.Navigator>
+  );
+}
 
 function FullScreenSpinner() {
   return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: colors.bg,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' }}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
       <ActivityIndicator size="large" color={colors.primary} />
     </View>
@@ -96,8 +230,6 @@ function FullScreenSpinner() {
 
 function RootNavigator() {
   const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
-  // Location permission gate: the OS prompt only ever fires from the
-  // explainer screen, never cold from a random screen mount.
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
 
@@ -105,7 +237,7 @@ function RootNavigator() {
     if (!signedIn) return;
     Location.getForegroundPermissionsAsync()
       .then((r) => setLocStatus(r.status))
-      .catch(() => setLocStatus('granted')); // fail open — Running re-checks
+      .catch(() => setLocStatus('granted'));
   }, [signedIn]);
 
   if (loading) return <FullScreenSpinner />;
@@ -113,20 +245,13 @@ function RootNavigator() {
   if (!signedIn) {
     return (
       <NavigationContainer theme={navTheme}>
-        <Stack.Navigator screenOptions={{ ...screenOptions, headerShown: false }}>
-          <Stack.Screen name="Auth" component={AuthScreen} />
-        </Stack.Navigator>
+        <AuthNavigator />
       </NavigationContainer>
     );
   }
 
-  // New accounts get the intro once, right after signing up.
-  if (needsOnboarding) {
-    return <OnboardingScreen onDone={completeOnboarding} />;
-  }
+  if (needsOnboarding) return <OnboardingScreen onDone={completeOnboarding} />;
 
-  // Pre-permission explainer flows straight out of onboarding (or first
-  // launch after sign-in) while permission is still undetermined.
   if (locStatus === 'undetermined' && !locHandled) {
     return (
       <LocationPermissionScreen
@@ -139,39 +264,8 @@ function RootNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navTheme}>
-      <Stack.Navigator initialRouteName="Home" screenOptions={screenOptions}>
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="Running"
-          component={RunningScreen}
-          options={{ title: 'Run', ...runScreenOptions }}
-        />
-        <Stack.Screen
-          name="Result"
-          component={ResultScreen}
-          options={{ title: 'Result', ...runScreenOptions }}
-        />
-        <Stack.Screen
-          name="GlobalMap"
-          component={GlobalMapScreen}
-          options={{ title: 'World Map' }}
-        />
-        <Stack.Screen
-          name="Leaderboard"
-          component={LeaderboardScreen}
-          options={{ title: 'Leaderboard' }}
-        />
-        <Stack.Screen
-          name="Profile"
-          component={ProfileScreen}
-          options={{ title: 'Profile' }}
-        />
-      </Stack.Navigator>
+    <NavigationContainer theme={navTheme} linking={linking}>
+      <RootStack />
     </NavigationContainer>
   );
 }
@@ -187,23 +281,21 @@ function App() {
   });
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
+    if (fontsLoaded || fontError) SplashScreen.hideAsync().catch(() => {});
   }, [fontsLoaded, fontError]);
 
-  // Keep the native splash up until type is ready (or failed — then we
-  // proceed with system fallbacks rather than blocking the app forever).
   if (!fontsLoaded && !fontError) return null;
 
   return (
     <SafeAreaProvider>
       <MotionProvider>
         <AuthProvider>
-          <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
-          <RootNavigator />
-          <OfflineBanner />
-          <ToastHost />
+          <RecordingProvider>
+            <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+            <RootNavigator />
+            <OfflineBanner />
+            <ToastHost />
+          </RecordingProvider>
         </AuthProvider>
       </MotionProvider>
     </SafeAreaProvider>

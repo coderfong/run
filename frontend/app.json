@@ -56,10 +56,7 @@
       "@rnmapbox/maps"
     ],
     "extra": {
-      "apiBase": "https://chargers-use-asylum-composed.trycloudflare.com",
-      "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
-      }
+      "apiBase": "https://chargers-use-asylum-composed.trycloudflare.com"
     },
     "runtimeVersion": {
       "policy": "appVersion"

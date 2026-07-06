@@ -317,7 +317,7 @@ export default function HomeScreen({ navigation }) {
         <TouchableOpacity
           style={[styles.glass, styles.ava, { backgroundColor: myTeam.fill, borderColor: accent }]}
           activeOpacity={0.85}
-          onPress={() => navigation.navigate('Profile')}
+          onPress={() => navigation.navigate('You')}
           accessibilityRole="button"
           accessibilityLabel="Open profile"
         >
@@ -368,7 +368,7 @@ export default function HomeScreen({ navigation }) {
       <TouchableOpacity
         style={[styles.glass, styles.worldBtn, { bottom: PEEK_VIS + 14 }]}
         activeOpacity={0.85}
-        onPress={() => navigation.navigate('GlobalMap')}
+        onPress={() => navigation.navigate('Map')}
         accessibilityRole="button"
         accessibilityLabel="Open world map"
       >
@@ -390,7 +390,7 @@ export default function HomeScreen({ navigation }) {
             style={[styles.startBtn, { backgroundColor: accent, shadowColor: accent }]}
             onPress={() => {
               haptic.light();
-              navigation.navigate('Running');
+              navigation.navigate('Record');
             }}
             accessibilityRole="button"
             accessibilityLabel="Start run"
@@ -486,7 +486,7 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity
             style={styles.banner}
             activeOpacity={0.85}
-            onPress={() => navigation.navigate('Running')}
+            onPress={() => navigation.navigate('Record')}
             accessibilityRole="button"
             accessibilityLabel="Start a run"
           >
