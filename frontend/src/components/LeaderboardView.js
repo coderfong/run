@@ -9,7 +9,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { api } from '../api/client';
 import { colors, radius, shadow, space, type, withAlpha } from '../theme';
-import { regionForUser } from '../data/regions';
+import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAccent } from '../hooks/useAccent';
 import { Skeleton, useReduceMotion } from '../ui/motion';
@@ -178,7 +178,7 @@ export default function LeaderboardView() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={accent} colors={[accent]} />}
         renderItem={({ item, index }) => {
           const isMe = item.user_id === user.id;
-          const team = regionForUser(item.username);
+          const c = item.clan_color || NEUTRAL;
           const podium = PODIUM[item.rank];
           return (
             <Animated.View
@@ -186,17 +186,17 @@ export default function LeaderboardView() {
               style={[
                 styles.row,
                 podium && { backgroundColor: podium.bg },
-                isMe && { backgroundColor: withAlpha(team.stroke, 0.08) },
+                isMe && { backgroundColor: withAlpha(c.stroke, 0.08) },
               ]}
             >
               <Text style={[styles.rank, podium && { color: podium.rankColor }]}>#{item.rank}</Text>
               <RankDelta delta={item.delta} />
-              <View style={[styles.dot, { backgroundColor: team.color }]} />
+              <View style={[styles.dot, { backgroundColor: c.stroke }]} />
               <View style={{ flex: 1 }}>
-                <Text style={type.bodyBold}>{item.username}{isMe ? ' · you' : ''}</Text>
-                <Text style={type.caption}>{team.name} · {item.territory_count} territories</Text>
+                <Text style={type.bodyBold}>{item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}{isMe ? ' · you' : ''}</Text>
+                <Text style={type.caption}>{item.clan_tag ? 'clan' : 'solo'} · {item.territory_count} territories</Text>
               </View>
-              <Text style={[styles.area, { color: team.color }]}>
+              <Text style={[styles.area, { color: c.stroke }]}>
                 {Math.round(item.total_area_m2).toLocaleString()} m²
               </Text>
             </Animated.View>
@@ -204,13 +204,13 @@ export default function LeaderboardView() {
         }}
       />
       {showPinned && (
-        <View style={[styles.pinned, { backgroundColor: withAlpha(regionForUser(myRow.username).stroke, 0.12) }]}>
+        <View style={[styles.pinned, { backgroundColor: withAlpha((myRow.clan_color || NEUTRAL).stroke, 0.12) }]}>
           <Text style={styles.rank}>#{myRow.rank}</Text>
-          <View style={[styles.dot, { backgroundColor: regionForUser(myRow.username).color }]} />
+          <View style={[styles.dot, { backgroundColor: (myRow.clan_color || NEUTRAL).stroke }]} />
           <View style={{ flex: 1 }}>
             <Text style={type.bodyBold}>{myRow.username} · you</Text>
           </View>
-          <Text style={[styles.area, { color: regionForUser(myRow.username).color }]}>
+          <Text style={[styles.area, { color: (myRow.clan_color || NEUTRAL).stroke }]}>
             {Math.round(myRow.total_area_m2).toLocaleString()} m²
           </Text>
         </View>

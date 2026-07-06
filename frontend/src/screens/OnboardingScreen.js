@@ -28,9 +28,9 @@ const SLIDES = [
   },
   {
     key: 'compete',
-    title: 'Four teams. One city.',
+    title: 'Join a clan. Take the city.',
     body:
-      'Singapore is split into North, East, South and West. Run over a rival’s land and the overlap becomes yours — captures are validated on our servers, so what you see is what you keep.',
+      'Run solo or form a clan and hold land together. Run over a rival’s territory and the overlap becomes yours — captures are validated on our servers, so what you see is what you keep.',
     accent: '#9333ea',
   },
   {

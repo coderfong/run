@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..anticheat import is_verified, validate_run
+from .clans import record_clan_activity
 from ..config import settings
 from ..database import get_db
 from ..geospatial import clean_path, detect_loop, geometry_to_rings, polygon_to_lonlat_ring
@@ -131,6 +132,15 @@ def end_run(
             verified=run.verified,
             clan_id=user.clan_id,
         )
+
+    # Advance the runner's clan weekly goal + season stats (no-op if clanless).
+    record_clan_activity(
+        db,
+        user,
+        distance_m=run.distance_m,
+        closed_loop=loop is not None,
+        stolen=stolen_m2,
+    )
 
     db.commit()
 

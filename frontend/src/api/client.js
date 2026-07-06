@@ -101,21 +101,21 @@ export const api = {
   meRuns: () => request('/me/runs'),
 
   // ----- territories + leaderboard -------------------------------------
-  // ----- clans (v1.1 groundwork — no UI yet) ----------------------------
-  createClan: ({ name, tag, colorFill, colorStroke, colorGlow }) =>
-    request('/clans', {
-      method: 'POST',
-      body: JSON.stringify({
-        name,
-        tag,
-        color_fill: colorFill,
-        color_stroke: colorStroke,
-        color_glow: colorGlow,
-      }),
-    }),
+  // ----- clans ----------------------------------------------------------
+  myClan: () => request('/me/clan'),
+  createClan: (body) => request('/clans', { method: 'POST', body: JSON.stringify(body) }),
   getClan: (clanId) => request(`/clans/${clanId}`),
+  searchClans: (q) => request(`/clans/search?q=${encodeURIComponent(q || '')}`),
   joinClan: (clanId) => request(`/clans/${clanId}/join`, { method: 'POST', body: '{}' }),
+  joinByCode: (code) => request('/clans/join-by-code', { method: 'POST', body: JSON.stringify({ code }) }),
   leaveClan: () => request('/clans/leave', { method: 'POST', body: '{}' }),
+  createInvite: (clanId) => request(`/clans/${clanId}/invites`, { method: 'POST', body: '{}' }),
+  setClanRole: (clanId, userId, role) =>
+    request(`/clans/${clanId}/members/${userId}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
+  kickMember: (clanId, userId) =>
+    request(`/clans/${clanId}/members/${userId}/kick`, { method: 'POST', body: '{}' }),
+  updateClan: (clanId, body) => request(`/clans/${clanId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  clanFeed: (clanId) => request(`/clans/${clanId}/feed`),
   clanLeaderboard: () => request('/leaderboard/clans'),
 
   mapPolygons: (bbox, zoom) => {

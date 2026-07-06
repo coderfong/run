@@ -7,7 +7,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 
 import { colors, space, type } from '../theme';
-import { regionForUser } from '../data/regions';
+import { NEUTRAL } from '../state/clan';
 import { Card, Row, StatValue } from './ui';
 
 function timeAgo(iso) {
@@ -32,19 +32,19 @@ function formatArea(m2) {
 }
 
 export default function FeedCard({ item }) {
-  const team = regionForUser(item.username);
+  const c = item.clan_color || NEUTRAL;
   return (
     <Card style={{ marginBottom: space.md }}>
       <Row between>
         <Row gap={10}>
-          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: team.fill, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={[type.bodySmBold, { color: team.text }]}>
+          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={[type.bodySmBold, { color: c.stroke }]}>
               {(item.username || '?').slice(0, 2).toUpperCase()}
             </Text>
           </View>
           <View>
             <Text style={type.bodyBold}>
-              {item.username}
+              {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}
               {item.is_you ? ' · you' : ''}
             </Text>
             <Text style={type.caption}>
@@ -62,7 +62,7 @@ export default function FeedCard({ item }) {
           label={item.closed_loop ? 'Claimed' : 'No loop'}
           value={item.closed_loop ? formatArea(item.area_m2).split(' ')[0] : '—'}
           unit={item.closed_loop ? formatArea(item.area_m2).split(' ')[1] : ''}
-          color={item.closed_loop ? team.stroke : colors.textDim}
+          color={item.closed_loop ? c.stroke : colors.textDim}
         />
       </Row>
     </Card>

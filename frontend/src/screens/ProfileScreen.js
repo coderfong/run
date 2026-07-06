@@ -7,8 +7,7 @@ import Constants from 'expo-constants';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { regionForUser } from '../data/regions';
-import { useAccent } from '../hooks/useAccent';
+import { useClan } from '../state/clan';
 import { colors, radius, space, type } from '../theme';
 import { Screen, Card, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
 import { toast } from '../ui/toast';
@@ -29,8 +28,8 @@ function StatTile({ label, value, unit, accent }) {
 
 export default function ProfileScreen() {
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
-  const team = regionForUser(user?.username || '');
-  const accent = useAccent();
+  const { color, clan } = useClan();
+  const accent = color.stroke;
 
   const [stats, setStats] = useState(null);
   const [runs, setRuns] = useState(null);
@@ -78,13 +77,13 @@ export default function ProfileScreen() {
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
       {/* header */}
       <View style={styles.header}>
-        <View style={[styles.avatar, { backgroundColor: team.fill }]}>
-          <Text style={[type.display, { color: team.text }]}>
+        <View style={[styles.avatar, { backgroundColor: color.fill }]}>
+          <Text style={[type.display, { color: color.stroke }]}>
             {(user?.username || '?').slice(0, 1).toUpperCase()}
           </Text>
         </View>
         <Text style={[type.title, { marginTop: space.md }]}>{user?.username}</Text>
-        <Pill label={`Team ${team.name}`} color={accent} dot style={{ marginTop: space.sm }} />
+        <Pill label={clan?.tag ? `[${clan.tag}]` : 'Solo'} color={accent} dot style={{ marginTop: space.sm }} />
       </View>
 
       {/* stat wall */}

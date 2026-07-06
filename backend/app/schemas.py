@@ -4,6 +4,12 @@ from typing import List, Optional, Tuple
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+class ClanColor(BaseModel):
+    fill: str
+    stroke: str
+    glow: str
+
+
 # A GPS sample. The client may send the moment as either `t` (canonical) or
 # `timestamp` (legacy/RN convention) — we accept both and normalise to a
 # datetime.
@@ -64,6 +70,9 @@ class TerritoryOut(BaseModel):
     rings: List[List[Tuple[float, float]]] = []
     # Claimed within the contested window (the map "heat" signal).
     contested: bool = False
+    # Owning clan (null for solo runners → the client renders neutral grey).
+    clan_tag: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
 
 
 class RunResultOut(BaseModel):
@@ -84,6 +93,8 @@ class LeaderboardEntry(BaseModel):
     username: str
     total_area_m2: float
     territory_count: int
+    clan_tag: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
 
 
 class MapPolygonsOut(BaseModel):
@@ -103,6 +114,8 @@ class FeedItem(BaseModel):
     area_m2: float = 0.0
     closed_loop: bool = False
     created_at: datetime
+    clan_tag: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
 
 
 class FeedOut(BaseModel):
@@ -128,34 +141,99 @@ class RunSummary(BaseModel):
     created_at: datetime
 
 
-# ---- clans (v1.1 groundwork — schema + minimal API, no UI yet) -----------
+# ---- clans (Phase 5) ------------------------------------------------------
 
 class ClanCreate(BaseModel):
-    name: str = Field(..., min_length=3, max_length=32)
+    name: str = Field(..., min_length=3, max_length=24)
     tag: str = Field(..., min_length=2, max_length=5)
-    # Colour triple mirroring the team palette shape (fill/stroke/glow).
-    color_fill: str = Field(..., max_length=32)
-    color_stroke: str = Field(..., max_length=32)
-    color_glow: str = Field(..., max_length=32)
+    description: Optional[str] = Field(None, max_length=140)
+    color_key: str
+    badge_icon: str
+    privacy: str = "open"  # 'open' | 'invite_only'
+
+
+class ClanUpdate(BaseModel):
+    description: Optional[str] = Field(None, max_length=140)
+    color_key: Optional[str] = None
+    badge_icon: Optional[str] = None
+    privacy: Optional[str] = None
+
+
+class ClanMemberOut(BaseModel):
+    user_id: str
+    username: str
+    role: str
+    joined_at: datetime
+    week_distance_m: float = 0.0
+    week_claims: int = 0
+
+
+class WeekGoalOut(BaseModel):
+    week_start: str
+    target_distance_m: float
+    target_claims: int
+    progress_distance_m: float
+    progress_claims: int
+    reached: bool
+    my_distance_m: float = 0.0
+    my_claims: int = 0
 
 
 class ClanOut(BaseModel):
     id: str
     name: str
     tag: str
-    color_fill: str
-    color_stroke: str
-    color_glow: str
+    description: Optional[str] = None
+    color_key: str
+    color: ClanColor
+    badge_icon: str
+    privacy: str
+    member_cap: int
+    member_count: int
     created_by: Optional[str] = None
     created_at: datetime
-    member_count: int = 0
+    my_role: Optional[str] = None          # role of the requesting user, if a member
+    league: Optional[str] = None
+    season_area_m2: float = 0.0
+    season_rank: Optional[int] = None
+    members: List[ClanMemberOut] = []
+    week_goal: Optional[WeekGoalOut] = None
+
+
+class ClanSummary(BaseModel):
+    """Compact clan for search results / directory."""
+    id: str
+    name: str
+    tag: str
+    color: ClanColor
+    badge_icon: str
+    privacy: str
+    member_count: int
+    league: Optional[str] = None
+    season_area_m2: float = 0.0
+
+
+class ClanInviteOut(BaseModel):
+    code: str
+    expires_at: Optional[datetime] = None
+    max_uses: int
+    uses: int
+    url: str
 
 
 class ClanLeaderboardEntry(BaseModel):
     clan_id: str
     name: str
     tag: str
-    color_stroke: str
+    color: ClanColor
+    league: Optional[str] = None
     total_area_m2: float
-    territory_count: int
     member_count: int
+
+
+class MyClan(BaseModel):
+    """The signed-in user's clan membership (drives the app accent)."""
+    clan_id: Optional[str] = None
+    tag: Optional[str] = None
+    role: Optional[str] = None
+    color: Optional[ClanColor] = None

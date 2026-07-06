@@ -32,8 +32,10 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
 import ClubScreen from './src/screens/ClubScreen';
 import ClubJoinScreen from './src/screens/ClubJoinScreen';
+import ClubCreateScreen from './src/screens/ClubCreateScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
+import { ClanProvider } from './src/state/clan';
 import { MotionProvider } from './src/ui/motion';
 import { RecordingProvider, useRecording } from './src/state/recording';
 import { OfflineBanner } from './src/ui/offline';
@@ -110,6 +112,11 @@ function ClubStack() {
   return (
     <ClubStackNav.Navigator screenOptions={{ headerShown: false }}>
       <ClubStackNav.Screen name="ClubMain" component={ClubScreen} />
+      <ClubStackNav.Screen
+        name="ClubCreate"
+        component={ClubCreateScreen}
+        options={{ headerShown: true, title: 'Create clan', ...headerLight }}
+      />
       <ClubStackNav.Screen
         name="ClubJoin"
         component={ClubJoinScreen}
@@ -305,12 +312,14 @@ function App() {
     <SafeAreaProvider>
       <MotionProvider>
         <AuthProvider>
-          <RecordingProvider>
-            <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
-            <RootNavigator />
-            <OfflineBanner />
-            <ToastHost />
-          </RecordingProvider>
+          <ClanProvider>
+            <RecordingProvider>
+              <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+              <RootNavigator />
+              <OfflineBanner />
+              <ToastHost />
+            </RecordingProvider>
+          </ClanProvider>
         </AuthProvider>
       </MotionProvider>
     </SafeAreaProvider>

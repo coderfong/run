@@ -18,10 +18,15 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
 from ..geospatial import geometry_to_rings
 from ..security import current_user_optional
+
+
+def _clan_color(color_key):
+    return schemas.ClanColor(**color_triple(color_key)) if color_key else None
 
 router = APIRouter()
 
@@ -65,9 +70,11 @@ def map_polygons(
             f"""
             SELECT t.id::text, t.user_id::text, u.username, t.area_m2, t.created_at,
                    (t.created_at >= :contested_since) AS contested,
+                   c.tag, c.color_key,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
             FROM territories t
             JOIN users u ON u.id = t.user_id
+            LEFT JOIN clans c ON c.id = t.clan_id
             WHERE (t.verified OR t.user_id = :viewer_id)
               {bbox_clause}
             ORDER BY t.area_m2 DESC
@@ -87,7 +94,7 @@ def map_polygons(
     ).fetchall()
 
     out = []
-    for tid, uid, username, area_m2, created_at, contested, wkt in rows:
+    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, wkt in rows:
         geom = shapely_wkt.loads(wkt)
         rings = geometry_to_rings(geom)  # largest-first
         if not rings:
@@ -102,6 +109,8 @@ def map_polygons(
                 polygon=rings[0],  # legacy: largest ring
                 rings=rings,
                 contested=bool(contested),
+                clan_tag=clan_tag,
+                clan_color=_clan_color(color_key),
             )
         )
 

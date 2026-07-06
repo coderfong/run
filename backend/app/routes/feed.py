@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..clans_meta import color_triple
 from ..database import get_db
 from ..security import current_user
 
@@ -33,10 +34,13 @@ def feed(
             SELECT r.id::text, r.user_id::text, u.username,
                    r.distance_m, r.duration_s, r.ended_at,
                    COALESCE(t.area_m2, 0) AS area_m2,
-                   (t.id IS NOT NULL) AS closed_loop
+                   (t.id IS NOT NULL) AS closed_loop,
+                   c.tag, c.color_key
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
+            LEFT JOIN clan_members cm ON cm.user_id = r.user_id
+            LEFT JOIN clans c ON c.id = cm.clan_id
             WHERE r.ended_at IS NOT NULL
               AND (r.verified OR r.user_id = :uid)
               AND (:cursor IS NULL OR r.ended_at < :cursor)
@@ -60,6 +64,8 @@ def feed(
             created_at=r[5],
             area_m2=float(r[6] or 0),
             closed_loop=bool(r[7]),
+            clan_tag=r[8],
+            clan_color=schemas.ClanColor(**color_triple(r[9])) if r[9] else None,
         )
         for r in rows
     ]

@@ -10,8 +10,7 @@ import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
 
 import { darkColors, radius, shadow, space, type, withAlpha } from '../theme';
-import { regionForUser } from '../data/regions';
-import { useAuth } from '../auth/AuthContext';
+import { useClan } from '../state/clan';
 import { CountUpText, haptic, PressableScale } from '../ui/motion';
 import LoopMark from '../components/LoopMark';
 import { toast } from '../ui/toast';
@@ -140,8 +139,9 @@ function Splits({ splits, accent }) {
 
 export default function ResultScreen({ navigation, route }) {
   const { result } = route.params;
-  const { user } = useAuth();
-  const team = regionForUser(user?.username || '');
+  const { color, clan } = useClan();
+  const team = color; // {fill, stroke, glow} — clan color or neutral
+  const label = clan?.tag || 'Solo';
   const cardRef = useRef(null);
   const [sharing, setSharing] = useState(false);
 
@@ -179,7 +179,7 @@ export default function ResultScreen({ navigation, route }) {
         <View style={[styles.eyebrow, { borderColor: team.glow }]}>
           <View style={[styles.eyebrowDot, { backgroundColor: team.glow }]} />
           <Text style={[styles.eyebrowText, { color: team.glow }]}>
-            {captured ? `Loop captured · Team ${team.name}` : `Distance converted · Team ${team.name}`}
+            {captured ? `Loop captured · ${label}` : `Distance converted · ${label}`}
           </Text>
         </View>
 
@@ -213,7 +213,7 @@ export default function ResultScreen({ navigation, route }) {
               </Text>
             ) : (
               <Text style={[styles.deltaText, { color: team.glow }]}>
-                +{Math.round(heroAreaM2).toLocaleString()} m² · Team {team.name} holds more
+                +{Math.round(heroAreaM2).toLocaleString()} m² · {label} holds more
               </Text>
             )}
           </View>

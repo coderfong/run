@@ -1,19 +1,17 @@
-// The signed-in user's accent color — used for the tab tint, the Record
-// button ring, trails, and stat highlights. This is the ONE place accent is
-// derived, so Phase 5 swaps "hash team color" for "clan color" here without
-// touching any screen.
+// The signed-in user's accent — their clan color, or a neutral slate when
+// solo. This is the single place accent is derived; the whole app tints from
+// it (tab bar, Record ring, trails, stat highlights).
 
-import { useAuth } from '../auth/AuthContext';
-import { regionForUser } from '../data/regions';
-import { colors } from '../theme';
+import { useClan } from '../state/clan';
 
-// Clanless / signed-out fallback — a neutral slate, never a saturated hue.
-export const NEUTRAL_ACCENT = '#64748b';
+export { NEUTRAL as NEUTRAL_ACCENT } from '../state/clan';
 
+// Full triple {fill, stroke, glow}.
+export function useAccentColor() {
+  return useClan().color;
+}
+
+// Just the stroke (most callers).
 export function useAccent() {
-  const { user } = useAuth();
-  if (!user?.username) return NEUTRAL_ACCENT;
-  // v1 behaviour: hash the username to one of the four team colors.
-  // Phase 5 replaces this body with the user's clan color.
-  return regionForUser(user.username).stroke || colors.primary;
+  return useClan().accent;
 }

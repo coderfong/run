@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import GameMap, {
   ClosingLine,
@@ -22,8 +22,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { api } from '../api/client';
-import { regionForUser } from '../data/regions';
 import { useAuth } from '../auth/AuthContext';
+import { useClan } from '../state/clan';
 import { useRecording } from '../state/recording';
 import { darkColors, radius, runTuning as T, space, type } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
@@ -217,8 +217,8 @@ function HoldToFinishButton({ onFinish }) {
 export default function RunningScreen({ navigation }) {
   const { user } = useAuth();
   const { setRecording } = useRecording();
-  const team = useMemo(() => regionForUser(user.username), [user.username]);
-  const accent = team.stroke;
+  const { color, clan } = useClan();
+  const accent = color.stroke;
   const reduceMotion = useReduceMotion();
 
   const mapRef = useRef(null);
@@ -735,7 +735,7 @@ export default function RunningScreen({ navigation }) {
         >
           <View style={[styles.promptDot, { backgroundColor: accent }]} />
           <Text style={[styles.promptText, { color: accent }]}>
-            Loop closed · ~{formatArea(celebration.areaM2)} for Team {team.name}
+            Loop closed · ~{formatArea(celebration.areaM2)}{clan?.tag ? ` for ${clan.tag}` : ''}
           </Text>
         </Animated.View>
       )}

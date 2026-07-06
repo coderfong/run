@@ -6,18 +6,19 @@ import { Flame, Layers, Navigation, X } from 'lucide-react-native';
 import { api } from '../api/client';
 import { colors, radius, shadow, space, type } from '../theme';
 import { cityBbox } from '../config/cities';
-import { regionForUser } from '../data/regions';
+import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
+import { useAccent } from '../hooks/useAccent';
 import { useReduceMotion } from '../ui/motion';
 import { Card, Pill, Sheet } from '../components/ui';
 import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer } from '../components/GameMap';
 
 // Build the whole-board GeoJSON once per data change. Each ring is a feature
-// carrying its colors, owning territory id, team key, and contested flag.
+// carrying its clan colors, owning territory id, clan key, and contested flag.
 function toFeatures(territories, userId) {
   const features = [];
   for (const t of territories) {
-    const team = regionForUser(t.username);
+    const c = t.clan_color || NEUTRAL;
     const mine = t.user_id === userId;
     const rings = t.rings?.length ? t.rings : [t.polygon];
     rings.forEach((ring, ri) => {
@@ -32,10 +33,10 @@ function toFeatures(territories, userId) {
         geometry: { type: 'Polygon', coordinates: [coords] },
         properties: {
           territoryId: t.id,
-          teamKey: team.key,
-          fillColor: team.stroke,
-          strokeColor: team.stroke,
-          // Constitution: territory fill ~35%; your own clan a touch higher.
+          clanTag: t.clan_tag || 'Solo',
+          fillColor: c.stroke,
+          strokeColor: c.stroke,
+          // Constitution: territory fill ~35%; your own a touch higher.
           fillOpacity: mine ? 0.45 : 0.35,
           contested: !!t.contested,
         },
@@ -53,7 +54,7 @@ function viewportKey(bbox, zoom) {
 
 export default function GlobalMapScreen() {
   const { user } = useAuth();
-  const myTeam = regionForUser(user.username);
+  const accent = useAccent();
   const reduce = useReduceMotion();
   const mapRef = useRef(null);
   const cacheRef = useRef(new Map());
@@ -122,22 +123,23 @@ export default function GlobalMapScreen() {
   );
   const baseFC = useMemo(() => ({ type: 'FeatureCollection', features }), [features]);
 
-  // Top teams in the current view, by summed area (legend).
+  // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
     const acc = {};
     for (const t of rows) {
-      const team = regionForUser(t.username);
-      acc[team.key] = acc[team.key] || { team, area: 0, count: 0 };
-      acc[team.key].area += t.area_m2 || 0;
-      acc[team.key].count += 1;
+      const key = t.clan_tag || 'Solo';
+      const color = t.clan_color || NEUTRAL;
+      acc[key] = acc[key] || { key, color, area: 0, count: 0 };
+      acc[key].area += t.area_m2 || 0;
+      acc[key].count += 1;
     }
-    return Object.values(acc).sort((a, b) => b.area - a.area).slice(0, 4);
+    return Object.values(acc).sort((a, b) => b.area - a.area).slice(0, 5);
   }, [rows]);
 
-  const focusTeam = (teamKey) => {
+  const focusTeam = (key) => {
     const pts = [];
     for (const t of rows) {
-      if (regionForUser(t.username).key !== teamKey) continue;
+      if ((t.clan_tag || 'Solo') !== key) continue;
       (t.rings?.length ? t.rings : [t.polygon]).forEach((ring) =>
         ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
       );
@@ -163,7 +165,7 @@ export default function GlobalMapScreen() {
     );
   }
 
-  const selectedTeam = selected ? regionForUser(selected.username) : null;
+  const selectedColor = selected ? (selected.clan_color || NEUTRAL) : null;
   const loaded = list !== null;
   const showEmpty = loaded && rows.length === 0 && !loadError;
 
@@ -209,14 +211,14 @@ export default function GlobalMapScreen() {
         accessibilityRole="button"
         accessibilityLabel="Center map on my location"
       >
-        <Navigation size={20} color={myTeam.stroke} strokeWidth={2} fill={myTeam.stroke} />
+        <Navigation size={20} color={accent} strokeWidth={2} fill={accent} />
       </TouchableOpacity>
 
       {/* tapped-territory card */}
-      {selected && selectedTeam && (
+      {selected && selectedColor && (
         <Card style={styles.card}>
           <View style={styles.cardRow}>
-            <Pill label={selectedTeam.name} color={selectedTeam.stroke} dot />
+            <Pill label={selected.clan_tag || 'Solo'} color={selectedColor.stroke} dot />
             <TouchableOpacity onPress={() => setSelected(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
               <X size={18} color={colors.textDim} />
             </TouchableOpacity>
@@ -239,10 +241,10 @@ export default function GlobalMapScreen() {
         {topTeams.length === 0 ? (
           <Text style={[type.caption, { marginBottom: space.md }]}>No claimed land in view yet.</Text>
         ) : (
-          topTeams.map(({ team, area, count }) => (
-            <TouchableOpacity key={team.key} style={styles.legendRow} onPress={() => focusTeam(team.key)}>
-              <View style={[styles.legendDot, { backgroundColor: team.stroke }]} />
-              <Text style={[type.bodyBold, { flex: 1 }]}>{team.name}</Text>
+          topTeams.map(({ key, color, area, count }) => (
+            <TouchableOpacity key={key} style={styles.legendRow} onPress={() => focusTeam(key)}>
+              <View style={[styles.legendDot, { backgroundColor: color.stroke }]} />
+              <Text style={[type.bodyBold, { flex: 1 }]}>{key}</Text>
               <Text style={type.captionMedium}>
                 {(area / 1e6).toFixed(2)} km² · {count}
               </Text>
