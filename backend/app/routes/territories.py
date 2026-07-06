@@ -71,6 +71,7 @@ def map_polygons(
             SELECT t.id::text, t.user_id::text, u.username, t.area_m2, t.created_at,
                    (t.created_at >= :contested_since) AS contested,
                    c.tag, c.color_key,
+                   COALESCE((SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = t.clan_id), 1) AS defenders,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
             FROM territories t
             JOIN users u ON u.id = t.user_id
@@ -94,7 +95,7 @@ def map_polygons(
     ).fetchall()
 
     out = []
-    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, wkt in rows:
+    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, defenders, wkt in rows:
         geom = shapely_wkt.loads(wkt)
         rings = geometry_to_rings(geom)  # largest-first
         if not rings:
@@ -111,6 +112,7 @@ def map_polygons(
                 contested=bool(contested),
                 clan_tag=clan_tag,
                 clan_color=_clan_color(color_key),
+                defenders=max(1, int(defenders or 1)),
             )
         )
 

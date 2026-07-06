@@ -142,12 +142,23 @@ def end_run(
     )
 
     # Advance the runner's clan weekly goal + season stats (no-op if clanless).
-    # Flagged (unverified) runs never contribute to clan stats or goals.
+    # Flagged (unverified) runs never contribute to clan stats, goals, or XP.
     goal_reached, clan_id = (False, None)
     if run.verified:
         goal_reached, clan_id = record_clan_activity(
             db, user, distance_m=run.distance_m, closed_loop=loop is not None, stolen=stolen_m2
         )
+        # XP: 10/km + 100 per claim + 50 per steal (tunable in config).
+        xp_gain = (
+            round((run.distance_m / 1000.0) * settings.xp_per_km)
+            + (settings.xp_per_claim if loop is not None else 0)
+            + (settings.xp_per_steal if stolen_m2 > 0 else 0)
+        )
+        if xp_gain > 0:
+            db.execute(
+                text("UPDATE users SET xp = xp + :g WHERE id = :uid"),
+                {"g": xp_gain, "uid": user.id},
+            )
 
     db.commit()
 

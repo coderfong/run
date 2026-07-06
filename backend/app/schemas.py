@@ -73,6 +73,8 @@ class TerritoryOut(BaseModel):
     # Owning clan (null for solo runners → the client renders neutral grey).
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
+    # Defenders = members of the owning clan (1 for solo).
+    defenders: int = 1
 
 
 class RunResultOut(BaseModel):
@@ -132,6 +134,24 @@ class MeStats(BaseModel):
     runs_count: int
     career_distance_m: float
     current_streak_weeks: int
+    # XP / level (level = floor(sqrt(xp/100)); next level at 100*(lvl+1)^2)
+    xp: int = 0
+    level: int = 0
+    next_level_xp: int = 100
+
+
+class NotificationItem(BaseModel):
+    id: str
+    category: str
+    title: str
+    body: str
+    read: bool
+    created_at: datetime
+
+
+class NotificationsOut(BaseModel):
+    items: List[NotificationItem]
+    unread: int = 0
 
 
 class RunSummary(BaseModel):

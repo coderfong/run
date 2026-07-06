@@ -144,6 +144,34 @@ def set_prefs(payload: schemas.NotifPrefs, user: models.User = Depends(current_u
     return payload
 
 
+@router.get("/me/notifications", response_model=schemas.NotificationsOut)
+def my_notifications(limit: int = 30, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    rows = db.execute(
+        text(
+            "SELECT id::text, category, title, body, read, created_at "
+            "FROM notifications WHERE user_id = :u ORDER BY created_at DESC LIMIT :l"
+        ),
+        {"u": user.id, "l": max(1, min(int(limit), 100))},
+    ).fetchall()
+    unread = db.execute(
+        text("SELECT COUNT(*) FROM notifications WHERE user_id = :u AND NOT read"), {"u": user.id}
+    ).scalar()
+    return schemas.NotificationsOut(
+        items=[
+            schemas.NotificationItem(id=r[0], category=r[1], title=r[2], body=r[3], read=bool(r[4]), created_at=r[5])
+            for r in rows
+        ],
+        unread=int(unread or 0),
+    )
+
+
+@router.post("/me/notifications/read")
+def mark_notifications_read(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    db.execute(text("UPDATE notifications SET read = true WHERE user_id = :u AND NOT read"), {"u": user.id})
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/admin/weekly-recap")
 def weekly_recap(background: BackgroundTasks, db: Session = Depends(get_db)):
     """Cron (Monday): push each user last week's distance + claims. Lock down

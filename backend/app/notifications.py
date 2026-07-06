@@ -31,7 +31,8 @@ def _expo_send(messages):
 
 
 def notify(user_ids, category, title, body, data=None):
-    """Open an own session (runs post-response), respect prefs, send."""
+    """Open an own session (runs post-response), respect prefs, write the
+    in-app inbox row, then push."""
     if not user_ids:
         return
     db = SessionLocal()
@@ -46,8 +47,20 @@ def notify(user_ids, category, title, body, data=None):
                 allowed.append(uid)
         if not allowed:
             return
+        # Inbox rows (the bell) — written for every allowed recipient even if
+        # they have no push token registered.
+        for uid in allowed:
+            db.execute(
+                text(
+                    "INSERT INTO notifications (user_id, category, title, body) "
+                    "VALUES (:u, :c, :t, :b)"
+                ),
+                {"u": uid, "c": category, "t": title, "b": body},
+            )
+        db.commit()
+        # user_id is uuid; the bound list arrives as text[] — cast the column.
         rows = db.execute(
-            text("SELECT token FROM device_tokens WHERE user_id = ANY(:ids)"),
+            text("SELECT token FROM device_tokens WHERE user_id::text = ANY(:ids)"),
             {"ids": allowed},
         ).fetchall()
         messages = [

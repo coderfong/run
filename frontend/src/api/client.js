@@ -107,6 +107,12 @@ export const api = {
     request('/me/push-token', { method: 'POST', body: JSON.stringify({ token, platform }) }),
   getNotifPrefs: () => request('/me/notif-prefs'),
   setNotifPrefs: (prefs) => request('/me/notif-prefs', { method: 'PUT', body: JSON.stringify(prefs) }),
+  notifications: () => request('/me/notifications'),
+  markNotificationsRead: () => request('/me/notifications/read', { method: 'POST', body: '{}' }),
+  requestJoin: (clanId) => request(`/clans/${clanId}/request`, { method: 'POST', body: '{}' }),
+  listJoinRequests: (clanId) => request(`/clans/${clanId}/requests`),
+  actOnJoinRequest: (clanId, reqId, action) =>
+    request(`/clans/${clanId}/requests/${reqId}/${action}`, { method: 'POST', body: '{}' }),
 
   // ----- territories + leaderboard -------------------------------------
   // ----- clans ----------------------------------------------------------

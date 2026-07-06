@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     # ---- contested / "changed hands" window ------------------------------
     contested_days: int = 7         # a territory claimed within N days reads as hot
 
+    # ---- XP (verified runs only) ------------------------------------------
+    xp_per_km: int = 10
+    xp_per_claim: int = 100
+    xp_per_steal: int = 50
+
     class Config:
         env_file = ".env"
 

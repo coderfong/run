@@ -528,6 +528,94 @@ def clan_feed(clan_id: str, limit: int = Query(20, ge=1, le=50),
     return schemas.FeedOut(items=items, next_cursor=None)
 
 
+# ---------------------------------------------------------------------------
+# join requests (invite-only clans)
+# ---------------------------------------------------------------------------
+
+@router.post("/clans/{clan_id}/request")
+@limiter.limit(settings.rate_limit_auth)
+def request_join(request: Request, response: Response, clan_id: str,
+                 user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    from ..notifications import notify  # local import avoids a cycle
+
+    if _membership(db, user.id):
+        raise HTTPException(409, "leave your current clan first")
+    c = db.execute(text("SELECT privacy, name FROM clans WHERE id = :cid"), {"cid": clan_id}).fetchone()
+    if not c:
+        raise HTTPException(404, "clan not found")
+    if c[0] == "open":
+        raise HTTPException(400, "this clan is open — join directly")
+    db.execute(
+        text(
+            """
+            INSERT INTO clan_join_requests (clan_id, user_id, status)
+            VALUES (:cid, :uid, 'pending')
+            ON CONFLICT (clan_id, user_id) DO UPDATE SET status = 'pending', created_at = now()
+            """
+        ),
+        {"cid": clan_id, "uid": user.id},
+    )
+    db.commit()
+    officers = db.execute(
+        text("SELECT user_id::text FROM clan_members WHERE clan_id = :cid AND role IN ('leader','officer')"),
+        {"cid": clan_id},
+    ).fetchall()
+    notify([o[0] for o in officers], "clan_goal", "Join request",
+           f"{user.username} wants to join {c[1]}.")
+    return {"ok": True, "status": "pending"}
+
+
+@router.get("/clans/{clan_id}/requests")
+def list_requests(clan_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    _require_role(db, clan_id, user.id, ("leader", "officer"))
+    rows = db.execute(
+        text(
+            """
+            SELECT r.id::text, r.user_id::text, u.username, r.created_at
+            FROM clan_join_requests r JOIN users u ON u.id = r.user_id
+            WHERE r.clan_id = :cid AND r.status = 'pending'
+            ORDER BY r.created_at
+            """
+        ),
+        {"cid": clan_id},
+    ).fetchall()
+    return [{"id": r[0], "user_id": r[1], "username": r[2], "created_at": r[3].isoformat()} for r in rows]
+
+
+@router.post("/clans/{clan_id}/requests/{req_id}/{action}")
+@limiter.limit(settings.rate_limit_auth)
+def act_on_request(request: Request, response: Response, clan_id: str, req_id: str, action: str,
+                   user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    from ..notifications import notify
+
+    if action not in ("approve", "deny"):
+        raise HTTPException(400, "action must be approve or deny")
+    _require_role(db, clan_id, user.id, ("leader", "officer"))
+    req = db.execute(
+        text("SELECT user_id::text, status FROM clan_join_requests WHERE id = :rid AND clan_id = :cid"),
+        {"rid": req_id, "cid": clan_id},
+    ).fetchone()
+    if not req:
+        raise HTTPException(404, "request not found")
+    if req[1] != "pending":
+        raise HTTPException(409, "already handled")
+    if action == "approve":
+        if _membership(db, req[0]):
+            raise HTTPException(409, "user already joined a clan")
+        cap = db.execute(text("SELECT member_cap FROM clans WHERE id = :cid"), {"cid": clan_id}).scalar()
+        if _member_count(db, clan_id) >= cap:
+            raise HTTPException(409, "clan is full")
+        _add_member(db, clan_id, req[0])
+    db.execute(text("UPDATE clan_join_requests SET status = :s WHERE id = :rid"),
+               {"s": "approved" if action == "approve" else "denied", "rid": req_id})
+    db.commit()
+    tag = db.execute(text("SELECT tag FROM clans WHERE id = :cid"), {"cid": clan_id}).scalar()
+    notify([req[0]], "clan_goal",
+           "Request approved" if action == "approve" else "Request declined",
+           f"Your request to join {tag} was {'approved — welcome in' if action == 'approve' else 'declined'}.")
+    return {"ok": True}
+
+
 @router.get("/me/clan", response_model=schemas.MyClan)
 def my_clan(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     m = _membership(db, user.id)

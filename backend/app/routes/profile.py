@@ -57,6 +57,10 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
         {"uid": user.id},
     ).fetchall()
 
+    xp = int(
+        db.execute(text("SELECT COALESCE(xp, 0) FROM users WHERE id = :uid"), {"uid": user.id}).scalar() or 0
+    )
+    level = int((xp / 100) ** 0.5)
     return schemas.MeStats(
         total_area_m2=float(terr[0]),
         territory_count=int(terr[1]),
@@ -64,6 +68,9 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
         runs_count=int(runs[0]),
         career_distance_m=float(runs[1]),
         current_streak_weeks=_streak_weeks([w[0] for w in weeks if w[0]]),
+        xp=xp,
+        level=level,
+        next_level_xp=100 * (level + 1) ** 2,
     )
 
 
