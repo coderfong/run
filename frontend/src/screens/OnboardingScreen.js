@@ -1,471 +1,233 @@
-import React, { useEffect, useRef, useState } from 'react';
+// PACER onboarding — three full-bleed art slides (assets/art/*):
+// 1 the loop mechanic · 2 clans + defending land · 3 the safety contract.
+// Top: "1 / 3" + Skip. Bottom: dots + circular next (slide 3: gradient CTA).
+
+import React, { useRef, useState } from 'react';
 import {
-  Animated,
   Dimensions,
-  Easing,
+  FlatList,
+  ImageBackground,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ArrowRight, Flag, Route, ShieldCheck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radius, space, type } from '../theme';
+import { brand, colors, radius, space, type } from '../theme';
+import { PressableScale, haptic } from '../ui/motion';
 
 const { width } = Dimensions.get('window');
-const BOX = 220; // illustration canvas size
 
-// Three slides: the game, the rivalry, the safety contract. The last slide
-// flows straight into the location pre-permission explainer.
 const SLIDES = [
   {
-    key: 'run',
-    title: 'Run. Close the loop. Claim the land.',
-    body:
-      'Trace any route you like. Close it back near where you started and everything inside the loop becomes your territory.',
-    accent: '#2563eb',
+    key: 'loop',
+    art: require('../../assets/art/onboarding-loop.png'),
+    headline: ['Run.', 'Close the loop.'],
+    accentLine: 'Claim the land.',
+    accent: brand.pink,
+    body: 'Close a loop anywhere in the real world to capture territory for your clan.',
   },
   {
-    key: 'compete',
-    title: 'Join a clan. Take the city.',
-    body:
-      'Run solo or form a clan and hold land together. Run over a rival’s territory and the overlap becomes yours — captures are validated on our servers, so what you see is what you keep.',
-    accent: '#9333ea',
+    key: 'clans',
+    art: require('../../assets/art/onboarding-clans.png'),
+    headline: ['Clans fight.'],
+    accentLine: 'Defend your land.',
+    accent: brand.purple,
+    body: 'Other clans will try to take over your territory. Hold it together.',
   },
   {
     key: 'safety',
-    title: 'Territory can wait. Traffic can’t.',
-    body:
-      'Obey every crossing, signal and barrier — a loop is never worth a red light. Runs are checked server-side, so there’s no prize for cutting corners. Heads up, eyes on the road.',
-    accent: '#d97706',
+    art: require('../../assets/art/onboarding-safety.png'),
+    headline: ['Territory can wait.'],
+    accentLine: "Traffic can't.",
+    accent: brand.teal,
+    body: 'Run smart and come back strong.',
+    bullets: [
+      { icon: ShieldCheck, title: 'Stay alert', body: 'Eyes up at crossings — a loop is never worth a red light.' },
+      { icon: Route, title: 'Use safe routes', body: 'Pick paths and park connectors over traffic.' },
+      { icon: Flag, title: 'Follow the rules', body: 'Captures are validated server-side. No prize for cutting corners.' },
+    ],
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Animated illustrations — one per slide, each demonstrating the step.
-// Everything animates via transform/opacity so the native driver can be used.
-// ---------------------------------------------------------------------------
-
-// Step 1: a runner dot orbiting a dashed loop that closes on itself.
-function IllustrationLoop({ accent }) {
-  const spin = useRef(new Animated.Value(0)).current;
-  const R = 78;
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration: 3000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [spin]);
-
-  const rotate = spin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
+function Slide({ item, insets, index, onNext, onDone, last }) {
   return (
-    <View style={styles.illo}>
-      <Svg width={BOX} height={BOX}>
-        <Circle cx={BOX / 2} cy={BOX / 2} r={R} stroke={`${accent}26`} strokeWidth={16} fill="none" />
-        <Circle
-          cx={BOX / 2}
-          cy={BOX / 2}
-          r={R}
-          stroke={accent}
-          strokeWidth={3}
-          strokeDasharray="1 11"
-          strokeLinecap="round"
-          fill="none"
-        />
-      </Svg>
-      {/* start / finish marker at the top of the loop */}
-      <View style={[styles.startDot, { borderColor: accent, top: BOX / 2 - R - 7 }]} />
-      {/* orbiting runner */}
-      <Animated.View
-        style={[styles.orbit, { transform: [{ rotate }] }]}
-        pointerEvents="none"
-      >
-        <View style={{ marginTop: BOX / 2 - R - 9 }}>
-          <View style={[styles.runner, { backgroundColor: accent, shadowColor: accent }]} />
+    <ImageBackground source={item.art} style={{ width, flex: 1 }} resizeMode="cover">
+      <LinearGradient
+        colors={['rgba(11,13,16,0.72)', 'rgba(11,13,16,0.05)', 'rgba(11,13,16,0.88)']}
+        locations={[0, 0.42, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[styles.slideInner, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.xl }]}>
+        {/* headline block */}
+        <View style={{ marginTop: space.xl }}>
+          {item.headline.map((line) => (
+            <Text key={line} style={styles.headline}>{line}</Text>
+          ))}
+          <Text style={[styles.headline, { color: item.accent }]}>{item.accentLine}</Text>
         </View>
-      </Animated.View>
-    </View>
-  );
-}
 
-// Step 2: two overlapping territories; the captured overlap flips to your colour.
-function IllustrationSteal() {
-  const rival = '#9333ea';
-  const you = '#2563eb';
-  const capture = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.delay(500),
-        Animated.timing(capture, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.delay(900),
-        Animated.timing(capture, {
-          toValue: 0,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [capture]);
+        {/* lower block */}
+        <View>
+          {item.bullets ? (
+            <View style={{ gap: space.lg, marginBottom: space.xl }}>
+              {item.bullets.map(({ icon: Icon, title, body }) => (
+                <View key={title} style={styles.bullet}>
+                  <View style={[styles.bulletIcon, { borderColor: item.accent }]}>
+                    <Icon size={20} color={item.accent} strokeWidth={2} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[type.bodyBold, { color: '#fff' }]}>{title}</Text>
+                    <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.72)', marginTop: 2 }]}>{body}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.body}>{item.body}</Text>
+          )}
 
-  const lensOpacity = capture.interpolate({ inputRange: [0, 1], outputRange: [0, 0.95] });
-  const lensScale = capture.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
-
-  return (
-    <View style={styles.illo}>
-      {/* rival territory (left) */}
-      <View
-        style={[
-          styles.stealCircle,
-          { backgroundColor: `${rival}66`, borderColor: rival, left: BOX / 2 - 88, top: BOX / 2 - 50 },
-        ]}
-      />
-      {/* your territory (right) */}
-      <View
-        style={[
-          styles.stealCircle,
-          { backgroundColor: `${you}55`, borderColor: you, left: BOX / 2 - 12, top: BOX / 2 - 50 },
-        ]}
-      />
-      {/* captured overlap */}
-      <Animated.View
-        style={{
-          position: 'absolute',
-          width: 50,
-          height: 96,
-          borderRadius: 25,
-          backgroundColor: you,
-          left: BOX / 2 - 25,
-          top: BOX / 2 - 48,
-          opacity: lensOpacity,
-          transform: [{ scale: lensScale }],
-        }}
-      />
-    </View>
-  );
-}
-
-// Step 3: a crossing signal — the amber lamp pulses while a runner dot
-// waits at the stop line. Safety is part of the game's contract.
-function IllustrationSafety({ accent }) {
-  const pulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 700,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 700,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [pulse]);
-
-  const lampOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
-  const lampScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] });
-
-  return (
-    <View style={styles.illo}>
-      {/* signal housing */}
-      <View style={[styles.signalHousing, { borderColor: accent }]}>
-        <View style={[styles.signalLamp, { backgroundColor: colors.bgElevated }]} />
-        <Animated.View
-          style={[
-            styles.signalLamp,
-            {
-              backgroundColor: accent,
-              opacity: lampOpacity,
-              transform: [{ scale: lampScale }],
-            },
-          ]}
-        />
-        <View style={[styles.signalLamp, { backgroundColor: colors.bgElevated }]} />
+          {last ? (
+            <PressableScale onPress={onDone} accessibilityRole="button" accessibilityLabel="Get started">
+              <LinearGradient
+                colors={brand.gradientTeal}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+                style={styles.cta}
+              >
+                <Text style={[type.button, { color: '#fff' }]}>Get started</Text>
+              </LinearGradient>
+            </PressableScale>
+          ) : null}
+        </View>
       </View>
-      {/* stop line + waiting runner dot */}
-      <View style={styles.stopLine} />
-      <View style={[styles.waitingRunner, { backgroundColor: accent }]} />
-    </View>
-  );
-}
-
-const ILLUSTRATIONS = {
-  run: IllustrationLoop,
-  compete: IllustrationSteal,
-  safety: IllustrationSafety,
-};
-
-// ---------------------------------------------------------------------------
-
-function Slide({ item, index, scrollX, height }) {
-  const inputRange = [(index - 1) * width, index * width, (index + 1) * width];
-  const illoScale = scrollX.interpolate({
-    inputRange,
-    outputRange: [0.55, 1, 0.55],
-    extrapolate: 'clamp',
-  });
-  const illoOpacity = scrollX.interpolate({
-    inputRange,
-    outputRange: [0, 1, 0],
-    extrapolate: 'clamp',
-  });
-  const textTranslate = scrollX.interpolate({
-    inputRange,
-    outputRange: [width * 0.3, 0, -width * 0.3],
-    extrapolate: 'clamp',
-  });
-  const textOpacity = scrollX.interpolate({
-    inputRange,
-    outputRange: [0, 1, 0],
-    extrapolate: 'clamp',
-  });
-
-  const Illo = ILLUSTRATIONS[item.key];
-
-  return (
-    <View style={[styles.slide, { width, height }]}>
-      <Animated.View style={{ opacity: illoOpacity, transform: [{ scale: illoScale }] }}>
-        <Illo accent={item.accent} />
-      </Animated.View>
-      <Animated.View
-        style={[styles.copy, { opacity: textOpacity, transform: [{ translateX: textTranslate }] }]}
-      >
-        <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.body}>{item.body}</Text>
-      </Animated.View>
-    </View>
+    </ImageBackground>
   );
 }
 
 export default function OnboardingScreen({ onDone }) {
   const insets = useSafeAreaInsets();
-  const ref = useRef(null);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const listRef = useRef(null);
   const [index, setIndex] = useState(0);
-  const [listH, setListH] = useState(Math.round(Dimensions.get('window').height * 0.68));
-
-  const finish = () => onDone?.();
-  const next = () => {
-    if (index < SLIDES.length - 1) {
-      ref.current?.scrollToIndex({ index: index + 1, animated: true });
-    } else {
-      finish();
-    }
-  };
-  const onMomentumEnd = (e) => {
-    setIndex(Math.round(e.nativeEvent.contentOffset.x / width));
-  };
-
   const last = index === SLIDES.length - 1;
 
+  const finish = () => { haptic.light(); onDone?.(); };
+  const next = () => {
+    if (last) return finish();
+    listRef.current?.scrollToIndex({ index: index + 1, animated: true });
+  };
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.listWrap} onLayout={(e) => setListH(e.nativeEvent.layout.height)}>
-        <Animated.FlatList
-          ref={ref}
-          data={SLIDES}
-          keyExtractor={(s) => s.key}
-          horizontal
-          pagingEnabled
-          bounces={false}
-          showsHorizontalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: true }
-          )}
-          onMomentumScrollEnd={onMomentumEnd}
-          renderItem={({ item, index: i }) => (
-            <Slide item={item} index={i} scrollX={scrollX} height={listH} />
-          )}
-        />
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <FlatList
+        ref={listRef}
+        data={SLIDES}
+        keyExtractor={(s) => s.key}
+        horizontal
+        pagingEnabled
+        bounces={false}
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
+        renderItem={({ item, index: i }) => (
+          <Slide item={item} insets={insets} index={i} last={i === SLIDES.length - 1} onNext={next} onDone={finish} />
+        )}
+      />
+
+      {/* top chrome: progress + skip */}
+      <View style={[styles.topBar, { top: insets.top + space.sm }]}>
+        <Text style={styles.progress}>
+          <Text style={{ color: SLIDES[index].accent }}>{index + 1}</Text> / {SLIDES.length}
+        </Text>
+        <TouchableOpacity onPress={finish} hitSlop={12} accessibilityRole="button" accessibilityLabel="Skip intro">
+          <Text style={[type.bodyMedium, { color: 'rgba(255,255,255,0.8)' }]}>Skip</Text>
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.dots}>
-        {SLIDES.map((_, i) => {
-          const inputRange = [(i - 1) * width, i * width, (i + 1) * width];
-          const scaleX = scrollX.interpolate({
-            inputRange,
-            outputRange: [1, 2.75, 1],
-            extrapolate: 'clamp',
-          });
-          const opacity = scrollX.interpolate({
-            inputRange,
-            outputRange: [0.3, 1, 0.3],
-            extrapolate: 'clamp',
-          });
-          return (
-            <Animated.View
-              key={i}
-              style={[styles.dot, { opacity, transform: [{ scaleX }] }]}
+      {/* bottom chrome: dots + next (hidden on the CTA slide) */}
+      <View style={[styles.bottomBar, { bottom: insets.bottom + space.xl }]}>
+        <View style={styles.dots}>
+          {SLIDES.map((s, i) => (
+            <View
+              key={s.key}
+              style={[styles.dot, i === index && { backgroundColor: SLIDES[index].accent, width: 8 }]}
             />
-          );
-        })}
-      </View>
-
-      <View style={[styles.footer, { paddingBottom: insets.bottom + space.xl }]}>
-        <TouchableOpacity
-          onPress={finish}
-          hitSlop={12}
-          accessibilityRole="button"
-          accessibilityLabel="Skip intro"
-        >
-          <Text style={styles.skip}>Skip</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.cta}
-          activeOpacity={0.85}
-          onPress={next}
-          accessibilityRole="button"
-          accessibilityLabel={last ? 'Finish intro' : 'Next slide'}
-        >
-          <Text style={styles.ctaText}>{last ? "Let's go" : 'Next'}</Text>
-        </TouchableOpacity>
+          ))}
+        </View>
+        {!last && (
+          <PressableScale
+            style={styles.nextBtn}
+            onPress={() => { haptic.light(); next(); }}
+            accessibilityRole="button"
+            accessibilityLabel="Next slide"
+          >
+            <ArrowRight size={22} color="#fff" />
+          </PressableScale>
+        )}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  listWrap: { flex: 1 },
-
-  slide: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: space.xl,
-  },
-
-  illo: {
-    width: BOX,
-    height: BOX,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: space.xl,
-  },
-  orbit: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-  },
-  runner: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    shadowOpacity: 0.9,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
-  },
-  startDot: {
-    position: 'absolute',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 3,
-    backgroundColor: colors.bg,
-  },
-  stealCircle: {
-    position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 2,
-  },
-  signalHousing: {
-    width: 62,
-    height: 150,
-    borderRadius: radius.lg,
-    borderWidth: 3,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'space-evenly',
-  },
-  signalLamp: { width: 30, height: 30, borderRadius: 15 },
-  stopLine: {
-    position: 'absolute',
-    bottom: 18,
-    left: 20,
-    right: 20,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-  },
-  waitingRunner: {
-    position: 'absolute',
-    bottom: 30,
-    left: 48,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-  },
-
-  copy: { alignItems: 'center' },
-  title: {
-    ...type.title,
-    textAlign: 'center',
-    marginBottom: space.md,
-  },
+  slideInner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: space.gutter },
+  headline: { ...type.hero, color: '#ffffff', lineHeight: 46 },
   body: {
     ...type.body,
-    color: colors.textMuted,
-    textAlign: 'center',
+    color: 'rgba(255,255,255,0.82)',
     lineHeight: 22,
-    paddingHorizontal: space.sm,
+    marginBottom: 76, // clears the bottom chrome
+    maxWidth: '86%',
   },
 
-  dots: {
-    flexDirection: 'row',
-    alignSelf: 'center',
+  bullet: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  bulletIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
     alignItems: 'center',
-    marginVertical: space.lg,
-    height: 10,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-    marginHorizontal: 5,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,13,16,0.5)',
   },
 
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: space.xl,
-  },
-  skip: { ...type.bodyMedium, color: colors.textMuted },
   cta: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: space.xl,
-    paddingVertical: 14,
-    borderRadius: radius.pill,
+    height: 52,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  ctaText: { ...type.buttonSm },
+
+  topBar: {
+    position: 'absolute',
+    left: space.gutter,
+    right: space.gutter,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progress: { ...type.bodyMedium, color: 'rgba(255,255,255,0.6)' },
+
+  bottomBar: {
+    position: 'absolute',
+    left: space.gutter,
+    right: space.gutter,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dots: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
+  nextBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,13,16,0.4)',
+  },
 });
