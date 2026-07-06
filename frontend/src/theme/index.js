@@ -1,29 +1,48 @@
-// Territory Run design tokens — single entry point. Everything re-exports
-// through here, so `import { colors, space, type } from '../theme'` keeps
-// working across the app. Structure:
+// PACER design tokens — single entry point.
+//
+// DARK-FIRST: the app ships dark everywhere (per the PACER design). The
+// palette every screen imports as `colors` IS the dark palette; the old
+// light palette remains exported as `lightColors` for share cards or future
+// light surfaces. `darkColors` stays for code that asks for dark explicitly.
+//
 //   tokens.js  — fonts, radius, spacing, elevation, type, run tuning
-//   light.js   — light surfaces + desaturated semantics
-//   dark.js    — dark "night run" surfaces (3 elevation steps)
+//   light.js   — legacy light surfaces (kept for reference/exports)
+//   dark.js    — the shipped palette (3 surface elevation steps)
 //   motion.js  — spring/timing presets
 //   haptics.js — restrained haptic wrappers
 
 export * from './tokens';
-export * from './light';
 export * from './dark';
 export * from './motion';
 export { haptic } from './haptics';
+export { colors as lightColors } from './light';
 
-import { colors } from './light';
 import { darkColors } from './dark';
 import { fonts, radius, space, shadow, type, runTuning, withAlpha } from './tokens';
 
-// Clan colors are now server-owned (backend/app/clans_meta.py) and delivered
-// per-entity on the API; there is no client-side team/clan palette here.
+// Dark-first: `colors` (what all screens import) is the dark palette.
+export const colors = darkColors;
+
+// ---------------------------------------------------------------------------
+// Brand — PACER. The pink→purple gradient is the brand CTA; clan colors
+// remain each user's accent for territory/trails/stats.
+// ---------------------------------------------------------------------------
+
+export const brand = {
+  name: 'PACER',
+  tagline: 'RUN. CLAIM. CONQUER.',
+  pink: '#ec4899',
+  purple: '#8b5cf6',
+  teal: '#2dd4bf',
+  gradient: ['#ec4899', '#8b5cf6'],
+  gradientTeal: ['#8b5cf6', '#2dd4bf'],
+};
 
 export const tokens = {
   fonts,
   colors,
   darkColors,
+  brand,
   radius,
   space,
   shadow,

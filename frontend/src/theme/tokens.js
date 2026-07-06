@@ -1,14 +1,17 @@
 // Scale tokens: fonts, radius, spacing, elevation, type scale, and the
-// run-recording tuning constants. Color-bearing type styles resolve their
-// default color from the light palette (screens override `color` as needed).
+// run-recording tuning constants. DARK-FIRST: color-bearing type styles
+// resolve their default color from the dark palette.
 
-import { colors } from './light';
+import { darkColors as colors } from './dark';
 
 // ---------------------------------------------------------------------------
 // Fonts (keys must match the families passed to useFonts in App.js)
+// PACER: Anton for hero display/titles (condensed athletic caps),
+// Space Grotesk for stats (tabular), Inter for everything else.
 // ---------------------------------------------------------------------------
 
 export const fonts = {
+  hero: 'Anton_400Regular',
   display: 'SpaceGrotesk_700Bold',
   displayMedium: 'SpaceGrotesk_500Medium',
   body: 'Inter_400Regular',
@@ -49,27 +52,15 @@ export const space = {
 };
 
 // ---------------------------------------------------------------------------
-// Elevation — exactly three levels. Never combine border + shadow on one
-// element. `glow(color)` is the ONE signature effect, reserved for the
-// Record trail, the Result card, and territory rendering.
+// Elevation — dark theme uses SURFACE STEPS, not shadows (constitution).
+// card/raised are intentionally empty; depth comes from surface color.
+// `glow(color)` is the signature effect (trails, CTAs, territory).
 // ---------------------------------------------------------------------------
 
 export const shadow = {
   flat: {},
-  card: {
-    shadowColor: '#16181d',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  raised: {
-    shadowColor: '#16181d',
-    shadowOpacity: 0.12,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
-  },
+  card: {},
+  raised: {},
   glow: (color) => ({
     shadowColor: color,
     shadowOpacity: 0.55,
@@ -87,8 +78,10 @@ export const shadow = {
 const TABULAR = ['tabular-nums'];
 
 export const type = {
-  display: { fontFamily: fonts.display, fontSize: 34, letterSpacing: -0.5, color: colors.text },
-  title: { fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.3, color: colors.text },
+  // Anton hero styles — condensed athletic caps (PACER headlines/wordmark).
+  hero: { fontFamily: fonts.hero, fontSize: 40, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.text },
+  display: { fontFamily: fonts.hero, fontSize: 32, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.text },
+  title: { fontFamily: fonts.hero, fontSize: 22, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.text },
   heading: { fontFamily: fonts.display, fontSize: 18, color: colors.text },
 
   statHero: { fontFamily: fonts.display, fontSize: 44, letterSpacing: -1, fontVariant: TABULAR, color: colors.text },

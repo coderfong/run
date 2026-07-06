@@ -1,11 +1,13 @@
 // Button — the one button. Variants: primary (accent fill), secondary
-// (neutral surface), destructive (desaturated danger), ghost (text only).
-// Press feedback = scale 0.97 + light haptic (constitution).
+// (neutral surface), destructive (desaturated danger), ghost (text only),
+// gradient (the PACER pink→purple brand CTA), outline (thin brand border).
+// Press feedback = scale 0.97 + light haptic.
 
 import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
-import { colors, radius, space, type } from '../../theme';
+import { brand, colors, radius, space, type } from '../../theme';
 import { haptic, PressableScale } from '../../ui/motion';
 
 export default function Button({
@@ -35,6 +37,10 @@ export default function Button({
   } else if (variant === 'ghost') {
     bg = 'transparent';
     fg = accent;
+  } else if (variant === 'outline') {
+    bg = 'transparent';
+    fg = brand.pink;
+    border = brand.pink;
   }
 
   const handlePress = () => {
@@ -42,6 +48,46 @@ export default function Button({
     haptic.light();
     onPress?.();
   };
+
+  const inner = loading ? (
+    <ActivityIndicator color={variant === 'gradient' ? '#fff' : fg} />
+  ) : (
+    <>
+      {icon ? <View>{icon}</View> : null}
+      <Text style={[textStyle, { color: variant === 'gradient' ? '#fff' : fg }]}>{title}</Text>
+    </>
+  );
+
+  const shape = {
+    height,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: space.xl,
+  };
+
+  if (variant === 'gradient') {
+    return (
+      <PressableScale
+        onPress={handlePress}
+        disabled={disabled || loading}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        style={[{ alignSelf: full ? 'stretch' : 'flex-start', opacity: disabled ? 0.5 : 1 }, style]}
+      >
+        <LinearGradient
+          colors={brand.gradient}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={shape}
+        >
+          {inner}
+        </LinearGradient>
+      </PressableScale>
+    );
+  }
 
   return (
     <PressableScale
@@ -51,29 +97,16 @@ export default function Button({
       accessibilityLabel={title}
       style={[
         {
-          height,
-          borderRadius: radius.pill,
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexDirection: 'row',
-          gap: 8,
-          paddingHorizontal: space.xl,
+          ...shape,
           backgroundColor: bg,
-          ...(border ? { borderWidth: 1, borderColor: border } : {}),
+          ...(border ? { borderWidth: 1.5, borderColor: border } : {}),
           alignSelf: full ? 'stretch' : 'flex-start',
           opacity: disabled ? 0.5 : 1,
         },
         style,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator color={fg} />
-      ) : (
-        <>
-          {icon ? <View>{icon}</View> : null}
-          <Text style={[textStyle, { color: fg }]}>{title}</Text>
-        </>
-      )}
+      {inner}
     </PressableScale>
   );
 }

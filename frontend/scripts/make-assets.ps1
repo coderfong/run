@@ -13,8 +13,8 @@ $assets = Join-Path $PSScriptRoot '..\assets'
 if (-not (Test-Path $assets)) { New-Item -ItemType Directory -Path $assets | Out-Null }
 
 $BG = '#0b0d10'
-$GLOW = '#7dd3fc'   # cool sky glow
-$CORE = '#f0f9ff'   # near-white core line
+$GLOW = '#ec4899'   # PACER pink glow
+$CORE = '#fdf2f8'   # near-white pink core
 
 function Draw-Loop {
     param([System.Drawing.Graphics]$g, [double]$cx, [double]$cy, [double]$r, [double]$w)
@@ -71,7 +71,7 @@ function New-SplashPng {
     $sf = New-Object System.Drawing.StringFormat
     $sf.Alignment = [System.Drawing.StringAlignment]::Center
     $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-    $g.DrawString('TERRITORY RUN', $titleFont, $textBrush, $cx, $cy + $r + 150, $sf)
+    $g.DrawString('PACER', $titleFont, $textBrush, $cx, $cy + $r + 150, $sf)
     $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
     $g.Dispose(); $bmp.Dispose(); $titleFont.Dispose(); $textBrush.Dispose()
     Write-Output "wrote $Path"

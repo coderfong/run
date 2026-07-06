@@ -7,8 +7,8 @@ import Svg, { Circle, Path } from 'react-native-svg';
 
 import { withAlpha } from '../theme';
 
-const GLOW = '#7dd3fc';
-const CORE = '#f0f9ff';
+const GLOW = '#ec4899'; // PACER pink
+const CORE = '#fdf2f8';
 
 export default function LoopMark({ size = 28, color = CORE, glowColor = GLOW, glow = true }) {
   const c = size / 2;

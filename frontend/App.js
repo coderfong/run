@@ -20,6 +20,7 @@ import {
   Inter_600SemiBold,
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
+import { Anton_400Regular } from '@expo-google-fonts/anton';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RunningScreen from './src/screens/RunningScreen';
@@ -256,7 +257,7 @@ function RootStack() {
 function FullScreenSpinner() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' }}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
       <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
@@ -313,6 +314,7 @@ function App() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    Anton_400Regular,
   });
 
   useEffect(() => {
@@ -327,7 +329,7 @@ function App() {
         <AuthProvider>
           <ClanProvider>
             <RecordingProvider>
-              <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+              <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
               <RootNavigator />
               <OfflineBanner />
               <ToastHost />
