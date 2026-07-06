@@ -39,6 +39,7 @@ import { RecordingProvider, useRecording } from './src/state/recording';
 import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
 import TabBar from './src/navigation/TabBar';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import { colors, darkColors, fonts } from './src/theme';
 
 // Crash telemetry — a strict no-op unless a DSN is provided via env/extra.
@@ -136,14 +137,28 @@ const headerLight = {
 
 // --- tabs ------------------------------------------------------------------
 
+// Each tab stack gets its own error boundary so one tab crashing shows a
+// retry state rather than taking down the whole app.
+const withBoundary = (Stack) => function BoundedTab() {
+  return (
+    <ErrorBoundary>
+      <Stack />
+    </ErrorBoundary>
+  );
+};
+const HomeTab = withBoundary(HomeStack);
+const MapTab = withBoundary(MapStack);
+const ClubTab = withBoundary(ClubStack);
+const YouTab = withBoundary(YouStack);
+
 const Tab = createBottomTabNavigator();
 function MainTabs() {
   return (
     <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <TabBar {...props} />}>
-      <Tab.Screen name="Home" component={HomeStack} />
-      <Tab.Screen name="Map" component={MapStack} />
-      <Tab.Screen name="Club" component={ClubStack} />
-      <Tab.Screen name="You" component={YouStack} />
+      <Tab.Screen name="Home" component={HomeTab} />
+      <Tab.Screen name="Map" component={MapTab} />
+      <Tab.Screen name="Club" component={ClubTab} />
+      <Tab.Screen name="You" component={YouTab} />
     </Tab.Navigator>
   );
 }

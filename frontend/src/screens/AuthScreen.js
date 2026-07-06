@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,7 +11,8 @@ import {
 
 import { useAuth } from '../auth/AuthContext';
 import { colors, radius, space, type } from '../theme';
-import { PressableScale } from '../ui/motion';
+import { Screen, Button } from '../components/ui';
+import LoopMark from '../components/LoopMark';
 
 // Mirror the backend rules exactly (auth.py) so users never hit a server
 // error for a format problem.
@@ -43,12 +42,10 @@ export default function AuthScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  // Per-field errors show after first submit attempt (not while typing cold).
   const [touched, setTouched] = useState(false);
   const [apiError, setApiError] = useState(null);
 
   const isSignup = mode === 'signup';
-
   const uErr = touched ? usernameError(username) : null;
   const pErr = touched ? passwordError(password, isSignup) : null;
 
@@ -62,7 +59,6 @@ export default function AuthScreen() {
       if (isSignup) await signUp(u, password);
       else await signIn(u, password);
     } catch (e) {
-      // Show the specific API message — never a generic "something went wrong".
       setApiError(e.message || `Could not ${isSignup ? 'create the account' : 'sign in'}. Try again.`);
     } finally {
       setBusy(false);
@@ -76,23 +72,17 @@ export default function AuthScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-      >
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Screen scroll contentStyle={{ paddingTop: space.huge }}>
         <View style={styles.brand}>
-          <View style={styles.logoDot} />
-          <Text style={styles.brandText}>Territory Run</Text>
+          <LoopMark size={30} />
+          <Text style={type.heading}>Territory Run</Text>
         </View>
 
-        <Text style={styles.headline}>
+        <Text style={[type.display, { marginBottom: space.sm }]}>
           {isSignup ? 'Create your account' : 'Welcome back'}
         </Text>
-        <Text style={styles.subtle}>
+        <Text style={[type.body, { color: colors.textMuted, marginBottom: space.xl }]}>
           {isSignup
             ? 'Pick a username — your runs will claim land under it.'
             : 'Sign in to keep growing your territory.'}
@@ -106,17 +96,12 @@ export default function AuthScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           value={username}
-          onChangeText={(v) => {
-            setUsername(v);
-            setApiError(null);
-          }}
+          onChangeText={(v) => { setUsername(v); setApiError(null); }}
           maxLength={32}
           accessibilityLabel="Username"
         />
         {uErr ? <Text style={styles.fieldError}>{uErr}</Text> : null}
-        {isSignup && !uErr ? (
-          <Text style={styles.fieldHint}>3–32 characters: a–z, 0–9, underscore.</Text>
-        ) : null}
+        {isSignup && !uErr ? <Text style={styles.fieldHint}>3–32 characters: a–z, 0–9, underscore.</Text> : null}
 
         <Text style={styles.label}>Password</Text>
         <TextInput
@@ -126,10 +111,7 @@ export default function AuthScreen() {
           secureTextEntry
           autoCapitalize="none"
           value={password}
-          onChangeText={(v) => {
-            setPassword(v);
-            setApiError(null);
-          }}
+          onChangeText={(v) => { setPassword(v); setApiError(null); }}
           maxLength={128}
           accessibilityLabel="Password"
         />
@@ -141,60 +123,26 @@ export default function AuthScreen() {
           </View>
         ) : null}
 
-        <PressableScale
-          style={[styles.primaryBtn, busy && styles.btnDisabled]}
+        <Button
+          title={isSignup ? 'Create account' : 'Sign in'}
           onPress={onSubmit}
-          disabled={busy}
-          accessibilityRole="button"
-          accessibilityLabel={isSignup ? 'Create account' : 'Sign in'}
-        >
-          {busy ? (
-            <ActivityIndicator color={colors.primaryInk} />
-          ) : (
-            <Text style={styles.primaryBtnText}>
-              {isSignup ? 'Create account' : 'Sign in'}
-            </Text>
-          )}
-        </PressableScale>
+          loading={busy}
+          style={{ marginTop: space.xl }}
+        />
 
-        <TouchableOpacity
-          style={styles.switch}
-          onPress={switchMode}
-          accessibilityRole="button"
-        >
-          <Text style={styles.switchText}>
-            {isSignup
-              ? 'Already have an account? Sign in'
-              : 'New here? Create an account'}
+        <TouchableOpacity style={styles.switch} onPress={switchMode} accessibilityRole="button">
+          <Text style={[type.body, { color: colors.textMuted }]}>
+            {isSignup ? 'Already have an account? Sign in' : 'New here? Create an account'}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: space.xl, paddingTop: space.xxl + 24 },
-
-  brand: { flexDirection: 'row', alignItems: 'center', marginBottom: space.xl },
-  logoDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    marginRight: 10,
-  },
-  brandText: { ...type.heading },
-
-  headline: { ...type.display, marginBottom: space.sm },
-  subtle: { ...type.body, color: colors.textMuted, marginBottom: space.xl },
-
-  label: {
-    ...type.labelSm,
-    marginBottom: 6,
-    marginTop: space.md,
-  },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: space.xl },
+  label: { ...type.labelSm, marginBottom: 6, marginTop: space.md },
   input: {
     ...type.body,
     backgroundColor: colors.card,
@@ -207,25 +155,7 @@ const styles = StyleSheet.create({
   inputError: { borderColor: colors.danger },
   fieldError: { ...type.caption, color: colors.danger, marginTop: 6 },
   fieldHint: { ...type.caption, color: colors.textDim, marginTop: 6 },
-
-  apiErrorBox: {
-    backgroundColor: colors.dangerSoft,
-    borderRadius: radius.sm,
-    padding: space.md,
-    marginTop: space.lg,
-  },
+  apiErrorBox: { backgroundColor: colors.dangerSoft, borderRadius: radius.sm, padding: space.md, marginTop: space.lg },
   apiErrorText: { ...type.bodySm, color: colors.danger },
-
-  primaryBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    marginTop: space.xl,
-  },
-  primaryBtnText: { ...type.button },
-  btnDisabled: { opacity: 0.6 },
-
   switch: { marginTop: space.lg, alignItems: 'center' },
-  switchText: { ...type.body, color: colors.textMuted },
 });

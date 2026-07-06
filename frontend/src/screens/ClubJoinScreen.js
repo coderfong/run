@@ -1,34 +1,23 @@
-// Deep-link target for territoryrun://clan/join/:code — Phase 1 stub.
-// Phase 5 turns this into a real "join clan by invite" flow (preview the
-// clan, confirm, POST /clans/join-by-code).
+// Deep-link target for territoryrun://clan/join/:code — Phase 1/2 stub.
+// Phase 5 turns this into a real join-by-invite flow.
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
+import { Screen } from '../components/ui';
 import { colors, space, type } from '../theme';
 
 export default function ClubJoinScreen({ route }) {
   const code = route?.params?.code;
   return (
-    <View style={styles.container}>
-      <Text style={styles.eyebrow}>Clan invite</Text>
-      <Text style={styles.code}>{code || '—'}</Text>
-      <Text style={styles.body}>
-        Joining by invite arrives with the clan system in the next update.
-      </Text>
-    </View>
+    <Screen center>
+      <View style={{ alignItems: 'center' }}>
+        <Text style={[type.labelSm, { marginBottom: space.sm }]}>Clan invite</Text>
+        <Text style={[type.display, { letterSpacing: 4, marginBottom: space.lg }]}>{code || '—'}</Text>
+        <Text style={[type.body, { color: colors.textMuted, textAlign: 'center' }]}>
+          Joining by invite arrives with the clan system in the next update.
+        </Text>
+      </View>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: space.xl,
-  },
-  eyebrow: { ...type.labelSm, marginBottom: space.sm },
-  code: { ...type.display, letterSpacing: 4, marginBottom: space.lg },
-  body: { ...type.body, color: colors.textMuted, textAlign: 'center' },
-});

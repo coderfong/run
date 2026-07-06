@@ -12,9 +12,10 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
-
 import { colors, radius } from '../theme';
+
+// Re-export haptics from the theme module so both import paths work.
+export { haptic } from '../theme/haptics';
 
 // ---------------------------------------------------------------------------
 // Reduce Motion
@@ -53,30 +54,6 @@ export function MotionProvider({ children }) {
     </ReduceMotionContext.Provider>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Haptics — restrained: light on run start/finish + top-level nav,
-// success notification on loop close. All fire-and-forget.
-// ---------------------------------------------------------------------------
-
-export const haptic = {
-  light() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-  },
-  medium() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  },
-  success() {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
-      () => {}
-    );
-  },
-  warning() {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(
-      () => {}
-    );
-  },
-};
 
 // ---------------------------------------------------------------------------
 // PressableScale — the standard button press affordance (scale 0.97).
