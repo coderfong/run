@@ -18,8 +18,15 @@ services:
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
+      # production enables boot-time config guards (rejects the dev JWT default
+      # and a wildcard CORS). The mobile app doesn't use CORS, so the value just
+      # needs to be a real origin — the privacy-policy site works.
+      - key: ENV
+        value: production
       - key: CORS_ORIGINS
-        value: "*"
+        value: "https://coderfong.github.io"
+      - key: APP_VERSION
+        value: "2.0.0"
 
 databases:
   - name: territory-run-db
