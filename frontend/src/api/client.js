@@ -146,5 +146,5 @@ export const api = {
     const qs = parts.length ? `?${parts.join('&')}` : '';
     return request(`/map-polygons${qs}`);
   },
-  leaderboard: () => request('/leaderboard'),
+  leaderboard: (opts) => request(`/leaderboard${opts?.solo ? '?solo=true' : ''}`),
 };

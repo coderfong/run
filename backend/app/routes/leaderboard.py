@@ -22,11 +22,15 @@ router = APIRouter()
 def leaderboard(
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=500),
+    solo: bool = Query(False, description="only rank players not in a clan"),
     viewer: Optional[models.User] = Depends(current_user_optional),
 ):
+    # solo board = clanless players only (the LEFT JOIN leaves cm.user_id NULL
+    # for anyone without a membership). Clause is a fixed literal, not input.
+    solo_clause = "WHERE cm.user_id IS NULL" if solo else ""
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT u.id::text, u.username,
                    COALESCE(SUM(t.area_m2), 0) AS total_area,
                    COUNT(t.id) AS territory_count,
@@ -37,6 +41,7 @@ def leaderboard(
              AND (t.verified OR t.user_id = :viewer_id)
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
+            {solo_clause}
             GROUP BY u.id, u.username, c.tag, c.color_key
             HAVING COALESCE(SUM(t.area_m2), 0) > 0
             ORDER BY total_area DESC
