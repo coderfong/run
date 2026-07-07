@@ -36,6 +36,8 @@ import NotificationsScreen from './src/screens/NotificationsScreen';
 import ClubScreen from './src/screens/ClubScreen';
 import ClubJoinScreen from './src/screens/ClubJoinScreen';
 import ClubCreateScreen from './src/screens/ClubCreateScreen';
+import ClubDetailScreen from './src/screens/ClubDetailScreen';
+import SeasonScreen from './src/screens/SeasonScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ClanProvider } from './src/state/clan';
@@ -108,6 +110,16 @@ function HomeStack() {
         component={NotificationsScreen}
         options={{ headerShown: true, title: 'Notifications', ...headerLight }}
       />
+      <HomeStackNav.Screen
+        name="Season"
+        component={SeasonScreen}
+        options={{ headerShown: true, title: 'Season', ...headerLight }}
+      />
+      <HomeStackNav.Screen
+        name="ClubDetail"
+        component={ClubDetailScreen}
+        options={{ headerShown: true, title: 'Clan', ...headerLight }}
+      />
     </HomeStackNav.Navigator>
   );
 }
@@ -135,6 +147,11 @@ function ClubStack() {
         name="ClubJoin"
         component={ClubJoinScreen}
         options={{ headerShown: true, title: 'Join clan', ...headerLight }}
+      />
+      <ClubStackNav.Screen
+        name="ClubDetail"
+        component={ClubDetailScreen}
+        options={{ headerShown: true, title: 'Clan', ...headerLight }}
       />
     </ClubStackNav.Navigator>
   );

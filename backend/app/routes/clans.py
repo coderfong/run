@@ -483,7 +483,8 @@ def clan_leaderboard(db: Session = Depends(get_db), limit: int = Query(50, ge=1,
         text(
             """
             SELECT c.id::text, c.name, c.tag, c.color_key, s.area_current, s.league,
-                   (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id)
+                   (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id),
+                   c.badge_icon
             FROM clan_season_stats s JOIN clans c ON c.id = s.clan_id
             WHERE s.season_id = :sid
             ORDER BY s.area_current DESC
@@ -495,6 +496,7 @@ def clan_leaderboard(db: Session = Depends(get_db), limit: int = Query(50, ge=1,
     return [
         schemas.ClanLeaderboardEntry(
             clan_id=r[0], name=r[1], tag=r[2], color=_color(r[3]),
+            badge_icon=r[7] or "shield",
             league=r[5], total_area_m2=float(r[4]), member_count=int(r[6]),
         )
         for r in rows

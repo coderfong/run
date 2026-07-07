@@ -285,6 +285,7 @@ class ClanLeaderboardEntry(BaseModel):
     name: str
     tag: str
     color: ClanColor
+    badge_icon: str = "shield"
     league: Optional[str] = None
     total_area_m2: float
     member_count: int

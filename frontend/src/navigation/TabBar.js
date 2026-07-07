@@ -25,17 +25,22 @@ const LABELS = { Home: 'Home', Map: 'Map', Club: 'Club', You: 'You' };
 function TabItem({ route, isFocused, accent, onPress }) {
   const Icon = ICONS[route.name] || Home;
   const color = isFocused ? accent : INACTIVE;
+  // The flex:1 lives on this wrapper View, not on PressableScale — PressableScale
+  // forwards its style prop to an inner Animated.View, so flex there wouldn't
+  // stretch the pressable and every item would collapse to content width.
   return (
-    <PressableScale
-      style={styles.item}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: isFocused }}
-      accessibilityLabel={LABELS[route.name]}
-    >
-      <Icon size={24} color={color} strokeWidth={isFocused ? 2.4 : 2} />
-      <Text style={[styles.label, { color }]}>{LABELS[route.name]}</Text>
-    </PressableScale>
+    <View style={styles.slot}>
+      <PressableScale
+        style={styles.item}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isFocused }}
+        accessibilityLabel={LABELS[route.name]}
+      >
+        <Icon size={24} color={color} strokeWidth={isFocused ? 2.4 : 2} />
+        <Text style={[styles.label, { color }]}>{LABELS[route.name]}</Text>
+      </PressableScale>
+    </View>
   );
 }
 
@@ -123,7 +128,8 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
     paddingTop: space.sm,
   },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', gap: 3, paddingTop: 2 },
+  slot: { flex: 1 },
+  item: { alignItems: 'center', justifyContent: 'flex-start', gap: 3, paddingTop: 2 },
   label: { ...type.labelSm, fontSize: 11, letterSpacing: 0.2, textTransform: 'none' },
 
   recordSlot: { width: 72, alignItems: 'center' },

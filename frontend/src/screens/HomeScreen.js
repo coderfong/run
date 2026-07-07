@@ -29,31 +29,33 @@ function countdown() {
   return `ENDS IN ${d}D ${String(h).padStart(2, '0')}H`;
 }
 
-function SeasonBanner() {
+function SeasonBanner({ onPress }) {
   return (
-    <ImageBackground
-      source={require('../../assets/art/season-banner.png')}
-      style={styles.season}
-      imageStyle={{ borderRadius: radius.card }}
-      resizeMode="cover"
-    >
-      <LinearGradient
-        colors={['rgba(11,13,16,0.82)', 'rgba(11,13,16,0.25)']}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={[StyleSheet.absoluteFill, { borderRadius: radius.card }]}
-      />
-      <View style={{ padding: space.lg, flex: 1, justifyContent: 'space-between' }}>
-        <View>
-          <Text style={[type.labelSm, { color: 'rgba(255,255,255,0.7)' }]}>Season {SEASON_NO}</Text>
-          <Text style={[type.display, { color: '#fff', marginTop: 2 }]}>{SEASON_CITY}</Text>
-          <Text style={[type.labelSm, { color: brand.pink, marginTop: 4 }]}>{countdown()}</Text>
+    <PressableScale onPress={onPress} accessibilityRole="button" accessibilityLabel="View season standings">
+      <ImageBackground
+        source={require('../../assets/art/season-banner.png')}
+        style={styles.season}
+        imageStyle={{ borderRadius: radius.card }}
+        resizeMode="cover"
+      >
+        <LinearGradient
+          colors={['rgba(11,13,16,0.82)', 'rgba(11,13,16,0.25)']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: radius.card }]}
+        />
+        <View style={{ padding: space.lg, flex: 1, justifyContent: 'space-between' }}>
+          <View>
+            <Text style={[type.labelSm, { color: 'rgba(255,255,255,0.7)' }]}>Season {SEASON_NO}</Text>
+            <Text style={[type.display, { color: '#fff', marginTop: 2 }]}>{SEASON_CITY}</Text>
+            <Text style={[type.labelSm, { color: brand.pink, marginTop: 4 }]}>{countdown()}</Text>
+          </View>
+          <View style={[styles.seasonChip, { backgroundColor: brand.pink }]}>
+            <Text style={[type.buttonSm, { color: '#fff' }]}>View season</Text>
+          </View>
         </View>
-        <View style={[styles.seasonChip, { backgroundColor: brand.pink }]}>
-          <Text style={[type.buttonSm, { color: '#fff' }]}>View season</Text>
-        </View>
-      </View>
-    </ImageBackground>
+      </ImageBackground>
+    </PressableScale>
   );
 }
 
@@ -164,7 +166,7 @@ export default function HomeScreen({ navigation }) {
           </PressableScale>
         </View>
 
-        <SeasonBanner />
+        <SeasonBanner onPress={() => navigation.navigate('Season')} />
         <Segmented
           options={[{ key: 'feed', label: 'Feed' }, { key: 'leaderboard', label: 'Leaderboard' }]}
           value={tab}

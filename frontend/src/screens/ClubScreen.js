@@ -39,21 +39,6 @@ function Directory({ navigation }) {
     search('');
   }, [search]);
 
-  const join = async (clan) => {
-    try {
-      if (clan.privacy === 'open') {
-        await api.joinClan(clan.id);
-        await refresh();
-        toast.success(`Joined ${clan.tag}`);
-      } else {
-        await api.requestJoin(clan.id);
-        toast.success(`Request sent to ${clan.tag}`);
-      }
-    } catch (e) {
-      toast.error(e.message || 'Could not join');
-    }
-  };
-
   const joinCode = async () => {
     if (!code.trim()) return;
     try {
@@ -103,7 +88,7 @@ function Directory({ navigation }) {
           <Text style={[type.caption, { paddingVertical: space.lg }]}>No clans found. Be the first — create one.</Text>
         ) : (
           results.map((c) => (
-            <Card key={c.id} onPress={() => join(c)} style={{ marginBottom: space.sm }}>
+            <Card key={c.id} onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })} style={{ marginBottom: space.sm }}>
               <Row between>
                 <Row gap={12}>
                   <View style={[styles.badgeChip, { backgroundColor: c.color.fill }]}>
@@ -113,7 +98,7 @@ function Directory({ navigation }) {
                     <Text style={type.bodyBold}>[{c.tag}] {c.name}</Text>
                     <Text style={type.caption}>
                       {c.member_count} members{c.league ? ` · ${LEAGUE_LABEL[c.league]}` : ''}
-                      {c.privacy !== 'open' ? ' · tap to request' : ' · tap to join'}
+                      {c.privacy !== 'open' ? ' · invite only' : ''}
                     </Text>
                   </View>
                 </Row>
