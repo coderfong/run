@@ -26,10 +26,16 @@ RUN apt-get purge -y build-essential libgeos-dev libproj-dev \
  && rm -rf /var/lib/apt/lists/*
 
 COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
 COPY schema.sql migrations ./
 
-# Render/Fly inject $PORT; default to 8000 for local docker run.
-ENV PORT=8000
+# Render/Fly inject $PORT; default to 8000 for local docker run. PYTHONPATH so
+# alembic's env.py can import the app package from WORKDIR.
+ENV PORT=8000 \
+    PYTHONPATH=/app
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+# Migrate to head (0001 creates the PostGIS/pgcrypto extensions, so a fresh
+# database is fully provisioned), then serve. Additive-only — never drops data.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]

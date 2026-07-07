@@ -12,7 +12,10 @@ from app.database import Base
 from app import models  # noqa: F401 — registers tables on Base.metadata
 
 config = context.config
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Normalize Render/Heroku's "postgres://" scheme, which SQLAlchemy rejects.
+config.set_main_option(
+    "sqlalchemy.url", settings.database_url.replace("postgres://", "postgresql://", 1)
+)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
