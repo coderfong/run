@@ -27,3 +27,4 @@ Thumbs.db
 
 # Editor local history
 .history/
+backend/reset_db.py
