@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StatusBar, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StatusBar, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
 import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
@@ -194,12 +194,22 @@ const MapTab = withBoundary(MapStack);
 const ClubTab = withBoundary(ClubStack);
 const YouTab = withBoundary(YouStack);
 
-const Tab = createBottomTabNavigator();
+// Material top-tabs (native pager under the hood) give horizontal swipe between
+// tabs while keeping our custom bottom bar via tabBarPosition="bottom". Swipe is
+// disabled on Map so Mapbox panning isn't hijacked (Map sits mid-order, so it
+// bookends the swipe: Home↔Map and Club↔You swipe; leave Map by tapping).
+const Tab = createMaterialTopTabNavigator();
 function MainTabs() {
+  const { width } = useWindowDimensions();
   return (
-    <Tab.Navigator screenOptions={{ headerShown: false }} tabBar={(props) => <TabBar {...props} />}>
+    <Tab.Navigator
+      tabBarPosition="bottom"
+      tabBar={(props) => <TabBar {...props} />}
+      initialLayout={{ width }}
+      screenOptions={{ swipeEnabled: true, lazy: true }}
+    >
       <Tab.Screen name="Home" component={HomeTab} />
-      <Tab.Screen name="Map" component={MapTab} />
+      <Tab.Screen name="Map" component={MapTab} options={{ swipeEnabled: false }} />
       <Tab.Screen name="Club" component={ClubTab} />
       <Tab.Screen name="You" component={YouTab} />
     </Tab.Navigator>
