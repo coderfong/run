@@ -19,9 +19,9 @@ import { PressableScale } from '../ui/motion';
 const km2 = (m) => (m / 1e6).toFixed(2);
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
 
-export default function SeasonScreen({ navigation }) {
+export default function SeasonScreen({ navigation, route }) {
   const { user } = useAuth();
-  const [mode, setMode] = useState('clans');
+  const [mode, setMode] = useState(route.params?.mode || 'clans');
   const [rows, setRows] = useState(null);
 
   const load = useCallback(async () => {
