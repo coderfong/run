@@ -5,8 +5,9 @@
 
 import Constants from 'expo-constants';
 
-const FALLBACK_BASE =
-  'https://chargers-use-asylum-composed.trycloudflare.com';
+// Last-resort default when no EXPO_PUBLIC_API_BASE / extra.apiBase is set —
+// the deployed Render backend. Dev overrides this via .env; prod via eas.json.
+const FALLBACK_BASE = 'https://run-mdlv.onrender.com';
 
 export const API_BASE =
   process.env.EXPO_PUBLIC_API_BASE ||

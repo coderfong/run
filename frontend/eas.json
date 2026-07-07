@@ -24,7 +24,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://api.territoryrun.example.com",
+        "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
@@ -32,7 +32,7 @@
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE": "https://api.territoryrun.example.com",
+        "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
