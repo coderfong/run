@@ -120,6 +120,10 @@ class FeedItem(BaseModel):
     clan_color: Optional[ClanColor] = None
     kudos_count: int = 0
     kudoed: bool = False
+    # Simplified geometry for the card thumbnail: the claimed land (rings) and
+    # the run trail (path). Both [lon, lat]; either may be empty.
+    rings: List[List[Tuple[float, float]]] = []
+    path: List[Tuple[float, float]] = []
 
 
 class FeedOut(BaseModel):

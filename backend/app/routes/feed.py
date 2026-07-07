@@ -10,15 +10,35 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..clans_meta import color_triple
 from ..database import get_db
+from ..geospatial import geometry_to_rings
 from ..security import current_user
 
 router = APIRouter()
+
+
+def _rings_from_wkt(wkt):
+    if not wkt:
+        return []
+    try:
+        return geometry_to_rings(shapely_wkt.loads(wkt))
+    except Exception:
+        return []
+
+
+def _path_from_wkt(wkt):
+    if not wkt:
+        return []
+    try:
+        return [(x, y) for x, y in shapely_wkt.loads(wkt).coords]
+    except Exception:
+        return []
 
 
 @router.get("/feed", response_model=schemas.FeedOut)
@@ -37,7 +57,9 @@ def feed(
                    (t.id IS NOT NULL) AS closed_loop,
                    c.tag, c.color_key,
                    (SELECT COUNT(*) FROM run_kudos k WHERE k.run_id = r.id) AS kudos_count,
-                   EXISTS(SELECT 1 FROM run_kudos k WHERE k.run_id = r.id AND k.user_id = :uid) AS kudoed
+                   EXISTS(SELECT 1 FROM run_kudos k WHERE k.run_id = r.id AND k.user_id = :uid) AS kudoed,
+                   ST_AsText(ST_SimplifyPreserveTopology(t.polygon, 0.00004)) AS poly_wkt,
+                   ST_AsText(ST_Simplify(r.path, 0.00004)) AS path_wkt
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -70,6 +92,8 @@ def feed(
             clan_color=schemas.ClanColor(**color_triple(r[9])) if r[9] else None,
             kudos_count=int(r[10] or 0),
             kudoed=bool(r[11]),
+            rings=_rings_from_wkt(r[12]),
+            path=_path_from_wkt(r[13]),
         )
         for r in rows
     ]

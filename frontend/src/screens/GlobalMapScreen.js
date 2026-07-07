@@ -123,6 +123,26 @@ export default function GlobalMapScreen() {
   );
   const baseFC = useMemo(() => ({ type: 'FeatureCollection', features }), [features]);
 
+  // On first load, frame the claimed land — the city-wide default zoom renders
+  // individual plots (~170m) as invisible specks, so the board looks empty.
+  // Prefer the viewer's own territories; otherwise fit to the whole board.
+  const didFitRef = useRef(false);
+  useEffect(() => {
+    if (didFitRef.current || !list || list.length === 0) return;
+    const mine = list.filter((t) => t.user_id === user.id);
+    const focus = mine.length ? mine : list;
+    const pts = [];
+    focus.forEach((t) =>
+      (t.rings?.length ? t.rings : [t.polygon]).forEach((ring) =>
+        ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
+      )
+    );
+    if (pts.length) {
+      didFitRef.current = true;
+      setTimeout(() => mapRef.current?.fitToPoints(pts, 80), 350);
+    }
+  }, [list, user.id]);
+
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
     const acc = {};
