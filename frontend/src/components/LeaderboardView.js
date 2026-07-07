@@ -1,6 +1,6 @@
-// LeaderboardView — Runners | Clans. Runners keeps the v1 treatment (podium
-// tint, rank-change arrows vs last visit, own row pinned when off-screen).
-// Clans ranks by summed member area (empty until Phase 5 populates clans).
+// LeaderboardView — individual runners ranked by land held. Podium tint,
+// rank-change arrows vs last visit, own row pinned when scrolled off-screen.
+// Clan and solo standings live on the Season screen (SeasonScreen).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -15,7 +15,6 @@ import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAccent } from '../hooks/useAccent';
 import { Skeleton, useReduceMotion } from '../ui/motion';
-import { Segmented } from './ui';
 import { toast } from '../ui/toast';
 
 const RANKS_KEY = 'tr.lastRanks';
@@ -48,7 +47,6 @@ export default function LeaderboardView() {
   const { user } = useAuth();
   const accent = useAccent();
   const reduce = useReduceMotion();
-  const [mode, setMode] = useState('runners');
   const [rows, setRows] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [myVisible, setMyVisible] = useState(true);
@@ -64,27 +62,22 @@ export default function LeaderboardView() {
       if (isRefresh) setRefreshing(true);
       else setRows(null);
       try {
-        if (mode === 'clans') {
-          const data = await api.clanLeaderboard();
-          setRows((data || []).map((c, i) => ({ ...c, rank: i + 1 })));
-        } else {
-          if (prevRanksRef.current === null) {
-            try {
-              prevRanksRef.current = JSON.parse(await AsyncStorage.getItem(RANKS_KEY)) || {};
-            } catch {
-              prevRanksRef.current = {};
-            }
+        if (prevRanksRef.current === null) {
+          try {
+            prevRanksRef.current = JSON.parse(await AsyncStorage.getItem(RANKS_KEY)) || {};
+          } catch {
+            prevRanksRef.current = {};
           }
-          const data = await api.leaderboard();
-          const withDelta = (data || []).map((r, i) => {
-            const prev = prevRanksRef.current[r.user_id];
-            return { ...r, rank: i + 1, delta: prev ? prev - (i + 1) : 0 };
-          });
-          setRows(withDelta);
-          const ranks = {};
-          withDelta.forEach((r) => (ranks[r.user_id] = r.rank));
-          AsyncStorage.setItem(RANKS_KEY, JSON.stringify(ranks)).catch(() => {});
         }
+        const data = await api.leaderboard();
+        const withDelta = (data || []).map((r, i) => {
+          const prev = prevRanksRef.current[r.user_id];
+          return { ...r, rank: i + 1, delta: prev ? prev - (i + 1) : 0 };
+        });
+        setRows(withDelta);
+        const ranks = {};
+        withDelta.forEach((r) => (ranks[r.user_id] = r.rank));
+        AsyncStorage.setItem(RANKS_KEY, JSON.stringify(ranks)).catch(() => {});
       } catch (e) {
         toast.error(e.message || 'Could not load leaderboard');
         setRows((prev) => prev || []);
@@ -92,26 +85,16 @@ export default function LeaderboardView() {
         if (isRefresh) setRefreshing(false);
       }
     },
-    [mode]
+    []
   );
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const header = (
-    <Segmented
-      options={[{ key: 'runners', label: 'Runners' }, { key: 'clans', label: 'Clans' }]}
-      value={mode}
-      onChange={setMode}
-      style={{ marginBottom: space.lg }}
-    />
-  );
-
   if (!rows) {
     return (
       <View style={styles.listContent}>
-        {header}
         {Array.from({ length: 7 }).map((_, i) => <RowSkeleton key={i} />)}
       </View>
     );
@@ -120,47 +103,15 @@ export default function LeaderboardView() {
   if (rows.length === 0) {
     return (
       <View style={styles.listContent}>
-        {header}
         <View style={{ alignItems: 'center', paddingTop: space.xxl }}>
           <Text style={[type.title, { textAlign: 'center', marginBottom: space.sm }]}>
-            {mode === 'clans' ? 'No clans yet.' : 'Nobody has claimed land yet.'}
+            Nobody has claimed land yet.
           </Text>
           <Text style={[type.body, { color: colors.textMuted, textAlign: 'center' }]}>
-            {mode === 'clans'
-              ? 'Clans arrive in the next update — then this ranks them by held land.'
-              : 'Be first — run a loop and the ground inside is yours.'}
+            Be first — run a loop and the ground inside is yours.
           </Text>
         </View>
       </View>
-    );
-  }
-
-  if (mode === 'clans') {
-    return (
-      <FlatList
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        data={rows}
-        keyExtractor={(c) => c.clan_id}
-        ListHeaderComponent={header}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={accent} colors={[accent]} />}
-        renderItem={({ item, index }) => (
-          <Animated.View
-            entering={reduce ? undefined : FadeInDown.delay(Math.min(index, 12) * 30).duration(260)}
-            style={[styles.row, PODIUM[item.rank] && { backgroundColor: PODIUM[item.rank].bg }]}
-          >
-            <Text style={[styles.rank, PODIUM[item.rank] && { color: PODIUM[item.rank].rankColor }]}>#{item.rank}</Text>
-            <View style={[styles.dot, { backgroundColor: item.color_stroke }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={type.bodyBold}>[{item.tag}] {item.name}</Text>
-              <Text style={type.caption}>{item.member_count} members · {item.territory_count} zones</Text>
-            </View>
-            <Text style={[styles.area, { color: item.color_stroke }]}>
-              {(item.total_area_m2 / 1e6).toFixed(2)} km²
-            </Text>
-          </Animated.View>
-        )}
-      />
     );
   }
 
@@ -212,12 +163,7 @@ export default function LeaderboardView() {
         contentContainerStyle={[styles.listContent, showPinned && { paddingBottom: 96 }]}
         data={listRows}
         keyExtractor={(r) => r.user_id}
-        ListHeaderComponent={
-          <View>
-            {header}
-            {podium}
-          </View>
-        }
+        ListHeaderComponent={podium}
         onViewableItemsChanged={onViewable}
         viewabilityConfig={viewabilityConfig}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={accent} colors={[accent]} />}
