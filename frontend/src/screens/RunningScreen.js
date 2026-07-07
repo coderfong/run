@@ -4,6 +4,7 @@ import GameMap, {
   ClosingLine,
   MapPoint,
   TerritoryFill,
+  TerritoryLayer,
   Trail,
 } from '../components/GameMap';
 import * as Location from 'expo-location';
@@ -24,7 +25,7 @@ import Animated, {
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
-import { useClan } from '../state/clan';
+import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
 import { writeWorkout } from '../health';
 import { darkColors, radius, runTuning as T, space, type } from '../theme';
@@ -273,6 +274,48 @@ export default function RunningScreen({ navigation }) {
       if (fillAnimRef.current) clearInterval(fillAnimRef.current);
     };
   }, []);
+
+  // Nearby claimed land (others'), so a runner sees whose turf they're crossing
+  // and where there's land to steal. Refetched only when they drift ~600m.
+  const [board, setBoard] = useState(null);
+  const boardCenterRef = useRef(null);
+
+  useEffect(() => {
+    if (!currentLocation) return;
+    const last = boardCenterRef.current;
+    if (last && distanceMeters(last, currentLocation) < 600) return;
+    boardCenterRef.current = currentLocation;
+    const d = 0.02; // ~2.2km half-box around the runner
+    const bbox = {
+      minLon: currentLocation.longitude - d,
+      minLat: currentLocation.latitude - d,
+      maxLon: currentLocation.longitude + d,
+      maxLat: currentLocation.latitude + d,
+    };
+    api
+      .mapPolygons(bbox, 16)
+      .then((data) => {
+        const feats = [];
+        (data.territories || []).forEach((t) => {
+          if (t.user_id === user.id) return; // own land shows as the live trail
+          const col = t.clan_color || NEUTRAL;
+          (t.rings?.length ? t.rings : [t.polygon]).forEach((ring, ri) => {
+            if (!ring || ring.length < 3) return;
+            const coords = ring.map(([lon, lat]) => [lon, lat]);
+            const f = coords[0], l = coords[coords.length - 1];
+            if (f[0] !== l[0] || f[1] !== l[1]) coords.push(f);
+            feats.push({
+              type: 'Feature',
+              id: `${t.id}-${ri}`,
+              geometry: { type: 'Polygon', coordinates: [coords] },
+              properties: { fillColor: col.stroke, strokeColor: col.stroke, fillOpacity: 0.3 },
+            });
+          });
+        });
+        setBoard({ type: 'FeatureCollection', features: feats });
+      })
+      .catch(() => {});
+  }, [currentLocation, user.id]);
 
   async function startPedometer() {
     stepCountRef.current = 0;
@@ -720,6 +763,9 @@ export default function RunningScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <GameMap ref={mapRef} theme="dark" style={styles.map} showsUserLocation initialZoom={16}>
+        {/* others' claimed land around you — the turf you're running through */}
+        {board && <TerritoryLayer id="run-board" featureCollection={board} dark />}
+
         {/* live "if closed" preview: tinted fill + dashed line back to start */}
         {!loopClosed && path.length >= 3 && (
           <>

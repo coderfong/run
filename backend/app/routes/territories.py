@@ -32,14 +32,15 @@ router = APIRouter()
 
 
 def _simplify_for_zoom(zoom: Optional[float]):
-    """(tolerance_degrees, feature_cap_or_None) for a client zoom level."""
-    if zoom is None or zoom >= settings.map_zoom_mid:
+    """(tolerance_degrees, feature_cap_or_None) for a client zoom level.
+
+    Tolerance is now CONSTANT (fine) across zoom levels: territories here are
+    small (~170m plots) and the coarse per-zoom tolerances (up to ~100m) turned
+    a run's actual route into a shifting blob whose area visibly changed as the
+    user zoomed. Only the feature cap tightens far out, purely for payload."""
+    if zoom is None or zoom >= settings.map_zoom_vlow:
         return settings.map_tol_high, None
-    if zoom >= settings.map_zoom_low:
-        return settings.map_tol_mid, None
-    if zoom >= settings.map_zoom_vlow:
-        return settings.map_tol_low, settings.map_cap_low_zoom
-    return settings.map_tol_vlow, settings.map_cap_low_zoom
+    return settings.map_tol_high, settings.map_cap_low_zoom
 
 
 @router.get("/map-polygons", response_model=schemas.MapPolygonsOut)
