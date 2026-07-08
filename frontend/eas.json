@@ -25,6 +25,7 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com",
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2hhaWdlbiIsImEiOiJjbXI4NjI4cnYxa3p5MndvcDZkN2FtaXlwIn0.2wPGUM_PG_Rq0Q7sN8dvqw",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
@@ -33,6 +34,7 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com",
+        "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2hhaWdlbiIsImEiOiJjbXI4NjI4cnYxa3p5MndvcDZkN2FtaXlwIn0.2wPGUM_PG_Rq0Q7sN8dvqw",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
