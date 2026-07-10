@@ -21,6 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { brand, colors, radius, space, type } from '../theme';
 import { Screen, Button } from '../components/ui';
+import { Reveal } from '../ui/motion';
 import LoopMark from '../components/LoopMark';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
@@ -61,19 +62,29 @@ function Welcome({ onSignIn, onCreate }) {
       />
       <View style={[styles.heroInner, { paddingTop: insets.top + space.huge, paddingBottom: insets.bottom + space.xl }]}>
         <View style={styles.wordmarkWrap}>
-          <Text style={styles.wordmark}>{brand.name}</Text>
-          <Text style={styles.tagline}>{brand.tagline}</Text>
-          <View style={{ marginTop: space.md }}>
+          <Reveal>
+            <Text style={styles.wordmark}>{brand.name}</Text>
+          </Reveal>
+          <Reveal delay={120} style={{ alignItems: 'center' }}>
+            <Text style={styles.tagline}>{brand.tagline}</Text>
+          </Reveal>
+          <Reveal delay={240} style={{ marginTop: space.md, alignItems: 'center' }}>
             <LoopMark size={26} />
-          </View>
+          </Reveal>
         </View>
 
         <View style={{ gap: space.md }}>
-          <Button title="Sign in" variant="gradient" onPress={onSignIn} />
-          <Button title="Create account" variant="outline" onPress={onCreate} />
-          <Text style={styles.legal}>
-            By continuing, you agree to our Terms of Service and Privacy Policy
-          </Text>
+          <Reveal from="up" delay={300}>
+            <Button title="Sign in" variant="gradient" onPress={onSignIn} />
+          </Reveal>
+          <Reveal from="up" delay={380}>
+            <Button title="Create account" variant="outline" onPress={onCreate} />
+          </Reveal>
+          <Reveal from="none" delay={520}>
+            <Text style={styles.legal}>
+              By continuing, you agree to our Terms of Service and Privacy Policy
+            </Text>
+          </Reveal>
         </View>
       </View>
     </ImageBackground>
@@ -84,6 +95,7 @@ function Welcome({ onSignIn, onCreate }) {
 
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState('welcome'); // 'welcome' | 'form'
   const [mode, setMode] = useState('signin');
   const [username, setUsername] = useState('');
@@ -125,80 +137,91 @@ export default function AuthScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen scroll contentStyle={{ paddingTop: space.huge }}>
-        <TouchableOpacity
-          onPress={() => setStep('welcome')}
-          style={styles.back}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <ChevronLeft size={22} color={colors.textMuted} />
-          <Text style={[type.bodyMedium, { color: colors.textMuted }]}>Back</Text>
-        </TouchableOpacity>
+      {/* form block is vertically centred; the back affordance stays pinned */}
+      <Screen scroll contentStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: space.huge }}>
+        <Reveal>
+          <Text style={[type.display, { marginBottom: space.sm, textAlign: 'center' }]}>
+            {isSignup ? 'Create account' : 'Welcome back'}
+          </Text>
+          <Text style={[type.body, { color: colors.textMuted, marginBottom: space.xl, textAlign: 'center' }]}>
+            {isSignup
+              ? 'Pick a username — your runs will claim land under it.'
+              : 'Sign in to keep conquering.'}
+          </Text>
+        </Reveal>
 
-        <Text style={[type.display, { marginBottom: space.sm }]}>
-          {isSignup ? 'Create account' : 'Welcome back'}
-        </Text>
-        <Text style={[type.body, { color: colors.textMuted, marginBottom: space.xl }]}>
-          {isSignup
-            ? 'Pick a username — your runs will claim land under it.'
-            : 'Sign in to keep conquering.'}
-        </Text>
+        <Reveal delay={90}>
+          <Text style={styles.label}>Username</Text>
+          <TextInput
+            style={[styles.input, uErr && styles.inputError]}
+            placeholder="runner_42"
+            placeholderTextColor={colors.textDim}
+            autoCapitalize="none"
+            autoCorrect={false}
+            value={username}
+            onChangeText={(v) => { setUsername(v); setApiError(null); }}
+            maxLength={32}
+            accessibilityLabel="Username"
+          />
+          {uErr ? <Text style={styles.fieldError}>{uErr}</Text> : null}
+          {isSignup && !uErr ? <Text style={styles.fieldHint}>3–32 characters: a–z, 0–9, underscore.</Text> : null}
+        </Reveal>
 
-        <Text style={styles.label}>Username</Text>
-        <TextInput
-          style={[styles.input, uErr && styles.inputError]}
-          placeholder="runner_42"
-          placeholderTextColor={colors.textDim}
-          autoCapitalize="none"
-          autoCorrect={false}
-          value={username}
-          onChangeText={(v) => { setUsername(v); setApiError(null); }}
-          maxLength={32}
-          accessibilityLabel="Username"
-        />
-        {uErr ? <Text style={styles.fieldError}>{uErr}</Text> : null}
-        {isSignup && !uErr ? <Text style={styles.fieldHint}>3–32 characters: a–z, 0–9, underscore.</Text> : null}
-
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={[styles.input, pErr && styles.inputError]}
-          placeholder={isSignup ? 'At least 8 characters, letter + digit' : 'Your password'}
-          placeholderTextColor={colors.textDim}
-          secureTextEntry
-          autoCapitalize="none"
-          value={password}
-          onChangeText={(v) => { setPassword(v); setApiError(null); }}
-          maxLength={128}
-          accessibilityLabel="Password"
-        />
-        {pErr ? <Text style={styles.fieldError}>{pErr}</Text> : null}
+        <Reveal delay={170}>
+          <Text style={styles.label}>Password</Text>
+          <TextInput
+            style={[styles.input, pErr && styles.inputError]}
+            placeholder={isSignup ? 'At least 8 characters, letter + digit' : 'Your password'}
+            placeholderTextColor={colors.textDim}
+            secureTextEntry
+            autoCapitalize="none"
+            value={password}
+            onChangeText={(v) => { setPassword(v); setApiError(null); }}
+            maxLength={128}
+            accessibilityLabel="Password"
+          />
+          {pErr ? <Text style={styles.fieldError}>{pErr}</Text> : null}
+        </Reveal>
 
         {apiError ? (
-          <View style={styles.apiErrorBox}>
-            <Text style={styles.apiErrorText}>{apiError}</Text>
-          </View>
+          <Reveal from="none">
+            <View style={styles.apiErrorBox}>
+              <Text style={styles.apiErrorText}>{apiError}</Text>
+            </View>
+          </Reveal>
         ) : null}
 
-        <Button
-          title={isSignup ? 'Create account' : 'Sign in'}
-          variant="gradient"
-          onPress={onSubmit}
-          loading={busy}
-          style={{ marginTop: space.xl }}
-        />
+        <Reveal from="up" delay={250}>
+          <Button
+            title={isSignup ? 'Create account' : 'Sign in'}
+            variant="gradient"
+            onPress={onSubmit}
+            loading={busy}
+            style={{ marginTop: space.xl }}
+          />
 
-        <TouchableOpacity
-          style={styles.switch}
-          onPress={() => { setMode(isSignup ? 'signin' : 'signup'); setTouched(false); setApiError(null); }}
-          accessibilityRole="button"
-        >
-          <Text style={[type.body, { color: colors.textMuted }]}>
-            {isSignup ? 'Already have an account? Sign in' : 'New here? Create an account'}
-          </Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.switch}
+            onPress={() => { setMode(isSignup ? 'signin' : 'signup'); setTouched(false); setApiError(null); }}
+            accessibilityRole="button"
+          >
+            <Text style={[type.body, { color: colors.textMuted }]}>
+              {isSignup ? 'Already have an account? Sign in' : 'New here? Create an account'}
+            </Text>
+          </TouchableOpacity>
+        </Reveal>
       </Screen>
+
+      <TouchableOpacity
+        onPress={() => setStep('welcome')}
+        style={[styles.back, { top: insets.top + space.md }]}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+      >
+        <ChevronLeft size={22} color={colors.textMuted} />
+        <Text style={[type.bodyMedium, { color: colors.textMuted }]}>Back</Text>
+      </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 }
@@ -221,7 +244,13 @@ const styles = StyleSheet.create({
   },
   legal: { ...type.caption, color: colors.textMuted, textAlign: 'center', marginTop: space.xs },
 
-  back: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: space.lg },
+  back: {
+    position: 'absolute',
+    left: space.gutter,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
   label: { ...type.labelSm, marginBottom: 6, marginTop: space.md },
   input: {
     ...type.body,

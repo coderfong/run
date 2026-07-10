@@ -94,6 +94,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ run_id: runId, points, step_count: stepCount }),
     }),
+  claimTerritory: (runId, lat, lon) =>
+    request('/claim-territory', {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId, lat, lon }),
+    }),
 
   // ----- feed + profile stats ------------------------------------------
   feed: (cursor) =>

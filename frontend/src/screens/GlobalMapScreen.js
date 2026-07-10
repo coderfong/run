@@ -8,10 +8,21 @@ import { colors, radius, shadow, space, type } from '../theme';
 import { cityBbox } from '../config/cities';
 import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
+import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
 import { useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
-import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer } from '../components/GameMap';
+import { CharacterBust } from '../components/character/CharacterRig';
+import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer, UserMarker } from '../components/GameMap';
+
+// Centroid of a territory's largest ring — where the owner portrait sits.
+function ringCentroid(t) {
+  const ring = t.rings?.length ? t.rings[0] : t.polygon;
+  if (!ring || ring.length < 3) return null;
+  let lon = 0, lat = 0;
+  for (const [x, y] of ring) { lon += x; lat += y; }
+  return { latitude: lat / ring.length, longitude: lon / ring.length };
+}
 
 // Build the whole-board GeoJSON once per data change. Each ring is a feature
 // carrying its clan colors, owning territory id, clan key, and contested flag.
@@ -54,6 +65,7 @@ function viewportKey(bbox, zoom) {
 
 export default function GlobalMapScreen() {
   const { user } = useAuth();
+  const { equipped } = useAvatar();
   const accent = useAccent();
   const reduce = useReduceMotion();
   const mapRef = useRef(null);
@@ -67,6 +79,30 @@ export default function GlobalMapScreen() {
   const [heatOn, setHeatOn] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [pulse, setPulse] = useState(0.85);
+  const [myLoc, setMyLoc] = useState(null);
+  // 'pending' | 'ok' | 'fail' — territory auto-fit only runs as a fallback.
+  const [locState, setLocState] = useState('pending');
+
+  // Land on the player's dot as soon as the screen opens.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') { if (alive) setLocState('fail'); return; }
+        const loc = await Location.getCurrentPositionAsync({});
+        if (!alive) return;
+        const p = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+        setMyLoc(p);
+        setLocState('ok');
+        // small delay so the camera call lands after the map is ready
+        setTimeout(() => mapRef.current?.flyTo(p, 15, 700), 400);
+      } catch {
+        if (alive) setLocState('fail');
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // Pulse the contested outline while heat is on (Reduce Motion → steady).
   useEffect(() => {
@@ -111,7 +147,9 @@ export default function GlobalMapScreen() {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') return;
       const loc = await Location.getCurrentPositionAsync({});
-      mapRef.current?.flyTo({ latitude: loc.coords.latitude, longitude: loc.coords.longitude }, 14);
+      const p = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+      setMyLoc(p);
+      mapRef.current?.flyTo(p, 15);
     } catch {}
   };
 
@@ -123,12 +161,11 @@ export default function GlobalMapScreen() {
   );
   const baseFC = useMemo(() => ({ type: 'FeatureCollection', features }), [features]);
 
-  // On first load, frame the claimed land — the city-wide default zoom renders
-  // individual plots (~170m) as invisible specks, so the board looks empty.
-  // Prefer the viewer's own territories; otherwise fit to the whole board.
+  // Fallback framing — ONLY when location is unavailable (the primary
+  // behaviour is landing on the player's dot). Frames own land, else board.
   const didFitRef = useRef(false);
   useEffect(() => {
-    if (didFitRef.current || !list || list.length === 0) return;
+    if (locState !== 'fail' || didFitRef.current || !list || list.length === 0) return;
     const mine = list.filter((t) => t.user_id === user.id);
     const focus = mine.length ? mine : list;
     const pts = [];
@@ -141,7 +178,17 @@ export default function GlobalMapScreen() {
       didFitRef.current = true;
       setTimeout(() => mapRef.current?.fitToPoints(pts, 80), 350);
     }
-  }, [list, user.id]);
+  }, [locState, list, user.id]);
+
+  // Portraits pinned to the centre of the player's own territories.
+  const myLand = useMemo(
+    () =>
+      (list || [])
+        .filter((t) => t.user_id === user.id)
+        .map((t) => ({ id: t.id, at: ringCentroid(t) }))
+        .filter((m) => m.at),
+    [list, user.id]
+  );
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
@@ -191,9 +238,21 @@ export default function GlobalMapScreen() {
 
   return (
     <View style={styles.container}>
-      <GameMap ref={mapRef} theme="dark" showsUserLocation onIdle={onIdle} onPress={() => setSelected(null)}>
+      <GameMap ref={mapRef} theme="dark" onIdle={onIdle} onPress={() => setSelected(null)}>
         <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} />
         {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
+        {/* owner portrait in the middle of each of the player's territories */}
+        {myLand.map((m) => (
+          <UserMarker key={m.id} point={m.at}>
+            <CharacterBust equipped={equipped} size={34} ring={accent} bg={colors.card} />
+          </UserMarker>
+        ))}
+        {/* the player's location — their character portrait, not a dot */}
+        {myLoc && (
+          <UserMarker point={myLoc}>
+            <CharacterBust equipped={equipped} size={44} ring="#ffffff" bg={colors.card} />
+          </UserMarker>
+        )}
       </GameMap>
 
       {/* top controls: heat + legend */}
@@ -210,7 +269,7 @@ export default function GlobalMapScreen() {
           style={styles.roundBtn}
           onPress={() => setLegendOpen(true)}
           accessibilityRole="button"
-          accessibilityLabel="Show clans in view"
+          accessibilityLabel="Show clubs in view"
         >
           <Layers size={20} color={colors.text} strokeWidth={2} />
         </TouchableOpacity>
@@ -269,9 +328,9 @@ export default function GlobalMapScreen() {
         </Card>
       )}
 
-      {/* legend: top clans in view */}
+      {/* legend: top clubs in view */}
       <Sheet visible={legendOpen} onClose={() => setLegendOpen(false)}>
-        <Text style={[type.heading, { marginBottom: space.md }]}>Clans in view</Text>
+        <Text style={[type.heading, { marginBottom: space.md }]}>Clubs in view</Text>
         {topTeams.length === 0 ? (
           <Text style={[type.caption, { marginBottom: space.md }]}>No claimed land in view yet.</Text>
         ) : (

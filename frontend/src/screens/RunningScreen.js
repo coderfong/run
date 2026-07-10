@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import GameMap, {
-  ClosingLine,
   MapPoint,
-  TerritoryFill,
   TerritoryLayer,
   Trail,
+  UserMarker,
 } from '../components/GameMap';
+import { CharacterBust } from '../components/character/CharacterRig';
+import { useAvatar } from '../state/avatar';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,8 +17,6 @@ import Animated, {
   cancelAnimation,
   Easing,
   runOnJS,
-  SlideInUp,
-  SlideOutUp,
   useAnimatedProps,
   useSharedValue,
   withTiming,
@@ -27,9 +26,10 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
+import { useSettings } from '../state/settings';
 import { writeWorkout } from '../health';
 import { darkColors, radius, runTuning as T, space, type } from '../theme';
-import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
+import { haptic, PressableScale } from '../ui/motion';
 import { toast } from '../ui/toast';
 
 // In-progress run persisted here so an OS kill / crash can't lose a run.
@@ -72,22 +72,10 @@ function totalDistanceMeters(points) {
   return total;
 }
 
-// Shoelace area (m²) of the path treated as a closed polygon, via a local
-// equirectangular projection — good enough for the live "if closed" preview.
-function polygonAreaM2(points) {
-  if (points.length < 3) return 0;
-  const lat0 = toRad(points[0].latitude);
-  const mPerLat = 110540;
-  const mPerLon = 111320 * Math.cos(lat0);
-  let sum = 0;
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    const ax = a.longitude * mPerLon, ay = a.latitude * mPerLat;
-    const bx = b.longitude * mPerLon, by = b.latitude * mPerLat;
-    sum += ax * by - bx * ay;
-  }
-  return Math.abs(sum) / 2;
+// Circle-claim model: the distance run becomes the CIRCUMFERENCE of the
+// claim circle, so area = d²/4π. Placement happens on the Result screen.
+function claimAreaM2(distanceM) {
+  return (distanceM * distanceM) / (4 * Math.PI);
 }
 
 // Per-point sensor metadata rides along for server-side validation:
@@ -220,18 +208,17 @@ function HoldToFinishButton({ onFinish }) {
 export default function RunningScreen({ navigation }) {
   const { user } = useAuth();
   const { setRecording } = useRecording();
-  const { color, clan } = useClan();
+  const { color } = useClan();
+  const { equipped } = useAvatar();
+  const { trailGlowColor } = useSettings();
   const accent = color.stroke;
-  const reduceMotion = useReduceMotion();
 
   const mapRef = useRef(null);
   const watchRef = useRef(null);
   const pathRef = useRef([]);
   const runRef = useRef(null);
-  const loopClosedRef = useRef(false);
   const startedAtRef = useRef(null);
   const tickRef = useRef(null);
-  const fillAnimRef = useRef(null);
   // Adaptive-sampling bookkeeping.
   const gpsModeRef = useRef('high'); // 'high' | 'relaxed'
   const pendingModeRef = useRef({ mode: null, count: 0 });
@@ -244,22 +231,15 @@ export default function RunningScreen({ navigation }) {
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [path, setPath] = useState([]);
-  const [polygon, setPolygon] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
-  const [loopClosed, setLoopClosed] = useState(false);
-  const [nearStart, setNearStart] = useState(false);
   const [distance, setDistance] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [closedArea, setClosedArea] = useState(0);
   const [accuracyM, setAccuracyM] = useState(null);
   const [permDenied, setPermDenied] = useState(false);
   // Pause freezes the clock + GPS; lock swallows touches until long-press.
   const [paused, setPaused] = useState(false);
   const [locked, setLocked] = useState(false);
   const pausedAtRef = useRef(null);
-  // Celebration: pill visibility + captured-polygon fill alpha (0 -> 0.25).
-  const [celebration, setCelebration] = useState(null); // { areaM2 }
-  const [capturedFillAlpha, setCapturedFillAlpha] = useState(0.25);
 
   useEffect(() => {
     (async () => {
@@ -271,7 +251,6 @@ export default function RunningScreen({ navigation }) {
       stopPedometer();
       setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
-      if (fillAnimRef.current) clearInterval(fillAnimRef.current);
     };
   }, []);
 
@@ -377,14 +356,12 @@ export default function RunningScreen({ navigation }) {
   async function resumeRun(saved) {
     runRef.current = { id: saved.runId };
     pathRef.current = saved.path;
-    loopClosedRef.current = false;
     startedAtRef.current = saved.startedAt || Date.now();
     recentSpeedsRef.current = [];
     gpsModeRef.current = 'high';
 
     setPath(saved.path);
     setDistance(totalDistanceMeters(saved.path));
-    setClosedArea(polygonAreaM2(saved.path));
     setElapsedMs(Date.now() - startedAtRef.current);
     setIsRunning(true);
     setRecording(true);
@@ -394,34 +371,6 @@ export default function RunningScreen({ navigation }) {
     }, 250);
     await startWatchingLocation('high');
     await startPedometer();
-  }
-
-  // The money moment: strong haptic, fill blooms in, dashed line snaps
-  // solid (loopClosed flips the render below), pill drops from the top.
-  // Non-blocking — the run keeps recording throughout.
-  function celebrateLoopClosed(areaM2) {
-    haptic.success();
-    setCelebration({ areaM2 });
-    setTimeout(() => setCelebration(null), 3500);
-
-    if (reduceMotion) {
-      setCapturedFillAlpha(0.25);
-      return;
-    }
-    // Map polygons can't be driven by Reanimated, so step the fill alpha
-    // with a short overshoot-and-settle ramp (spring feel, ~700ms total).
-    const STEPS = [0.05, 0.11, 0.18, 0.25, 0.3, 0.27, 0.25];
-    let i = 0;
-    setCapturedFillAlpha(0);
-    if (fillAnimRef.current) clearInterval(fillAnimRef.current);
-    fillAnimRef.current = setInterval(() => {
-      setCapturedFillAlpha(STEPS[i]);
-      i += 1;
-      if (i >= STEPS.length) {
-        clearInterval(fillAnimRef.current);
-        fillAnimRef.current = null;
-      }
-    }, 100);
   }
 
   async function prepareLocation() {
@@ -454,17 +403,12 @@ export default function RunningScreen({ navigation }) {
       // API returns { run_id, started_at }; older builds returned { id }.
       runRef.current = { id: createdRun.run_id || createdRun.id };
       pathRef.current = [];
-      loopClosedRef.current = false;
       startedAtRef.current = Date.now();
       persistActiveRun([]); // a fresh snapshot replaces any stale orphan
 
       setPath([]);
-      setPolygon([]);
       setDistance(0);
       setElapsedMs(0);
-      setClosedArea(0);
-      setNearStart(false);
-      setLoopClosed(false);
       setPaused(false);
       setLocked(false);
       setIsRunning(true);
@@ -581,30 +525,11 @@ export default function RunningScreen({ navigation }) {
 
     const newDistance = totalDistanceMeters(newPath);
     setDistance(newDistance);
-    setClosedArea(polygonAreaM2(newPath));
 
     // Crash snapshot every N accepted points.
     if (newPath.length % T.persistEveryNPoints === 0) persistActiveRun(newPath);
 
     mapRef.current?.flyTo({ latitude: nextPoint.latitude, longitude: nextPoint.longitude }, undefined, 300);
-
-    const startPoint = newPath[0];
-    const distanceToStart = distanceMeters(startPoint, nextPoint);
-    const hasEnoughPoints = newPath.length >= T.minPointsForLoop;
-    const hasRunEnoughDistance = newDistance >= T.minDistanceForLoopM;
-    const eligible = hasEnoughPoints && hasRunEnoughDistance;
-
-    // "Close the loop!" hint: eligible and getting close, but not yet closed.
-    setNearStart(eligible && !loopClosedRef.current && distanceToStart <= T.loopCloseDistanceM * 3);
-
-    if (!loopClosedRef.current && eligible && distanceToStart <= T.loopCloseDistanceM) {
-      loopClosedRef.current = true;
-      setLoopClosed(true);
-      setNearStart(false);
-      setPolygon(newPath);
-      persistActiveRun(newPath);
-      celebrateLoopClosed(polygonAreaM2(newPath));
-    }
 
     // Adaptive sampling decision.
     const speedMps =
@@ -703,7 +628,7 @@ export default function RunningScreen({ navigation }) {
         endMs: Date.now(),
         distanceM: totalDistanceMeters(finalPath),
       }).catch(() => {});
-      navigation.navigate('Result', { result, run: result, loopClosed, path: finalPath, polygon });
+      navigation.navigate('Result', { result, run: result, path: finalPath });
     } catch (err) {
       Alert.alert(
         "Couldn't save your run",
@@ -726,7 +651,8 @@ export default function RunningScreen({ navigation }) {
         })()
       : '—';
 
-  const openArea = distance * T.openPathM2PerM;
+  // The circular claim zone this distance has earned so far.
+  const claimArea = claimAreaM2(distance);
   // Rough energy estimate: ~1.036 kcal per kg per km at a 70 kg default.
   const caloriesKcal = 1.036 * T.defaultWeightKg * (distance / 1000);
 
@@ -762,27 +688,24 @@ export default function RunningScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <GameMap ref={mapRef} theme="dark" style={styles.map} showsUserLocation initialZoom={16}>
+      <GameMap ref={mapRef} theme="dark" style={styles.map} initialZoom={16}>
         {/* others' claimed land around you — the turf you're running through */}
         {board && <TerritoryLayer id="run-board" featureCollection={board} dark />}
 
-        {/* live "if closed" preview: tinted fill + dashed line back to start */}
-        {!loopClosed && path.length >= 3 && (
-          <>
-            <TerritoryFill id="preview" points={path} fillColor={accent} strokeColor={accent} fillOpacity={0.12} />
-            <ClosingLine id="closing" from={path[path.length - 1]} to={path[0]} color={accent} />
-          </>
-        )}
-
-        {/* the signature: the route glows in the clan colour */}
-        {path.length > 1 && <Trail id="route" points={path} color={accent} width={5} glow />}
-
-        {/* captured territory blooms in on loop close (alpha animates 0→0.25) */}
-        {polygon.length >= 3 && (
-          <TerritoryFill id="captured" points={polygon} fillColor={accent} strokeColor={accent} fillOpacity={capturedFillAlpha} glow />
+        {/* the signature: the route glows in the colour picked in Settings
+            (defaults to the club colour) — no start↔runner preview line */}
+        {path.length > 1 && (
+          <Trail id="route" points={path} color={trailGlowColor || accent} width={5} glow />
         )}
 
         {path.length > 0 && <MapPoint id="start" point={path[0]} color={accent} />}
+
+        {/* the runner is their character portrait, not a dot */}
+        {currentLocation && (
+          <UserMarker point={currentLocation}>
+            <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg="rgba(21,24,29,0.9)" />
+          </UserMarker>
+        )}
       </GameMap>
 
       {/* slim glass status bar: GPS quality, elapsed time, tracking state */}
@@ -800,38 +723,14 @@ export default function RunningScreen({ navigation }) {
           <View
             style={[
               styles.gpsDot,
-              { backgroundColor: loopClosed ? accent : isRunning ? D.muted : D.dim },
+              { backgroundColor: isRunning ? D.muted : D.dim },
             ]}
           />
           <Text style={styles.topText}>
-            {loopClosed ? 'Captured' : isRunning ? `${path.length} pts` : 'Ready'}
+            {isRunning ? `${path.length} pts` : 'Ready'}
           </Text>
         </View>
       </View>
-
-      {/* close-the-loop prompt */}
-      {nearStart && !celebration && (
-        <View style={[styles.prompt, { borderColor: accent }]}>
-          <View style={[styles.promptDot, { backgroundColor: accent }]} />
-          <Text style={styles.promptText}>
-            Close the loop! Head back to start to capture {formatArea(closedArea)}
-          </Text>
-        </View>
-      )}
-
-      {/* loop-closed celebration pill — drops in, run keeps going */}
-      {celebration && (
-        <Animated.View
-          entering={reduceMotion ? undefined : SlideInUp.springify().damping(16)}
-          exiting={reduceMotion ? undefined : SlideOutUp.duration(220)}
-          style={[styles.prompt, styles.celebrationPill, { borderColor: accent }]}
-        >
-          <View style={[styles.promptDot, { backgroundColor: accent }]} />
-          <Text style={[styles.promptText, { color: accent }]}>
-            Loop closed · ~{formatArea(celebration.areaM2)}{clan?.tag ? ` for ${clan.tag}` : ''}
-          </Text>
-        </Animated.View>
-      )}
 
       <View style={styles.panel}>
         {/* hero distance + supporting stats (PACER layout) */}
@@ -844,16 +743,14 @@ export default function RunningScreen({ navigation }) {
           </View>
           <View style={styles.sideStats}>
             <Metric label="Pace" value={paceText} accent={D.text} />
-            <Metric label={loopClosed ? 'Captured' : 'If closed'} value={formatArea(closedArea)} accent={accent} />
+            <Metric label="Claim zone" value={formatArea(claimArea)} accent={accent} />
             <Metric label="Calories" value={`${Math.round(caloriesKcal)} kcal`} accent={D.text} />
           </View>
         </View>
 
-        {/* the open-path fallback, quietly */}
+        {/* the claim explainer, quietly */}
         <Text style={styles.openPathLine}>
-          {loopClosed
-            ? 'Loop closed — keep running or hold Finish to bank it.'
-            : `Open path so far converts to ${formatArea(openArea)}.`}
+          Your distance becomes a circle — place it anywhere on your route after you finish.
         </Text>
 
         {!isRunning ? (
@@ -967,7 +864,6 @@ const styles = StyleSheet.create({
   },
   promptDot: { width: 9, height: 9, borderRadius: 5 },
   promptText: { ...type.bodySmBold, color: D.text, flex: 1 },
-  celebrationPill: { borderWidth: 2 },
 
   panel: {
     position: 'absolute',

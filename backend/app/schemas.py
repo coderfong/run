@@ -81,13 +81,33 @@ class RunResultOut(BaseModel):
     run_id: str
     distance_m: float
     duration_s: float
-    closed_loop: bool
+    # LEGACY — territory is no longer created at end-run (circle-claim model);
+    # kept so old clients degrade gracefully. Always False/None now.
+    closed_loop: bool = False
     territory: Optional[TerritoryOut] = None
+    # Circle claim earned by this run: circumference = distance run. The
+    # client places it along the trail via /claim-territory.
+    claim_radius_m: float = 0.0
+    claim_area_m2: float = 0.0
     # Steal summary (populated at claim time).
     stolen_m2: float = 0.0
     stolen_from: Optional[str] = None
     # Phase 6 fills these server-side; empty meanwhile.
     achievements: List[str] = []
+
+
+class ClaimIn(BaseModel):
+    """Place the run's circle claim. (lat, lon) is the circle centre and must
+    lie on (within claim_snap_tolerance_m of) the run's recorded trail."""
+    run_id: str
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lon: float = Field(..., ge=-180.0, le=180.0)
+
+
+class ClaimOut(BaseModel):
+    territory: TerritoryOut
+    stolen_m2: float = 0.0
+    stolen_from: Optional[str] = None
 
 
 class LeaderboardEntry(BaseModel):

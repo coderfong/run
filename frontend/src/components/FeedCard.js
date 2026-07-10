@@ -11,6 +11,8 @@ import { Heart } from 'lucide-react-native';
 import { api } from '../api/client';
 import { colors, radius, space, type, withAlpha } from '../theme';
 import { NEUTRAL } from '../state/clan';
+import { useAvatar } from '../state/avatar';
+import { CharacterBust } from './character/CharacterRig';
 import { PressableScale, haptic } from '../ui/motion';
 import { Card, Row, StatValue } from './ui';
 
@@ -77,6 +79,7 @@ function formatArea(m2) {
 
 export default function FeedCard({ item, navigation }) {
   const c = item.clan_color || NEUTRAL;
+  const { equipped } = useAvatar();
   const [kudoed, setKudoed] = useState(item.kudoed);
   const [count, setCount] = useState(item.kudos_count || 0);
 
@@ -98,11 +101,17 @@ export default function FeedCard({ item, navigation }) {
     <Card onPress={() => navigation?.navigate('RunDetail', { runId: item.id })} style={{ marginBottom: space.md }}>
       <Row between>
         <Row gap={10}>
-          <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={[type.bodySmBold, { color: c.stroke }]}>
-              {(item.username || '?').slice(0, 2).toUpperCase()}
-            </Text>
-          </View>
+          {/* your runs show your character portrait; others' cosmetics
+              aren't stored server-side, so they keep the initials chip */}
+          {item.is_you ? (
+            <CharacterBust equipped={equipped} size={34} bg={c.fill} />
+          ) : (
+            <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={[type.bodySmBold, { color: c.stroke }]}>
+                {(item.username || '?').slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+          )}
           <View>
             <Text style={type.bodyBold}>
               {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}

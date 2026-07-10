@@ -63,26 +63,34 @@ function SeasonCard({ width, onPress }) {
   );
 }
 
-function GradientCard({ width, gradient, eyebrow, title, sub, chip, onPress }) {
+// A photo hero card (same frame as the season banner): art with a
+// left-to-right scrim so the white copy reads over it.
+function PhotoCard({ width, art, eyebrow, title, sub, chip, chipColor, onPress }) {
   return (
     <PressableScale style={{ width }} onPress={onPress} accessibilityRole="button" accessibilityLabel={title}>
-      <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+      <ImageBackground source={art} style={styles.hero} imageStyle={{ borderRadius: radius.card }} resizeMode="cover">
+        <LinearGradient
+          colors={['rgba(11,13,16,0.72)', 'rgba(11,13,16,0.1)']}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: radius.card }]}
+        />
         <View style={styles.heroInner}>
           <View>
-            <Text style={[type.labelSm, { color: 'rgba(255,255,255,0.85)' }]}>{eyebrow}</Text>
-            <Text style={[type.display, { color: '#fff', marginTop: 2 }]}>{title}</Text>
-            <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.9)', marginTop: 4 }]}>{sub}</Text>
+            <Text style={[type.labelSm, { color: 'rgba(255,255,255,0.9)' }, heroShadow]}>{eyebrow}</Text>
+            <Text style={[type.display, { color: '#fff', marginTop: 2 }, heroShadow]}>{title}</Text>
+            <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.92)', marginTop: 4 }, heroShadow]}>{sub}</Text>
           </View>
-          <View style={[styles.heroChip, { backgroundColor: 'rgba(255,255,255,0.22)' }]}>
+          <View style={[styles.heroChip, { backgroundColor: chipColor }]}>
             <Text style={[type.buttonSm, { color: '#fff' }]}>{chip}</Text>
           </View>
         </View>
-      </LinearGradient>
+      </ImageBackground>
     </PressableScale>
   );
 }
 
-// Swipeable hero: Season → Clans → Solo, each deep-linking into the standings.
+// Swipeable hero: Season → Clubs → Solo, each deep-linking into the standings.
 function HeroCarousel({ navigation }) {
   const { width } = useWindowDimensions();
   const cardW = width - space.gutter * 2;
@@ -103,22 +111,24 @@ function HeroCarousel({ navigation }) {
         decelerationRate="fast"
       >
         <SeasonCard width={cardW} onPress={() => navigation.navigate('Season')} />
-        <GradientCard
+        <PhotoCard
           width={cardW}
-          gradient={brand.gradient}
+          art={require('../../assets/art/card-clubs.png')}
           eyebrow="STANDINGS"
-          title="CLANS"
+          title="CLUBS"
           sub="Who holds the most land"
-          chip="View clans"
+          chip="View clubs"
+          chipColor={brand.pink}
           onPress={() => navigation.navigate('Season', { mode: 'clans' })}
         />
-        <GradientCard
+        <PhotoCard
           width={cardW}
-          gradient={brand.gradientTeal}
+          art={require('../../assets/art/card-solo.png')}
           eyebrow="LADDER"
           title="SOLO"
-          sub="Climb without a clan"
+          sub="Climb without a club"
           chip="View solo"
+          chipColor={brand.teal}
           onPress={() => navigation.navigate('Season', { mode: 'solo' })}
         />
       </ScrollView>

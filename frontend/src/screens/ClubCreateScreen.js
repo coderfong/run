@@ -1,4 +1,4 @@
-// Create-clan flow: name, tag, color (12), badge (16), privacy.
+// Create-club flow: name, tag, color (12), badge (16), privacy.
 
 import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -40,10 +40,10 @@ export default function ClubCreateScreen({ navigation }) {
         privacy,
       });
       await refresh();
-      toast.success('Clan created');
+      toast.success('Club created');
       navigation.goBack();
     } catch (e) {
-      toast.error(e.message || 'Could not create clan');
+      toast.error(e.message || 'Could not create club');
     } finally {
       setBusy(false);
     }
@@ -55,7 +55,7 @@ export default function ClubCreateScreen({ navigation }) {
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
       <View style={[styles.preview, { backgroundColor: withAlpha(accent, 0.12) }]}>
         <ClanBadge icon={badge} size={40} color={accent} />
-        <Text style={[type.title, { marginTop: space.sm }]}>[{tag.toUpperCase() || 'TAG'}] {name || 'Clan name'}</Text>
+        <Text style={[type.title, { marginTop: space.sm }]}>[{tag.toUpperCase() || 'TAG'}] {name || 'Club name'}</Text>
       </View>
 
       <Text style={styles.label}>Name</Text>
@@ -100,7 +100,7 @@ export default function ClubCreateScreen({ navigation }) {
         style={{ marginBottom: space.xl }}
       />
 
-      <Button title="Create clan" variant="gradient" onPress={create} loading={busy} disabled={!valid} />
+      <Button title="Create club" variant="gradient" onPress={create} loading={busy} disabled={!valid} />
     </Screen>
   );
 }

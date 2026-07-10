@@ -1,11 +1,11 @@
 """
-Run lifecycle: /start-run, /submit-path, /end-run.
+Run lifecycle: /start-run, /submit-path, /end-run, /claim-territory.
 
-Territory creation only happens at /end-run. /submit-path is purely a
-streaming endpoint: clients can call it as the user runs to upload partial
-GPS traces, and we'll opportunistically detect a closed loop and tell the
-client about it (so the UI can show a "loop closed!" indicator). The
-authoritative territory write still happens at /end-run.
+CIRCLE-CLAIM MODEL: a run's distance converts to a circle whose CIRCUMFERENCE
+equals that distance (r = d/2π, area = d²/4π). /end-run finalises the run and
+returns the claim radius/area; the territory itself is only created when the
+runner places the circle along their trail via /claim-territory. /submit-path
+remains a pure streaming endpoint for partial GPS traces.
 """
 
 from datetime import datetime
@@ -22,7 +22,15 @@ from ..notifications import notify
 from .clans import clan_member_ids, record_clan_activity
 from ..config import settings
 from ..database import get_db
-from ..geospatial import clean_path, detect_loop, geometry_to_rings, polygon_to_lonlat_ring
+from ..geospatial import (
+    circle_polygon_wgs,
+    claim_area_m2,
+    claim_radius_m,
+    clean_path,
+    detect_loop,
+    geometry_to_rings,
+    polygon_to_lonlat_ring,
+)
 from ..ratelimit import limiter
 from ..security import current_user
 
@@ -119,46 +127,113 @@ def end_run(
     run.flag_reasons = reasons or None
     run.verified = is_verified(reasons)
 
-    loop = detect_loop(cleaned)
-    territory_out = None
-    stolen_m2 = 0.0
-    stolen_from = None
-
-    if loop is not None:
-        territory_out, stolen_m2, stolen_from = _claim_territory(
-            db=db,
-            user_id=run.user_id,
-            run_id=run.id,
-            polygon_wgs=loop.polygon_wgs,
-            initial_area_m2=loop.area_m2,
-            verified=run.verified,
-            clan_id=user.clan_id,
-        )
+    # Circle claim earned by this run (placed later via /claim-territory).
+    # Area is deterministic from distance, so PRs can record it now.
+    eligible = run.distance_m >= settings.min_claim_distance_m
+    radius = claim_radius_m(run.distance_m) if eligible else 0.0
+    area = claim_area_m2(run.distance_m) if eligible else 0.0
 
     # Server-side splits + personal records (records only on verified runs).
-    area_claimed = territory_out.area_m2 if territory_out else 0.0
     achievements = fitness.record_splits_and_prs(
-        db, run.id, run.user_id, cleaned, run.distance_m, area_claimed, run.verified
+        db, run.id, run.user_id, cleaned, run.distance_m, area, run.verified
     )
 
     # Advance the runner's clan weekly goal + season stats (no-op if clanless).
     # Flagged (unverified) runs never contribute to clan stats, goals, or XP.
+    # Claim + steal credit lands at /claim-territory when the circle is placed.
     goal_reached, clan_id = (False, None)
     if run.verified:
         goal_reached, clan_id = record_clan_activity(
-            db, user, distance_m=run.distance_m, closed_loop=loop is not None, stolen=stolen_m2
+            db, user, distance_m=run.distance_m, closed_loop=False, stolen=0.0
         )
-        # XP: 10/km + 100 per claim + 50 per steal (tunable in config).
-        xp_gain = (
-            round((run.distance_m / 1000.0) * settings.xp_per_km)
-            + (settings.xp_per_claim if loop is not None else 0)
-            + (settings.xp_per_steal if stolen_m2 > 0 else 0)
-        )
+        xp_gain = round((run.distance_m / 1000.0) * settings.xp_per_km)
         if xp_gain > 0:
             db.execute(
                 text("UPDATE users SET xp = xp + :g WHERE id = :uid"),
                 {"g": xp_gain, "uid": user.id},
             )
+
+    db.commit()
+
+    if goal_reached and clan_id:
+        background.add_task(
+            notify, clan_member_ids(db, clan_id, exclude=user.id), "clan_goal",
+            "Weekly goal reached!", "Your club hit this week's goal. Badge frame unlocked.",
+        )
+
+    return schemas.RunResultOut(
+        run_id=run.id,
+        distance_m=run.distance_m,
+        duration_s=run.duration_s,
+        claim_radius_m=radius,
+        claim_area_m2=area,
+        achievements=achievements,
+    )
+
+
+@router.post("/claim-territory", response_model=schemas.ClaimOut)
+@limiter.limit(settings.rate_limit_end_run)
+def claim_territory(
+    request: Request,
+    response: Response,
+    payload: schemas.ClaimIn,
+    background: BackgroundTasks,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Place the run's circle claim. The centre must lie on the run's trail
+    (within claim_snap_tolerance_m); the circle's circumference equals the
+    run distance. One claim per run, ever."""
+    run = db.get(models.Run, payload.run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(404, "run not found")
+    if run.ended_at is None:
+        raise HTTPException(409, "run not finished yet")
+    if run.claimed_at is not None:
+        raise HTTPException(409, "claim already placed for this run")
+    if run.path is None or not run.distance_m or run.distance_m < settings.min_claim_distance_m:
+        raise HTTPException(422, "run too short to claim territory")
+
+    on_trail = db.execute(
+        text(
+            """
+            SELECT ST_DWithin(
+                path::geography,
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                :tol
+            )
+            FROM runs WHERE id = :rid
+            """
+        ),
+        {"lon": payload.lon, "lat": payload.lat, "tol": settings.claim_snap_tolerance_m, "rid": run.id},
+    ).scalar()
+    if not on_trail:
+        raise HTTPException(422, "claim centre must be on your route")
+
+    radius = claim_radius_m(run.distance_m)
+    circle = circle_polygon_wgs(payload.lat, payload.lon, radius)
+
+    territory_out, stolen_m2, stolen_from = _claim_territory(
+        db=db,
+        user_id=run.user_id,
+        run_id=run.id,
+        polygon_wgs=circle,
+        initial_area_m2=claim_area_m2(run.distance_m),
+        verified=run.verified,
+        clan_id=user.clan_id,
+    )
+    run.claimed_at = datetime.utcnow()
+
+    goal_reached, clan_id = (False, None)
+    if run.verified:
+        goal_reached, clan_id = record_clan_activity(
+            db, user, distance_m=0.0, closed_loop=True, stolen=stolen_m2
+        )
+        xp_gain = settings.xp_per_claim + (settings.xp_per_steal if stolen_m2 > 0 else 0)
+        db.execute(
+            text("UPDATE users SET xp = xp + :g WHERE id = :uid"),
+            {"g": xp_gain, "uid": user.id},
+        )
 
     db.commit()
 
@@ -175,18 +250,13 @@ def end_run(
     if goal_reached and clan_id:
         background.add_task(
             notify, clan_member_ids(db, clan_id, exclude=user.id), "clan_goal",
-            "Weekly goal reached!", "Your clan hit this week's goal. Badge frame unlocked.",
+            "Weekly goal reached!", "Your club hit this week's goal. Badge frame unlocked.",
         )
 
-    return schemas.RunResultOut(
-        run_id=run.id,
-        distance_m=run.distance_m,
-        duration_s=run.duration_s,
-        closed_loop=loop is not None,
+    return schemas.ClaimOut(
         territory=territory_out,
         stolen_m2=stolen_m2,
         stolen_from=stolen_from,
-        achievements=achievements,
     )
 
 

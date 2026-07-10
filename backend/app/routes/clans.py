@@ -128,7 +128,7 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
         {"cid": clan_id},
     ).fetchone()
     if not c:
-        raise HTTPException(404, "clan not found")
+        raise HTTPException(404, "club not found")
     area, league, rank = _season_area_and_rank(db, clan_id)
     my = _membership(db, viewer_id) if viewer_id else None
 
@@ -182,7 +182,7 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
 def _require_role(db, clan_id, user_id, allowed):
     m = _membership(db, user_id)
     if not m or m[0] != clan_id or m[1] not in allowed:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "insufficient clan role")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "insufficient club role")
     return m[1]
 
 
@@ -266,7 +266,7 @@ def clan_member_ids(db: Session, clan_id: str, exclude=None):
 def create_clan(request: Request, response: Response, payload: schemas.ClanCreate,
                 user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     if _membership(db, user.id):
-        raise HTTPException(409, "leave your current clan first")
+        raise HTTPException(409, "leave your current club first")
     name = payload.name.strip()
     tag = payload.tag.strip().upper()
     if not NAME_RE.match(name):
@@ -284,7 +284,7 @@ def create_clan(request: Request, response: Response, payload: schemas.ClanCreat
         {"n": name, "t": tag},
     ).fetchone()
     if taken:
-        raise HTTPException(409, "clan name or tag already taken")
+        raise HTTPException(409, "club name or tag already taken")
 
     cid = db.execute(
         text("INSERT INTO clans (id, name, tag, description, color_key, badge_icon, privacy, created_by, created_at) "
@@ -323,14 +323,14 @@ def get_clan(clan_id: str, user: models.User = Depends(current_user), db: Sessio
 def join_clan(request: Request, response: Response, clan_id: str,
               user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     if _membership(db, user.id):
-        raise HTTPException(409, "leave your current clan first")
+        raise HTTPException(409, "leave your current club first")
     c = db.execute(text("SELECT privacy, member_cap FROM clans WHERE id = :cid"), {"cid": clan_id}).fetchone()
     if not c:
-        raise HTTPException(404, "clan not found")
+        raise HTTPException(404, "club not found")
     if c[0] != "open":
-        raise HTTPException(403, "this clan is invite-only")
+        raise HTTPException(403, "this club is invite-only")
     if _member_count(db, clan_id) >= c[1]:
-        raise HTTPException(409, "clan is full")
+        raise HTTPException(409, "club is full")
     _add_member(db, clan_id, user.id)
     db.commit()
     return _clan_out(db, clan_id, user.id, full=True)
@@ -341,7 +341,7 @@ def join_clan(request: Request, response: Response, clan_id: str,
 def join_by_code(request: Request, response: Response, body: dict,
                  user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     if _membership(db, user.id):
-        raise HTTPException(409, "leave your current clan first")
+        raise HTTPException(409, "leave your current club first")
     code = (body.get("code") or "").strip()
     inv = db.execute(
         text("SELECT id::text, clan_id::text, expires_at, max_uses, uses FROM clan_invites WHERE code = :c"),
@@ -356,7 +356,7 @@ def join_by_code(request: Request, response: Response, body: dict,
     clan_id = inv[1]
     c = db.execute(text("SELECT member_cap FROM clans WHERE id = :cid"), {"cid": clan_id}).fetchone()
     if _member_count(db, clan_id) >= c[0]:
-        raise HTTPException(409, "clan is full")
+        raise HTTPException(409, "club is full")
     _add_member(db, clan_id, user.id)
     db.execute(text("UPDATE clan_invites SET uses = uses + 1 WHERE id = :iid"), {"iid": inv[0]})
     db.commit()
@@ -541,12 +541,12 @@ def request_join(request: Request, response: Response, clan_id: str,
     from ..notifications import notify  # local import avoids a cycle
 
     if _membership(db, user.id):
-        raise HTTPException(409, "leave your current clan first")
+        raise HTTPException(409, "leave your current club first")
     c = db.execute(text("SELECT privacy, name FROM clans WHERE id = :cid"), {"cid": clan_id}).fetchone()
     if not c:
-        raise HTTPException(404, "clan not found")
+        raise HTTPException(404, "club not found")
     if c[0] == "open":
-        raise HTTPException(400, "this clan is open — join directly")
+        raise HTTPException(400, "this club is open — join directly")
     db.execute(
         text(
             """
@@ -603,10 +603,10 @@ def act_on_request(request: Request, response: Response, clan_id: str, req_id: s
         raise HTTPException(409, "already handled")
     if action == "approve":
         if _membership(db, req[0]):
-            raise HTTPException(409, "user already joined a clan")
+            raise HTTPException(409, "user already joined a club")
         cap = db.execute(text("SELECT member_cap FROM clans WHERE id = :cid"), {"cid": clan_id}).scalar()
         if _member_count(db, clan_id) >= cap:
-            raise HTTPException(409, "clan is full")
+            raise HTTPException(409, "club is full")
         _add_member(db, clan_id, req[0])
     db.execute(text("UPDATE clan_join_requests SET status = :s WHERE id = :rid"),
                {"s": "approved" if action == "approve" else "denied", "rid": req_id})

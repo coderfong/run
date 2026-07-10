@@ -20,6 +20,8 @@ __pycache__/
 # Node / Expo
 node_modules/
 .expo/
+# eas update export output (regenerated every publish)
+frontend/dist/
 
 # OS
 .DS_Store

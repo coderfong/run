@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     simplify_tolerance_m: float = 1.5  # douglas-peucker tolerance for cleanup
     max_speed_mps: float = 12.0        # ~43 km/h, drop GPS points exceeding this
 
+    # ---- circle claims ---------------------------------------------------
+    # A run converts to a circular claim whose CIRCUMFERENCE equals the run
+    # distance (r = d/2π, area = d²/4π); the runner places it anywhere along
+    # their trail after the run.
+    claim_snap_tolerance_m: float = 30.0   # circle centre must be this close to the trail
+    min_claim_distance_m: float = 50.0     # shorter runs earn no claim (~200 m² circle)
+    claim_circle_segments: int = 64        # polygon vertices approximating the circle
+
     # ---- anti-cheat (validate_run) -------------------------------------
     # Flagged runs are shadow-flagged: the submitter sees normal success,
     # but their territories are hidden from everyone else. Never surface

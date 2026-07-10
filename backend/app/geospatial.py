@@ -284,6 +284,36 @@ def detect_loop(cleaned: CleanedPath) -> Optional[LoopResult]:
 
 
 # ---------------------------------------------------------------------------
+# Circle claims
+# ---------------------------------------------------------------------------
+
+
+def claim_radius_m(distance_m: float) -> float:
+    """Radius of the circle whose circumference equals the run distance,
+    capped so the claim area never exceeds max_polygon_area_m2."""
+    r = distance_m / (2.0 * math.pi)
+    r_cap = math.sqrt(settings.max_polygon_area_m2 / math.pi)
+    return min(r, r_cap)
+
+
+def claim_area_m2(distance_m: float) -> float:
+    """Area of the (possibly capped) claim circle for a run distance."""
+    r = claim_radius_m(distance_m)
+    return math.pi * r * r
+
+
+def circle_polygon_wgs(lat: float, lon: float, radius_m: float) -> Polygon:
+    """A circle of `radius_m` meters around (lat, lon) as a WGS84 polygon.
+    Built by buffering in a local AEQD projection so the radius is true
+    meters at any latitude."""
+    _to_m, to_wgs = _make_transformers(lat, lon)
+    disc = Point(0.0, 0.0).buffer(
+        radius_m, quad_segs=max(4, settings.claim_circle_segments // 4)
+    )
+    return reproject_geometry_to_wgs84(disc, to_wgs)
+
+
+# ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
 

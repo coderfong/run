@@ -44,7 +44,10 @@ CREATE TABLE runs (
     -- their territories are hidden from everyone else. flag_reasons is
     -- server-side only, never exposed by the API.
     verified     BOOLEAN NOT NULL DEFAULT true,
-    flag_reasons TEXT[]
+    flag_reasons TEXT[],
+    -- Circle-claim model: when the run's claim circle was placed (null = not
+    -- yet). Sticky even after territory rows merge/lose their run_id.
+    claimed_at   TIMESTAMP
 );
 
 CREATE INDEX runs_user_idx ON runs(user_id);

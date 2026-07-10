@@ -62,6 +62,11 @@ class Run(Base):
     distance_m = Column(Float, nullable=True)
     duration_s = Column(Float, nullable=True)
 
+    # When the run's circle claim was placed (null = not claimed yet). Sticky
+    # even after territory rows merge/lose their run_id, so a run can never
+    # be claimed twice.
+    claimed_at = Column(DateTime, nullable=True)
+
     # Anti-cheat: shadow flag. Flagged runs look normal to the submitter but
     # their territories are hidden from everyone else. flag_reasons is
     # server-side only — never returned by the API.

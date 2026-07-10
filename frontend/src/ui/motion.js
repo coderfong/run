@@ -5,6 +5,9 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AccessibilityInfo, Pressable, TextInput } from 'react-native';
 import Animated, {
   Easing,
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -52,6 +55,27 @@ export function MotionProvider({ children }) {
     <ReduceMotionContext.Provider value={reduced}>
       {children}
     </ReduceMotionContext.Provider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reveal — the standard entrance for screen elements: a soft fade + drift.
+// Wrap anything; stagger with `delay`. Renders statically under Reduce
+// Motion. from: 'down' (drifts down into place) | 'up' | 'none'.
+// ---------------------------------------------------------------------------
+
+export function Reveal({ delay = 0, from = 'down', duration = 320, children, style, ...rest }) {
+  const reduced = useReduceMotion();
+  const anim =
+    from === 'up' ? FadeInUp : from === 'none' ? FadeIn : FadeInDown;
+  return (
+    <Animated.View
+      entering={reduced ? undefined : anim.delay(delay).duration(duration).springify().damping(18)}
+      style={style}
+      {...rest}
+    >
+      {children}
+    </Animated.View>
   );
 }
 

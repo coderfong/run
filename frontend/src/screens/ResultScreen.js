@@ -1,7 +1,8 @@
-// Post-run result — the shareable artifact + the run's detail. Dark card
-// (captured polygon glowing, area hero count-up, quiet stat row, steal
-// summary, loop-mark watermark) is the shared image; splits and any PRs sit
-// below it. A run without a loop still gets a dignified result.
+// Post-run result — claim placement + the shareable artifact. The run's
+// distance became a circle (circumference = distance); the runner taps
+// anywhere along their trail to place it, then the dark card (claimed circle
+// glowing, area hero count-up, quiet stat row, steal summary, loop-mark
+// watermark) is the shared image; splits and any PRs sit below it.
 
 import React, { useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,13 +12,17 @@ import * as Sharing from 'expo-sharing';
 
 import { LinearGradient } from 'expo-linear-gradient';
 
+import GameMap, { MAP_READY, TerritoryFill, Trail, UserMarker } from '../components/GameMap';
+import { CharacterBust } from '../components/character/CharacterRig';
+import { useAvatar } from '../state/avatar';
+import { api } from '../api/client';
 import { brand, darkColors, radius, shadow, space, type, withAlpha } from '../theme';
 import { useClan } from '../state/clan';
-import { CountUpText, haptic, PressableScale } from '../ui/motion';
+import { useSettings } from '../state/settings';
+import { CountUpText, Reveal, haptic, PressableScale } from '../ui/motion';
 import LoopMark from '../components/LoopMark';
 import { toast } from '../ui/toast';
 
-const OPEN_PATH_RATE = 0.05;
 const D = darkColors;
 
 // --- geometry / splits -----------------------------------------------------
@@ -65,6 +70,53 @@ function haversine(a, b) {
   const la1 = toRad(a.latitude), la2 = toRad(b.latitude);
   const x = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function formatArea(m2) {
+  if (m2 >= 1e6) return `${(m2 / 1e6).toFixed(2)} km²`;
+  return `${Math.round(m2).toLocaleString()} m²`;
+}
+
+// --- claim placement helpers ------------------------------------------------
+
+// Midpoint of the trail by cumulative distance — the default circle centre.
+function pathMidpoint(path) {
+  if (!path?.length) return null;
+  let total = 0;
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) {
+    total += haversine(path[i - 1], path[i]);
+    cum.push(total);
+  }
+  const half = total / 2;
+  let idx = 0;
+  while (idx < cum.length - 1 && cum[idx + 1] < half) idx++;
+  return path[idx];
+}
+
+// The trail point nearest a tapped (lat, lon) — placement snaps to the route.
+function nearestOnPath(path, latitude, longitude) {
+  let best = null, bestD = Infinity;
+  for (const p of path) {
+    const d = haversine(p, { latitude, longitude });
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+
+// Circle outline (radius in meters) around a centre, as map points, via a
+// local equirectangular approximation — display only; the server rebuilds
+// the authoritative polygon.
+function circlePoints(center, radiusM, n = 48) {
+  const mPerLat = 110540;
+  const mPerLon = 111320 * Math.cos((center.latitude * Math.PI) / 180);
+  return Array.from({ length: n }, (_, i) => {
+    const a = (2 * Math.PI * i) / n;
+    return {
+      latitude: center.latitude + (Math.sin(a) * radiusM) / mPerLat,
+      longitude: center.longitude + (Math.cos(a) * radiusM) / mPerLon,
+    };
+  });
 }
 
 // Per-km splits from the recorded path (client-side; Phase 6 makes these
@@ -142,23 +194,66 @@ function Splits({ splits, accent }) {
 export default function ResultScreen({ navigation, route }) {
   const { result } = route.params;
   const { color, clan } = useClan();
+  const { equipped } = useAvatar();
+  const { trailGlowColor } = useSettings();
   const team = color; // {fill, stroke, glow} — clan color or neutral
   const label = clan?.tag || 'Solo';
   const cardRef = useRef(null);
   const [sharing, setSharing] = useState(false);
 
-  const t = result.territory;
-  const captured = !!t;
   const path = route.params.path || [];
+
+  // Claim placement: the run earned a circle (circumference = distance);
+  // it becomes territory only once the runner places it on their trail.
+  const [claim, setClaim] = useState({
+    territory: result.territory || null,
+    stolen_m2: result.stolen_m2 || 0,
+    stolen_from: result.stolen_from || null,
+  });
+  const [center, setCenter] = useState(() => pathMidpoint(path));
+  const [claiming, setClaiming] = useState(false);
+
+  const t = claim.territory;
+  const captured = !!t;
+  const claimRadius = result.claim_radius_m || 0;
+  const claimArea = result.claim_area_m2 || 0;
+  const canPlace = !captured && claimRadius > 0 && path.length >= 2;
 
   const rings = captured
     ? (t.rings?.length ? t.rings : [t.polygon])
     : [path.map((p) => [p.longitude, p.latitude])];
 
-  const heroAreaM2 = captured ? t.area_m2 : (result.distance_m / 1000) * OPEN_PATH_RATE * 1e6;
+  const heroAreaM2 = captured ? t.area_m2 : claimArea;
   const splits = useMemo(() => computeSplits(path), [path]);
-  const stolen = result.stolen_m2 || 0;
+  const stolen = claim.stolen_m2 || 0;
   const achievements = result.achievements || [];
+
+  const onMapPress = (e) => {
+    const c = e?.geometry?.coordinates;
+    if (!c || !canPlace) return;
+    haptic.light();
+    setCenter(nearestOnPath(path, c[1], c[0]));
+  };
+
+  const placeClaim = async () => {
+    if (!center || claiming || !canPlace) return;
+    setClaiming(true);
+    try {
+      haptic.light();
+      const out = await api.claimTerritory(result.run_id, center.latitude, center.longitude);
+      setClaim({
+        territory: out.territory,
+        stolen_m2: out.stolen_m2 || 0,
+        stolen_from: out.stolen_from || null,
+      });
+      haptic.success();
+      toast.success('Territory claimed');
+    } catch (e) {
+      toast.error(e.message || 'Could not place your claim');
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   const share = async () => {
     try {
@@ -176,12 +271,79 @@ export default function ResultScreen({ navigation, route }) {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: D.bg }} contentContainerStyle={styles.scroll}>
+      {/* claim placement — tap anywhere on the trail to position the circle */}
+      {canPlace && (
+        <Reveal style={styles.placeCard}>
+          <Text style={styles.placeTitle}>Place your claim</Text>
+          <Text style={styles.placeHint}>
+            {(result.distance_m / 1000).toFixed(2)} km converts to a {formatArea(claimArea)} circle.
+            Tap anywhere along your route to position it.
+          </Text>
+          {MAP_READY ? (
+            <View style={styles.placeMap}>
+              <GameMap
+                theme="dark"
+                initialCenter={center || path[0]}
+                initialZoom={14}
+                onPress={onMapPress}
+              >
+                <Trail id="r-trail" points={path} color={trailGlowColor || team.stroke} width={4} glow />
+                {center && (
+                  <TerritoryFill
+                    id="r-claim"
+                    points={circlePoints(center, claimRadius)}
+                    fillColor={team.stroke}
+                    strokeColor={team.glow}
+                    fillOpacity={0.22}
+                    glow
+                  />
+                )}
+                {/* your portrait marks the centre of the claim */}
+                {center && (
+                  <UserMarker point={center}>
+                    <CharacterBust equipped={equipped} size={36} ring={team.glow} bg="rgba(21,24,29,0.9)" />
+                  </UserMarker>
+                )}
+              </GameMap>
+            </View>
+          ) : (
+            <View style={styles.placeChoices}>
+              {[
+                ['Start', path[0]],
+                ['Middle', pathMidpoint(path)],
+                ['End', path[path.length - 1]],
+              ].map(([name, p]) => (
+                <PressableScale
+                  key={name}
+                  style={[styles.placeChoice, center === p && { borderColor: team.glow }]}
+                  onPress={() => { haptic.light(); setCenter(p); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Place claim at route ${name.toLowerCase()}`}
+                >
+                  <Text style={[type.bodySmBold, { color: center === p ? team.glow : D.textMuted }]}>{name}</Text>
+                </PressableScale>
+              ))}
+            </View>
+          )}
+          <PressableScale
+            style={[styles.claimBtn, { backgroundColor: team.stroke }, claiming && { opacity: 0.6 }]}
+            onPress={placeClaim}
+            disabled={claiming || !center}
+            accessibilityRole="button"
+            accessibilityLabel="Claim territory here"
+          >
+            <Text style={styles.claimBtnText}>{claiming ? 'Claiming…' : 'Claim here'}</Text>
+          </PressableScale>
+        </Reveal>
+      )}
+
       {/* the shareable card */}
+      <Reveal delay={canPlace ? 140 : 0}>
       <View ref={cardRef} collapsable={false} style={styles.card}>
         <View style={[styles.eyebrow, { borderColor: team.glow }]}>
           <View style={[styles.eyebrowDot, { backgroundColor: team.glow }]} />
           <Text style={[styles.eyebrowText, { color: team.glow }]}>
-            {captured ? `Loop captured · ${label}` : `Distance converted · ${label}`}
+            {captured ? `Territory claimed · ${label}` : `Claim ready · ${label}`}
           </Text>
         </View>
 
@@ -197,8 +359,10 @@ export default function ResultScreen({ navigation, route }) {
         </View>
         <Text style={styles.heroCaption}>
           {captured
-            ? 'claimed for your team'
-            : `no loop this time — close your path to claim land`}
+            ? 'claimed for your club'
+            : canPlace
+            ? 'your circle is ready — place it on your route above'
+            : 'run at least a little further to earn a claim'}
         </Text>
 
         <View style={styles.quietRow}>
@@ -226,10 +390,11 @@ export default function ResultScreen({ navigation, route }) {
           <Text style={styles.watermarkText}>TERRITORY RUN</Text>
         </View>
       </View>
+      </Reveal>
 
       {/* PRs (Phase 6 fills achievements) */}
       {achievements.length > 0 && (
-        <View style={styles.section}>
+        <Reveal delay={220} style={styles.section}>
           <Text style={styles.sectionTitle}>Personal records</Text>
           <View style={styles.prWrap}>
             {achievements.map((a) => (
@@ -238,17 +403,19 @@ export default function ResultScreen({ navigation, route }) {
               </View>
             ))}
           </View>
-        </View>
+        </Reveal>
       )}
 
       {/* splits */}
-      <Splits splits={splits} accent={team.glow} />
+      <Reveal delay={300}>
+        <Splits splits={splits} accent={team.glow} />
+      </Reveal>
 
-      <View style={styles.actions}>
+      <Reveal delay={380} style={styles.actions}>
         <PressableScale
           style={shadow.glow(brand.pink)}
           onPress={share}
-          disabled={sharing}
+          disabled={sharing || claiming}
           accessibilityRole="button"
           accessibilityLabel="Share result card"
         >
@@ -269,13 +436,37 @@ export default function ResultScreen({ navigation, route }) {
         >
           <Text style={styles.doneBtnText}>Done</Text>
         </PressableScale>
-      </View>
+      </Reveal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { padding: space.lg, paddingBottom: space.xxl },
+
+  placeCard: {
+    backgroundColor: D.card,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: D.border,
+    padding: space.lg,
+    marginBottom: space.lg,
+  },
+  placeTitle: { ...type.heading, color: D.text, marginBottom: 4 },
+  placeHint: { ...type.caption, color: D.textMuted, marginBottom: space.md },
+  placeMap: { height: 300, borderRadius: radius.md, overflow: 'hidden', marginBottom: space.md },
+  placeChoices: { flexDirection: 'row', gap: space.sm, marginBottom: space.md },
+  placeChoice: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: D.border,
+    backgroundColor: D.cardAlt,
+  },
+  claimBtn: { paddingVertical: 15, borderRadius: radius.pill, alignItems: 'center' },
+  claimBtnText: { ...type.button, color: '#fff' },
 
   card: {
     backgroundColor: D.card,

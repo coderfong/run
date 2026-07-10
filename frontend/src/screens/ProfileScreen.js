@@ -5,11 +5,15 @@ import React, { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 
-import { Award, Flame, Medal, Trophy } from 'lucide-react-native';
+import { Award, Flame, Medal, Shirt, Trophy } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
+import { useAvatar } from '../state/avatar';
+import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
+import { CharacterBust } from '../components/character/CharacterRig';
+import { PressableScale, Reveal, haptic } from '../ui/motion';
 import { getHealthEnabled, setHealthEnabled, requestHealthPermission } from '../health';
 import { colors, radius, space, type, withAlpha } from '../theme';
 import { Screen, Card, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
@@ -25,7 +29,7 @@ const TROPHIES = [
 
 const NOTIF_ROWS = [
   ['stolen', 'Land under attack'],
-  ['clan_goal', 'Clan weekly goal'],
+  ['clan_goal', 'Club weekly goal'],
   ['kudos', 'Kudos received'],
   ['season', 'Season & promotion'],
   ['recap', 'Weekly recap'],
@@ -48,6 +52,8 @@ function StatTile({ label, value, unit, accent }) {
 export default function ProfileScreen({ navigation }) {
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
   const { color, clan } = useClan();
+  const { equipped } = useAvatar();
+  const { trailGlow, setTrailGlow } = useSettings();
   const accent = color.stroke;
 
   const [stats, setStats] = useState(null);
@@ -111,15 +117,26 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
-      {/* header */}
-      <View style={styles.header}>
-        <View style={[styles.avatar, { backgroundColor: color.fill }]}>
-          <Text style={[type.display, { color: color.stroke }]}>
-            {(user?.username || '?').slice(0, 1).toUpperCase()}
-          </Text>
-        </View>
+      {/* header — profile picture is a head-and-shoulders bust */}
+      <Reveal style={styles.header}>
+        <PressableScale
+          onPress={() => navigation.navigate('AvatarStudio')}
+          accessibilityRole="button"
+          accessibilityLabel="Your runner — tap to customize"
+        >
+          <CharacterBust equipped={equipped} size={96} ring={accent} />
+        </PressableScale>
         <Text style={[type.title, { marginTop: space.md }]}>{user?.username}</Text>
         <Pill label={clan?.tag ? `[${clan.tag}]` : 'Solo'} color={accent} dot style={{ marginTop: space.sm }} />
+        <Button
+          title="Customize runner"
+          variant="secondary"
+          size="sm"
+          full={false}
+          icon={<Shirt size={16} color={colors.text} />}
+          onPress={() => navigation.navigate('AvatarStudio')}
+          style={{ marginTop: space.md }}
+        />
 
         {/* level + XP bar */}
         {stats && (
@@ -145,10 +162,10 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </View>
         )}
-      </View>
+      </Reveal>
 
       {/* stat wall */}
-      <View style={styles.wall}>
+      <Reveal delay={90} style={styles.wall}>
         {!stats ? (
           Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} width="31%" height={80} style={{ borderRadius: 16, marginBottom: space.md }} />
@@ -163,9 +180,10 @@ export default function ProfileScreen({ navigation }) {
             <StatTile label="Zones" value={String(stats.territory_count || 0)} />
           </>
         )}
-      </View>
+      </Reveal>
 
       {/* trophies */}
+      <Reveal delay={180}>
       <SectionHeader title="Trophies" style={{ marginTop: space.sm, marginBottom: space.md }} />
       <View style={styles.trophyRow}>
         {TROPHIES.map(({ key, label, icon: Icon, earned }) => {
@@ -180,6 +198,7 @@ export default function ProfileScreen({ navigation }) {
           );
         })}
       </View>
+      </Reveal>
 
       {/* recent runs */}
       <SectionHeader title="Recent runs" style={{ marginTop: space.xl, marginBottom: space.md }} />
@@ -202,7 +221,7 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{new Date(r.created_at).toLocaleDateString()}</Text>
                 <Text style={type.caption}>
-                  {km(r.distance_m)} km · {r.closed_loop ? `${Math.round(r.area_m2).toLocaleString()} m² claimed` : 'no loop'}
+                  {km(r.distance_m)} km · {r.closed_loop ? `${Math.round(r.area_m2).toLocaleString()} m² claimed` : 'not claimed'}
                 </Text>
               </View>
               {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
@@ -237,6 +256,39 @@ export default function ProfileScreen({ navigation }) {
             <Button title="Change" variant="secondary" size="sm" full={false} onPress={() => setEditing(true)} />
           </View>
         )}
+      </Card>
+
+      {/* trail glow colour — how your live route lights up on the run map */}
+      <Card style={{ marginTop: space.md }}>
+        <Text style={type.labelSm}>Trail glow</Text>
+        <Text style={[type.caption, { marginTop: 2 }]}>
+          The colour your route glows while you run. Club follows your club colour.
+        </Text>
+        <View style={styles.swatchRow}>
+          {TRAIL_GLOW_COLORS.map(({ key, label, value }) => {
+            const swatch = value || accent;
+            const selected = trailGlow === key;
+            return (
+              <PressableScale
+                key={key}
+                onPress={() => { haptic.light(); setTrailGlow(key); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Trail glow ${label}`}
+                accessibilityState={{ selected }}
+                style={styles.swatchItem}
+              >
+                <View
+                  style={[
+                    styles.swatch,
+                    { backgroundColor: swatch, shadowColor: swatch },
+                    selected && styles.swatchSelected,
+                  ]}
+                />
+                <Text style={[type.caption, { color: selected ? colors.text : colors.textDim }]}>{label}</Text>
+              </PressableScale>
+            );
+          })}
+        </View>
       </Card>
 
       {/* notifications */}
@@ -310,7 +362,6 @@ export default function ProfileScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   header: { alignItems: 'center', marginTop: space.md, marginBottom: space.xl },
-  avatar: { width: 88, height: 88, borderRadius: 44, alignItems: 'center', justifyContent: 'center' },
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: { width: '31.5%', marginBottom: space.md },
@@ -354,6 +405,17 @@ const styles = StyleSheet.create({
     marginVertical: space.sm,
   },
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm },
+  swatchRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: space.md },
+  swatchItem: { alignItems: 'center', gap: 6 },
+  swatch: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  swatchSelected: { borderWidth: 3, borderColor: colors.text, transform: [{ scale: 1.12 }] },
   btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm, marginTop: space.sm },
 
   link: { marginTop: space.xl, alignItems: 'center' },

@@ -1,42 +1,52 @@
 // PACER onboarding — three full-bleed art slides (assets/art/*):
-// 1 the loop mechanic · 2 clans + defending land · 3 the safety contract.
+// 1 the claim mechanic · 2 clubs + defending land · 3 the safety contract.
 // Top: "1 / 3" + Skip. Bottom: dots + circular next (slide 3: gradient CTA).
+//
+// Motion: the art pans/zooms and the copy parallaxes against the swipe
+// (headline leads, body trails), dots stretch as you pass them. Everything
+// collapses to static under Reduce Motion. The copy sits in a fixed band —
+// headline just below the top chrome, body/CTA just above the bottom chrome.
 
 import React, { useRef, useState } from 'react';
 import {
   Dimensions,
-  FlatList,
-  ImageBackground,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowRight, Flag, Route, ShieldCheck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { brand, colors, radius, space, type } from '../theme';
-import { PressableScale, haptic } from '../ui/motion';
+import { PressableScale, Reveal, haptic, useReduceMotion } from '../ui/motion';
 
 const { width } = Dimensions.get('window');
 
 const SLIDES = [
   {
-    key: 'loop',
+    key: 'claim',
     art: require('../../assets/art/onboarding-loop.png'),
-    headline: ['Run.', 'Close the loop.'],
-    accentLine: 'Claim the land.',
+    headline: ['Run.', 'Turn distance'],
+    accentLine: 'into territory.',
     accent: brand.pink,
-    body: 'Close a loop anywhere in the real world to capture territory for your clan.',
+    body: 'Every run earns a claim zone as big as your distance — place it anywhere along your route.',
   },
   {
     key: 'clans',
     art: require('../../assets/art/onboarding-clans.png'),
-    headline: ['Clans fight.'],
+    headline: ['Clubs fight.'],
     accentLine: 'Defend your land.',
     accent: brand.purple,
-    body: 'Other clans will try to take over your territory. Hold it together.',
+    body: 'Other clubs will try to take over your territory. Hold it together.',
   },
   {
     key: 'safety',
@@ -46,32 +56,65 @@ const SLIDES = [
     accent: brand.teal,
     body: 'Run smart and come back strong.',
     bullets: [
-      { icon: ShieldCheck, title: 'Stay alert', body: 'Eyes up at crossings — a loop is never worth a red light.' },
+      { icon: ShieldCheck, title: 'Stay alert', body: 'Eyes up at crossings — a claim is never worth a red light.' },
       { icon: Route, title: 'Use safe routes', body: 'Pick paths and park connectors over traffic.' },
-      { icon: Flag, title: 'Follow the rules', body: 'Captures are validated server-side. No prize for cutting corners.' },
+      { icon: Flag, title: 'Follow the rules', body: 'Claims are validated server-side. No prize for cutting corners.' },
     ],
   },
 ];
 
-function Slide({ item, insets, index, onNext, onDone, last }) {
+function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
+  const range = [(index - 1) * width, index * width, (index + 1) * width];
+
+  // Art: gentle pan-and-zoom against the swipe direction.
+  const artStyle = useAnimatedStyle(() => {
+    if (reduced) return {};
+    return {
+      transform: [
+        { translateX: interpolate(scrollX.value, range, [width * 0.14, 0, -width * 0.14], Extrapolation.CLAMP) },
+        { scale: 1.14 },
+      ],
+    };
+  });
+
+  // Copy: headline leads the swipe, body trails it — classic parallax.
+  const headStyle = useAnimatedStyle(() => {
+    if (reduced) return {};
+    return {
+      opacity: interpolate(scrollX.value, range, [0, 1, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateX: interpolate(scrollX.value, range, [width * 0.3, 0, -width * 0.3], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+  const lowerStyle = useAnimatedStyle(() => {
+    if (reduced) return {};
+    return {
+      opacity: interpolate(scrollX.value, range, [0, 1, 0], Extrapolation.CLAMP),
+      transform: [
+        { translateX: interpolate(scrollX.value, range, [width * 0.5, 0, -width * 0.5], Extrapolation.CLAMP) },
+      ],
+    };
+  });
+
   return (
-    <ImageBackground source={item.art} style={{ width, flex: 1 }} resizeMode="cover">
+    <View style={{ width, flex: 1, overflow: 'hidden', backgroundColor: colors.bg }}>
+      <Animated.Image source={item.art} style={[StyleSheet.absoluteFill, { width, height: '100%' }, artStyle]} resizeMode="cover" />
       <LinearGradient
         colors={['rgba(11,13,16,0.72)', 'rgba(11,13,16,0.05)', 'rgba(11,13,16,0.88)']}
         locations={[0, 0.42, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <View style={[styles.slideInner, { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.xl }]}>
-        {/* headline block */}
-        <View style={{ marginTop: space.xl }}>
+      {/* the copy band: fixed offsets clear of the top + bottom chrome */}
+      <View style={[styles.slideInner, { paddingTop: insets.top + 76, paddingBottom: insets.bottom + 92 }]}>
+        <Animated.View style={headStyle}>
           {item.headline.map((line) => (
             <Text key={line} style={styles.headline}>{line}</Text>
           ))}
           <Text style={[styles.headline, { color: item.accent }]}>{item.accentLine}</Text>
-        </View>
+        </Animated.View>
 
-        {/* lower block */}
-        <View>
+        <Animated.View style={lowerStyle}>
           {item.bullets ? (
             <View style={{ gap: space.lg, marginBottom: space.xl }}>
               {item.bullets.map(({ icon: Icon, title, body }) => (
@@ -102,17 +145,40 @@ function Slide({ item, insets, index, onNext, onDone, last }) {
               </LinearGradient>
             </PressableScale>
           ) : null}
-        </View>
+        </Animated.View>
       </View>
-    </ImageBackground>
+    </View>
+  );
+}
+
+// A progress dot that stretches while its slide is active.
+function Dot({ index, scrollX, accent, reduced, active }) {
+  const range = [(index - 1) * width, index * width, (index + 1) * width];
+  const style = useAnimatedStyle(() => {
+    if (reduced) return {};
+    return {
+      width: interpolate(scrollX.value, range, [8, 22, 8], Extrapolation.CLAMP),
+      opacity: interpolate(scrollX.value, range, [0.35, 1, 0.35], Extrapolation.CLAMP),
+    };
+  });
+  return (
+    <Animated.View
+      style={[styles.dot, active && { backgroundColor: accent }, style]}
+    />
   );
 }
 
 export default function OnboardingScreen({ onDone }) {
   const insets = useSafeAreaInsets();
+  const reduced = useReduceMotion();
   const listRef = useRef(null);
   const [index, setIndex] = useState(0);
+  const scrollX = useSharedValue(0);
   const last = index === SLIDES.length - 1;
+
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollX.value = e.contentOffset.x;
+  });
 
   const finish = () => { haptic.light(); onDone?.(); };
   const next = () => {
@@ -122,7 +188,7 @@ export default function OnboardingScreen({ onDone }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <FlatList
+      <Animated.FlatList
         ref={listRef}
         data={SLIDES}
         keyExtractor={(s) => s.key}
@@ -130,30 +196,37 @@ export default function OnboardingScreen({ onDone }) {
         pagingEnabled
         bounces={false}
         showsHorizontalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / width))}
         renderItem={({ item, index: i }) => (
-          <Slide item={item} insets={insets} index={i} last={i === SLIDES.length - 1} onNext={next} onDone={finish} />
+          <Slide
+            item={item}
+            index={i}
+            scrollX={scrollX}
+            insets={insets}
+            last={i === SLIDES.length - 1}
+            onDone={finish}
+            reduced={reduced}
+          />
         )}
       />
 
       {/* top chrome: progress + skip */}
-      <View style={[styles.topBar, { top: insets.top + space.sm }]}>
+      <Reveal from="down" style={[styles.topBar, { top: insets.top + space.sm }]}>
         <Text style={styles.progress}>
           <Text style={{ color: SLIDES[index].accent }}>{index + 1}</Text> / {SLIDES.length}
         </Text>
         <TouchableOpacity onPress={finish} hitSlop={12} accessibilityRole="button" accessibilityLabel="Skip intro">
           <Text style={[type.bodyMedium, { color: 'rgba(255,255,255,0.8)' }]}>Skip</Text>
         </TouchableOpacity>
-      </View>
+      </Reveal>
 
       {/* bottom chrome: dots + next (hidden on the CTA slide) */}
-      <View style={[styles.bottomBar, { bottom: insets.bottom + space.xl }]}>
+      <Reveal from="up" delay={120} style={[styles.bottomBar, { bottom: insets.bottom + space.xl }]}>
         <View style={styles.dots}>
           {SLIDES.map((s, i) => (
-            <View
-              key={s.key}
-              style={[styles.dot, i === index && { backgroundColor: SLIDES[index].accent, width: 8 }]}
-            />
+            <Dot key={s.key} index={i} scrollX={scrollX} accent={SLIDES[index].accent} reduced={reduced} active={i === index} />
           ))}
         </View>
         {!last && (
@@ -166,7 +239,7 @@ export default function OnboardingScreen({ onDone }) {
             <ArrowRight size={22} color="#fff" />
           </PressableScale>
         )}
-      </View>
+      </Reveal>
     </View>
   );
 }
@@ -178,7 +251,6 @@ const styles = StyleSheet.create({
     ...type.body,
     color: 'rgba(255,255,255,0.82)',
     lineHeight: 22,
-    marginBottom: 76, // clears the bottom chrome
     maxWidth: '86%',
   },
 
@@ -219,7 +291,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dots: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.35)' },
   nextBtn: {
     width: 56,
     height: 56,

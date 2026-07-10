@@ -1,5 +1,5 @@
-// Club tab. Clanless -> a directory (search, create, join-by-code). Member ->
-// the clan hub (header, weekly goal, members, role-gated management).
+// Club tab. Clubless -> a directory (search, create, join-by-code). Member ->
+// the club hub (header, weekly goal, members, role-gated management).
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -44,7 +44,7 @@ function Directory({ navigation }) {
     try {
       await api.joinByCode(code.trim());
       await refresh();
-      toast.success('Joined clan');
+      toast.success('Joined club');
     } catch (e) {
       toast.error(e.message || 'Invalid code');
     }
@@ -52,12 +52,12 @@ function Directory({ navigation }) {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
-      <Text style={[type.display, { marginTop: space.sm }]}>Clans</Text>
+      <Text style={[type.display, { marginTop: space.sm }]}>Clubs</Text>
       <Text style={[type.body, { color: colors.textMuted, marginTop: 4, marginBottom: space.lg }]}>
-        Solo land is grey. Clan land conquers.
+        Solo land is grey. Club land conquers.
       </Text>
 
-      <Button title="Create a clan" variant="gradient" icon={<UserPlus size={18} color="#fff" />} onPress={() => navigation.navigate('ClubCreate')} />
+      <Button title="Create a club" variant="gradient" icon={<UserPlus size={18} color="#fff" />} onPress={() => navigation.navigate('ClubCreate')} />
 
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
         <TextInput
@@ -71,7 +71,7 @@ function Directory({ navigation }) {
         <Button title="Join" size="sm" full={false} onPress={joinCode} />
       </View>
 
-      <SectionHeader title="Find a clan" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <SectionHeader title="Find a club" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <TextInput
         style={styles.input}
         value={q}
@@ -85,7 +85,7 @@ function Directory({ navigation }) {
         {!results ? (
           <Skeleton width="100%" height={64} style={{ borderRadius: 16 }} />
         ) : results.length === 0 ? (
-          <Text style={[type.caption, { paddingVertical: space.lg }]}>No clans found. Be the first — create one.</Text>
+          <Text style={[type.caption, { paddingVertical: space.lg }]}>No clubs found. Be the first — create one.</Text>
         ) : (
           results.map((c) => (
             <Card key={c.id} onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })} style={{ marginBottom: space.sm }}>
@@ -165,11 +165,11 @@ function MemberHub({ clanId }) {
   };
 
   const leave = () => {
-    Alert.alert('Leave clan?', myRole === 'leader' ? 'Transfer leadership first if others remain.' : 'You can rejoin later.', [
+    Alert.alert('Leave club?', myRole === 'leader' ? 'Transfer leadership first if others remain.' : 'You can rejoin later.', [
       { text: 'Stay', style: 'cancel' },
       {
         text: 'Leave', style: 'destructive', onPress: async () => {
-          try { await api.leaveClan(); await refresh(); toast.success('Left clan'); }
+          try { await api.leaveClan(); await refresh(); toast.success('Left club'); }
           catch (e) { toast.error(e.message || 'Could not leave'); }
         },
       },
@@ -263,7 +263,7 @@ function MemberHub({ clanId }) {
         ))}
       </Card>
 
-      <Button title="Leave clan" variant="secondary" onPress={leave} style={{ marginTop: space.xl }} />
+      <Button title="Leave club" variant="secondary" onPress={leave} style={{ marginTop: space.xl }} />
     </ScrollView>
   );
 }

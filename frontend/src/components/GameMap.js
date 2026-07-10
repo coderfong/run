@@ -17,6 +17,7 @@ import Mapbox, {
   FillLayer,
   LineLayer,
   MapView,
+  MarkerView,
   ShapeSource,
   UserLocation,
 } from '@rnmapbox/maps';
@@ -130,33 +131,21 @@ export default GameMap;
 
 // --- layer helpers (screens compose these; none import Mapbox) ------------
 
-// A running/route trail. `glow` adds a soft wide underlayer (dark theme only).
-export function Trail({ id = 'trail', points, color, width = 5, glow = false }) {
+// A running/route trail. `glow` adds a soft wide underlayer (dark theme only);
+// `glowColor` overrides its colour (defaults to the line colour).
+export function Trail({ id = 'trail', points, color, width = 5, glow = false, glowColor }) {
   if (!points || points.length < 2) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={lineFeature(points)}>
       {glow && (
         <LineLayer
           id={`${id}-glow`}
-          style={{ lineColor: color, lineWidth: width * 3, lineOpacity: 0.35, lineCap: 'round', lineJoin: 'round', lineBlur: width * 2 }}
+          style={{ lineColor: glowColor || color, lineWidth: width * 3, lineOpacity: 0.35, lineCap: 'round', lineJoin: 'round', lineBlur: width * 2 }}
         />
       )}
       <LineLayer
         id={`${id}-line`}
         style={{ lineColor: color, lineWidth: width, lineCap: 'round', lineJoin: 'round' }}
-      />
-    </ShapeSource>
-  );
-}
-
-// The dashed "if you closed the loop now" line back to the start.
-export function ClosingLine({ id = 'closing', from, to, color }) {
-  if (!from || !to) return null;
-  return (
-    <ShapeSource id={`${id}-src`} shape={lineFeature([from, to])}>
-      <LineLayer
-        id={`${id}-line`}
-        style={{ lineColor: color, lineWidth: 2.5, lineDasharray: [2, 2], lineCap: 'round' }}
       />
     </ShapeSource>
   );
@@ -176,6 +165,17 @@ export function TerritoryFill({ id = 'territory', points, fillColor, strokeColor
       )}
       <LineLayer id={`${id}-stroke`} style={{ lineColor: strokeColor, lineWidth: 2 }} />
     </ShapeSource>
+  );
+}
+
+// An arbitrary React view pinned to a map coordinate — used for the player's
+// character-portrait location marker and territory-owner portraits.
+export function UserMarker({ point, children, anchor = { x: 0.5, y: 0.5 } }) {
+  if (!point) return null;
+  return (
+    <MarkerView coordinate={toLngLat(point)} anchor={anchor} allowOverlap>
+      {children}
+    </MarkerView>
   );
 }
 

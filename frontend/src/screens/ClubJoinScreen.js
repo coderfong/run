@@ -20,7 +20,7 @@ export default function ClubJoinScreen({ route, navigation }) {
     try {
       await api.joinByCode(code);
       await refresh();
-      toast.success('Joined clan');
+      toast.success('Joined club');
       navigation.navigate('ClubMain');
     } catch (e) {
       toast.error(e.message || 'Invalid or expired code');
@@ -32,14 +32,14 @@ export default function ClubJoinScreen({ route, navigation }) {
   return (
     <Screen center>
       <View style={{ alignItems: 'center', width: '100%' }}>
-        <Text style={[type.labelSm, { marginBottom: space.sm }]}>Clan invite</Text>
+        <Text style={[type.labelSm, { marginBottom: space.sm }]}>Club invite</Text>
         <Text style={[type.display, { letterSpacing: 4, marginBottom: space.lg }]}>{code || '—'}</Text>
         {clan?.clan_id ? (
           <Text style={[type.body, { color: colors.textMuted, textAlign: 'center' }]}>
-            Leave your current clan first to accept a new invite.
+            Leave your current club first to accept a new invite.
           </Text>
         ) : (
-          <Button title="Join clan" onPress={join} loading={busy} disabled={!code} />
+          <Button title="Join club" onPress={join} loading={busy} disabled={!code} />
         )}
       </View>
     </Screen>

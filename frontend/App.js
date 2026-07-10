@@ -38,11 +38,14 @@ import ClubJoinScreen from './src/screens/ClubJoinScreen';
 import ClubCreateScreen from './src/screens/ClubCreateScreen';
 import ClubDetailScreen from './src/screens/ClubDetailScreen';
 import SeasonScreen from './src/screens/SeasonScreen';
+import AvatarStudioScreen from './src/screens/AvatarStudioScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ClanProvider } from './src/state/clan';
+import { AvatarProvider, useAvatar } from './src/state/avatar';
 import { MotionProvider } from './src/ui/motion';
 import { RecordingProvider, useRecording } from './src/state/recording';
+import { SettingsProvider } from './src/state/settings';
 import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
 import TabBar from './src/navigation/TabBar';
@@ -118,7 +121,7 @@ function HomeStack() {
       <HomeStackNav.Screen
         name="ClubDetail"
         component={ClubDetailScreen}
-        options={{ headerShown: true, title: 'Clan', ...headerLight }}
+        options={{ headerShown: true, title: 'Club', ...headerLight }}
       />
     </HomeStackNav.Navigator>
   );
@@ -141,17 +144,17 @@ function ClubStack() {
       <ClubStackNav.Screen
         name="ClubCreate"
         component={ClubCreateScreen}
-        options={{ headerShown: true, title: 'Create clan', ...headerLight }}
+        options={{ headerShown: true, title: 'Create club', ...headerLight }}
       />
       <ClubStackNav.Screen
         name="ClubJoin"
         component={ClubJoinScreen}
-        options={{ headerShown: true, title: 'Join clan', ...headerLight }}
+        options={{ headerShown: true, title: 'Join club', ...headerLight }}
       />
       <ClubStackNav.Screen
         name="ClubDetail"
         component={ClubDetailScreen}
-        options={{ headerShown: true, title: 'Clan', ...headerLight }}
+        options={{ headerShown: true, title: 'Club', ...headerLight }}
       />
     </ClubStackNav.Navigator>
   );
@@ -162,6 +165,11 @@ function YouStack() {
   return (
     <YouStackNav.Navigator screenOptions={{ headerShown: false }}>
       <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
+      <YouStackNav.Screen
+        name="AvatarStudio"
+        component={AvatarStudioScreen}
+        options={{ headerShown: true, title: 'Your runner', ...headerLight }}
+      />
       <YouStackNav.Screen
         name="RunDetail"
         component={RunDetailScreen}
@@ -298,6 +306,7 @@ function FullScreenSpinner() {
 
 function RootNavigator() {
   const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
+  const { needsSetup: avatarNeedsSetup, loading: avatarLoading } = useAvatar();
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
   usePushRegistration(signedIn);
@@ -320,6 +329,11 @@ function RootNavigator() {
   }
 
   if (needsOnboarding) return <OnboardingScreen onDone={completeOnboarding} />;
+
+  // First-time avatar setup — right after the intro slides (also catches
+  // existing accounts that predate the avatar system, exactly once).
+  if (avatarLoading) return <FullScreenSpinner />;
+  if (avatarNeedsSetup) return <AvatarStudioScreen standalone />;
 
   if (locStatus === 'undetermined' && !locHandled) {
     return (
@@ -361,12 +375,16 @@ function App() {
       <MotionProvider>
         <AuthProvider>
           <ClanProvider>
-            <RecordingProvider>
-              <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
-              <RootNavigator />
-              <OfflineBanner />
-              <ToastHost />
-            </RecordingProvider>
+            <AvatarProvider>
+              <RecordingProvider>
+                <SettingsProvider>
+                  <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
+                  <RootNavigator />
+                  <OfflineBanner />
+                  <ToastHost />
+                </SettingsProvider>
+              </RecordingProvider>
+            </AvatarProvider>
           </ClanProvider>
         </AuthProvider>
       </MotionProvider>

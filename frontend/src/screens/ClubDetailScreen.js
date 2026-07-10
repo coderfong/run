@@ -35,7 +35,7 @@ export default function ClubDetailScreen({ route, navigation }) {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   if (clan === false) {
-    return <Screen center><Text style={type.body}>This clan no longer exists.</Text></Screen>;
+    return <Screen center><Text style={type.body}>This club no longer exists.</Text></Screen>;
   }
   if (!clan) {
     return (
@@ -136,15 +136,15 @@ export default function ClubDetailScreen({ route, navigation }) {
         {isMember ? (
           <Row gap={8} style={{ justifyContent: 'center' }}>
             <Shield size={16} color={accent} />
-            <Text style={[type.bodyBold, { color: accent }]}>You're in this clan</Text>
+            <Text style={[type.bodyBold, { color: accent }]}>You're in this club</Text>
           </Row>
         ) : inAnotherClan ? (
           <Text style={[type.caption, { textAlign: 'center' }]}>
-            Leave your current clan before joining another.
+            Leave your current club before joining another.
           </Text>
         ) : (
           <Button
-            title={isOpen ? 'Join clan' : 'Request to join'}
+            title={isOpen ? 'Join club' : 'Request to join'}
             variant="gradient"
             loading={busy}
             onPress={join}

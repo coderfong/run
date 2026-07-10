@@ -1,9 +1,14 @@
 """End-to-end smoke suite for the Territory Run v2 API (stdlib only).
 
-Covers the whole surface: auth -> clan create -> invite/join -> two
-overlapping verified loops (steal resolves) -> clan weekly goal + season
-stats advance -> feed shows the runs -> splits/PRs/kudos -> a spoofed run is
-shadow-excluded from public reads but visible to its owner -> leaderboards.
+Covers the whole surface: auth -> clan create -> invite/join -> two runs
+whose placed circle claims overlap (steal resolves) -> clan weekly goal +
+season stats advance -> feed shows the runs -> splits/PRs/kudos -> a spoofed
+run is shadow-excluded from public reads but visible to its owner ->
+leaderboards.
+
+CIRCLE-CLAIM MODEL: /end-run returns claim_radius_m/claim_area_m2 (the
+circle whose circumference = run distance); /claim-territory places it at a
+chosen point on the trail and creates the territory.
 
 Run against a live local server:  python smoke_test.py
 """
@@ -60,9 +65,19 @@ def signup(name):
 def run_loop(token, clat, clon, **kw):
     _, r = call("POST", "/start-run", {}, token=token)
     rid = r["run_id"]
-    st, end = call("POST", "/end-run", {"run_id": rid, "points": loop(clat, clon, **kw)}, token=token)
+    pts = loop(clat, clon, **kw)
+    st, end = call("POST", "/end-run", {"run_id": rid, "points": pts}, token=token)
     assert st == 200, f"end-run: {st} {end}"
-    return rid, end
+    assert end["claim_radius_m"] > 0 and end["claim_area_m2"] > 0, end
+    return rid, end, pts
+
+
+def place_claim(token, rid, at):
+    """Place the run's circle claim at a point on its trail."""
+    st, res = call("POST", "/claim-territory", {"run_id": rid, "lat": at["lat"], "lon": at["lon"]}, token=token)
+    assert st == 200, f"claim-territory: {st} {res}"
+    assert res.get("territory"), res
+    return res
 
 
 def main():
@@ -72,7 +87,7 @@ def main():
     tc, uc = signup(f"cheat_{SFX}")
 
     st, clan = call("POST", "/clans", {
-        "name": f"Night Owls {SFX[-2:]}", "tag": "NO" + SFX[-1],
+        "name": f"Night Owls {SFX}", "tag": f"T{SFX[-4:]}",
         "color_key": "violet", "badge_icon": "wolf", "privacy": "invite_only",
     }, token=ta)
     assert st == 200, clan
@@ -85,14 +100,25 @@ def main():
     assert st == 200 and joined["member_count"] == 2, joined
     print(f"  member joined by code; members={joined['member_count']}")
 
-    print("=== overlapping loops -> steal ===")
-    _, ea = run_loop(ta, 1.3400, 103.7700)
-    assert ea.get("territory"), "leader should claim"
-    print(f"  leader claimed {round(ea['territory']['area_m2']):,} m²")
-    rid_b, eb = run_loop(tb, 1.34012, 103.77012)
-    assert (eb.get("stolen_m2") or 0) > 0, f"member should steal: {eb.get('stolen_m2')}"
-    assert eb["stolen_from"] == f"lead_{SFX}", eb["stolen_from"]
-    print(f"  member stole {round(eb['stolen_m2']):,} m² from {eb['stolen_from']}")
+    print("=== overlapping circle claims -> steal ===")
+    rid_a, ea, pts_a = run_loop(ta, 1.3400, 103.7700)
+    ca = place_claim(ta, rid_a, pts_a[0])
+    print(f"  leader claimed {round(ca['territory']['area_m2']):,} m² "
+          f"(circle r={round(ea['claim_radius_m'])} m)")
+    # Placing again must be rejected — one claim per run.
+    st, dup = call("POST", "/claim-territory",
+                   {"run_id": rid_a, "lat": pts_a[0]["lat"], "lon": pts_a[0]["lon"]}, token=ta)
+    assert st == 409, f"duplicate claim should 409: {st} {dup}"
+    # A centre off the trail must be rejected.
+    st, off = call("POST", "/claim-territory",
+                   {"run_id": rid_a, "lat": pts_a[0]["lat"] + 0.01, "lon": pts_a[0]["lon"]}, token=ta)
+    assert st in (409, 422), f"off-trail centre should be rejected: {st} {off}"
+
+    rid_b, eb, pts_b = run_loop(tb, 1.34012, 103.77012)
+    cb = place_claim(tb, rid_b, pts_b[0])
+    assert (cb.get("stolen_m2") or 0) > 0, f"member should steal: {cb.get('stolen_m2')}"
+    assert cb["stolen_from"] == f"lead_{SFX}", cb["stolen_from"]
+    print(f"  member stole {round(cb['stolen_m2']):,} m² from {cb['stolen_from']}")
 
     print("=== clan stats advance ===")
     st, prof = call("GET", f"/clans/{cid}", token=ta)
@@ -120,10 +146,13 @@ def main():
     _, r = call("POST", "/start-run", {}, token=tc)
     rid_c = r["run_id"]
     # mocked + inhuman pace (step 6.5s over ~52m segs ~= 8 m/s, 2:05/km)
+    pts_c = loop(1.3100, 103.8600, step=6.5, mocked=True)
     st, ec = call("POST", "/end-run", {
-        "run_id": rid_c, "points": loop(1.3100, 103.8600, step=6.5, mocked=True), "step_count": 40,
+        "run_id": rid_c, "points": pts_c, "step_count": 40,
     }, token=tc)
-    assert st == 200 and ec.get("territory"), "spoofer must see a normal success"
+    assert st == 200 and ec["claim_radius_m"] > 0, "spoofer must see a normal success"
+    cc = place_claim(tc, rid_c, pts_c[0])
+    assert cc.get("territory"), "spoofer must see a normal-looking claim"
     print("  spoofer sees normal success")
 
     st, mp = call("GET", "/map-polygons")

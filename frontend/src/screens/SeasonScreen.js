@@ -1,7 +1,7 @@
 // Season standings — reached from the Home season banner. Two boards:
-//   Clans — clans ranked by total land held this season.
-//   Solo  — players NOT in a clan, ranked by their own land.
-// Tap a clan row to open its profile; solo rows aren't tappable (no profile).
+//   Clubs — clubs ranked by total land held this season.
+//   Solo  — players NOT in a club, ranked by their own land.
+// Tap a club row to open its profile; solo rows aren't tappable (no profile).
 
 import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
@@ -39,10 +39,10 @@ export default function SeasonScreen({ navigation, route }) {
     <View style={{ marginBottom: space.md }}>
       <Text style={type.display}>Season standings</Text>
       <Text style={[type.body, { color: colors.textMuted, marginTop: 2, marginBottom: space.lg }]}>
-        {mode === 'clans' ? 'Clans ranked by land conquered.' : 'Solo runners ranked by land conquered.'}
+        {mode === 'clans' ? 'Clubs ranked by land conquered.' : 'Solo runners ranked by land conquered.'}
       </Text>
       <Segmented
-        options={[{ key: 'clans', label: 'Clans' }, { key: 'solo', label: 'Solo' }]}
+        options={[{ key: 'clans', label: 'Clubs' }, { key: 'solo', label: 'Solo' }]}
         value={mode}
         onChange={setMode}
       />
@@ -125,10 +125,10 @@ export default function SeasonScreen({ navigation, route }) {
         ListEmptyComponent={
           <EmptyState
             icon={<Trophy size={40} color={colors.textMuted} />}
-            title={mode === 'clans' ? 'No clans on the board yet' : 'No solo runners yet'}
+            title={mode === 'clans' ? 'No clubs on the board yet' : 'No solo runners yet'}
             body={mode === 'clans'
-              ? 'Claim land with a clan to put it on the season standings.'
-              : 'Claim land without a clan to appear here.'}
+              ? 'Claim land with a club to put it on the season standings.'
+              : 'Claim land without a club to appear here.'}
             style={{ marginTop: space.xxl }}
           />
         }

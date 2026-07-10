@@ -185,7 +185,7 @@ export default function LeaderboardView() {
               <View style={[styles.dot, { backgroundColor: c.stroke }]} />
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}{isMe ? ' · you' : ''}</Text>
-                <Text style={type.caption}>{item.clan_tag ? 'clan' : 'solo'} · {item.territory_count} territories</Text>
+                <Text style={type.caption}>{item.clan_tag ? 'club' : 'solo'} · {item.territory_count} territories</Text>
               </View>
               <Text style={[styles.area, { color: c.stroke }]}>
                 {Math.round(item.total_area_m2).toLocaleString()} m²

@@ -55,7 +55,7 @@ export default function NotificationsScreen() {
         <EmptyState
           icon={<Bell size={40} color={colors.textMuted} />}
           title="Nothing yet"
-          body="Attacks on your land, clan goals, and kudos land here."
+          body="Attacks on your land, club goals, and kudos land here."
         />
       </Screen>
     );
