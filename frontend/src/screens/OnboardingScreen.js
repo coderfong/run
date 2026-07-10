@@ -34,11 +34,12 @@ const { width } = Dimensions.get('window');
 const SLIDES = [
   {
     key: 'claim',
-    art: require('../../assets/art/onboarding-loop.png'),
+    // simple dark background; the explainer graphic does the teaching
+    explainer: require('../../assets/art/claim-explainer.png'),
     headline: ['Run.', 'Turn distance'],
     accentLine: 'into territory.',
     accent: brand.pink,
-    body: 'Every run earns a claim zone as big as your distance — place it anywhere along your route.',
+    body: 'Every run earns a claim zone as big as your distance — drag it anywhere along your route.',
   },
   {
     key: 'clans',
@@ -99,12 +100,16 @@ function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
 
   return (
     <View style={{ width, flex: 1, overflow: 'hidden', backgroundColor: colors.bg }}>
-      <Animated.Image source={item.art} style={[StyleSheet.absoluteFill, { width, height: '100%' }, artStyle]} resizeMode="cover" />
-      <LinearGradient
-        colors={['rgba(11,13,16,0.72)', 'rgba(11,13,16,0.05)', 'rgba(11,13,16,0.88)']}
-        locations={[0, 0.42, 1]}
-        style={StyleSheet.absoluteFill}
-      />
+      {item.art ? (
+        <>
+          <Animated.Image source={item.art} style={[StyleSheet.absoluteFill, { width, height: '100%' }, artStyle]} resizeMode="cover" />
+          <LinearGradient
+            colors={['rgba(11,13,16,0.72)', 'rgba(11,13,16,0.05)', 'rgba(11,13,16,0.88)']}
+            locations={[0, 0.42, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      ) : null}
       {/* the copy band: fixed offsets clear of the top + bottom chrome */}
       <View style={[styles.slideInner, { paddingTop: insets.top + 76, paddingBottom: insets.bottom + 92 }]}>
         <Animated.View style={headStyle}>
@@ -113,6 +118,17 @@ function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
           ))}
           <Text style={[styles.headline, { color: item.accent }]}>{item.accentLine}</Text>
         </Animated.View>
+
+        {/* instruction graphic (slides without full-bleed art) */}
+        {item.explainer ? (
+          <Animated.View style={[{ flex: 1, marginVertical: space.md }, lowerStyle]}>
+            <Animated.Image
+              source={item.explainer}
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="contain"
+            />
+          </Animated.View>
+        ) : null}
 
         <Animated.View style={lowerStyle}>
           {item.bullets ? (

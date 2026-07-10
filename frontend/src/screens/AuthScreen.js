@@ -50,7 +50,7 @@ function Welcome({ onSignIn, onCreate }) {
   const insets = useSafeAreaInsets();
   return (
     <ImageBackground
-      source={require('../../assets/art/hero-welcome.png')}
+      source={require('../../assets/art/onboarding-loop.png')}
       style={styles.hero}
       resizeMode="cover"
     >

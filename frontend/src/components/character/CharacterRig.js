@@ -8,7 +8,7 @@
 // Props: equipped, size (px width of the body), animate (idle bob), clanColor
 // (accepted for API compat; the art is not tinted).
 
-import React, { forwardRef, useEffect, useImperativeHandle } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Image, View } from 'react-native';
 import Animated, {
   Easing,
@@ -85,6 +85,10 @@ const CharacterRig = forwardRef(function CharacterRig(
   const bob = useSharedValue(0);
   const jump = useSharedValue(0);
   const pop = useSharedValue(1);
+  // Happy face while jumping (reverts when they land).
+  const [happy, setHappy] = useState(false);
+  const happyTimer = useRef(null);
+  useEffect(() => () => clearTimeout(happyTimer.current), []);
 
   // Idle bob.
   useEffect(() => {
@@ -99,15 +103,14 @@ const CharacterRig = forwardRef(function CharacterRig(
     };
   }, [animate, reduced, bob]);
 
-  // A springy hop: crouch (squash), launch up, land, small settle bounce.
-  const doJump = (big) => {
-    const up = big ? -0.34 : -0.26; // fraction of body height
+  // A short hop: up, back down to where they stood — with a happy face.
+  const doJump = () => {
+    setHappy(true);
+    clearTimeout(happyTimer.current);
+    happyTimer.current = setTimeout(() => setHappy(false), 600);
     jump.value = withSequence(
-      withTiming(bodyH * 0.05, { duration: 90, easing: Easing.out(Easing.quad) }),
-      withSpring(bodyH * up, { damping: 9, stiffness: 260, velocity: -bodyH }),
-      withSpring(0, { damping: 11, stiffness: 220 }),
-      withTiming(bodyH * (big ? -0.09 : -0.06), { duration: 130, easing: Easing.out(Easing.quad) }),
-      withSpring(0, { damping: 12, stiffness: 240 })
+      withTiming(-bodyH * 0.14, { duration: 180, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: 200, easing: Easing.in(Easing.quad) })
     );
   };
 
@@ -120,8 +123,8 @@ const CharacterRig = forwardRef(function CharacterRig(
           withSpring(1, { damping: 14, stiffness: 220 })
         );
       } else {
-        // every tap/celebrate is a jump now (bigger for celebrate)
-        doJump(name === 'celebrate');
+        // wave/celebrate = the short happy jump
+        doJump();
       }
     },
   }));
@@ -134,7 +137,7 @@ const CharacterRig = forwardRef(function CharacterRig(
   }));
 
   const it = {
-    face: getItem('face', equipped.face),
+    face: happy ? getItem('face', 'laugh') : getItem('face', equipped.face),
     hair: getItem('hair', equipped.hair),
     glasses: getItem('glasses', equipped.glasses),
     top: getItem('top', equipped.top),
@@ -219,6 +222,31 @@ export function PartThumb({ slot, item, equipped, size = 56, clanColor }) {
             borderColor: 'rgba(127,127,127,0.45)',
           }}
         />
+      </View>
+    );
+  }
+  // Face art is black ink on transparency — give it a white "head" circle so
+  // it reads against the dark card.
+  if (slot === 'face') {
+    return (
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <View
+          style={{
+            width: size * 0.92,
+            height: size * 0.92,
+            borderRadius: (size * 0.92) / 2,
+            backgroundColor: '#FAF7F2',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Image
+            source={img}
+            style={{ width: size * 0.62, height: size * 0.62 }}
+            resizeMode="contain"
+            fadeDuration={0}
+          />
+        </View>
       </View>
     );
   }
