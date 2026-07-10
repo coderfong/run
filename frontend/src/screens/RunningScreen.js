@@ -735,11 +735,14 @@ export default function RunningScreen({ navigation }) {
       <View style={styles.panel}>
         {/* hero distance + supporting stats (PACER layout) */}
         <View style={styles.heroRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.heroValue, { color: accent }]} numberOfLines={1}>
-              {(distance / 1000).toFixed(2)}
-            </Text>
-            <Text style={styles.heroUnit}>km</Text>
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Text style={styles.heroLabel}>DISTANCE</Text>
+            <View style={styles.heroValueRow}>
+              <Text style={[styles.heroValue, { color: accent }]} numberOfLines={1} adjustsFontSizeToFit>
+                {(distance / 1000).toFixed(2)}
+              </Text>
+              <Text style={styles.heroUnit}>km</Text>
+            </View>
           </View>
           <View style={styles.sideStats}>
             <Metric label="Pace" value={paceText} accent={D.text} />
@@ -882,10 +885,18 @@ const styles = StyleSheet.create({
     elevation: 16,
   },
 
-  heroRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: space.sm },
-  heroValue: { ...type.statHero, fontSize: 56, lineHeight: 60 },
-  heroUnit: { ...type.labelSm, color: D.muted },
-  sideStats: { width: 132, gap: space.sm },
+  heroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: space.md },
+  heroLabel: { ...type.labelSm, color: D.dim, letterSpacing: 1.5, marginBottom: 2 },
+  heroValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  heroValue: { ...type.statHero, fontSize: 54, lineHeight: 58 },
+  heroUnit: { ...type.statSm, color: D.muted },
+  sideStats: {
+    width: 132,
+    gap: space.md,
+    paddingLeft: space.lg,
+    borderLeftWidth: 1,
+    borderLeftColor: D.border,
+  },
 
   controlsRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   roundCtl: {

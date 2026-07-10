@@ -37,7 +37,7 @@ const HEADROOM = 0.14;
 const LAYOUT = {
   face: { w: 0.34, cy: 0.1813 },
   glasses: { w: 0.42, cy: 0.166 },
-  hair: { w: 0.92, top: 0.0 },
+  hair: { w: 0.92, top: -0.025 }, // lifted so the forehead shows
   top: { w: 0.9718, top: 0.3169 },
   bottom: { w: 0.62, top: 0.555 },
   onepiece: { w: 0.62, top: 0.42 },
