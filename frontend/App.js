@@ -21,6 +21,7 @@ import {
   Inter_700Bold,
 } from '@expo-google-fonts/inter';
 import { Anton_400Regular } from '@expo-google-fonts/anton';
+import { KonkhmerSleokchher_400Regular } from '@expo-google-fonts/konkhmer-sleokchher';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RunningScreen from './src/screens/RunningScreen';
@@ -368,6 +369,7 @@ function App() {
     Inter_600SemiBold,
     Inter_700Bold,
     Anton_400Regular,
+    KonkhmerSleokchher_400Regular,
   });
 
   useEffect(() => {

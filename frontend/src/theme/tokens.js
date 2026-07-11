@@ -6,12 +6,13 @@ import { darkColors as colors } from './dark';
 
 // ---------------------------------------------------------------------------
 // Fonts (keys must match the families passed to useFonts in App.js)
-// PACER: Anton for hero display/titles (condensed athletic caps),
-// Space Grotesk for stats (tabular), Inter for everything else.
+// PASER: Konkhmer Sleokchher for the uppercase heading font (wordmark +
+// hero/display/title), Space Grotesk for stats (tabular figures), Inter
+// for everything else.
 // ---------------------------------------------------------------------------
 
 export const fonts = {
-  hero: 'Anton_400Regular',
+  hero: 'KonkhmerSleokchher_400Regular',
   display: 'SpaceGrotesk_700Bold',
   displayMedium: 'SpaceGrotesk_500Medium',
   body: 'Inter_400Regular',

@@ -379,7 +379,7 @@ export default function RunningScreen({ navigation }) {
     haptic.light();
     Alert.alert(
       'Vehicle detected',
-      "Recording paused — PACER only logs runs on foot. Hit play when you're back on your feet."
+      "Recording paused — PASER only logs runs on foot. Hit play when you're back on your feet."
     );
   }
 
@@ -800,7 +800,7 @@ export default function RunningScreen({ navigation }) {
       <View style={[styles.container, styles.deniedWrap]}>
         <Text style={styles.deniedTitle}>Location is off</Text>
         <Text style={styles.deniedBody}>
-          PACER records your route only during an active run — without
+          PASER records your route only during an active run — without
           location there's nothing to trace. Enable it in Settings and come
           back.
         </Text>

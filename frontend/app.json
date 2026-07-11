@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "PACER",
+    "name": "PASER",
     "slug": "pacer",
     "version": "2.0.0",
     "scheme": "pacer",
@@ -13,15 +13,15 @@
       "backgroundColor": "#0b0d10"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.pacerrun.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSLocationWhenInUseUsageDescription": "PACER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "PACER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
+        "NSLocationWhenInUseUsageDescription": "PASER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "PASER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
         "NSMotionUsageDescription": "Motion data verifies your runs are on foot.",
-        "NSHealthShareUsageDescription": "PACER does not read your health data.",
-        "NSHealthUpdateUsageDescription": "PACER can save your finished runs to Apple Health when you turn on Health sync.",
+        "NSHealthShareUsageDescription": "PASER does not read your health data.",
+        "NSHealthUpdateUsageDescription": "PASER can save your finished runs to Apple Health when you turn on Health sync.",
         "UIBackgroundModes": [
           "location"
         ]
@@ -47,8 +47,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "PACER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
-          "locationAlwaysAndWhenInUsePermission": "PACER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
+          "locationWhenInUsePermission": "PASER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
+          "locationAlwaysAndWhenInUsePermission": "PASER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true

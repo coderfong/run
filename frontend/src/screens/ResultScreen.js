@@ -476,7 +476,7 @@ export default function ResultScreen({ navigation, route }) {
 
         <View style={styles.watermark}>
           <LoopMark size={16} />
-          <Text style={styles.watermarkText}>TERRITORY RUN</Text>
+          <Text style={styles.watermarkText}>PASER</Text>
         </View>
       </View>
       </Reveal>

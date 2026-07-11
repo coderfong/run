@@ -29,7 +29,7 @@ export const colors = darkColors;
 // ---------------------------------------------------------------------------
 
 export const brand = {
-  name: 'PACER',
+  name: 'PASER',
   tagline: 'RUN. CLAIM. CONQUER.',
   pink: '#ec4899',
   purple: '#8b5cf6',

@@ -96,7 +96,7 @@ export default function LocationPermissionScreen({ onDone }) {
         </Text>
         {denied ? (
           <Text style={styles.body}>
-            PACER can't record a run without it. Turn on location for PACER in
+            PASER can't record a run without it. Turn on location for PASER in
             Settings — we only track during an active run.
           </Text>
         ) : (

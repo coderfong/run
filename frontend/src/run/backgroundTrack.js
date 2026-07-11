@@ -74,7 +74,7 @@ export async function startBackgroundTrack() {
       pausesUpdatesAutomatically: false,
       activityType: Location.ActivityType.Fitness,
       foregroundService: {
-        notificationTitle: 'PACER is recording your run',
+        notificationTitle: 'PASER is recording your run',
         notificationBody: 'Distance keeps converting to territory while the screen is off.',
       },
     });
