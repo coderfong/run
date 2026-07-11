@@ -5,7 +5,7 @@
 // watermark) is the shared image; splits and any PRs sit below it.
 
 import React, { useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
@@ -79,29 +79,75 @@ function formatArea(m2) {
 
 // --- claim placement helpers ------------------------------------------------
 
-// Midpoint of the trail by cumulative distance — the default circle centre.
-function pathMidpoint(path) {
-  if (!path?.length) return null;
-  let total = 0;
+// Cumulative distance along the trail — the slider's coordinate system.
+function cumulativePath(path) {
   const cum = [0];
+  let total = 0;
   for (let i = 1; i < path.length; i++) {
     total += haversine(path[i - 1], path[i]);
     cum.push(total);
   }
-  const half = total / 2;
-  let idx = 0;
-  while (idx < cum.length - 1 && cum[idx + 1] < half) idx++;
-  return path[idx];
+  return { cum, total: Math.max(total, 1e-6) };
 }
 
-// The trail point nearest a tapped (lat, lon) — placement snaps to the route.
-function nearestOnPath(path, latitude, longitude) {
-  let best = null, bestD = Infinity;
-  for (const p of path) {
-    const d = haversine(p, { latitude, longitude });
-    if (d < bestD) { bestD = d; best = p; }
+// The exact point `frac` (0..1) of the way along the trail, interpolated
+// between vertices so the circle glides smoothly with the slider.
+function pointAtFraction(path, geo, frac) {
+  const target = Math.max(0, Math.min(1, frac)) * geo.total;
+  let i = 0;
+  while (i < geo.cum.length - 2 && geo.cum[i + 1] < target) i++;
+  const a = path[i];
+  const b = path[Math.min(i + 1, path.length - 1)];
+  const seg = geo.cum[i + 1] - geo.cum[i] || 1e-6;
+  const t = Math.max(0, Math.min(1, (target - geo.cum[i]) / seg));
+  return {
+    latitude: a.latitude + (b.latitude - a.latitude) * t,
+    longitude: a.longitude + (b.longitude - a.longitude) * t,
+  };
+}
+
+// Fraction along the trail of the vertex nearest a tapped (lat, lon).
+function fractionNearest(path, geo, latitude, longitude) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < path.length; i++) {
+    const d = haversine(path[i], { latitude, longitude });
+    if (d < bestD) { bestD = d; best = i; }
   }
-  return best;
+  return geo.cum[best] / geo.total;
+}
+
+// A dependency-free slider (PanResponder) — slides the claim circle along
+// the route. Captures the gesture so the surrounding ScrollView never wins.
+function PathSlider({ frac, onChange, accent }) {
+  const widthRef = useRef(1);
+  const setFromX = (x) => {
+    const f = Math.max(0, Math.min(1, x / widthRef.current));
+    onChange(Math.round(f * 400) / 400);
+  };
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: (e) => setFromX(e.nativeEvent.locationX),
+      onPanResponderMove: (e) => setFromX(e.nativeEvent.locationX),
+      onPanResponderTerminationRequest: () => false,
+    })
+  ).current;
+  return (
+    <View
+      style={styles.sliderWrap}
+      onLayout={(e) => { widthRef.current = Math.max(1, e.nativeEvent.layout.width); }}
+      {...pan.panHandlers}
+      accessibilityRole="adjustable"
+      accessibilityLabel="Slide the claim circle along your route"
+    >
+      <View style={styles.sliderTrack} />
+      <View style={[styles.sliderFill, { width: `${frac * 100}%`, backgroundColor: accent }]} />
+      <View style={[styles.sliderThumb, { left: `${frac * 100}%`, borderColor: accent }]} />
+    </View>
+  );
 }
 
 // Circle outline (radius in meters) around a centre, as map points, via a
@@ -210,7 +256,15 @@ export default function ResultScreen({ navigation, route }) {
     stolen_m2: result.stolen_m2 || 0,
     stolen_from: result.stolen_from || null,
   });
-  const [center, setCenter] = useState(() => pathMidpoint(path));
+  // The circle's position = a fraction along the trail (slider-driven; a
+  // map tap snaps it too). Derived, so it can never be null while a path
+  // exists — the claim button always has a live target.
+  const geo = useMemo(() => cumulativePath(path), [path]);
+  const [frac, setFrac] = useState(0.5);
+  const center = useMemo(
+    () => (path.length >= 2 ? pointAtFraction(path, geo, frac) : null),
+    [path, geo, frac]
+  );
   const [claiming, setClaiming] = useState(false);
 
   const t = claim.territory;
@@ -232,7 +286,7 @@ export default function ResultScreen({ navigation, route }) {
     const c = e?.geometry?.coordinates;
     if (!c || !canPlace) return;
     haptic.light();
-    setCenter(nearestOnPath(path, c[1], c[0]));
+    setFrac(fractionNearest(path, geo, c[1], c[0]));
   };
 
   const placeClaim = async () => {
@@ -249,7 +303,8 @@ export default function ResultScreen({ navigation, route }) {
       haptic.success();
       toast.success('Territory claimed');
     } catch (e) {
-      toast.error(e.message || 'Could not place your claim');
+      // Unmissable — a silent failure here looks like a dead button.
+      Alert.alert('Could not place your claim', e.message || 'Check your connection and try again.');
     } finally {
       setClaiming(false);
     }
@@ -271,15 +326,15 @@ export default function ResultScreen({ navigation, route }) {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: D.bg }} contentContainerStyle={styles.scroll}>
-      {/* claim placement — tap anywhere on the trail to position the circle */}
+      {/* claim placement — slide the circle along the route (map tap works too) */}
       {canPlace && (
-        <Reveal style={styles.placeCard}>
+        <View style={styles.placeCard}>
           <Text style={styles.placeTitle}>Place your claim</Text>
           <Text style={styles.placeHint}>
             {(result.distance_m / 1000).toFixed(2)} km converts to a {formatArea(claimArea)} circle.
-            Tap anywhere along your route to position it.
+            Slide it anywhere along your route.
           </Text>
-          {MAP_READY ? (
+          {MAP_READY && (
             <View style={styles.placeMap}>
               <GameMap
                 theme="dark"
@@ -306,35 +361,29 @@ export default function ResultScreen({ navigation, route }) {
                 )}
               </GameMap>
             </View>
-          ) : (
-            <View style={styles.placeChoices}>
-              {[
-                ['Start', path[0]],
-                ['Middle', pathMidpoint(path)],
-                ['End', path[path.length - 1]],
-              ].map(([name, p]) => (
-                <PressableScale
-                  key={name}
-                  style={[styles.placeChoice, center === p && { borderColor: team.glow }]}
-                  onPress={() => { haptic.light(); setCenter(p); }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Place claim at route ${name.toLowerCase()}`}
-                >
-                  <Text style={[type.bodySmBold, { color: center === p ? team.glow : D.textMuted }]}>{name}</Text>
-                </PressableScale>
-              ))}
-            </View>
           )}
-          <PressableScale
-            style={[styles.claimBtn, { backgroundColor: team.stroke }, claiming && { opacity: 0.6 }]}
+
+          {/* the slider: start of the route ⟷ end of the route */}
+          <PathSlider frac={frac} onChange={setFrac} accent={team.stroke} />
+          <View style={styles.sliderLabels}>
+            <Text style={[type.caption, { color: D.textDim }]}>Start</Text>
+            <Text style={[type.caption, { color: D.textMuted }]}>
+              {((frac * geo.total) / 1000).toFixed(2)} km mark
+            </Text>
+            <Text style={[type.caption, { color: D.textDim }]}>Finish</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.claimBtn, { backgroundColor: team.stroke, opacity: claiming ? 0.6 : 1 }]}
             onPress={placeClaim}
-            disabled={claiming || !center}
+            disabled={claiming}
+            activeOpacity={0.8}
             accessibilityRole="button"
             accessibilityLabel="Claim territory here"
           >
             <Text style={styles.claimBtnText}>{claiming ? 'Claiming…' : 'Claim here'}</Text>
-          </PressableScale>
-        </Reveal>
+          </TouchableOpacity>
+        </View>
       )}
 
       {/* the shareable card */}
@@ -455,16 +504,33 @@ const styles = StyleSheet.create({
   placeTitle: { ...type.heading, color: D.text, marginBottom: 4 },
   placeHint: { ...type.caption, color: D.textMuted, marginBottom: space.md },
   placeMap: { height: 300, borderRadius: radius.md, overflow: 'hidden', marginBottom: space.md },
-  placeChoices: { flexDirection: 'row', gap: space.sm, marginBottom: space.md },
-  placeChoice: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: D.border,
+
+  sliderWrap: { height: 44, justifyContent: 'center', marginHorizontal: 4 },
+  sliderTrack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: D.cardAlt,
   },
+  sliderFill: { position: 'absolute', left: 0, height: 6, borderRadius: 3 },
+  sliderThumb: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    marginLeft: -13,
+    borderRadius: 13,
+    borderWidth: 3,
+    backgroundColor: '#fff',
+  },
+  sliderLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: space.md,
+    marginTop: 2,
+  },
+
   claimBtn: { paddingVertical: 15, borderRadius: radius.pill, alignItems: 'center' },
   claimBtnText: { ...type.button, color: '#fff' },
 
