@@ -63,8 +63,12 @@ export function AvatarProvider({ children }) {
       .then((raw) => {
         if (!alive) return;
         if (raw) {
-          setEquipped({ ...DEFAULT_EQUIPPED, ...JSON.parse(raw) });
+          const loaded = { ...DEFAULT_EQUIPPED, ...JSON.parse(raw) };
+          setEquipped(loaded);
           setNeedsSetup(false);
+          // Backfill the server copy for pre-existing users who set their
+          // avatar before it was stored server-side.
+          api.setAvatar(loaded).catch(() => {});
         } else {
           setEquipped(DEFAULT_EQUIPPED);
           setNeedsSetup(true);
@@ -86,8 +90,13 @@ export function AvatarProvider({ children }) {
   const isUnlocked = useCallback((item) => itemUnlocked(item, unlockCtx), [unlockCtx]);
 
   const persist = useCallback(
-    (next) => AsyncStorage.setItem(keyFor(user), JSON.stringify(next)).catch(() => {}),
-    [user?.username]
+    (next) => {
+      AsyncStorage.setItem(keyFor(user), JSON.stringify(next)).catch(() => {});
+      // Mirror to the server so other players can render this character on
+      // feeds/cards. Best-effort — a failure never blocks local editing.
+      if (signedIn) api.setAvatar(next).catch(() => {});
+    },
+    [user?.username, signedIn]
   );
 
   // Equip one part (and auto-persist — the studio edits are always live).

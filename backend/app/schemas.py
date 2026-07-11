@@ -98,6 +98,19 @@ class RunResultOut(BaseModel):
     stolen_from: Optional[str] = None
     # Phase 6 fills these server-side; empty meanwhile.
     achievements: List[str] = []
+    # XP awarded for this run (distance-based; 0 on flagged runs). Surfaced
+    # on the result screen.
+    xp_gained: int = 0
+
+
+class AvatarIn(BaseModel):
+    """The client's equipped cosmetics loadout (a flat dict of slot→id/index)."""
+    avatar: dict
+
+
+class RunDaysOut(BaseModel):
+    """ISO dates (YYYY-MM-DD) the user completed a run — the streak calendar."""
+    days: List[str] = []
 
 
 class ClaimIn(BaseModel):
@@ -145,6 +158,9 @@ class FeedItem(BaseModel):
     kudos_count: int = 0
     kudoed: bool = False
     comment_count: int = 0
+    # The author's equipped cosmetics, so their character portrait renders on
+    # the card (null → the client falls back to initials).
+    avatar: Optional[dict] = None
     # Simplified geometry for the card thumbnail: the claimed land (rings) and
     # the run trail (path). Both [lon, lat]; either may be empty.
     rings: List[List[Tuple[float, float]]] = []

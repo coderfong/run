@@ -4,7 +4,7 @@
 // glowing, area hero count-up, quiet stat row, steal summary, loop-mark
 // watermark) is the shared image; splits and any PRs sit below it.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
@@ -19,7 +19,7 @@ import { api } from '../api/client';
 import { brand, darkColors, radius, shadow, space, type, withAlpha } from '../theme';
 import { useClan } from '../state/clan';
 import { useSettings } from '../state/settings';
-import { CountUpText, Reveal, haptic, PressableScale } from '../ui/motion';
+import { Confetti, CountUpText, Reveal, haptic, PressableScale } from '../ui/motion';
 import LoopMark from '../components/LoopMark';
 import { toast } from '../ui/toast';
 
@@ -73,8 +73,25 @@ function haversine(a, b) {
 }
 
 function formatArea(m2) {
-  if (m2 >= 1e6) return `${(m2 / 1e6).toFixed(2)} km²`;
-  return `${Math.round(m2).toLocaleString()} m²`;
+  return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
+}
+
+// worklet-safe km² formatter for the animated hero number.
+function km2(n) {
+  'worklet';
+  const v = n / 1e6;
+  return v >= 0.1 ? v.toFixed(2) : v.toFixed(3);
+}
+
+// A pace-aware pat on the back, shown after every run.
+function encouragement(distanceM, durationS, xp) {
+  const km = distanceM / 1000;
+  const pace = durationS && distanceM ? durationS / 60 / km : 0; // min/km
+  if (km >= 10) return 'Huge distance today — your legs earned this. 🔥';
+  if (pace && pace < 5) return "Blazing pace! That's how territory gets taken. ⚡";
+  if (km >= 5) return 'Strong run. The map is yours for the claiming. 💪';
+  if (km >= 2) return 'Nice work out there — every km is more ground. 🏃';
+  return 'Every run counts. Lace up again soon! 👟';
 }
 
 // --- claim placement helpers ------------------------------------------------
@@ -281,6 +298,18 @@ export default function ResultScreen({ navigation, route }) {
   const splits = useMemo(() => computeSplits(path), [path]);
   const stolen = claim.stolen_m2 || 0;
   const achievements = result.achievements || [];
+  const xpGained = result.xp_gained || 0;
+  const cheer = useMemo(
+    () => encouragement(result.distance_m, result.duration_s, xpGained),
+    [result.distance_m, result.duration_s, xpGained]
+  );
+  // Celebrate the finish once, on mount.
+  const [showConfetti, setShowConfetti] = useState(true);
+  useEffect(() => {
+    haptic.success();
+    const id = setTimeout(() => setShowConfetti(false), 2800);
+    return () => clearTimeout(id);
+  }, []);
 
   const onMapPress = (e) => {
     const c = e?.geometry?.coordinates;
@@ -325,7 +354,18 @@ export default function ResultScreen({ navigation, route }) {
   };
 
   return (
+    <View style={{ flex: 1, backgroundColor: D.bg }}>
     <ScrollView style={{ flex: 1, backgroundColor: D.bg }} contentContainerStyle={styles.scroll}>
+      {/* finish celebration: encouraging line + XP earned */}
+      <Reveal from="up" style={styles.cheerCard}>
+        <Text style={[styles.cheerText, { color: team.glow }]}>{cheer}</Text>
+        {xpGained > 0 && (
+          <View style={[styles.xpPill, { borderColor: team.glow }]}>
+            <Text style={[styles.xpPillText, { color: team.glow }]}>+{xpGained} XP</Text>
+          </View>
+        )}
+      </Reveal>
+
       {/* claim placement — slide the circle along the route (map tap works too) */}
       {canPlace && (
         <View style={styles.placeCard}>
@@ -403,8 +443,8 @@ export default function ResultScreen({ navigation, route }) {
         )}
 
         <View style={styles.heroRow}>
-          <CountUpText value={heroAreaM2} style={[styles.heroArea, { color: team.glow }]} />
-          <Text style={styles.heroUnit}> m²</Text>
+          <CountUpText value={heroAreaM2} format={km2} style={[styles.heroArea, { color: team.glow }]} />
+          <Text style={styles.heroUnit}> km²</Text>
         </View>
         <Text style={styles.heroCaption}>
           {captured
@@ -424,11 +464,11 @@ export default function ResultScreen({ navigation, route }) {
           <View style={styles.deltaRow}>
             {stolen > 0 ? (
               <Text style={[styles.deltaText, { color: team.glow }]}>
-                Stole {Math.round(stolen).toLocaleString()} m²{result.stolen_from ? ` from ${result.stolen_from}` : ''}
+                Stole {formatArea(stolen)}{result.stolen_from ? ` from ${result.stolen_from}` : ''}
               </Text>
             ) : (
               <Text style={[styles.deltaText, { color: team.glow }]}>
-                +{Math.round(heroAreaM2).toLocaleString()} m² · {label} holds more
+                +{formatArea(heroAreaM2)} · {label} holds more
               </Text>
             )}
           </View>
@@ -487,11 +527,29 @@ export default function ResultScreen({ navigation, route }) {
         </PressableScale>
       </Reveal>
     </ScrollView>
+    {showConfetti && <Confetti />}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   scroll: { padding: space.lg, paddingBottom: space.xxl },
+
+  cheerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
+    marginBottom: space.md,
+  },
+  cheerText: { ...type.bodyBold, flex: 1 },
+  xpPill: {
+    borderWidth: 1.5,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: 5,
+  },
+  xpPillText: { ...type.bodySmBold },
 
   placeCard: {
     backgroundColor: D.card,

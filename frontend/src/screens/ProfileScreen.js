@@ -13,6 +13,7 @@ import { useClan } from '../state/clan';
 import { useAvatar } from '../state/avatar';
 import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
 import { CharacterBust } from '../components/character/CharacterRig';
+import StreakCalendar from '../components/StreakCalendar';
 import { PressableScale, Reveal, haptic } from '../ui/motion';
 import { getHealthEnabled, setHealthEnabled, requestHealthPermission } from '../health';
 import { colors, radius, space, type, withAlpha } from '../theme';
@@ -22,7 +23,7 @@ import { toast } from '../ui/toast';
 // Trophy shelf — derived from live stats; earned trophies glow in the accent.
 const TROPHIES = [
   { key: 'first_claim', label: 'First claim', icon: Flame, earned: (s) => (s.territory_count || 0) >= 1 },
-  { key: 'big_claim', label: '10k m² claim', icon: Trophy, earned: (s) => (s.biggest_claim_m2 || 0) >= 10000 },
+  { key: 'big_claim', label: '0.5 km² claim', icon: Trophy, earned: (s) => (s.biggest_claim_m2 || 0) >= 500000 },
   { key: 'ten_zones', label: '10 zones', icon: Medal, earned: (s) => (s.territory_count || 0) >= 10 },
   { key: 'streak4', label: '4-week streak', icon: Award, earned: (s) => (s.current_streak_weeks || 0) >= 4 },
 ];
@@ -58,6 +59,7 @@ export default function ProfileScreen({ navigation }) {
 
   const [stats, setStats] = useState(null);
   const [runs, setRuns] = useState(null);
+  const [runDays, setRunDays] = useState([]);
   const [prefs, setPrefs] = useState(null);
   const [healthOn, setHealthOn] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -70,6 +72,7 @@ export default function ProfileScreen({ navigation }) {
   useEffect(() => {
     api.meStats().then(setStats).catch(() => setStats({}));
     api.meRuns().then(setRuns).catch(() => setRuns([]));
+    api.runDays().then((d) => setRunDays(d.days || [])).catch(() => setRunDays([]));
     api.getNotifPrefs().then(setPrefs).catch(() => setPrefs(null));
     getHealthEnabled().then(setHealthOn);
   }, []);
@@ -175,16 +178,33 @@ export default function ProfileScreen({ navigation }) {
             <StatTile label="Area held" value={km2(stats.total_area_m2 || 0)} unit="km²" accent={accent} />
             <StatTile label="Distance" value={km(stats.career_distance_m || 0)} unit="km" />
             <StatTile label="Runs" value={String(stats.runs_count || 0)} />
-            <StatTile label="Biggest claim" value={Math.round(stats.biggest_claim_m2 || 0).toLocaleString()} unit="m²" accent={accent} />
+            <StatTile label="Biggest claim" value={km2(stats.biggest_claim_m2 || 0)} unit="km²" accent={accent} />
             <StatTile label="Streak" value={String(stats.current_streak_weeks || 0)} unit="wk" />
             <StatTile label="Zones" value={String(stats.territory_count || 0)} />
           </>
         )}
       </Reveal>
 
+      {/* running streak calendar */}
+      <Reveal delay={150}>
+      <SectionHeader
+        title="Running streak"
+        action={stats?.current_streak_weeks ? `${stats.current_streak_weeks}-wk streak` : undefined}
+        style={{ marginTop: space.xl, marginBottom: space.md }}
+      />
+      <Card>
+        <StreakCalendar runDays={runDays} accent={accent} />
+        <Text style={[type.caption, { marginTop: space.md, color: colors.textDim }]}>
+          {runDays.length
+            ? `${runDays.length} run day${runDays.length === 1 ? '' : 's'} in the last 16 weeks · keep it going.`
+            : 'Your run days light up here. Go claim one today.'}
+        </Text>
+      </Card>
+      </Reveal>
+
       {/* trophies */}
       <Reveal delay={180}>
-      <SectionHeader title="Trophies" style={{ marginTop: space.sm, marginBottom: space.md }} />
+      <SectionHeader title="Trophies" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <View style={styles.trophyRow}>
         {TROPHIES.map(({ key, label, icon: Icon, earned }) => {
           const got = stats ? earned(stats) : false;
@@ -221,7 +241,7 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{new Date(r.created_at).toLocaleDateString()}</Text>
                 <Text style={type.caption}>
-                  {km(r.distance_m)} km · {r.closed_loop ? `${Math.round(r.area_m2).toLocaleString()} m² claimed` : 'not claimed'}
+                  {km(r.distance_m)} km · {r.closed_loop ? `${km2(r.area_m2)} km² claimed` : 'not claimed'}
                 </Text>
               </View>
               {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}

@@ -107,8 +107,7 @@ function formatDuration(ms) {
 }
 
 function formatArea(m2) {
-  if (m2 >= 1e6) return `${(m2 / 1e6).toFixed(2)} km²`;
-  return `${Math.round(m2).toLocaleString()} m²`;
+  return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
 }
 
 // GPS quality chip (thresholds in theme.runTuning).
@@ -329,8 +328,11 @@ export default function RunningScreen({ navigation }) {
       .then((data) => {
         const feats = [];
         (data.territories || []).forEach((t) => {
-          if (t.user_id === user.id) return; // own land shows as the live trail
+          // Show ALL claimed land around the runner, including their own
+          // (their earlier claims), so the board matches the global map.
+          const mine = t.user_id === user.id;
           const col = t.clan_color || NEUTRAL;
+          const fill = mine ? accent : col.stroke;
           (t.rings?.length ? t.rings : [t.polygon]).forEach((ring, ri) => {
             if (!ring || ring.length < 3) return;
             const coords = ring.map(([lon, lat]) => [lon, lat]);
@@ -340,14 +342,14 @@ export default function RunningScreen({ navigation }) {
               type: 'Feature',
               id: `${t.id}-${ri}`,
               geometry: { type: 'Polygon', coordinates: [coords] },
-              properties: { fillColor: col.stroke, strokeColor: col.stroke, fillOpacity: 0.3 },
+              properties: { fillColor: fill, strokeColor: fill, fillOpacity: mine ? 0.45 : 0.3 },
             });
           });
         });
         setBoard({ type: 'FeatureCollection', features: feats });
       })
       .catch(() => {});
-  }, [currentLocation, user.id]);
+  }, [currentLocation, user.id, accent]);
 
   async function startPedometer() {
     stepCountRef.current = 0;

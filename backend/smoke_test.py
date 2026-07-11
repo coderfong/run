@@ -193,6 +193,21 @@ def main():
     assert any(t["username"] == f"cheat_{SFX}" for t in mp_own["territories"]), "owner still sees it"
     print("  flagged territory hidden publicly, visible to owner")
 
+    print("=== avatar portrait + xp + streak ===")
+    av = {"face": "smiley", "hair": "topknot", "hairColor": 3, "top": "hoodie", "topColor": 5}
+    st, _ = call("PUT", "/me/avatar", {"avatar": av}, token=ta)
+    assert st == 200, "avatar save"
+    st, fd_av = call("GET", "/feed", token=tb)
+    mine = next((i for i in fd_av["items"] if i["user_id"] == ua), None)
+    assert mine and mine["avatar"] and mine["avatar"]["hair"] == "topknot", mine
+    st, days = call("GET", "/me/run-days", token=ta)
+    assert st == 200 and len(days["days"]) >= 1, days
+    # end-run returns xp for the distance covered
+    _, rr = call("POST", "/start-run", {}, token=tb)
+    st, endx = call("POST", "/end-run", {"run_id": rr["run_id"], "points": loop(1.360, 103.80, r=140)}, token=tb)
+    assert st == 200 and endx["xp_gained"] > 0, f"xp not returned: {endx}"
+    print(f"  avatar visible on others' feed; run-days={len(days['days'])}; xp_gained={endx['xp_gained']}")
+
     print("=== comments + club chat ===")
     st, cmt = call("POST", f"/runs/{rid_b}/comments", {"body": "nice circle!"}, token=ta)
     assert st == 200 and cmt["body"] == "nice circle!" and cmt["is_you"], cmt

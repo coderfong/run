@@ -48,6 +48,10 @@ const LAYOUT = {
 // Verified offline against the exact math above.
 const BUST = { bodyScale: 0.58, top: -0.074 };
 
+// One global dial to raise EVERY hairstyle (base + per-item overrides) so
+// more forehead shows. Negative = higher.
+const HAIR_LIFT = -0.05;
+
 function Layer({ img, slot, fit, layout, bodyW, bodyH }) {
   if (!img) return null;
   const base = LAYOUT[fit || slot];
@@ -56,7 +60,8 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH }) {
   const src = Image.resolveAssetSource(img);
   const w = spec.w * bodyW;
   const h = w * (src.height / src.width);
-  const top = spec.cy != null ? spec.cy * bodyH - h / 2 : spec.top * bodyH;
+  let top = spec.cy != null ? spec.cy * bodyH - h / 2 : spec.top * bodyH;
+  if (slot === 'hair') top += HAIR_LIFT * bodyH;
   // `dx` shifts asymmetric art (e.g. a side ponytail) off centre.
   const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
   return (

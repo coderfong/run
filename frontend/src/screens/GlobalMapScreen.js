@@ -15,13 +15,29 @@ import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer, UserMarker } from '../components/GameMap';
 
-// Centroid of a territory's largest ring — where the owner portrait sits.
+// Area-weighted centroid (shoelace) of a territory's largest ring — where the
+// owner portrait sits. Vertex-averaging drifts off-centre once a claim is
+// carved into an irregular shape; the true centroid stays put.
 function ringCentroid(t) {
   const ring = t.rings?.length ? t.rings[0] : t.polygon;
   if (!ring || ring.length < 3) return null;
-  let lon = 0, lat = 0;
-  for (const [x, y] of ring) { lon += x; lat += y; }
-  return { latitude: lat / ring.length, longitude: lon / ring.length };
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x0, y0] = ring[i];
+    const [x1, y1] = ring[(i + 1) % ring.length];
+    const cross = x0 * y1 - x1 * y0;
+    a += cross;
+    cx += (x0 + x1) * cross;
+    cy += (y0 + y1) * cross;
+  }
+  if (Math.abs(a) < 1e-12) {
+    // Degenerate (a line) — fall back to the vertex mean.
+    let lon = 0, lat = 0;
+    for (const [x, y] of ring) { lon += x; lat += y; }
+    return { latitude: lat / ring.length, longitude: lon / ring.length };
+  }
+  a *= 0.5;
+  return { latitude: cy / (6 * a), longitude: cx / (6 * a) };
 }
 
 // Build the whole-board GeoJSON once per data change. Each ring is a feature
@@ -307,7 +323,7 @@ export default function GlobalMapScreen() {
             {selected.user_id === user.id ? ' (you)' : ''}
           </Text>
           <Text style={[type.caption, { marginTop: 2 }]}>
-            {Math.round(selected.area_m2).toLocaleString()} m² ·{' '}
+            {(selected.area_m2 / 1e6).toFixed(selected.area_m2 >= 1e5 ? 2 : 3)} km² ·{' '}
             strength ×{(selected.strength || 1).toFixed(1)} ·{' '}
             {selected.defenders > 1 ? `${selected.defenders} defenders · ` : ''}
             held since {new Date(selected.created_at).toLocaleDateString()}

@@ -1,8 +1,8 @@
 // Motion + haptics primitives. Every animated flourish in the app goes
 // through here so Reduce Motion is respected in exactly one place.
 
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, TextInput } from 'react-native';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, Dimensions, Pressable, TextInput, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -11,11 +11,12 @@ import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { colors, radius } from '../theme';
+import { brand, colors, radius } from '../theme';
 
 // Re-export haptics from the theme module so both import paths work.
 export { haptic } from '../theme/haptics';
@@ -76,6 +77,63 @@ export function Reveal({ delay = 0, from = 'down', duration = 320, children, sty
     >
       {children}
     </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Confetti — a one-shot celebration burst. Renders `count` pieces that fall
+// and drift with a little spin, then fade. Absolutely positioned; drop it in
+// an overlay. No-op under Reduce Motion. pointerEvents none — never blocks.
+// ---------------------------------------------------------------------------
+
+const CONFETTI_COLORS = [brand.pink, brand.purple, brand.teal, '#fbbf24', '#22c55e', '#3b82f6'];
+
+function ConfettiPiece({ delay, startX, color, size, spin }) {
+  const p = useSharedValue(0);
+  const { height } = Dimensions.get('window');
+  useEffect(() => {
+    p.value = withDelay(delay, withTiming(1, { duration: 1500 + Math.random() * 900, easing: Easing.out(Easing.quad) }));
+  }, [p, delay]);
+  const style = useAnimatedStyle(() => ({
+    opacity: p.value < 0.15 ? p.value / 0.15 : 1 - Math.max(0, (p.value - 0.7) / 0.3),
+    transform: [
+      { translateY: p.value * (height * 0.9) },
+      { translateX: Math.sin(p.value * Math.PI * 2) * 26 },
+      { rotate: `${p.value * spin}deg` },
+    ],
+  }));
+  return (
+    <Animated.View
+      style={[
+        { position: 'absolute', top: -20, left: startX, width: size, height: size * 1.6, borderRadius: 2, backgroundColor: color },
+        style,
+      ]}
+    />
+  );
+}
+
+export function Confetti({ count = 26 }) {
+  const reduced = useReduceMotion();
+  const { width } = Dimensions.get('window');
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: count }, (_, i) => ({
+        key: i,
+        delay: Math.random() * 350,
+        startX: Math.random() * width,
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+        size: 6 + Math.random() * 6,
+        spin: (Math.random() > 0.5 ? 1 : -1) * (360 + Math.random() * 540),
+      })),
+    [count, width]
+  );
+  if (reduced) return null;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
+      {pieces.map((p) => (
+        <ConfettiPiece {...p} />
+      ))}
+    </View>
   );
 }
 

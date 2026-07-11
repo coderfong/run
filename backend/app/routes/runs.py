@@ -142,6 +142,7 @@ def end_run(
     # Flagged (unverified) runs never contribute to clan stats, goals, or XP.
     # Claim + steal credit lands at /claim-territory when the circle is placed.
     goal_reached, clan_id = (False, None)
+    xp_gain = 0
     if run.verified:
         goal_reached, clan_id = record_clan_activity(
             db, user, distance_m=run.distance_m, closed_loop=False, stolen=0.0
@@ -168,6 +169,7 @@ def end_run(
         claim_radius_m=radius,
         claim_area_m2=area,
         achievements=achievements,
+        xp_gained=xp_gain,
     )
 
 

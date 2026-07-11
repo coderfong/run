@@ -81,6 +81,8 @@ export const api = {
   renameMe: (username) =>
     request('/me', { method: 'PATCH', body: JSON.stringify({ username }) }),
   deleteMe: () => request('/me', { method: 'DELETE' }),
+  setAvatar: (avatar) => request('/me/avatar', { method: 'PUT', body: JSON.stringify({ avatar }) }),
+  runDays: () => request('/me/run-days'),
 
   // ----- runs ----------------------------------------------------------
   startRun: () => request('/start-run', { method: 'POST', body: '{}' }),

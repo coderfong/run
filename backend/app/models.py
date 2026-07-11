@@ -3,7 +3,7 @@ from datetime import datetime
 
 from geoalchemy2 import Geometry
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -37,6 +37,9 @@ class User(Base):
     password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     clan_id = Column(UUID(as_uuid=False), ForeignKey("clans.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Equipped cosmetics (the client's loadout dict) — lets other users render
+    # this runner's character portrait on feeds/cards.
+    avatar = Column(JSONB, nullable=True)
 
     runs = relationship("Run", back_populates="user")
     territories = relationship("Territory", back_populates="user")

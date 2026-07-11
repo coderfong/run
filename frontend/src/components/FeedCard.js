@@ -73,8 +73,8 @@ function pace(distanceM, durationS) {
 }
 
 function formatArea(m2) {
-  if (m2 >= 1e6) return `${(m2 / 1e6).toFixed(2)} km²`;
-  return `${Math.round(m2).toLocaleString()} m²`;
+  // Always km² — small claims read as fractions.
+  return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
 }
 
 export default function FeedCard({ item, navigation }) {
@@ -101,10 +101,10 @@ export default function FeedCard({ item, navigation }) {
     <Card onPress={() => navigation?.navigate('RunDetail', { runId: item.id })} style={{ marginBottom: space.md }}>
       <Row between>
         <Row gap={10}>
-          {/* your runs show your character portrait; others' cosmetics
-              aren't stored server-side, so they keep the initials chip */}
-          {item.is_you ? (
-            <CharacterBust equipped={equipped} size={34} bg={c.fill} />
+          {/* character portrait — yours from local state, others' from the
+              avatar the server returns; initials only when none exists yet */}
+          {item.is_you || item.avatar ? (
+            <CharacterBust equipped={item.is_you ? equipped : item.avatar} size={34} bg={c.fill} />
           ) : (
             <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
               <Text style={[type.bodySmBold, { color: c.stroke }]}>

@@ -74,6 +74,46 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
     )
 
 
+@router.put("/me/avatar")
+def set_avatar(
+    payload: schemas.AvatarIn,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Store the user's equipped cosmetics so others can see their portrait."""
+    import json
+
+    db.execute(
+        text("UPDATE users SET avatar = CAST(:a AS jsonb) WHERE id = :uid"),
+        {"a": json.dumps(payload.avatar), "uid": user.id},
+    )
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/me/run-days", response_model=schemas.RunDaysOut)
+def run_days(
+    days: int = Query(120, ge=1, le=400),
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Distinct calendar dates (UTC) the user completed a run in the window —
+    drives the streak calendar on the You tab."""
+    rows = db.execute(
+        text(
+            """
+            SELECT DISTINCT to_char(ended_at, 'YYYY-MM-DD') AS d
+            FROM runs
+            WHERE user_id = :uid AND ended_at IS NOT NULL
+              AND ended_at >= now() - make_interval(days => :win)
+            ORDER BY d DESC
+            """
+        ),
+        {"uid": user.id, "win": days},
+    ).fetchall()
+    return schemas.RunDaysOut(days=[r[0] for r in rows])
+
+
 @router.get("/me/runs", response_model=List[schemas.RunSummary])
 def me_runs(
     limit: int = Query(20, ge=1, le=100),
