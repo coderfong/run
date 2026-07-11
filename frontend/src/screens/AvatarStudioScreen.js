@@ -14,7 +14,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Check, Dices, Lock } from 'lucide-react-native';
 
-import { brand, colors, radius, space, type, withAlpha } from '../theme';
+import { colors, radius, space, type } from '../theme';
 import { Button, Screen } from '../components/ui';
 import { PressableScale, Reveal, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
@@ -22,8 +22,6 @@ import { useAvatar } from '../state/avatar';
 import { useClan } from '../state/clan';
 import CharacterRig, { PartThumb } from '../components/character/CharacterRig';
 import { ITEMS, SLOTS, unlockLabel } from '../config/cosmetics';
-
-const RARITY_COLOR = { rare: brand.purple, epic: '#EAB308' };
 
 function SlotChips({ active, onChange }) {
   return (
@@ -91,7 +89,6 @@ function ItemGrid({ slot, equipped, isUnlocked, onEquip, clanColor }) {
       {items.map((item, i) => {
         const selected = equipped[slot.key] === item.id;
         const unlocked = isUnlocked(item);
-        const rarity = RARITY_COLOR[item.rarity];
         return (
           <Reveal key={item.id} delay={Math.min(i, 12) * 30} style={styles.cellWrap}>
           <PressableScale
@@ -102,7 +99,6 @@ function ItemGrid({ slot, equipped, isUnlocked, onEquip, clanColor }) {
             style={[
               styles.cell,
               selected && { borderColor: colors.text, borderWidth: 2 },
-              rarity && !selected && { borderColor: withAlpha(rarity, 0.55), borderWidth: 1.5 },
             ]}
           >
             <View style={{ opacity: unlocked ? 1 : 0.28 }}>
