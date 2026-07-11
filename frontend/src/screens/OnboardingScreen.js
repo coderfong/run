@@ -103,10 +103,19 @@ function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
       {item.art ? (
         <>
           <Animated.Image source={item.art} style={[StyleSheet.absoluteFill, { width, height: '100%' }, artStyle]} resizeMode="cover" />
+          {/* light overall tint so the art never washes the type out */}
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(11,13,16,0.28)' }]} />
+          {/* strong dark band behind the headline (top) */}
           <LinearGradient
-            colors={['rgba(11,13,16,0.72)', 'rgba(11,13,16,0.05)', 'rgba(11,13,16,0.88)']}
-            locations={[0, 0.42, 1]}
-            style={StyleSheet.absoluteFill}
+            colors={['rgba(11,13,16,0.94)', 'rgba(11,13,16,0.6)', 'rgba(11,13,16,0)']}
+            locations={[0, 0.5, 1]}
+            style={[StyleSheet.absoluteFill, { bottom: '52%' }]}
+          />
+          {/* strong dark band behind the body + CTA (bottom) */}
+          <LinearGradient
+            colors={['rgba(11,13,16,0)', 'rgba(11,13,16,0.66)', 'rgba(11,13,16,0.96)']}
+            locations={[0, 0.5, 1]}
+            style={[StyleSheet.absoluteFill, { top: '48%' }]}
           />
         </>
       ) : null}
@@ -262,12 +271,22 @@ export default function OnboardingScreen({ onDone }) {
 
 const styles = StyleSheet.create({
   slideInner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: space.gutter },
-  headline: { ...type.hero, color: '#ffffff', lineHeight: 46 },
+  headline: {
+    ...type.hero,
+    color: '#ffffff',
+    lineHeight: 46,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
+  },
   body: {
     ...type.body,
-    color: 'rgba(255,255,255,0.82)',
+    color: 'rgba(255,255,255,0.92)',
     lineHeight: 22,
     maxWidth: '86%',
+    textShadowColor: 'rgba(0,0,0,0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
 
   bullet: { flexDirection: 'row', alignItems: 'center', gap: space.md },
