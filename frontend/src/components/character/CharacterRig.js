@@ -57,6 +57,8 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH }) {
   const w = spec.w * bodyW;
   const h = w * (src.height / src.width);
   const top = spec.cy != null ? spec.cy * bodyH - h / 2 : spec.top * bodyH;
+  // `dx` shifts asymmetric art (e.g. a side ponytail) off centre.
+  const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
   return (
     <Image
       source={img}
@@ -64,7 +66,7 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH }) {
         position: 'absolute',
         width: w,
         height: h,
-        left: bodyW / 2 - w / 2,
+        left,
         top,
       }}
       resizeMode="contain"

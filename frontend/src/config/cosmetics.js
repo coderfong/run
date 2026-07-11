@@ -35,7 +35,6 @@ const runs = (n, label) => ({ stat: 'runs_count', value: n, label });
 const dist = (km, label) => ({ stat: 'career_distance_m', value: km * 1000, label });
 const zones = (n, label) => ({ stat: 'territory_count', value: n, label });
 const streak = (n, label) => ({ stat: 'current_streak_weeks', value: n, label });
-const clan = (label) => ({ clan: true, label });
 
 // ---------------------------------------------------------------------------
 // Slots + items. Colorable items carry `art` (array indexed by palette
@@ -69,8 +68,8 @@ export const ITEMS = {
     { id: 'none', label: 'Bald', art: null, rarity: 'common', unlock: free },
     { id: 'curtains', label: 'Curtains', art: ART.hairM1, rarity: 'common', unlock: free },
     { id: 'middlepart', label: 'Middle part', art: ART.hairM4, rarity: 'common', unlock: free },
-    { id: 'swept', label: 'Swept', art: ART.hairM3, layout: { top: -0.04 }, rarity: 'common', unlock: free },
-    { id: 'curls', label: 'Curls', art: ART.hairM5, rarity: 'common', unlock: free },
+    { id: 'swept', label: 'Swept', art: ART.hairM3, layout: { w: 0.85, top: -0.06 }, rarity: 'common', unlock: free },
+    { id: 'curls', label: 'Curls', art: ART.hairM5, layout: { top: -0.045 }, rarity: 'common', unlock: free },
     { id: 'pixie', label: 'Pixie', art: ART.hairW10, layout: { top: -0.045 }, rarity: 'common', unlock: free },
     { id: 'bluntbob', label: 'Blunt bob', art: ART.hairW4, rarity: 'common', unlock: free },
     { id: 'fringebob', label: 'Fringe bob', art: ART.hairW2, rarity: 'common', unlock: free },
@@ -79,16 +78,14 @@ export const ITEMS = {
     { id: 'longwaves', label: 'Long waves', art: ART.hairW1, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
     { id: 'flow', label: 'Flow', art: ART.hairM6, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
     { id: 'ravenlong', label: 'Straight long', art: ART.hairW6, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'bangs', label: 'Bangs', art: ART.hairW11, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
-    { id: 'roundfro', label: 'Round fro', art: ART.hairM8, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
+    { id: 'bangs', label: 'Bangs', art: ART.hairW11, layout: { top: -0.045 }, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
+    { id: 'roundfro', label: 'Round fro', art: ART.hairM8, layout: { top: -0.045 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'softwaves', label: 'Soft waves', art: ART.hairW12, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'topknot', label: 'Top knot', art: ART.hairM2, layout: { w: 0.88, top: -0.15 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'sidepony', label: 'Side pony', art: ART.hairW9, layout: { top: -0.055 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
-    { id: 'fringebun', label: 'Fringe bun', art: ART.hairM7, layout: { w: 0.92, top: -0.145 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
-    { id: 'highpony', label: 'High pony', art: ART.hairW7, layout: { w: 0.98, top: -0.155 }, rarity: 'rare', unlock: streak(2, 'Hold a 2-week streak') },
-    { id: 'lowbun', label: 'Low bun', art: ART.hairW13, layout: { top: -0.055 }, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
+    { id: 'fringebun', label: 'Fringe bun', art: ART.hairM7, layout: { w: 0.86, top: -0.165 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
+    { id: 'highpony', label: 'High pony', art: ART.hairW7, layout: { w: 0.90, top: -0.155, dx: 0.03 }, rarity: 'rare', unlock: streak(2, 'Hold a 2-week streak') },
     { id: 'surfer', label: 'Surfer', art: ART.hairM9, rarity: 'epic', unlock: dist(100, 'Run 100 km total') },
-    { id: 'curlylong', label: 'Curly long', art: ART.hairW3, layout: { top: -0.04 }, rarity: 'epic', unlock: dist(100, 'Run 100 km total') },
     { id: 'spacebuns', label: 'Space buns', art: ART.hairW8, layout: { w: 1.0, top: -0.10 }, rarity: 'epic', unlock: zones(10, 'Hold 10 zones') },
   ],
   glasses: [
@@ -101,14 +98,9 @@ export const ITEMS = {
     { id: 'crewtee', label: 'Crew tee', art: ART.top2, rarity: 'common', unlock: free },
     { id: 'pockettee', label: 'Pocket tee', art: ART.top8, rarity: 'common', unlock: free },
     { id: 'stripetee', label: 'Stripe tee', art: ART.top5, layout: { top: 0.312 }, rarity: 'common', unlock: free },
-    { id: 'hoodie', label: 'Hoodie', art: ART.top7, layout: { top: 0.292, w: 1.0 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
     { id: 'daisydress', label: 'Daisy dress', art: ART.top4, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'overshirt', label: 'Overshirt', art: ART.top6, layout: { top: 0.312, w: 0.90 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
+    { id: 'overshirt', label: 'Overshirt', art: ART.top6, layout: { top: 0.308, w: 0.97 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'sweater', label: 'Sweater', art: ART.top11, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
-    { id: 'kangahoodie', label: 'Kanga hoodie', art: ART.top9, layout: { top: 0.30 }, rarity: 'rare', unlock: streak(2, 'Hold a 2-week streak') },
-    { id: 'slouchhoodie', label: 'Slouch hoodie', art: ART.top10, layout: { top: 0.30 }, rarity: 'rare', unlock: clan('Join a club') },
-    { id: 'overalls', label: 'Overalls', art: ART.onepiece1, fit: 'onepiece', layout: { w: 0.68, top: 0.375 }, rarity: 'epic', unlock: zones(5, 'Hold 5 zones') },
-    { id: 'jacket', label: 'Jacket', art: ART.top3, rarity: 'epic', unlock: dist(100, 'Run 100 km total') },
   ],
   bottom: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
