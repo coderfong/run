@@ -94,6 +94,11 @@ class Territory(Base):
     polygon = Column(Geometry(geometry_type="MULTIPOLYGON", srid=4326), nullable=False)
     area_m2 = Column(Float, nullable=False)
 
+    # Defense strength: pace-based at claim time; sums when the owner re-claims
+    # over their own land. Clubmates' overlapping territories stack on top at
+    # attack-resolution time (never stored merged).
+    strength = Column(Float, nullable=False, default=1.0, server_default="1")
+
     # Mirrors the owning run's verified flag at claim time.
     verified = Column(Boolean, nullable=False, default=True, server_default="true")
 

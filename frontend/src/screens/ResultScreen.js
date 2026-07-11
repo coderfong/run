@@ -359,7 +359,7 @@ export default function ResultScreen({ navigation, route }) {
         </View>
         <Text style={styles.heroCaption}>
           {captured
-            ? 'claimed for your club'
+            ? `claimed for your club · strength ×${(t.strength || 1).toFixed(1)}`
             : canPlace
             ? 'your circle is ready — place it on your route above'
             : 'run at least a little further to earn a claim'}

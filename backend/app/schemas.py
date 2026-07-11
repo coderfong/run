@@ -75,6 +75,10 @@ class TerritoryOut(BaseModel):
     clan_color: Optional[ClanColor] = None
     # Defenders = members of the owning clan (1 for solo).
     defenders: int = 1
+    # Defense strength: pace-based at claim, stacks on re-claims. Attacks on
+    # this land only succeed when the attacker's claim strength beats the
+    # total defense (this + overlapping club land).
+    strength: float = 1.0
 
 
 class RunResultOut(BaseModel):

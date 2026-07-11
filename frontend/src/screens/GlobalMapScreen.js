@@ -308,6 +308,7 @@ export default function GlobalMapScreen() {
           </Text>
           <Text style={[type.caption, { marginTop: 2 }]}>
             {Math.round(selected.area_m2).toLocaleString()} m² ·{' '}
+            strength ×{(selected.strength || 1).toFixed(1)} ·{' '}
             {selected.defenders > 1 ? `${selected.defenders} defenders · ` : ''}
             held since {new Date(selected.created_at).toLocaleDateString()}
             {selected.contested ? ' · contested' : ''}

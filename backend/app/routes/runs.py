@@ -219,6 +219,7 @@ def claim_territory(
         run_id=run.id,
         polygon_wgs=circle,
         initial_area_m2=claim_area_m2(run.distance_m),
+        strength=claim_strength(run.distance_m, run.duration_s),
         verified=run.verified,
         clan_id=user.clan_id,
     )
@@ -260,26 +261,46 @@ def claim_territory(
     )
 
 
+# Reference pace for strength: 7:00/km. Faster runs earn a stronger claim,
+# clamped so a jog is never useless and a sprint can't be unbeatable.
+STRENGTH_REF_PACE_S_PER_KM = 420.0
+STRENGTH_MIN, STRENGTH_MAX = 0.6, 2.0
+
+
+def claim_strength(distance_m: float, duration_s: float | None) -> float:
+    """Pace-based strength of a single claim (~1.0 at 7:00/km, 2.0 capped)."""
+    if not duration_s or not distance_m:
+        return 1.0
+    pace = duration_s / (distance_m / 1000.0)  # s per km
+    mult = STRENGTH_REF_PACE_S_PER_KM / max(pace, 1.0)
+    return round(min(STRENGTH_MAX, max(STRENGTH_MIN, mult)), 2)
+
+
 def _claim_territory(
     db: Session,
     user_id: str,
     run_id: str,
     polygon_wgs,
     initial_area_m2: float,
+    strength: float = 1.0,
     verified: bool = True,
     clan_id: str | None = None,
 ):  # -> (TerritoryOut | None, stolen_m2, stolen_from)
     """Insert the new polygon, resolving overlaps with existing territories.
 
-    Rules:
-      * Where this polygon overlaps another *user's* territory, the new
-        runner steals the overlap. We update the rival's geometry by
-        ST_Difference, then drop any rival rows that became empty/sliver.
-      * Where this polygon overlaps the *same user's* existing territory,
-        we union them (the user just expanded their land).
-      * The new territory is stored as the original polygon minus any
-        re-unioned same-user territory (to avoid double-counted area).
-        Then any same-user union geometry is folded into the new row.
+    Rules (strength model):
+      * Every claim carries a pace-based `strength`.
+      * RIVALS = other users OUTSIDE the claimer's club. For each rival
+        overlap, the attack succeeds only if the claim's strength beats the
+        rival's strength PLUS the summed strength of the rival's clubmates'
+        territories overlapping the same spot (stacked defense). Beaten
+        rivals lose the overlap (ST_Difference); successful defenses carve
+        the defended land OUT of the new claim instead.
+      * CLUBMATES' land is never stolen — overlapping club claims coexist,
+        which is exactly what makes their defense stack.
+      * Where this polygon overlaps the SAME USER's territory, the rows are
+        unioned and their strengths SUM — re-running the same block makes it
+        stronger.
       * SHADOW-FLAGGED runs (verified=False) get a standalone unverified
         row: no stealing from rivals, no merging into verified land. The
         submitter still sees a normal-looking territory in the response.
@@ -297,7 +318,7 @@ def _claim_territory(
         new_row = db.execute(
             text(
                 """
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id, strength)
                 VALUES (
                     gen_random_uuid(),
                     :uid,
@@ -306,16 +327,17 @@ def _claim_territory(
                     ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
                     now(),
                     false,
-                    :clan_id
+                    :clan_id,
+                    :strength
                 )
                 RETURNING id, area_m2, created_at
                 """
             ),
-            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id},
+            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id, "strength": strength},
         ).fetchone()
         return _territory_out(db, new_row[0]), 0.0, None
 
-    # Pull rivals (other users) that intersect.
+    # Pull rivals that intersect: other users OUTSIDE the claimer's club.
     rivals = db.execute(
         text(
             """
@@ -323,35 +345,58 @@ def _claim_territory(
             FROM territories
             WHERE user_id <> :uid
               AND verified
+              AND (CAST(:clan_id AS uuid) IS NULL OR clan_id IS NULL OR clan_id <> :clan_id)
               AND ST_Intersects(polygon, ST_GeomFromText(:wkt, 4326))
             """
         ),
-        {"uid": user_id, "wkt": new_geom_wkt},
+        {"uid": user_id, "wkt": new_geom_wkt, "clan_id": clan_id},
     ).fetchall()
 
     # Steal summary for the Result screen: total area taken from rivals + the
-    # rival who lost the most.
+    # rival who lost the most. `defended_ids` collects rivals whose strength
+    # held — their land is carved out of the new claim afterwards.
     stolen_total = 0.0
     best_steal = 0.0
     stolen_from = None
+    defended_ids = []
 
     for rid, _ruid in rivals:
         steal = db.execute(
             text(
                 """
                 SELECT ST_Area(ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))::geography),
-                       u.username
+                       u.username,
+                       t.strength,
+                       COALESCE((
+                           SELECT SUM(t2.strength) FROM territories t2
+                           WHERE t.clan_id IS NOT NULL
+                             AND t2.clan_id = t.clan_id
+                             AND t2.id <> t.id
+                             AND t2.verified
+                             AND ST_Intersects(
+                                   t2.polygon,
+                                   ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))
+                                 )
+                       ), 0) AS club_support
                 FROM territories t JOIN users u ON u.id = t.user_id
                 WHERE t.id = :rid
                 """
             ),
             {"wkt": new_geom_wkt, "rid": rid},
         ).fetchone()
-        if steal and steal[0]:
-            stolen_total += float(steal[0])
-            if float(steal[0]) > best_steal:
-                best_steal = float(steal[0])
-                stolen_from = steal[1]
+        if not steal or not steal[0]:
+            continue
+
+        defense = float(steal[2] or 1.0) + float(steal[3] or 0.0)
+        if strength <= defense:
+            # The land holds: attacker's claim will be carved around it.
+            defended_ids.append(rid)
+            continue
+
+        stolen_total += float(steal[0])
+        if float(steal[0]) > best_steal:
+            best_steal = float(steal[0])
+            stolen_from = steal[1]
 
         # Subtract the new polygon from the rival's territory. ALL surviving
         # fragments are kept as one MultiPolygon — only sub-1m² slivers are
@@ -412,11 +457,37 @@ def _claim_territory(
         {"uid": user_id, "min_area": 1.0},
     )
 
-    # Union with same-user existing territories so the runner's land grows.
-    same_user_union = db.execute(
+    # Land that successfully DEFENDED gets carved out of the new claim.
+    for rid in defended_ids:
+        carved = db.execute(
+            text(
+                """
+                SELECT ST_AsText(ST_CollectionExtract(ST_MakeValid(
+                    ST_Difference(ST_GeomFromText(:wkt, 4326), polygon)
+                ), 3))
+                FROM territories WHERE id = :rid
+                """
+            ),
+            {"wkt": new_geom_wkt, "rid": rid},
+        ).scalar()
+        if carved:
+            new_geom_wkt = carved
+    if defended_ids:
+        remaining = db.execute(
+            text("SELECT ST_Area(ST_GeomFromText(:wkt, 4326)::geography)"),
+            {"wkt": new_geom_wkt},
+        ).scalar()
+        if not remaining or float(remaining) < 1.0:
+            raise HTTPException(
+                409, "that land is too strong to take — run faster or stack claims with your club"
+            )
+
+    # Union with same-user existing territories so the runner's land grows;
+    # their strengths SUM (re-claiming the same block stacks it stronger).
+    same_user = db.execute(
         text(
             """
-            SELECT ST_AsText(ST_Union(polygon))
+            SELECT ST_AsText(ST_Union(polygon)), COALESCE(SUM(strength), 0)
             FROM territories
             WHERE user_id = :uid
               AND verified
@@ -424,7 +495,9 @@ def _claim_territory(
             """
         ),
         {"uid": user_id, "wkt": new_geom_wkt},
-    ).scalar()
+    ).fetchone()
+    same_user_union = same_user[0] if same_user else None
+    merged_strength = round(strength + float(same_user[1] or 0.0), 2) if same_user else strength
 
     if same_user_union is not None:
         # Replace existing same-user overlapping rows with a single merged row.
@@ -451,9 +524,9 @@ def _claim_territory(
                         ST_GeomFromText(:old_wkt, 4326)
                     )), 3)) AS g
                 )
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id, strength)
                 SELECT gen_random_uuid(), :uid, :rid, g,
-                       ST_Area(g::geography), now(), true, :clan_id
+                       ST_Area(g::geography), now(), true, :clan_id, :strength
                 FROM merged
                 RETURNING id, area_m2, created_at
                 """
@@ -464,13 +537,14 @@ def _claim_territory(
                 "new_wkt": new_geom_wkt,
                 "old_wkt": same_user_union,
                 "clan_id": clan_id,
+                "strength": merged_strength,
             },
         ).fetchone()
     else:
         new_row = db.execute(
             text(
                 """
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id)
+                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at, verified, clan_id, strength)
                 VALUES (
                     gen_random_uuid(),
                     :uid,
@@ -479,12 +553,13 @@ def _claim_territory(
                     ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
                     now(),
                     true,
-                    :clan_id
+                    :clan_id,
+                    :strength
                 )
                 RETURNING id, area_m2, created_at
                 """
             ),
-            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id},
+            {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id, "strength": strength},
         ).fetchone()
 
     return _territory_out(db, new_row[0]), stolen_total, stolen_from
@@ -496,7 +571,7 @@ def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:
         text(
             """
             SELECT t.id::text, t.user_id::text, u.username, t.area_m2, t.created_at,
-                   ST_AsText(t.polygon)
+                   ST_AsText(t.polygon), t.strength
             FROM territories t
             JOIN users u ON u.id = t.user_id
             WHERE t.id = :tid
@@ -508,7 +583,7 @@ def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:
     if row is None:
         return None
 
-    _id, uid, username, a, created, wkt = row
+    _id, uid, username, a, created, wkt, strength = row
     from shapely import wkt as shapely_wkt
 
     geom = shapely_wkt.loads(wkt)
@@ -522,4 +597,5 @@ def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:
         created_at=created,
         polygon=rings[0] if rings else [],  # legacy: largest ring
         rings=rings,
+        strength=float(strength or 1.0),
     )

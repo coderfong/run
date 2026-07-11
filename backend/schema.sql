@@ -92,3 +92,6 @@ CREATE TABLE clan_messages (
     created_at TIMESTAMP NOT NULL DEFAULT now()
 );
 CREATE INDEX clan_messages_clan_idx ON clan_messages(clan_id, created_at DESC);
+
+-- Territory strength (0009): pace-based, stacks on self-overlap + club defense
+ALTER TABLE territories ADD COLUMN strength DOUBLE PRECISION NOT NULL DEFAULT 1;

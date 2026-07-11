@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     # ---- rate limiting ---------------------------------------------------
     rate_limit_auth: str = "10/minute"
     rate_limit_submit_path: str = "60/minute"
-    rate_limit_end_run: str = "6/minute"
+    rate_limit_end_run: str = "10/minute"
     rate_limit_default: str = "120/minute"
 
     # ---- map viewport simplification -------------------------------------

@@ -18,6 +18,7 @@ import math
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta
 
 BASE = "http://localhost:8000"
 SFX = str(int(time.time()))[-6:]
@@ -62,8 +63,14 @@ def signup(name):
     return res["access_token"], res["user"]["id"]
 
 
-def run_loop(token, clat, clon, **kw):
-    _, r = call("POST", "/start-run", {}, token=token)
+def run_loop(token, clat, clon, pace_s_per_km=None, **kw):
+    """pace_s_per_km backdates started_at so the server derives that pace
+    (drives claim strength: ~0.87 at 8:00/km, ~1.38 at 5:00/km)."""
+    body = {}
+    if pace_s_per_km:
+        dur = pace_s_per_km * 0.63  # ~630 m loop
+        body["started_at"] = (datetime.utcnow() - timedelta(seconds=dur)).isoformat()
+    _, r = call("POST", "/start-run", body, token=token)
     rid = r["run_id"]
     pts = loop(clat, clon, **kw)
     st, end = call("POST", "/end-run", {"run_id": rid, "points": pts}, token=token)
@@ -100,11 +107,16 @@ def main():
     assert st == 200 and joined["member_count"] == 2, joined
     print(f"  member joined by code; members={joined['member_count']}")
 
-    print("=== overlapping circle claims -> steal ===")
-    rid_a, ea, pts_a = run_loop(ta, 1.3400, 103.7700)
+    print("=== circle claims: club stacking + strength ===")
+    # Fresh land per test run — old test territories now DEFEND (strength
+    # model), so reusing coordinates would bounce the first claim.
+    OX = (int(SFX) % 400) * 0.0004
+    lat_a, lon_a = 1.3400 + OX, 103.7700 + OX
+    lat_e, lon_e = 1.3450 + OX, 103.7750 + OX
+    rid_a, ea, pts_a = run_loop(ta, lat_a, lon_a)
     ca = place_claim(ta, rid_a, pts_a[0])
     print(f"  leader claimed {round(ca['territory']['area_m2']):,} m² "
-          f"(circle r={round(ea['claim_radius_m'])} m)")
+          f"(circle r={round(ea['claim_radius_m'])} m, strength {ca['territory']['strength']})")
     # Placing again must be rejected — one claim per run.
     st, dup = call("POST", "/claim-territory",
                    {"run_id": rid_a, "lat": pts_a[0]["lat"], "lon": pts_a[0]["lon"]}, token=ta)
@@ -114,11 +126,31 @@ def main():
                    {"run_id": rid_a, "lat": pts_a[0]["lat"] + 0.01, "lon": pts_a[0]["lon"]}, token=ta)
     assert st in (409, 422), f"off-trail centre should be rejected: {st} {off}"
 
-    rid_b, eb, pts_b = run_loop(tb, 1.34012, 103.77012)
+    # Clubmate overlap: never steals; both rows coexist (stacked defense).
+    rid_b, eb, pts_b = run_loop(tb, lat_a + 0.00012, lon_a + 0.00012)
     cb = place_claim(tb, rid_b, pts_b[0])
-    assert (cb.get("stolen_m2") or 0) > 0, f"member should steal: {cb.get('stolen_m2')}"
-    assert cb["stolen_from"] == f"lead_{SFX}", cb["stolen_from"]
-    print(f"  member stole {round(cb['stolen_m2']):,} m² from {cb['stolen_from']}")
+    assert (cb.get("stolen_m2") or 0) == 0, f"clubmates must not steal: {cb.get('stolen_m2')}"
+    print("  member overlapped clubmate: no steal — defense stacks")
+
+    # Outsider attacks the stacked club land: strength holds, claim carved.
+    td, _ud = signup(f"raid_{SFX}")
+    rid_d, ed, pts_d = run_loop(td, lat_a + 0.00135, lon_a, pace_s_per_km=300)
+    cd = place_claim(td, rid_d, pts_d[0])
+    assert (cd.get("stolen_m2") or 0) == 0, "stacked club land must hold"
+    assert cd["territory"]["area_m2"] < ed["claim_area_m2"] * 0.95, "claim should be carved around defended land"
+    print(f"  outsider (strength {cd['territory']['strength']}) bounced off stacked defense; "
+          f"claim carved to {round(cd['territory']['area_m2']):,} m²")
+
+    # On fresh ground, a faster claim beats a slower defender.
+    te, _ue = signup(f"slow_{SFX}")
+    rid_e, ee, pts_e = run_loop(te, lat_e, lon_e, pace_s_per_km=480)
+    ce = place_claim(te, rid_e, pts_e[0])
+    rid_d2, ed2, pts_d2 = run_loop(td, lat_e, lon_e, pace_s_per_km=300)
+    cd2 = place_claim(td, rid_d2, pts_d2[0])
+    assert (cd2.get("stolen_m2") or 0) > 0, "faster claim must beat slower defense"
+    assert cd2["stolen_from"] == f"slow_{SFX}", cd2["stolen_from"]
+    print(f"  fast ({cd2['territory']['strength']}) stole {round(cd2['stolen_m2']):,} m² "
+          f"from slow ({ce['territory']['strength']})")
 
     print("=== clan stats advance ===")
     st, prof = call("GET", f"/clans/{cid}", token=ta)
