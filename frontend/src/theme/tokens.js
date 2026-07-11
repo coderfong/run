@@ -133,4 +133,15 @@ export const runTuning = {
 
   // Calories estimate (until profile weight exists): kcal/kg/km × weight.
   defaultWeightKg: 70,
+
+  // Vehicle / spoof gating (buses, trains, mock GPS):
+  // a point faster than this is never on foot (6.5 m/s ≈ 2:34/km)…
+  vehicleSpeedMps: 6.5,
+  // …and this many consecutive fast fixes auto-pauses the run.
+  vehicleFastPoints: 4,
+  // Pedometer watchdog: covering this much ground with almost no steps
+  // within one check window means wheels, not feet.
+  vehicleCheckMs: 45000,
+  vehicleMinStepsPerWindow: 15,
+  vehicleWindowDistanceM: 250,
 };

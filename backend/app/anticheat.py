@@ -99,9 +99,15 @@ def _check_pace_floor(points: List[GpsPoint]) -> Optional[str]:
 
 
 def _check_stride(distance_m: float, step_count: Optional[int]) -> Optional[str]:
-    """(d) distance / steps outside a plausible human stride."""
-    if not step_count or step_count <= 0 or distance_m <= 0:
+    """(d) distance / steps outside a plausible human stride.
+
+    step_count is None only when the phone has no (permitted) pedometer.
+    A WORKING pedometer reporting (near-)zero steps over real distance is
+    the vehicle signature — buses cover kilometres with no strides."""
+    if step_count is None or distance_m < 100:
         return None
+    if step_count <= 0:
+        return "stride_implausible"
     stride = distance_m / step_count
     if stride < settings.cheat_stride_min_m or stride > settings.cheat_stride_max_m:
         return "stride_implausible"

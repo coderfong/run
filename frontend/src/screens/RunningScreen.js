@@ -233,6 +233,12 @@ export default function RunningScreen({ navigation }) {
   // server can sanity-check stride length.
   const stepCountRef = useRef(0);
   const pedometerSubRef = useRef(null);
+  const pedometerOkRef = useRef(false);
+  // Vehicle/spoof gate: consecutive too-fast fixes + a distance-vs-steps
+  // watchdog. Either tripping auto-pauses the run.
+  const fastPointsRef = useRef(0);
+  const vehicleTimerRef = useRef(null);
+  const vehicleWindowRef = useRef({ dist: 0, steps: 0 });
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [path, setPath] = useState([]);
@@ -258,6 +264,7 @@ export default function RunningScreen({ navigation }) {
       stopWatchingLocation();
       stopPedometer();
       stopBackgroundTrack();
+      stopVehicleWatch();
       setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
     };
@@ -282,8 +289,14 @@ export default function RunningScreen({ navigation }) {
     const merged = [...pathRef.current, ...pts].sort((a, b) => a.timestamp - b.timestamp);
     const out = [];
     for (const p of merged) {
+      if (p.mocked) continue;
       const prev = out[out.length - 1];
       if (prev && (p.timestamp === prev.timestamp || distanceMeters(prev, p) < T.minStepM)) continue;
+      // Same vehicle gate as the live watcher: drop segments no runner covers.
+      if (prev) {
+        const v = distanceMeters(prev, p) / Math.max((p.timestamp - prev.timestamp) / 1000, 0.001);
+        if (v > T.vehicleSpeedMps) continue;
+      }
       out.push(p);
     }
     if (out.length > pathRef.current.length) {
@@ -339,12 +352,57 @@ export default function RunningScreen({ navigation }) {
   async function startPedometer() {
     stepCountRef.current = 0;
     try {
+      // Only trust the pedometer when it's present AND permitted — a denied
+      // motion permission must not make real runs look like bus rides.
+      const perm = await Pedometer.requestPermissionsAsync?.();
+      if (perm && !perm.granted) return;
       if (!(await Pedometer.isAvailableAsync())) return;
+      pedometerOkRef.current = true;
       pedometerSubRef.current = Pedometer.watchStepCount((result) => {
         stepCountRef.current = result.steps;
       });
     } catch {
       // No pedometer (or permission refused) — steps just stay null.
+    }
+  }
+
+  // ---- vehicle / spoof gate ----------------------------------------------
+  // Buses and trains produce medium speeds the GPS filters won't reject, but
+  // (a) sustained > vehicleSpeedMps is never on foot, and (b) ground covered
+  // with no steps means wheels. Either auto-pauses the run.
+
+  function vehiclePause() {
+    if (!isRunningRef.current) return;
+    pauseRun();
+    haptic.light();
+    Alert.alert(
+      'Vehicle detected',
+      "Recording paused — PACER only logs runs on foot. Hit play when you're back on your feet."
+    );
+  }
+
+  function startVehicleWatch() {
+    stopVehicleWatch();
+    vehicleWindowRef.current = {
+      dist: totalDistanceMeters(pathRef.current),
+      steps: stepCountRef.current,
+    };
+    vehicleTimerRef.current = setInterval(() => {
+      const dist = totalDistanceMeters(pathRef.current);
+      const steps = stepCountRef.current;
+      const dDist = dist - vehicleWindowRef.current.dist;
+      const dSteps = steps - vehicleWindowRef.current.steps;
+      vehicleWindowRef.current = { dist, steps };
+      if (pedometerOkRef.current && dDist > T.vehicleWindowDistanceM && dSteps < T.vehicleMinStepsPerWindow) {
+        vehiclePause();
+      }
+    }, T.vehicleCheckMs);
+  }
+
+  function stopVehicleWatch() {
+    if (vehicleTimerRef.current) {
+      clearInterval(vehicleTimerRef.current);
+      vehicleTimerRef.current = null;
     }
   }
 
@@ -413,6 +471,7 @@ export default function RunningScreen({ navigation }) {
     await startWatchingLocation('high');
     await startPedometer();
     startBackgroundTrack();
+    startVehicleWatch();
   }
 
   async function prepareLocation() {
@@ -467,6 +526,7 @@ export default function RunningScreen({ navigation }) {
       await startWatchingLocation('high');
       await startPedometer();
       startBackgroundTrack();
+      startVehicleWatch();
     } catch (err) {
       toast.error(err.message || 'Could not start run');
     }
@@ -558,8 +618,28 @@ export default function RunningScreen({ navigation }) {
     setCurrentLocation(nextPoint);
     setAccuracyM(location.coords.accuracy ?? null);
 
+    // Spoofed fixes (mock providers) never enter the trail.
+    if (nextPoint.mocked) return;
+
     const oldPath = pathRef.current;
     const previousPoint = oldPath[oldPath.length - 1];
+
+    // Vehicle gate: a fix faster than any runner is dropped; a streak of
+    // them means transport — auto-pause instead of logging the ride.
+    const gateSpeed =
+      nextPoint.speedMps != null
+        ? nextPoint.speedMps
+        : previousPoint
+        ? distanceMeters(previousPoint, nextPoint) /
+          Math.max((nextPoint.timestamp - previousPoint.timestamp) / 1000, 0.001)
+        : 0;
+    if (gateSpeed > T.vehicleSpeedMps) {
+      fastPointsRef.current += 1;
+      if (fastPointsRef.current >= T.vehicleFastPoints) vehiclePause();
+      return;
+    }
+    fastPointsRef.current = 0;
+
     // Sub-2m jitter filter.
     if (previousPoint && distanceMeters(previousPoint, nextPoint) < T.minStepM) return;
 
@@ -611,6 +691,8 @@ export default function RunningScreen({ navigation }) {
     stopWatchingLocation();
     stopPedometer();
     stopBackgroundTrack();
+    stopVehicleWatch();
+    fastPointsRef.current = 0;
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
@@ -629,6 +711,7 @@ export default function RunningScreen({ navigation }) {
     await startWatchingLocation(gpsModeRef.current);
     await startPedometer();
     startBackgroundTrack();
+    startVehicleWatch();
     setPaused(false);
   }
 
@@ -638,6 +721,7 @@ export default function RunningScreen({ navigation }) {
     setLocked(false);
     stopWatchingLocation();
     stopPedometer();
+    stopVehicleWatch();
     await stopBackgroundTrack();
     // fold in anything the background task recorded before we submit
     await mergeBackgroundPoints();
@@ -666,10 +750,12 @@ export default function RunningScreen({ navigation }) {
   // /end-run is retryable, never fatal to the run data.
   async function commitRun(run, finalPath) {
     try {
+      // Steps are sent whenever a pedometer exists — INCLUDING zero, which is
+      // exactly the signature of covering distance in a vehicle.
       const result = await api.endRun(
         run.id,
         toApiPoints(finalPath),
-        stepCountRef.current > 0 ? stepCountRef.current : null
+        pedometerOkRef.current ? stepCountRef.current : null
       );
       clearActiveRun();
       // Optional, write-only health sync (no-op unless enabled + module present).
