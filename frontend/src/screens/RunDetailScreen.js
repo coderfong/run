@@ -1,9 +1,9 @@
-// Run detail — route on the game board, splits, claim outcome, kudos.
-// Reached from the feed and the You tab's recent runs.
+// Run detail — route on the game board, splits, claim outcome, kudos,
+// comments. Reached from the feed and the You tab's recent runs.
 
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Heart } from 'lucide-react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Heart, Send } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { NEUTRAL } from '../state/clan';
@@ -32,14 +32,42 @@ function fmtDuration(s) {
   return h > 0 ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
 }
 
+function timeAgo(iso) {
+  const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
 export default function RunDetailScreen({ route }) {
   const { runId } = route.params;
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [comments, setComments] = useState(null);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     api.runDetail(runId).then(setD).catch(() => setD(false));
+    api.runComments(runId).then(setComments).catch(() => setComments([]));
   }, [runId]);
+
+  const sendComment = async () => {
+    const body = draft.trim();
+    if (!body || sending) return;
+    setSending(true);
+    haptic.light();
+    try {
+      const c = await api.addRunComment(runId, body);
+      setComments((prev) => [...(prev || []), c]);
+      setDraft('');
+    } catch (e) {
+      toast.error(e.message || 'Could not post comment');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const kudos = async () => {
     if (busy || !d) return;
@@ -73,6 +101,7 @@ export default function RunDetailScreen({ route }) {
   const slowest = d.splits.length ? Math.max(...d.splits.map((s) => s.seconds)) : 1;
 
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
       {/* map */}
       <View style={styles.map}>
@@ -123,7 +152,52 @@ export default function RunDetailScreen({ route }) {
           ))}
         </Card>
       )}
+
+      {/* comments */}
+      <Card style={{ marginTop: space.xl }}>
+        <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>
+          Comments{comments?.length ? ` · ${comments.length}` : ''}
+        </Text>
+        {!comments ? (
+          <Skeleton width="100%" height={16} />
+        ) : comments.length === 0 ? (
+          <Text style={[type.caption, { marginBottom: space.sm }]}>Be the first to say something.</Text>
+        ) : (
+          comments.map((cm) => (
+            <View key={cm.id} style={styles.commentRow}>
+              <Text style={type.bodySmBold}>
+                {cm.username}
+                {cm.is_you ? ' · you' : ''}
+                <Text style={[type.caption, { color: colors.textDim }]}>  {timeAgo(cm.created_at)}</Text>
+              </Text>
+              <Text style={[type.bodySm, { marginTop: 2 }]}>{cm.body}</Text>
+            </View>
+          ))
+        )}
+        <View style={styles.commentInputRow}>
+          <TextInput
+            style={styles.commentInput}
+            placeholder="Add a comment…"
+            placeholderTextColor={colors.textDim}
+            value={draft}
+            onChangeText={setDraft}
+            maxLength={280}
+            multiline
+            accessibilityLabel="Comment"
+          />
+          <PressableScale
+            onPress={sendComment}
+            disabled={!draft.trim() || sending}
+            style={[styles.sendBtn, { backgroundColor: c.stroke, opacity: draft.trim() && !sending ? 1 : 0.4 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Post comment"
+          >
+            <Send size={18} color="#fff" />
+          </PressableScale>
+        </View>
+      </Card>
     </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -136,4 +210,24 @@ const styles = StyleSheet.create({
   track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bgElevated, overflow: 'hidden' },
   bar: { height: '100%', borderRadius: 4 },
   splitPace: { ...type.statSm, color: colors.textMuted, width: 52, textAlign: 'right' },
+
+  commentRow: { marginBottom: space.md },
+  commentInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, marginTop: space.sm },
+  commentInput: {
+    ...type.bodySm,
+    flex: 1,
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: 10,
+    maxHeight: 90,
+    color: colors.text,
+  },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

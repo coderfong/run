@@ -109,6 +109,13 @@ export const api = {
   // ----- run detail + social -------------------------------------------
   runDetail: (runId) => request(`/runs/${runId}`),
   toggleKudos: (runId) => request(`/runs/${runId}/kudos`, { method: 'POST', body: '{}' }),
+  runComments: (runId) => request(`/runs/${runId}/comments`),
+  addRunComment: (runId, body) =>
+    request(`/runs/${runId}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
+  clanMessages: (clanId, before) =>
+    request(`/clans/${clanId}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`),
+  sendClanMessage: (clanId, body) =>
+    request(`/clans/${clanId}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),
   registerPushToken: (token, platform) =>
     request('/me/push-token', { method: 'POST', body: JSON.stringify({ token, platform }) }),
   getNotifPrefs: () => request('/me/notif-prefs'),

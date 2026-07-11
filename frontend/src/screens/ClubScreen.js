@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { UserPlus } from 'lucide-react-native';
+import { MessageCircle, UserPlus } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -59,16 +59,17 @@ function Directory({ navigation }) {
 
       <Button title="Create a club" variant="gradient" icon={<UserPlus size={18} color="#fff" />} onPress={() => navigation.navigate('ClubCreate')} />
 
-      <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md }}>
+      {/* the Join button matches the input height and centres with it */}
+      <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md, alignItems: 'center' }}>
         <TextInput
-          style={[styles.input, { flex: 1 }]}
+          style={[styles.input, { flex: 1, height: 48 }]}
           value={code}
           onChangeText={setCode}
           placeholder="Have an invite code?"
           placeholderTextColor={colors.textDim}
           autoCapitalize="none"
         />
-        <Button title="Join" size="sm" full={false} onPress={joinCode} />
+        <Button title="Join" size="sm" full={false} onPress={joinCode} style={{ height: 48, justifyContent: 'center' }} />
       </View>
 
       <SectionHeader title="Find a club" style={{ marginTop: space.xl, marginBottom: space.md }} />
@@ -116,7 +117,7 @@ function Directory({ navigation }) {
 // Member hub
 // ---------------------------------------------------------------------------
 
-function MemberHub({ clanId }) {
+function MemberHub({ clanId, navigation }) {
   const { user } = useAuth();
   const { refresh } = useClan();
   const [clan, setClan] = useState(null);
@@ -242,8 +243,30 @@ function MemberHub({ clanId }) {
         </>
       )}
 
-      {/* members */}
-      <SectionHeader title="Members" action="Invite" onAction={invite} style={{ marginTop: space.xl, marginBottom: space.md }} />
+      {/* members — chat + invite as matching pill actions */}
+      <View style={styles.membersHeader}>
+        <Text style={type.heading}>Members</Text>
+        <Row gap={8}>
+          <TouchableOpacity
+            style={[styles.actionPill, { borderColor: accent }]}
+            onPress={() => navigation.navigate('ClubChat', { clanId })}
+            accessibilityRole="button"
+            accessibilityLabel="Open club chat"
+          >
+            <MessageCircle size={15} color={accent} />
+            <Text style={[type.captionMedium, { color: accent }]}>Chat</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionPill}
+            onPress={invite}
+            accessibilityRole="button"
+            accessibilityLabel="Invite a member"
+          >
+            <UserPlus size={15} color={colors.textMuted} />
+            <Text style={[type.captionMedium, { color: colors.textMuted }]}>Invite</Text>
+          </TouchableOpacity>
+        </Row>
+      </View>
       <Card padded={false}>
         {clan.members.map((m, i) => (
           <TouchableOpacity
@@ -290,7 +313,7 @@ export default function ClubScreen({ navigation }) {
       </Screen>
     );
   }
-  return clan?.clan_id ? <MemberHub clanId={clan.clan_id} /> : <Directory navigation={navigation} />;
+  return clan?.clan_id ? <MemberHub clanId={clan.clan_id} navigation={navigation} /> : <Directory navigation={navigation} />;
 }
 
 const styles = StyleSheet.create({
@@ -305,4 +328,23 @@ const styles = StyleSheet.create({
   barMine: {},
   memberRow: { paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56, justifyContent: 'center' },
   divider: { borderTopWidth: 1, borderTopColor: colors.border },
+
+  membersHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: space.xl,
+    marginBottom: space.md,
+  },
+  actionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.md,
+    paddingVertical: 7,
+    backgroundColor: colors.card,
+  },
 });

@@ -161,6 +161,22 @@ def main():
     assert any(t["username"] == f"cheat_{SFX}" for t in mp_own["territories"]), "owner still sees it"
     print("  flagged territory hidden publicly, visible to owner")
 
+    print("=== comments + club chat ===")
+    st, cmt = call("POST", f"/runs/{rid_b}/comments", {"body": "nice circle!"}, token=ta)
+    assert st == 200 and cmt["body"] == "nice circle!" and cmt["is_you"], cmt
+    st, clist = call("GET", f"/runs/{rid_b}/comments", token=tb)
+    assert st == 200 and len(clist) == 1 and clist[0]["username"] == f"lead_{SFX}", clist
+    st, fd2 = call("GET", "/feed", token=tb)
+    fitem = next(i for i in fd2["items"] if i["id"] == rid_b)
+    assert fitem["comment_count"] == 1, fitem
+    st, msg = call("POST", f"/clans/{cid}/messages", {"body": "who's running tonight?"}, token=ta)
+    assert st == 200 and msg["is_you"], msg
+    st, msgs = call("GET", f"/clans/{cid}/messages", token=tb)
+    assert st == 200 and len(msgs) == 1 and msgs[0]["username"] == f"lead_{SFX}" and not msgs[0]["is_you"], msgs
+    st, _ = call("POST", f"/clans/{cid}/messages", {"body": "spy!"}, token=tc)
+    assert st == 403, "non-member must not post to club chat"
+    print(f"  comment on run + count in feed OK; chat send/list OK; outsider blocked")
+
     print("=== leaderboards ===")
     st, lb = call("GET", "/leaderboard")
     assert st == 200 and all(e["username"] != f"cheat_{SFX}" for e in lb), "cheater excluded from runner LB"

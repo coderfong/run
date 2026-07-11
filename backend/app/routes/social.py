@@ -64,6 +64,7 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
     kmine = db.execute(
         text("SELECT 1 FROM run_kudos WHERE run_id = :rid AND user_id = :uid"), {"rid": run_id, "uid": user.id}
     ).fetchone()
+    ccount = db.execute(text("SELECT COUNT(*) FROM run_comments WHERE run_id = :rid"), {"rid": run_id}).scalar()
 
     return schemas.RunDetail(
         run_id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id),
@@ -73,6 +74,65 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         path=path, territory_rings=rings,
         splits=[schemas.RunSplit(km=s[0], seconds=float(s[1])) for s in splits],
         kudos_count=int(kcount or 0), kudoed=bool(kmine),
+        comment_count=int(ccount or 0),
+    )
+
+
+def _run_visible_to(db, run_id, user):
+    """Same visibility rule as run_detail: shadow-flagged runs are owner-only."""
+    r = db.execute(
+        text("SELECT user_id::text, verified FROM runs WHERE id = :rid"), {"rid": run_id}
+    ).fetchone()
+    if not r or (not r[1] and r[0] != user.id):
+        raise HTTPException(404, "run not found")
+    return r[0]
+
+
+@router.get("/runs/{run_id}/comments", response_model=list[schemas.RunCommentOut])
+def run_comments(run_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    _run_visible_to(db, run_id, user)
+    rows = db.execute(
+        text(
+            """
+            SELECT c.id::text, c.user_id::text, u.username, c.body, c.created_at
+            FROM run_comments c JOIN users u ON u.id = c.user_id
+            WHERE c.run_id = :rid
+            ORDER BY c.created_at
+            LIMIT 200
+            """
+        ),
+        {"rid": run_id},
+    ).fetchall()
+    return [
+        schemas.RunCommentOut(
+            id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id), body=r[3], created_at=r[4]
+        )
+        for r in rows
+    ]
+
+
+@router.post("/runs/{run_id}/comments", response_model=schemas.RunCommentOut)
+@limiter.limit(settings.rate_limit_default)
+def add_run_comment(request: Request, response: Response, run_id: str, payload: schemas.RunCommentIn,
+                    background: BackgroundTasks,
+                    user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    owner_id = _run_visible_to(db, run_id, user)
+    row = db.execute(
+        text(
+            "INSERT INTO run_comments (run_id, user_id, body) VALUES (:rid, :uid, :b) "
+            "RETURNING id::text, created_at"
+        ),
+        {"rid": run_id, "uid": user.id, "b": payload.body.strip()},
+    ).fetchone()
+    db.commit()
+    if owner_id != user.id:
+        snippet = payload.body.strip()[:80]
+        background.add_task(
+            notify, [owner_id], "kudos", "New comment on your run", f"{user.username}: {snippet}"
+        )
+    return schemas.RunCommentOut(
+        id=row[0], user_id=user.id, username=user.username, is_you=True,
+        body=payload.body.strip(), created_at=row[1],
     )
 
 

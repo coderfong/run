@@ -37,6 +37,7 @@ import ClubScreen from './src/screens/ClubScreen';
 import ClubJoinScreen from './src/screens/ClubJoinScreen';
 import ClubCreateScreen from './src/screens/ClubCreateScreen';
 import ClubDetailScreen from './src/screens/ClubDetailScreen';
+import ClubChatScreen from './src/screens/ClubChatScreen';
 import SeasonScreen from './src/screens/SeasonScreen';
 import AvatarStudioScreen from './src/screens/AvatarStudioScreen';
 
@@ -155,6 +156,11 @@ function ClubStack() {
         name="ClubDetail"
         component={ClubDetailScreen}
         options={{ headerShown: true, title: 'Club', ...headerLight }}
+      />
+      <ClubStackNav.Screen
+        name="ClubChat"
+        component={ClubChatScreen}
+        options={{ headerShown: true, title: 'Club chat', ...headerLight }}
       />
     </ClubStackNav.Navigator>
   );

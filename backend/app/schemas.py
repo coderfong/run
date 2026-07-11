@@ -140,6 +140,7 @@ class FeedItem(BaseModel):
     clan_color: Optional[ClanColor] = None
     kudos_count: int = 0
     kudoed: bool = False
+    comment_count: int = 0
     # Simplified geometry for the card thumbnail: the claimed land (rings) and
     # the run trail (path). Both [lon, lat]; either may be empty.
     rings: List[List[Tuple[float, float]]] = []
@@ -209,6 +210,35 @@ class RunDetail(BaseModel):
     splits: List[RunSplit] = []
     kudos_count: int = 0
     kudoed: bool = False
+    comment_count: int = 0
+
+
+# ---- run comments + club chat ---------------------------------------------
+
+class RunCommentIn(BaseModel):
+    body: str = Field(..., min_length=1, max_length=280)
+
+
+class RunCommentOut(BaseModel):
+    id: str
+    user_id: str
+    username: str
+    is_you: bool = False
+    body: str
+    created_at: datetime
+
+
+class ClanMessageIn(BaseModel):
+    body: str = Field(..., min_length=1, max_length=500)
+
+
+class ClanMessageOut(BaseModel):
+    id: str
+    user_id: Optional[str] = None
+    username: str
+    is_you: bool = False
+    body: str
+    created_at: datetime
 
 
 class PushTokenIn(BaseModel):

@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Polygon, Polyline } from 'react-native-svg';
-import { Heart } from 'lucide-react-native';
+import { Heart, MessageCircle } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { colors, radius, space, type, withAlpha } from '../theme';
@@ -122,10 +122,23 @@ export default function FeedCard({ item, navigation }) {
             </Text>
           </View>
         </Row>
-        <PressableScale onPress={kudos} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, padding: 4 }} accessibilityRole="button" accessibilityLabel="Give kudos">
-          <Heart size={18} color={kudoed ? c.stroke : colors.textDim} fill={kudoed ? c.stroke : 'transparent'} />
-          {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
-        </PressableScale>
+        <Row gap={2}>
+          <PressableScale
+            onPress={() => navigation?.navigate('RunDetail', { runId: item.id, focusComments: true })}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, padding: 4 }}
+            accessibilityRole="button"
+            accessibilityLabel="View comments"
+          >
+            <MessageCircle size={18} color={colors.textDim} />
+            {(item.comment_count || 0) > 0 ? (
+              <Text style={[type.captionMedium, { color: colors.textMuted }]}>{item.comment_count}</Text>
+            ) : null}
+          </PressableScale>
+          <PressableScale onPress={kudos} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, padding: 4 }} accessibilityRole="button" accessibilityLabel="Give kudos">
+            <Heart size={18} color={kudoed ? c.stroke : colors.textDim} fill={kudoed ? c.stroke : 'transparent'} />
+            {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
+          </PressableScale>
+        </Row>
       </Row>
 
       <RouteThumb item={item} color={c.stroke} />

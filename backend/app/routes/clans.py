@@ -618,6 +618,70 @@ def act_on_request(request: Request, response: Response, clan_id: str, req_id: s
     return {"ok": True}
 
 
+# ---- club chat -------------------------------------------------------------
+
+def _require_member(db: Session, clan_id: str, user_id: str):
+    m = _membership(db, user_id)
+    if not m or m[0] != clan_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "club members only")
+
+
+@router.get("/clans/{clan_id}/messages", response_model=list[schemas.ClanMessageOut])
+def clan_messages(
+    clan_id: str,
+    before: datetime | None = None,
+    limit: int = 50,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Latest chat messages (ascending). Pass `before` for older pages."""
+    _require_member(db, clan_id, user.id)
+    rows = db.execute(
+        text(
+            """
+            SELECT m.id::text, m.user_id::text, COALESCE(u.username, 'former member'),
+                   m.body, m.created_at
+            FROM clan_messages m LEFT JOIN users u ON u.id = m.user_id
+            WHERE m.clan_id = :cid AND (CAST(:before AS timestamp) IS NULL OR m.created_at < :before)
+            ORDER BY m.created_at DESC
+            LIMIT :lim
+            """
+        ),
+        {"cid": clan_id, "before": before, "lim": max(1, min(int(limit), 100))},
+    ).fetchall()
+    return [
+        schemas.ClanMessageOut(
+            id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id), body=r[3], created_at=r[4]
+        )
+        for r in reversed(rows)
+    ]
+
+
+@router.post("/clans/{clan_id}/messages", response_model=schemas.ClanMessageOut)
+@limiter.limit(settings.rate_limit_default)
+def send_clan_message(
+    request: Request,
+    response: Response,
+    clan_id: str,
+    payload: schemas.ClanMessageIn,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    _require_member(db, clan_id, user.id)
+    row = db.execute(
+        text(
+            "INSERT INTO clan_messages (clan_id, user_id, body) VALUES (:cid, :uid, :b) "
+            "RETURNING id::text, created_at"
+        ),
+        {"cid": clan_id, "uid": user.id, "b": payload.body.strip()},
+    ).fetchone()
+    db.commit()
+    return schemas.ClanMessageOut(
+        id=row[0], user_id=user.id, username=user.username, is_you=True,
+        body=payload.body.strip(), created_at=row[1],
+    )
+
+
 @router.get("/me/clan", response_model=schemas.MyClan)
 def my_clan(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     m = _membership(db, user.id)

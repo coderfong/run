@@ -58,6 +58,7 @@ def feed(
                    c.tag, c.color_key,
                    (SELECT COUNT(*) FROM run_kudos k WHERE k.run_id = r.id) AS kudos_count,
                    EXISTS(SELECT 1 FROM run_kudos k WHERE k.run_id = r.id AND k.user_id = :uid) AS kudoed,
+                   (SELECT COUNT(*) FROM run_comments rc WHERE rc.run_id = r.id) AS comment_count,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, 0.00004)) AS poly_wkt,
                    ST_AsText(ST_Simplify(r.path, 0.00004)) AS path_wkt
             FROM runs r
@@ -92,8 +93,9 @@ def feed(
             clan_color=schemas.ClanColor(**color_triple(r[9])) if r[9] else None,
             kudos_count=int(r[10] or 0),
             kudoed=bool(r[11]),
-            rings=_rings_from_wkt(r[12]),
-            path=_path_from_wkt(r[13]),
+            comment_count=int(r[12] or 0),
+            rings=_rings_from_wkt(r[13]),
+            path=_path_from_wkt(r[14]),
         )
         for r in rows
     ]
