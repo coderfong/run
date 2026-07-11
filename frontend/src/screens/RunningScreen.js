@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import GameMap, {
   MapPoint,
   TerritoryLayer,
@@ -24,6 +24,11 @@ import Animated, {
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import {
+  drainBackgroundPoints,
+  startBackgroundTrack,
+  stopBackgroundTrack,
+} from '../run/backgroundTrack';
 import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
 import { useSettings } from '../state/settings';
@@ -241,6 +246,9 @@ export default function RunningScreen({ navigation }) {
   const [locked, setLocked] = useState(false);
   const pausedAtRef = useRef(null);
 
+  // Mirrors isRunning for listeners that outlive renders.
+  const isRunningRef = useRef(false);
+
   useEffect(() => {
     (async () => {
       const granted = await prepareLocation();
@@ -249,10 +257,42 @@ export default function RunningScreen({ navigation }) {
     return () => {
       stopWatchingLocation();
       stopPedometer();
+      stopBackgroundTrack();
       setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
     };
   }, []);
+
+  // Screen off / app backgrounded: the foreground watcher dies but the
+  // background task keeps recording. On return, fold its buffered points
+  // into the trail so there's no straight-line gap.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active' && isRunningRef.current) mergeBackgroundPoints();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // Merge buffered background fixes into the path, keeping timestamp order
+  // (a foreground fix can land before the drain finishes) and the same
+  // jitter filter the live watcher applies.
+  async function mergeBackgroundPoints() {
+    const pts = await drainBackgroundPoints();
+    if (!pts.length || !runRef.current) return;
+    const merged = [...pathRef.current, ...pts].sort((a, b) => a.timestamp - b.timestamp);
+    const out = [];
+    for (const p of merged) {
+      const prev = out[out.length - 1];
+      if (prev && (p.timestamp === prev.timestamp || distanceMeters(prev, p) < T.minStepM)) continue;
+      out.push(p);
+    }
+    if (out.length > pathRef.current.length) {
+      pathRef.current = out;
+      setPath(out);
+      setDistance(totalDistanceMeters(out));
+      persistActiveRun(out);
+    }
+  }
 
   // Nearby claimed land (others'), so a runner sees whose turf they're crossing
   // and where there's land to steal. Refetched only when they drift ~600m.
@@ -364,6 +404,7 @@ export default function RunningScreen({ navigation }) {
     setDistance(totalDistanceMeters(saved.path));
     setElapsedMs(Date.now() - startedAtRef.current);
     setIsRunning(true);
+    isRunningRef.current = true;
     setRecording(true);
 
     tickRef.current = setInterval(() => {
@@ -371,6 +412,7 @@ export default function RunningScreen({ navigation }) {
     }, 250);
     await startWatchingLocation('high');
     await startPedometer();
+    startBackgroundTrack();
   }
 
   async function prepareLocation() {
@@ -412,6 +454,7 @@ export default function RunningScreen({ navigation }) {
       setPaused(false);
       setLocked(false);
       setIsRunning(true);
+      isRunningRef.current = true;
       setRecording(true);
       recentSpeedsRef.current = [];
       gpsModeRef.current = 'high';
@@ -423,6 +466,7 @@ export default function RunningScreen({ navigation }) {
 
       await startWatchingLocation('high');
       await startPedometer();
+      startBackgroundTrack();
     } catch (err) {
       toast.error(err.message || 'Could not start run');
     }
@@ -566,6 +610,7 @@ export default function RunningScreen({ navigation }) {
     pausedAtRef.current = Date.now();
     stopWatchingLocation();
     stopPedometer();
+    stopBackgroundTrack();
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
@@ -583,6 +628,7 @@ export default function RunningScreen({ navigation }) {
     }, 250);
     await startWatchingLocation(gpsModeRef.current);
     await startPedometer();
+    startBackgroundTrack();
     setPaused(false);
   }
 
@@ -592,11 +638,15 @@ export default function RunningScreen({ navigation }) {
     setLocked(false);
     stopWatchingLocation();
     stopPedometer();
+    await stopBackgroundTrack();
+    // fold in anything the background task recorded before we submit
+    await mergeBackgroundPoints();
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
     }
     setIsRunning(false);
+    isRunningRef.current = false;
     setRecording(false);
 
     const run = runRef.current;

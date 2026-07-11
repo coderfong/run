@@ -48,7 +48,10 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "PACER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
-          "locationAlwaysAndWhenInUsePermission": "PACER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off."
+          "locationAlwaysAndWhenInUsePermission": "PACER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-notifications",
