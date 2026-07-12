@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..clans_meta import color_triple
+from ..config import settings
 from ..database import get_db
 from ..security import current_user_optional
 
@@ -39,6 +40,7 @@ def leaderboard(
             LEFT JOIN territories t
               ON t.user_id = u.id
              AND (t.verified OR t.user_id = :viewer_id)
+             AND now() < t.created_at + make_interval(secs => GREATEST(t.strength,0.1) * :life_per * 86400)
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
             {solo_clause}
@@ -48,7 +50,8 @@ def leaderboard(
             LIMIT :limit
             """
         ),
-        {"limit": limit, "viewer_id": viewer.id if viewer else None},
+        {"limit": limit, "viewer_id": viewer.id if viewer else None,
+         "life_per": settings.territory_life_days_per_strength},
     ).fetchall()
 
     return [

@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   hero: { height: 176, borderRadius: radius.card, overflow: 'hidden' },
   heroInner: { padding: space.lg, flex: 1, justifyContent: 'space-between' },
   heroChip: {
-    alignSelf: 'flex-end',
+    alignSelf: 'flex-start',
     borderRadius: radius.sm,
     paddingHorizontal: space.md,
     paddingVertical: 8,

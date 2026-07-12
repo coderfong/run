@@ -212,6 +212,16 @@ def claim_territory(
     if not on_trail:
         raise HTTPException(422, "claim centre must be on your route")
 
+    # Sweep decayed land first: expired territories free up (and stop
+    # defending). Lifetime = strength × life_days_per_strength.
+    db.execute(
+        text(
+            "DELETE FROM territories WHERE now() >= created_at "
+            "+ make_interval(secs => GREATEST(strength, 0.1) * :life_per * 86400)"
+        ),
+        {"life_per": settings.territory_life_days_per_strength},
+    )
+
     radius = claim_radius_m(run.distance_m)
     circle = circle_polygon_wgs(payload.lat, payload.lon, radius)
 

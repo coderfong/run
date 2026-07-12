@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     # ---- contested / "changed hands" window ------------------------------
     contested_days: int = 7         # a territory claimed within N days reads as hot
 
+    # ---- territory decay -------------------------------------------------
+    # A claim's lifetime = strength × this many days, then it expires and the
+    # land frees up. Stronger claims (faster runs / stacked club land) last
+    # longer. Territories fade on the map as they approach expiry.
+    territory_life_days_per_strength: float = 4.0
+
     # ---- XP (verified runs only) ------------------------------------------
     xp_per_km: int = 10
     xp_per_claim: int = 100

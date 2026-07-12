@@ -141,7 +141,7 @@ function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
 
         <Animated.View style={lowerStyle}>
           {item.bullets ? (
-            <View style={{ gap: space.lg, marginBottom: space.xl }}>
+            <View style={styles.bulletCard}>
               {item.bullets.map(({ icon: Icon, title, body }) => (
                 <View key={title} style={styles.bullet}>
                   <View style={[styles.bulletIcon, { borderColor: item.accent }]}>
@@ -149,7 +149,7 @@ function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[type.bodyBold, { color: '#fff' }]}>{title}</Text>
-                    <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.72)', marginTop: 2 }]}>{body}</Text>
+                    <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.82)', marginTop: 2 }]}>{body}</Text>
                   </View>
                 </View>
               ))}
@@ -274,10 +274,20 @@ const styles = StyleSheet.create({
   headline: {
     ...type.hero,
     color: '#ffffff',
-    lineHeight: 46,
+    lineHeight: 50,
+    paddingVertical: 2,
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 8,
+  },
+  bulletCard: {
+    gap: space.lg,
+    marginBottom: space.xl,
+    backgroundColor: 'rgba(11,13,16,0.72)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    padding: space.lg,
   },
   body: {
     ...type.body,

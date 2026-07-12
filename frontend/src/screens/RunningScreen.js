@@ -361,7 +361,7 @@ export default function RunningScreen({ navigation }) {
               type: 'Feature',
               id: `${t.id}-${ri}`,
               geometry: { type: 'Polygon', coordinates: [coords] },
-              properties: { fillColor: fill, strokeColor: fill, fillOpacity: mine ? 0.45 : 0.3 },
+              properties: { fillColor: fill, strokeColor: fill, fillOpacity: (mine ? 0.45 : 0.3) * (0.35 + 0.65 * (t.freshness ?? 1)) },
             });
           });
           // owner portrait at the territory centre (own uses fresh local avatar)

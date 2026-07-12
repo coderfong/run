@@ -22,7 +22,6 @@ import { useAuth } from '../auth/AuthContext';
 import { brand, colors, radius, space, type } from '../theme';
 import { Screen, Button } from '../components/ui';
 import { Reveal } from '../ui/motion';
-import LoopMark from '../components/LoopMark';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
 
@@ -74,9 +73,6 @@ function Welcome({ onSignIn, onCreate }) {
           </Reveal>
           <Reveal delay={120} style={{ alignItems: 'center' }}>
             <Text style={styles.tagline}>{brand.tagline}</Text>
-          </Reveal>
-          <Reveal delay={240} style={{ marginTop: space.md, alignItems: 'center' }}>
-            <LoopMark size={26} />
           </Reveal>
         </View>
 
@@ -240,6 +236,7 @@ const styles = StyleSheet.create({
   wordmark: {
     ...type.hero,
     fontSize: 56,
+    lineHeight: 70,
     color: '#ffffff',
     transform: [{ skewX: '-6deg' }],
     textShadowColor: 'rgba(0,0,0,0.7)',

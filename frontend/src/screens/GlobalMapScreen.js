@@ -63,8 +63,9 @@ function toFeatures(territories, userId) {
           clanTag: t.clan_tag || 'Solo',
           fillColor: c.stroke,
           strokeColor: c.stroke,
-          // Constitution: territory fill ~35%; your own a touch higher.
-          fillOpacity: mine ? 0.45 : 0.35,
+          // Territory fill ~35% (own a touch higher), faded by decay so
+          // land visibly weakens as it nears expiry.
+          fillOpacity: (mine ? 0.45 : 0.35) * (0.35 + 0.65 * (t.freshness ?? 1)),
           contested: !!t.contested,
         },
       });

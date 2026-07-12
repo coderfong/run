@@ -75,11 +75,14 @@ def map_polygons(
                    COALESCE((SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = t.clan_id), 1) AS defenders,
                    t.strength,
                    u.avatar,
+                   GREATEST(0, LEAST(1, 1 - EXTRACT(EPOCH FROM (now() - t.created_at))
+                       / (GREATEST(t.strength, 0.1) * :life_per * 86400))) AS freshness,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
             FROM territories t
             JOIN users u ON u.id = t.user_id
             LEFT JOIN clans c ON c.id = t.clan_id
             WHERE (t.verified OR t.user_id = :viewer_id)
+              AND now() < t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
               {bbox_clause}
             ORDER BY t.area_m2 DESC
             LIMIT :limit
@@ -94,11 +97,12 @@ def map_polygons(
             "limit": eff_limit,
             "viewer_id": viewer_id,
             "contested_since": contested_since,
+            "life_per": settings.territory_life_days_per_strength,
         },
     ).fetchall()
 
     out = []
-    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, defenders, strength, avatar, wkt in rows:
+    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, defenders, strength, avatar, freshness, wkt in rows:
         geom = shapely_wkt.loads(wkt)
         rings = geometry_to_rings(geom)  # largest-first
         if not rings:
@@ -118,6 +122,7 @@ def map_polygons(
                 defenders=max(1, int(defenders or 1)),
                 strength=float(strength or 1.0),
                 avatar=avatar,
+                freshness=float(freshness if freshness is not None else 1.0),
             )
         )
 

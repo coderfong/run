@@ -82,6 +82,9 @@ class TerritoryOut(BaseModel):
     # The owner's equipped cosmetics, so their character portrait can render
     # in the middle of the territory on the map (null → no portrait).
     avatar: Optional[dict] = None
+    # 1.0 = freshly claimed, 0.0 = about to expire. Land decays over
+    # strength × N days; the client fades the fill as this drops.
+    freshness: float = 1.0
 
 
 class RunResultOut(BaseModel):

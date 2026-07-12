@@ -6,13 +6,13 @@ import { darkColors as colors } from './dark';
 
 // ---------------------------------------------------------------------------
 // Fonts (keys must match the families passed to useFonts in App.js)
-// PASER: Konkhmer Sleokchher for the uppercase heading font (wordmark +
-// hero/display/title), Space Grotesk for stats (tabular figures), Inter
-// for everything else.
+// PASER: Poppins Black (900) is the heading font (wordmark + hero/display/
+// title), Space Grotesk for stats (tabular figures), Inter for everything
+// else.
 // ---------------------------------------------------------------------------
 
 export const fonts = {
-  hero: 'KonkhmerSleokchher_400Regular',
+  hero: 'Poppins_900Black',
   display: 'SpaceGrotesk_700Bold',
   displayMedium: 'SpaceGrotesk_500Medium',
   body: 'Inter_400Regular',
@@ -80,9 +80,11 @@ const TABULAR = ['tabular-nums'];
 
 export const type = {
   // Anton hero styles — condensed athletic caps (PACER headlines/wordmark).
-  hero: { fontFamily: fonts.hero, fontSize: 40, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.text },
-  display: { fontFamily: fonts.hero, fontSize: 32, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.text },
-  title: { fontFamily: fonts.hero, fontSize: 22, letterSpacing: 0.5, textTransform: 'uppercase', color: colors.text },
+  // lineHeight ~1.3× the size — Poppins Black is tall and clips at tighter
+  // leading (the onboarding headline was being cropped).
+  hero: { fontFamily: fonts.hero, fontSize: 40, lineHeight: 52, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.text },
+  display: { fontFamily: fonts.hero, fontSize: 30, lineHeight: 40, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.text },
+  title: { fontFamily: fonts.hero, fontSize: 21, lineHeight: 28, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.text },
   heading: { fontFamily: fonts.display, fontSize: 18, color: colors.text },
 
   statHero: { fontFamily: fonts.display, fontSize: 44, letterSpacing: -1, fontVariant: TABULAR, color: colors.text },

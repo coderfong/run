@@ -191,16 +191,11 @@ export default function ProfileScreen({ navigation }) {
       <Reveal delay={150}>
       <SectionHeader
         title="Running streak"
-        action={stats?.current_streak_weeks ? `${stats.current_streak_weeks}-wk streak` : undefined}
+        action={(stats?.current_streak_weeks || 0) >= 2 ? `${stats.current_streak_weeks}-week streak` : undefined}
         style={{ marginTop: space.xl, marginBottom: space.md }}
       />
       <Card>
         <StreakCalendar runDays={runDays} accent={accent} />
-        <Text style={[type.caption, { marginTop: space.md, color: colors.textDim }]}>
-          {runDays.length
-            ? `${runDays.length} run day${runDays.length === 1 ? '' : 's'} in the last 16 weeks · keep it going.`
-            : 'Your run days light up here. Go claim one today.'}
-        </Text>
       </Card>
       </Reveal>
 

@@ -227,8 +227,9 @@ def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool
     season = _current_season(db)
     if season:
         area = db.execute(
-            text("SELECT COALESCE(SUM(area_m2),0) FROM territories WHERE clan_id = :cid AND verified"),
-            {"cid": clan_id},
+            text("SELECT COALESCE(SUM(area_m2),0) FROM territories WHERE clan_id = :cid AND verified "
+                 "AND now() < created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400)"),
+            {"cid": clan_id, "life_per": settings.territory_life_days_per_strength},
         ).scalar()
         db.execute(
             text(
@@ -705,14 +706,17 @@ def recompute_season(db: Session = Depends(get_db)):
             INSERT INTO clan_season_stats (season_id, clan_id, area_current, area_peak)
             SELECT :sid, c.id, COALESCE(a.area, 0), COALESCE(a.area, 0)
             FROM clans c
-            LEFT JOIN (SELECT clan_id, SUM(area_m2) area FROM territories WHERE verified AND clan_id IS NOT NULL GROUP BY clan_id) a
+            LEFT JOIN (SELECT clan_id, SUM(area_m2) area FROM territories
+                       WHERE verified AND clan_id IS NOT NULL
+                         AND now() < created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400)
+                       GROUP BY clan_id) a
               ON a.clan_id = c.id
             ON CONFLICT (season_id, clan_id)
             DO UPDATE SET area_current = EXCLUDED.area_current,
                           area_peak = GREATEST(clan_season_stats.area_peak, EXCLUDED.area_current)
             """
         ),
-        {"sid": season[0]},
+        {"sid": season[0], "life_per": settings.territory_life_days_per_strength},
     )
     # League tiers by area-per-member, split into quintiles.
     rows = db.execute(

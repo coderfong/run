@@ -206,6 +206,8 @@ def main():
     st, mp_av = call("GET", "/map-polygons", token=tb)
     owned = next((t for t in mp_av["territories"] if t["user_id"] == ua), None)
     assert owned and owned.get("avatar") and owned["avatar"]["hair"] == "topknot", owned
+    # fresh claims carry high freshness (decay signal)
+    assert owned.get("freshness", 0) > 0.9, f"fresh territory should be ~1.0: {owned.get('freshness')}"
     # end-run returns xp for the distance covered
     _, rr = call("POST", "/start-run", {}, token=tb)
     st, endx = call("POST", "/end-run", {"run_id": rr["run_id"], "points": loop(1.360, 103.80, r=140)}, token=tb)

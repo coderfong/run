@@ -1,81 +1,117 @@
-// StreakCalendar — a GitHub-style contribution grid of the last N weeks.
-// Columns are weeks (oldest → newest, current week rightmost); rows are days
-// Mon→Sun. Days the user ran are filled in the accent colour; today gets a
-// ring. Pure presentational — feed it an array of 'YYYY-MM-DD' run days.
+// StreakCalendar — a real month calendar. Shows one month at a time with
+// day numbers; days you ran are filled in the accent colour, today gets a
+// ring. Arrows page between months. Feed it 'YYYY-MM-DD' run days.
 
-import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 
-import { colors, radius, space, type, withAlpha } from '../theme';
+import { colors, radius, space, type } from '../theme';
 
-const DAY_LABELS = ['M', '', 'W', '', 'F', '', 'S'];
-const WEEKS = 16;
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December'];
 
-function isoDay(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function iso(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 export default function StreakCalendar({ runDays = [], accent = colors.primary }) {
-  const { weeks, todayIso } = useMemo(() => {
-    const set = new Set(runDays);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // Monday of the current week.
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-    const cols = [];
-    for (let w = WEEKS - 1; w >= 0; w--) {
-      const col = [];
-      for (let d = 0; d < 7; d++) {
-        const day = new Date(monday);
-        day.setDate(monday.getDate() - w * 7 + d);
-        const iso = isoDay(day);
-        col.push({ iso, ran: set.has(iso), future: day > today });
-      }
-      cols.push(col);
-    }
-    return { weeks: cols, todayIso: isoDay(today) };
-  }, [runDays]);
+  const runSet = useMemo(() => new Set(runDays), [runDays]);
+  const today = new Date();
+  const [offset, setOffset] = useState(0); // months back from the current one
+
+  const view = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayIso = iso(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // Grid cells: leading blanks then 1..daysInMonth.
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+  const ranThisMonth = cells.filter((d) => d && runSet.has(iso(year, month, d))).length;
 
   return (
-    <View style={styles.wrap}>
-      <View style={styles.labels}>
-        {DAY_LABELS.map((l, i) => (
-          <Text key={i} style={styles.dayLabel}>{l}</Text>
+    <View>
+      <View style={styles.navRow}>
+        <TouchableOpacity onPress={() => setOffset((o) => o - 1)} hitSlop={10} accessibilityLabel="Previous month">
+          <ChevronLeft size={20} color={colors.textMuted} />
+        </TouchableOpacity>
+        <Text style={type.bodyBold}>{MONTHS[month]} {year}</Text>
+        <TouchableOpacity
+          onPress={() => setOffset((o) => Math.min(0, o + 1))}
+          hitSlop={10}
+          disabled={offset >= 0}
+          accessibilityLabel="Next month"
+        >
+          <ChevronRight size={20} color={offset >= 0 ? colors.textDim : colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.weekRow}>
+        {WEEKDAYS.map((w, i) => (
+          <Text key={i} style={styles.weekLabel}>{w}</Text>
         ))}
       </View>
+
       <View style={styles.grid}>
-        {weeks.map((col, ci) => (
-          <View key={ci} style={styles.col}>
-            {col.map((cell) => (
+        {cells.map((d, i) => {
+          if (!d) return <View key={`b${i}`} style={styles.cell} />;
+          const cellIso = iso(year, month, d);
+          const ran = runSet.has(cellIso);
+          const isToday = cellIso === todayIso;
+          return (
+            <View key={cellIso} style={styles.cell}>
               <View
-                key={cell.iso}
                 style={[
-                  styles.cell,
-                  cell.future
-                    ? { backgroundColor: 'transparent' }
-                    : cell.ran
-                    ? { backgroundColor: accent }
-                    : { backgroundColor: colors.bgElevated },
-                  cell.iso === todayIso && { borderWidth: 1.5, borderColor: cell.ran ? '#fff' : accent },
+                  styles.day,
+                  ran && { backgroundColor: accent },
+                  isToday && { borderWidth: 1.5, borderColor: ran ? '#fff' : accent },
                 ]}
-              />
-            ))}
-          </View>
-        ))}
+              >
+                <Text
+                  style={[
+                    type.caption,
+                    { color: ran ? '#0b0d10' : colors.textMuted, fontVariant: ['tabular-nums'] },
+                  ]}
+                >
+                  {d}
+                </Text>
+              </View>
+            </View>
+          );
+        })}
       </View>
+
+      <Text style={[type.caption, { color: colors.textDim, marginTop: space.sm }]}>
+        {ranThisMonth
+          ? `${ranThisMonth} run day${ranThisMonth === 1 ? '' : 's'} in ${MONTHS[month]}.`
+          : `No runs logged in ${MONTHS[month]}.`}
+      </Text>
     </View>
   );
 }
 
-const CELL = 12;
-const GAP = 3;
-
 const styles = StyleSheet.create({
-  wrap: { flexDirection: 'row', gap: 6 },
-  labels: { justifyContent: 'space-between', paddingVertical: 0 },
-  dayLabel: { ...type.caption, fontSize: 9, lineHeight: CELL + GAP, color: colors.textDim, height: CELL + GAP },
-  grid: { flex: 1, flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'space-between' },
-  col: { gap: GAP },
-  cell: { width: CELL, height: CELL, borderRadius: 3 },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: space.md,
+  },
+  weekRow: { flexDirection: 'row' },
+  weekLabel: { ...type.caption, color: colors.textDim, flex: 1, textAlign: 'center', marginBottom: 4 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  day: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

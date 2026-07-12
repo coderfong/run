@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..config import settings
 from ..database import get_db
 from ..security import current_user
 
@@ -38,9 +39,10 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
     terr = db.execute(
         text(
             "SELECT COALESCE(SUM(area_m2),0), COUNT(*), COALESCE(MAX(area_m2),0) "
-            "FROM territories WHERE user_id = :uid"
+            "FROM territories WHERE user_id = :uid "
+            "AND now() < created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400)"
         ),
-        {"uid": user.id},
+        {"uid": user.id, "life_per": settings.territory_life_days_per_strength},
     ).fetchone()
     runs = db.execute(
         text(
