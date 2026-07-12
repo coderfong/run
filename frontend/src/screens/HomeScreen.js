@@ -118,7 +118,7 @@ function HeroCarousel({ navigation }) {
           title="CLUBS"
           sub="Who holds the most land"
           chip="View clubs"
-          chipColor={brand.pink}
+          chipColor={brand.purple}
           onPress={() => navigation.navigate('Season', { mode: 'clans' })}
         />
         <PhotoCard
@@ -272,13 +272,14 @@ const styles = StyleSheet.create({
   bell: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   bellDot: { position: 'absolute', top: 7, right: 8, width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, borderColor: colors.bg },
 
-  hero: { height: 150, borderRadius: radius.card, overflow: 'hidden' },
+  hero: { height: 176, borderRadius: radius.card, overflow: 'hidden' },
   heroInner: { padding: space.lg, flex: 1, justifyContent: 'space-between' },
   heroChip: {
-    alignSelf: 'flex-start',
+    alignSelf: 'flex-end',
     borderRadius: radius.sm,
     paddingHorizontal: space.md,
-    paddingVertical: 7,
+    paddingVertical: 8,
+    marginTop: space.md,
   },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: space.md },
   dot: { height: 6, borderRadius: 3 },

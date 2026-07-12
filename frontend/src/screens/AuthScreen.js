@@ -54,11 +54,18 @@ function Welcome({ onSignIn, onCreate }) {
       style={styles.hero}
       resizeMode="cover"
     >
-      {/* scrim so type + CTAs always read */}
+      {/* scrim so type + CTAs always read: light overall tint + strong dark
+          bands top (wordmark) and bottom (buttons) */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(11,13,16,0.34)' }]} />
       <LinearGradient
-        colors={['rgba(11,13,16,0.55)', 'rgba(11,13,16,0.15)', 'rgba(11,13,16,0.92)']}
+        colors={['rgba(11,13,16,0.9)', 'rgba(11,13,16,0.2)', 'rgba(11,13,16,0)']}
+        locations={[0, 0.5, 1]}
+        style={[StyleSheet.absoluteFill, { bottom: '55%' }]}
+      />
+      <LinearGradient
+        colors={['rgba(11,13,16,0)', 'rgba(11,13,16,0.6)', 'rgba(11,13,16,0.96)']}
         locations={[0, 0.45, 1]}
-        style={StyleSheet.absoluteFill}
+        style={[StyleSheet.absoluteFill, { top: '42%' }]}
       />
       <View style={[styles.heroInner, { paddingTop: insets.top + space.huge, paddingBottom: insets.bottom + space.xl }]}>
         <View style={styles.wordmarkWrap}>
@@ -146,7 +153,7 @@ export default function AuthScreen() {
           <Text style={[type.body, { color: colors.textMuted, marginBottom: space.xl, textAlign: 'center' }]}>
             {isSignup
               ? 'Pick a username — your runs will claim land under it.'
-              : 'Sign in to keep conquering.'}
+              : 'Sign in to keep claiming.'}
           </Text>
         </Reveal>
 
@@ -235,12 +242,18 @@ const styles = StyleSheet.create({
     fontSize: 56,
     color: '#ffffff',
     transform: [{ skewX: '-6deg' }],
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
   },
   tagline: {
     ...type.labelSm,
     color: brand.pink,
     letterSpacing: 3,
     marginTop: space.sm,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   legal: { ...type.caption, color: colors.textMuted, textAlign: 'center', marginTop: space.xs },
 

@@ -26,7 +26,9 @@ export default function Button({
   const textStyle = size === 'sm' ? type.buttonSm : type.button;
 
   let bg = accent;
-  let fg = '#ffffff';
+  // Primary fills with `accent` (white by default) — so its text must be the
+  // dark ink, not white-on-white.
+  let fg = accent === colors.primary ? colors.primaryInk : '#ffffff';
   let border = null;
   if (variant === 'secondary') {
     bg = colors.cardAlt;

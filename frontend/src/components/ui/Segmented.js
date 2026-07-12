@@ -16,6 +16,7 @@ export default function Segmented({ options, value, onChange, style }) {
           backgroundColor: colors.bgElevated,
           borderRadius: radius.pill,
           padding: 3,
+          gap: 4,
         },
         style,
       ]}

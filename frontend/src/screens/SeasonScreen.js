@@ -39,12 +39,12 @@ export default function SeasonScreen({ navigation, route }) {
     <View style={{ marginBottom: space.md }}>
       <Text style={type.display}>Season standings</Text>
       <Text style={[type.body, { color: colors.textMuted, marginTop: 2, marginBottom: space.lg }]}>
-        {mode === 'clans' ? 'Clubs ranked by land conquered.' : 'Solo runners ranked by land conquered.'}
+        {mode === 'clans' ? 'Clubs ranked by land claimed.' : 'Solo runners ranked by land claimed.'}
       </Text>
       <Segmented
         options={[{ key: 'clans', label: 'Clubs' }, { key: 'solo', label: 'Solo' }]}
         value={mode}
-        onChange={setMode}
+        onChange={(m) => { setRows(null); setMode(m); }}
       />
     </View>
   );
@@ -109,7 +109,7 @@ export default function SeasonScreen({ navigation, route }) {
               <Text style={type.caption}>{item.territory_count} territories</Text>
             </View>
           </Row>
-          <Amount value={Math.round(item.total_area_m2).toLocaleString()} unit="m²" color={c.stroke} />
+          <Amount value={km2(item.total_area_m2)} unit="km²" color={c.stroke} />
         </Row>
       </Card>
     );

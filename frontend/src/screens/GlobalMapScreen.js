@@ -200,7 +200,7 @@ export default function GlobalMapScreen() {
   // avatars come from the API; the viewer's own uses the freshest local
   // loadout. Capped + shown only when zoomed in enough to avoid clutter/perf.
   const landPortraits = useMemo(() => {
-    if ((zoom || 0) < 13) return [];
+    if ((zoom || 0) < 11.5) return [];
     return (list || [])
       .map((t) => ({
         id: t.id,

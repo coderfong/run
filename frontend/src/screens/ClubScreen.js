@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { MessageCircle, UserPlus } from 'lucide-react-native';
+import { ArrowRight, MessageCircle, UserPlus } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -54,7 +54,7 @@ function Directory({ navigation }) {
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
       <Text style={[type.display, { marginTop: space.sm }]}>Clubs</Text>
       <Text style={[type.body, { color: colors.textMuted, marginTop: 4, marginBottom: space.lg }]}>
-        Solo land is grey. Club land conquers.
+        Solo land is grey. Club land claims.
       </Text>
 
       <Button title="Create a club" variant="gradient" icon={<UserPlus size={18} color="#fff" />} onPress={() => navigation.navigate('ClubCreate')} />
@@ -69,7 +69,7 @@ function Directory({ navigation }) {
           placeholderTextColor={colors.textDim}
           autoCapitalize="none"
         />
-        <Button title="Join" size="sm" full={false} onPress={joinCode} style={{ height: 48, justifyContent: 'center' }} />
+        <Button title="Join" variant="gradient" size="sm" full={false} onPress={joinCode} icon={<ArrowRight size={16} color="#fff" />} style={{ height: 48, justifyContent: 'center' }} />
       </View>
 
       <SectionHeader title="Find a club" style={{ marginTop: space.xl, marginBottom: space.md }} />

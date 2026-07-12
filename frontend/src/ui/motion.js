@@ -60,18 +60,18 @@ export function MotionProvider({ children }) {
 }
 
 // ---------------------------------------------------------------------------
-// Reveal — the standard entrance for screen elements: a soft fade + drift.
-// Wrap anything; stagger with `delay`. Renders statically under Reduce
-// Motion. from: 'down' (drifts down into place) | 'up' | 'none'.
+// Reveal — the standard entrance for screen elements: a clean fade in (no
+// bounce). Wrap anything; stagger with `delay`. Renders statically under
+// Reduce Motion. `from` kept for API compatibility; all variants now fade.
 // ---------------------------------------------------------------------------
 
-export function Reveal({ delay = 0, from = 'down', duration = 320, children, style, ...rest }) {
+export function Reveal({ delay = 0, from = 'down', duration = 340, children, style, ...rest }) {
   const reduced = useReduceMotion();
   const anim =
     from === 'up' ? FadeInUp : from === 'none' ? FadeIn : FadeInDown;
   return (
     <Animated.View
-      entering={reduced ? undefined : anim.delay(delay).duration(duration).springify().damping(18)}
+      entering={reduced ? undefined : anim.delay(delay).duration(duration).easing(Easing.out(Easing.quad))}
       style={style}
       {...rest}
     >

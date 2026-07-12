@@ -134,7 +134,7 @@ export default function RunDetailScreen({ route }) {
         <StatValue size="md" label="Distance" value={km(d.distance_m)} unit="km" />
         <StatValue size="md" label="Pace" value={fmtPace(d.distance_m, d.duration_s).split(' ')[0]} unit="/km" />
         <StatValue size="md" label="Time" value={fmtDuration(d.duration_s)} />
-        <StatValue size="md" label={d.closed_loop ? 'Claimed' : 'No loop'} value={d.closed_loop ? Math.round(d.area_m2).toLocaleString() : '—'} unit={d.closed_loop ? 'm²' : ''} color={d.closed_loop ? c.stroke : colors.textDim} />
+        <StatValue size="md" label={d.closed_loop ? 'Claimed' : 'No claim'} value={d.closed_loop ? (d.area_m2 / 1e6).toFixed(d.area_m2 >= 1e5 ? 2 : 3) : '—'} unit={d.closed_loop ? 'km²' : ''} color={d.closed_loop ? c.stroke : colors.textDim} />
       </Row>
 
       {/* splits */}
