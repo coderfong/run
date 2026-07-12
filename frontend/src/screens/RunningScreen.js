@@ -110,6 +110,22 @@ function formatArea(m2) {
   return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
 }
 
+// Area-weighted centroid of a [lon,lat] ring → {latitude, longitude}. Where a
+// territory's owner portrait sits on the run map.
+function ringCentroidLL(ring) {
+  if (!ring || ring.length < 3) return null;
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x0, y0] = ring[i];
+    const [x1, y1] = ring[(i + 1) % ring.length];
+    const cr = x0 * y1 - x1 * y0;
+    a += cr; cx += (x0 + x1) * cr; cy += (y0 + y1) * cr;
+  }
+  if (Math.abs(a) < 1e-12) return { latitude: ring[0][1], longitude: ring[0][0] };
+  a *= 0.5;
+  return { latitude: cy / (6 * a), longitude: cx / (6 * a) };
+}
+
 // GPS quality chip (thresholds in theme.runTuning).
 function gpsColor(accuracyM) {
   if (accuracyM == null) return darkColors.textDim;
@@ -309,6 +325,7 @@ export default function RunningScreen({ navigation }) {
   // Nearby claimed land (others'), so a runner sees whose turf they're crossing
   // and where there's land to steal. Refetched only when they drift ~600m.
   const [board, setBoard] = useState(null);
+  const [boardPortraits, setBoardPortraits] = useState([]);
   const boardCenterRef = useRef(null);
 
   useEffect(() => {
@@ -327,13 +344,15 @@ export default function RunningScreen({ navigation }) {
       .mapPolygons(bbox, 16)
       .then((data) => {
         const feats = [];
+        const portraits = [];
         (data.territories || []).forEach((t) => {
           // Show ALL claimed land around the runner, including their own
           // (their earlier claims), so the board matches the global map.
           const mine = t.user_id === user.id;
           const col = t.clan_color || NEUTRAL;
           const fill = mine ? accent : col.stroke;
-          (t.rings?.length ? t.rings : [t.polygon]).forEach((ring, ri) => {
+          const rings = t.rings?.length ? t.rings : [t.polygon];
+          rings.forEach((ring, ri) => {
             if (!ring || ring.length < 3) return;
             const coords = ring.map(([lon, lat]) => [lon, lat]);
             const f = coords[0], l = coords[coords.length - 1];
@@ -345,11 +364,16 @@ export default function RunningScreen({ navigation }) {
               properties: { fillColor: fill, strokeColor: fill, fillOpacity: mine ? 0.45 : 0.3 },
             });
           });
+          // owner portrait at the territory centre (own uses fresh local avatar)
+          const av = mine ? equipped : t.avatar;
+          const at = ringCentroidLL(rings[0]);
+          if (av && at) portraits.push({ id: t.id, at, avatar: av, mine, ring: fill, area: t.area_m2 || 0 });
         });
         setBoard({ type: 'FeatureCollection', features: feats });
+        setBoardPortraits(portraits.sort((a, b) => b.area - a.area).slice(0, 24));
       })
       .catch(() => {});
-  }, [currentLocation, user.id, accent]);
+  }, [currentLocation, user.id, accent, equipped]);
 
   async function startPedometer() {
     stepCountRef.current = 0;
@@ -829,6 +853,13 @@ export default function RunningScreen({ navigation }) {
       <GameMap ref={mapRef} theme="dark" style={styles.map} initialZoom={16}>
         {/* others' claimed land around you — the turf you're running through */}
         {board && <TerritoryLayer id="run-board" featureCollection={board} dark />}
+
+        {/* owner portrait in the middle of each nearby territory */}
+        {boardPortraits.map((m) => (
+          <UserMarker key={m.id} point={m.at}>
+            <CharacterBust equipped={m.avatar} size={m.mine ? 34 : 30} ring={m.mine ? accent : m.ring} bg="rgba(21,24,29,0.9)" />
+          </UserMarker>
+        ))}
 
         {/* the signature: the route glows in the colour picked in Settings
             (defaults to the club colour) — no start↔runner preview line */}

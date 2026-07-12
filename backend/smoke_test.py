@@ -202,6 +202,10 @@ def main():
     assert mine and mine["avatar"] and mine["avatar"]["hair"] == "topknot", mine
     st, days = call("GET", "/me/run-days", token=ta)
     assert st == 200 and len(days["days"]) >= 1, days
+    # the owner's avatar rides along on map-polygons so portraits render on the map
+    st, mp_av = call("GET", "/map-polygons", token=tb)
+    owned = next((t for t in mp_av["territories"] if t["user_id"] == ua), None)
+    assert owned and owned.get("avatar") and owned["avatar"]["hair"] == "topknot", owned
     # end-run returns xp for the distance covered
     _, rr = call("POST", "/start-run", {}, token=tb)
     st, endx = call("POST", "/end-run", {"run_id": rr["run_id"], "points": loop(1.360, 103.80, r=140)}, token=tb)

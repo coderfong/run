@@ -196,15 +196,24 @@ export default function GlobalMapScreen() {
     }
   }, [locState, list, user.id]);
 
-  // Portraits pinned to the centre of the player's own territories.
-  const myLand = useMemo(
-    () =>
-      (list || [])
-        .filter((t) => t.user_id === user.id)
-        .map((t) => ({ id: t.id, at: ringCentroid(t) }))
-        .filter((m) => m.at),
-    [list, user.id]
-  );
+  // Owner portraits pinned to the centre of EVERY territory in view. Others'
+  // avatars come from the API; the viewer's own uses the freshest local
+  // loadout. Capped + shown only when zoomed in enough to avoid clutter/perf.
+  const landPortraits = useMemo(() => {
+    if ((zoom || 0) < 13) return [];
+    return (list || [])
+      .map((t) => ({
+        id: t.id,
+        mine: t.user_id === user.id,
+        avatar: t.user_id === user.id ? equipped : t.avatar,
+        ring: (t.clan_color || NEUTRAL).stroke,
+        area: t.area_m2 || 0,
+        at: ringCentroid(t),
+      }))
+      .filter((m) => m.at && m.avatar)
+      .sort((a, b) => b.area - a.area)
+      .slice(0, 40);
+  }, [list, user.id, equipped, zoom]);
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
@@ -257,10 +266,10 @@ export default function GlobalMapScreen() {
       <GameMap ref={mapRef} theme="dark" onIdle={onIdle} onPress={() => setSelected(null)}>
         <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} />
         {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
-        {/* owner portrait in the middle of each of the player's territories */}
-        {myLand.map((m) => (
+        {/* owner portrait in the middle of every territory in view */}
+        {landPortraits.map((m) => (
           <UserMarker key={m.id} point={m.at}>
-            <CharacterBust equipped={equipped} size={34} ring={accent} bg={colors.card} />
+            <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={colors.card} />
           </UserMarker>
         ))}
         {/* the player's location — their character portrait, not a dot */}

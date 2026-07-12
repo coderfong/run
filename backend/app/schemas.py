@@ -79,6 +79,9 @@ class TerritoryOut(BaseModel):
     # this land only succeed when the attacker's claim strength beats the
     # total defense (this + overlapping club land).
     strength: float = 1.0
+    # The owner's equipped cosmetics, so their character portrait can render
+    # in the middle of the territory on the map (null → no portrait).
+    avatar: Optional[dict] = None
 
 
 class RunResultOut(BaseModel):

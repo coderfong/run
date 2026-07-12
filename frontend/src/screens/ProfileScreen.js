@@ -37,9 +37,8 @@ const NOTIF_ROWS = [
 ];
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
-// Hosted on GitHub Pages (docs/privacy.html on the run repo). Swap for a
-// pacerrun.app URL once that domain is live.
-const PRIVACY_POLICY_URL = 'https://coderfong.github.io/run/privacy.html';
+// Hosted on the repurposed bido-frontend site (Next.js /privacy route).
+const PRIVACY_POLICY_URL = 'https://bido.live/privacy';
 
 const km = (m) => (m / 1000).toFixed(1);
 const km2 = (m2) => (m2 / 1e6).toFixed(2);

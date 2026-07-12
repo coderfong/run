@@ -48,9 +48,9 @@ taking ground.
 run,running,run tracker,gps,fitness,territory,map,club,run club,game,streak,cardio,jog,workout
 ```
 
-**Support URL:** `https://coderfong.github.io/run/privacy.html` (or a real support page)
+**Support URL:** `https://bido.live/privacy` (or a real support page)
 **Marketing URL:** *(optional)*
-**Privacy Policy URL:** `https://coderfong.github.io/run/privacy.html`
+**Privacy Policy URL:** `https://bido.live/privacy`
 
 **Category:** Primary **Health & Fitness**, Secondary **Games**.
 
