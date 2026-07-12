@@ -25,7 +25,7 @@ const TROPHIES = [
   { key: 'first_claim', label: 'First claim', icon: Flame, earned: (s) => (s.territory_count || 0) >= 1 },
   { key: 'big_claim', label: '0.5 km² claim', icon: Trophy, earned: (s) => (s.biggest_claim_m2 || 0) >= 500000 },
   { key: 'ten_zones', label: '10 zones', icon: Medal, earned: (s) => (s.territory_count || 0) >= 10 },
-  { key: 'streak4', label: '4-week streak', icon: Award, earned: (s) => (s.current_streak_weeks || 0) >= 4 },
+  { key: 'streak7', label: '7-day streak', icon: Award, earned: (s) => (s.current_streak_days || 0) >= 7 },
 ];
 
 const NOTIF_ROWS = [
@@ -191,7 +191,7 @@ export default function ProfileScreen({ navigation }) {
       <Reveal delay={150}>
       <SectionHeader
         title="Running streak"
-        action={(stats?.current_streak_weeks || 0) >= 2 ? `${stats.current_streak_weeks}-week streak` : undefined}
+        action={(stats?.current_streak_days || 0) >= 2 ? `${stats.current_streak_days}-day streak 🔥` : undefined}
         style={{ marginTop: space.xl, marginBottom: space.md }}
       />
       <Card>

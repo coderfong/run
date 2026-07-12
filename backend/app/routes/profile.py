@@ -15,6 +15,23 @@ from ..security import current_user
 router = APIRouter(tags=["users"])
 
 
+def _streak_days(run_dates: List) -> int:
+    """Consecutive calendar days (UTC) with >= 1 run, ending today or
+    yesterday (so it doesn't break until a full day is missed)."""
+    if not run_dates:
+        return 0
+    have = set(run_dates)
+    today = datetime.now(timezone.utc).date()
+    if today not in have and (today - timedelta(days=1)) not in have:
+        return 0
+    cursor = today if today in have else today - timedelta(days=1)
+    streak = 0
+    while cursor in have:
+        streak += 1
+        cursor = cursor - timedelta(days=1)
+    return streak
+
+
 def _streak_weeks(week_starts: List[datetime]) -> int:
     """Consecutive ISO weeks (ending this week or last) with >= 1 run."""
     if not week_starts:
@@ -58,6 +75,13 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
         ),
         {"uid": user.id},
     ).fetchall()
+    day_rows = db.execute(
+        text(
+            "SELECT DISTINCT ended_at::date AS d "
+            "FROM runs WHERE user_id = :uid AND ended_at IS NOT NULL ORDER BY d DESC"
+        ),
+        {"uid": user.id},
+    ).fetchall()
 
     xp = int(
         db.execute(text("SELECT COALESCE(xp, 0) FROM users WHERE id = :uid"), {"uid": user.id}).scalar() or 0
@@ -70,6 +94,7 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
         runs_count=int(runs[0]),
         career_distance_m=float(runs[1]),
         current_streak_weeks=_streak_weeks([w[0] for w in weeks if w[0]]),
+        current_streak_days=_streak_days([d[0] for d in day_rows if d[0]]),
         xp=xp,
         level=level,
         next_level_xp=100 * (level + 1) ** 2,

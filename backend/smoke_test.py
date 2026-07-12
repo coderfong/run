@@ -202,6 +202,8 @@ def main():
     assert mine and mine["avatar"] and mine["avatar"]["hair"] == "topknot", mine
     st, days = call("GET", "/me/run-days", token=ta)
     assert st == 200 and len(days["days"]) >= 1, days
+    st, ms = call("GET", "/me/stats", token=ta)
+    assert st == 200 and ms["current_streak_days"] >= 1, ms  # ran today -> day streak
     # the owner's avatar rides along on map-polygons so portraits render on the map
     st, mp_av = call("GET", "/map-polygons", token=tb)
     owned = next((t for t in mp_av["territories"] if t["user_id"] == ua), None)

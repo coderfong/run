@@ -185,6 +185,7 @@ class MeStats(BaseModel):
     runs_count: int
     career_distance_m: float
     current_streak_weeks: int
+    current_streak_days: int = 0
     # XP / level (level = floor(sqrt(xp/100)); next level at 100*(lvl+1)^2)
     xp: int = 0
     level: int = 0
