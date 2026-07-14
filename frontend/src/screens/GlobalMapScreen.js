@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
-import { Flame, Layers, Navigation, X } from 'lucide-react-native';
+import { Flame, X } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { colors, radius, shadow, space, type } from '../theme';
@@ -297,7 +298,7 @@ export default function GlobalMapScreen() {
           accessibilityRole="button"
           accessibilityLabel="Show clubs in view"
         >
-          <Layers size={20} color={colors.text} strokeWidth={2} />
+          <AppIcon name="layers" size={24} />
         </TouchableOpacity>
       </View>
 
@@ -316,7 +317,7 @@ export default function GlobalMapScreen() {
         accessibilityRole="button"
         accessibilityLabel="Center map on my location"
       >
-        <Navigation size={20} color={accent} strokeWidth={2} fill={accent} />
+        <AppIcon name="locate" size={24} />
       </TouchableOpacity>
 
       {/* tapped-territory card */}

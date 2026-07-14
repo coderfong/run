@@ -4,9 +4,11 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
-import { colors, type } from '../../theme';
+import { useTheme, useThemedType } from '../../theme';
 
 export default function SectionHeader({ title, action, onAction, style }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
   return (
     <View
       style={[

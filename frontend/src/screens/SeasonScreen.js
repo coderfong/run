@@ -6,7 +6,7 @@
 import React, { useCallback, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Crown, Trophy } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -37,7 +37,9 @@ export default function SeasonScreen({ navigation, route }) {
 
   const header = (
     <View style={{ marginBottom: space.md }}>
-      <Text style={type.display}>Season standings</Text>
+      <Text style={type.display} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        Season standings
+      </Text>
       <Text style={[type.body, { color: colors.textMuted, marginTop: 2, marginBottom: space.lg }]}>
         {mode === 'clans' ? 'Clubs ranked by land claimed.' : 'Solo runners ranked by land claimed.'}
       </Text>
@@ -124,7 +126,7 @@ export default function SeasonScreen({ navigation, route }) {
         ListHeaderComponent={header}
         ListEmptyComponent={
           <EmptyState
-            icon={<Trophy size={40} color={colors.textMuted} />}
+            icon={<AppIcon name="trophy" size={44} />}
             title={mode === 'clans' ? 'No clubs on the board yet' : 'No solo runners yet'}
             body={mode === 'clans'
               ? 'Claim land with a club to put it on the season standings.'
@@ -141,7 +143,7 @@ export default function SeasonScreen({ navigation, route }) {
 function RankCol({ rank, top }) {
   return (
     <View style={styles.rankCol}>
-      {top ? <Crown size={18} color="#eab308" fill="#eab308" /> : <Text style={[type.statSm, { color: colors.textMuted }]}>{rank}</Text>}
+      {top ? <AppIcon name="crown" size={20} /> : <Text style={[type.statSm, { color: colors.textMuted }]}>{rank}</Text>}
     </View>
   );
 }

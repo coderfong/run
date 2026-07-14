@@ -138,6 +138,30 @@ export function Confetti({ count = 26 }) {
 }
 
 // ---------------------------------------------------------------------------
+// MascotLoader — a PASER runner bobbing on a light squircle. Used for full
+// screen loading. Seated on white so the black-outlined art reads on the dark
+// background; the bob is a gentle infinite ease. Static under Reduce Motion.
+// ---------------------------------------------------------------------------
+
+export function MascotLoader({ source, size = 132 }) {
+  const reduced = useReduceMotion();
+  const t = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduced) return;
+    t.value = withRepeat(withTiming(1, { duration: 720, easing: Easing.inOut(Easing.quad) }), -1, true);
+  }, [reduced, t]);
+
+  const bob = useAnimatedStyle(() => ({ transform: [{ translateY: -10 * t.value }] }));
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.Image source={source} style={[{ width: size, height: size }, bob]} resizeMode="contain" />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PressableScale — the standard button press affordance (scale 0.97).
 // ---------------------------------------------------------------------------
 

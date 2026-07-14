@@ -5,7 +5,8 @@
 import React, { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Crown, Shield } from 'lucide-react-native';
+import { Shield } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useClan } from '../state/clan';
@@ -48,6 +49,15 @@ export default function ClubDetailScreen({ route, navigation }) {
 
   const accent = clan.color.stroke;
   const leader = clan.members.find((m) => m.role === 'leader');
+
+  // Club XP → level (same curve as a player: level = floor(sqrt(xp/100))).
+  const clubXp = clan.xp || 0;
+  const clubLevel = Math.floor(Math.sqrt(clubXp / 100));
+  const levelBase = 100 * clubLevel * clubLevel;
+  const nextBase = 100 * (clubLevel + 1) * (clubLevel + 1);
+  const xpIntoLevel = clubXp - levelBase;
+  const xpForLevel = Math.max(1, nextBase - levelBase);
+  const clubPct = Math.max(0, Math.min(100, (xpIntoLevel / xpForLevel) * 100));
   const isMember = myClan?.clan_id === clanId;
   const inAnotherClan = !!myClan?.clan_id && !isMember;
   const isOpen = clan.privacy === 'open';
@@ -99,6 +109,20 @@ export default function ClubDetailScreen({ route, navigation }) {
         <StatValue size="md" label="Members" value={String(clan.member_count)} />
       </Row>
 
+      {/* club XP progress — every member's runs, claims and steals feed this */}
+      <Card style={{ marginTop: space.md }}>
+        <Row between>
+          <Text style={type.bodyBold}>Club level {clubLevel}</Text>
+          <Text style={type.caption}>{clubXp.toLocaleString()} XP</Text>
+        </Row>
+        <View style={styles.xpTrack}>
+          <View style={[styles.xpFill, { width: `${clubPct}%`, backgroundColor: accent }]} />
+        </View>
+        <Text style={[type.caption, { marginTop: 6 }]}>
+          {xpIntoLevel.toLocaleString()} / {xpForLevel.toLocaleString()} to level {clubLevel + 1}
+        </Text>
+      </Card>
+
       {/* leader */}
       {leader && (
         <>
@@ -106,7 +130,7 @@ export default function ClubDetailScreen({ route, navigation }) {
           <Card>
             <Row gap={12}>
               <View style={[styles.leaderAvatar, { backgroundColor: clan.color.fill, borderColor: accent }]}>
-                <Crown size={20} color={accent} fill={accent} />
+                <AppIcon name="crown" size={22} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{leader.username}</Text>
@@ -158,6 +182,8 @@ export default function ClubDetailScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl },
   badgeChip: { width: 56, height: 56, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden', marginTop: space.sm },
+  xpFill: { height: '100%', borderRadius: 4 },
   leaderAvatar: {
     width: 44, height: 44, borderRadius: 22, borderWidth: 2,
     alignItems: 'center', justifyContent: 'center',

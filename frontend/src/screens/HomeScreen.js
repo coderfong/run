@@ -2,15 +2,14 @@
 // Marina Bay art, then [Feed | Leaderboard].
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, ImageBackground, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Image, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { Bell, Footprints } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
-import { brand, colors, radius, space, type } from '../theme';
+import { brand, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { useReduceMotion, PressableScale } from '../ui/motion';
 import { Segmented, EmptyState, Skeleton } from '../components/ui';
 import FeedCard from '../components/FeedCard';
@@ -29,69 +28,35 @@ function countdown() {
   return `ENDS IN ${d}D ${String(h).padStart(2, '0')}H`;
 }
 
-// Shadow keeps the white copy legible now that the scrim is lighter.
-const heroShadow = { textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 };
-
-function SeasonCard({ width, onPress }) {
-  return (
-    <PressableScale style={{ width }} onPress={onPress} accessibilityRole="button" accessibilityLabel="View season standings">
-      <ImageBackground
-        source={require('../../assets/art/season-banner.png')}
-        style={styles.hero}
-        imageStyle={{ borderRadius: radius.card }}
-        resizeMode="cover"
-      >
-        {/* lighter left-to-right scrim so the art reads through */}
-        <LinearGradient
-          colors={['rgba(11,13,16,0.55)', 'rgba(11,13,16,0.05)']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={[StyleSheet.absoluteFill, { borderRadius: radius.card }]}
-        />
-        <View style={styles.heroInner}>
-          <View>
-            <Text style={[type.labelSm, { color: 'rgba(255,255,255,0.9)' }, heroShadow]}>Season {SEASON_NO}</Text>
-            <Text style={[type.display, { color: '#fff', marginTop: 2 }, heroShadow]}>{SEASON_CITY}</Text>
-            <Text style={[type.labelSm, { color: '#fff', marginTop: 4 }, heroShadow]}>{countdown()}</Text>
-          </View>
-          <View style={[styles.heroChip, { backgroundColor: brand.pink }]}>
-            <Text style={[type.buttonSm, { color: '#fff' }]}>View season</Text>
-          </View>
-        </View>
-      </ImageBackground>
-    </PressableScale>
-  );
-}
-
-// A photo hero card (same frame as the season banner): art with a
-// left-to-right scrim so the white copy reads over it.
-function PhotoCard({ width, art, eyebrow, title, sub, chip, chipColor, onPress }) {
+// A hero card: a SOLID flat brand-color panel (no photo, no dark scrim). The
+// illustration sits on the right and melts into the panel via a same-color
+// horizontal fade — so text lives on clean color, never fighting an image.
+function HeroCard({ width, bg, art, eyebrow, title, sub, cta, onPress }) {
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   return (
     <PressableScale style={{ width }} onPress={onPress} accessibilityRole="button" accessibilityLabel={title}>
-      <ImageBackground source={art} style={styles.hero} imageStyle={{ borderRadius: radius.card }} resizeMode="cover">
-        <LinearGradient
-          colors={['rgba(11,13,16,0.72)', 'rgba(11,13,16,0.1)']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={[StyleSheet.absoluteFill, { borderRadius: radius.card }]}
-        />
-        <View style={styles.heroInner}>
+      <View style={[styles.hero, { backgroundColor: bg }]}>
+        <View style={styles.heroText}>
           <View>
-            <Text style={[type.labelSm, { color: 'rgba(255,255,255,0.9)' }, heroShadow]}>{eyebrow}</Text>
-            <Text style={[type.display, { color: '#fff', marginTop: 2 }, heroShadow]}>{title}</Text>
-            <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.92)', marginTop: 4 }, heroShadow]}>{sub}</Text>
+            <Text style={[type.labelSm, styles.heroEyebrow]}>{eyebrow}</Text>
+            <Text style={[type.display, styles.heroTitle]}>{title}</Text>
+            <Text style={[type.bodySm, styles.heroSub]}>{sub}</Text>
           </View>
-          <View style={[styles.heroChip, { backgroundColor: chipColor }]}>
-            <Text style={[type.buttonSm, { color: '#fff' }]}>{chip}</Text>
+          <View style={styles.heroBtn}>
+            <Text style={[type.buttonSm, { color: '#141414' }]}>{cta}</Text>
           </View>
         </View>
-      </ImageBackground>
+        {/* the transparent illustration, shown whole (contain) — no crop, no fade */}
+        <Image source={art} style={styles.heroImg} resizeMode="contain" />
+      </View>
     </PressableScale>
   );
 }
 
 // Swipeable hero: Season → Clubs → Solo, each deep-linking into the standings.
 function HeroCarousel({ navigation }) {
+  const styles = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
   const cardW = width - space.gutter * 2;
   const [page, setPage] = useState(0);
@@ -110,25 +75,34 @@ function HeroCarousel({ navigation }) {
         onMomentumScrollEnd={onEnd}
         decelerationRate="fast"
       >
-        <SeasonCard width={cardW} onPress={() => navigation.navigate('Season')} />
-        <PhotoCard
+        <HeroCard
           width={cardW}
+          bg={brand.pink}
+          art={require('../../assets/art/season-banner.png')}
+          eyebrow={`SEASON ${SEASON_NO} · ${SEASON_CITY}`}
+          title="STANDINGS"
+          sub={countdown()}
+          cta="View season"
+          onPress={() => navigation.navigate('Season')}
+        />
+        <HeroCard
+          width={cardW}
+          bg={brand.purple}
           art={require('../../assets/art/card-clubs.png')}
           eyebrow="STANDINGS"
           title="CLUBS"
           sub="Who holds the most land"
-          chip="View clubs"
-          chipColor={brand.purple}
+          cta="View clubs"
           onPress={() => navigation.navigate('Season', { mode: 'clans' })}
         />
-        <PhotoCard
+        <HeroCard
           width={cardW}
+          bg={brand.teal}
           art={require('../../assets/art/card-solo.png')}
           eyebrow="LADDER"
           title="SOLO"
           sub="Climb without a club"
-          chip="View solo"
-          chipColor={brand.teal}
+          cta="View solo"
           onPress={() => navigation.navigate('Season', { mode: 'solo' })}
         />
       </ScrollView>
@@ -142,6 +116,7 @@ function HeroCarousel({ navigation }) {
 }
 
 function FeedList({ navigation }) {
+  const { colors } = useTheme();
   const accent = useAccent();
   const reduce = useReduceMotion();
   const [items, setItems] = useState(null);
@@ -192,7 +167,7 @@ function FeedList({ navigation }) {
   if (items.length === 0) {
     return (
       <EmptyState
-        icon={<Footprints size={40} color={accent} />}
+        art={require('../../assets/art/empty-runs.png')}
         title="Your feed is quiet"
         body="Start a run — the feed fills as you and your city claim land."
         actionLabel="Start run"
@@ -221,6 +196,8 @@ function FeedList({ navigation }) {
 }
 
 export default function HomeScreen({ navigation }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState('feed');
   const [unread, setUnread] = useState(0);
@@ -243,7 +220,7 @@ export default function HomeScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Notifications"
           >
-            <Bell size={22} color={colors.text} strokeWidth={2} />
+            <AppIcon name="bell" size={24} />
             {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
           </PressableScale>
         </View>
@@ -261,24 +238,38 @@ export default function HomeScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: space.md,
   },
-  wordmark: { ...type.title, transform: [{ skewX: '-6deg' }] },
+  wordmark: { ...type.title },
   bell: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   bellDot: { position: 'absolute', top: 7, right: 8, width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, borderColor: colors.bg },
 
-  hero: { height: 176, borderRadius: radius.card, overflow: 'hidden' },
-  heroInner: { padding: space.lg, flex: 1, justifyContent: 'space-between' },
-  heroChip: {
+  hero: {
+    height: 176,
+    borderRadius: radius.card,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    padding: space.lg,
+  },
+  heroText: { flex: 1, justifyContent: 'space-between', paddingRight: space.sm },
+  // bleed to the card edges (negative margins cancel the card padding) so the
+  // illustration is as large as possible.
+  heroImg: { width: '52%', height: 176, marginVertical: -space.lg, marginRight: -space.lg },
+  heroEyebrow: { color: '#141414', opacity: 0.75 },
+  heroTitle: { color: '#141414', marginTop: 2 },
+  heroSub: { color: '#141414', opacity: 0.72, marginTop: 4 },
+  heroBtn: {
     alignSelf: 'flex-start',
-    borderRadius: radius.sm,
-    paddingHorizontal: space.md,
-    paddingVertical: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: radius.pill,
+    paddingHorizontal: space.lg,
+    paddingVertical: 9,
     marginTop: space.md,
   },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: space.md },

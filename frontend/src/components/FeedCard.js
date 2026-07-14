@@ -6,10 +6,10 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Polygon, Polyline } from 'react-native-svg';
-import { Heart, MessageCircle } from 'lucide-react-native';
+import AppIcon from './AppIcon';
 
 import { api } from '../api/client';
-import { colors, radius, space, type, withAlpha } from '../theme';
+import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { NEUTRAL } from '../state/clan';
 import { useAvatar } from '../state/avatar';
 import { CharacterBust } from './character/CharacterRig';
@@ -38,6 +38,7 @@ function project(points, pad = 10) {
 
 // A claim's shape: filled polygon for closed loops, a trail line otherwise.
 function RouteThumb({ item, color }) {
+  const styles = useThemedStyles(makeStyles);
   const ring = item.closed_loop && item.rings?.[0]?.length >= 3 ? item.rings[0] : null;
   const line = !ring && item.path?.length >= 2 ? item.path : null;
   const src = ring || line;
@@ -78,6 +79,8 @@ function formatArea(m2) {
 }
 
 export default function FeedCard({ item, navigation }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
   const c = item.clan_color || NEUTRAL;
   const { equipped } = useAvatar();
   const [kudoed, setKudoed] = useState(item.kudoed);
@@ -129,13 +132,13 @@ export default function FeedCard({ item, navigation }) {
             accessibilityRole="button"
             accessibilityLabel="View comments"
           >
-            <MessageCircle size={18} color={colors.textDim} />
+            <AppIcon name="comment" size={20} faded />
             {(item.comment_count || 0) > 0 ? (
               <Text style={[type.captionMedium, { color: colors.textMuted }]}>{item.comment_count}</Text>
             ) : null}
           </PressableScale>
           <PressableScale onPress={kudos} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, padding: 4 }} accessibilityRole="button" accessibilityLabel="Give kudos">
-            <Heart size={18} color={kudoed ? c.stroke : colors.textDim} fill={kudoed ? c.stroke : 'transparent'} />
+            <AppIcon name="like" size={20} faded={!kudoed} />
             {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
           </PressableScale>
         </Row>
@@ -158,13 +161,14 @@ export default function FeedCard({ item, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
-  thumb: {
-    marginTop: space.md,
-    height: THUMB_H,
-    borderRadius: radius.md,
-    backgroundColor: colors.bg,
-    overflow: 'hidden',
-    justifyContent: 'center',
-  },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    thumb: {
+      marginTop: space.md,
+      height: THUMB_H,
+      borderRadius: radius.md,
+      backgroundColor: colors.bg,
+      overflow: 'hidden',
+      justifyContent: 'center',
+    },
+  });

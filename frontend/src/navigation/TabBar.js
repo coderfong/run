@@ -11,19 +11,20 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { Footprints, Home, Map, Shield, User } from 'lucide-react-native';
-
-import { colors, space, type } from '../theme';
+import { space, type, useTheme } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { useAccent } from '../hooks/useAccent';
 import { useRecording } from '../state/recording';
+import AppIcon from '../components/AppIcon';
 
 const INACTIVE = '#9ca3af';
-const ICONS = { Home, Map, Club: Shield, You: User };
+// route name → generated sticker-icon key (assets/icons/*).
+const ICON_KEY = { Home: 'tab-home', Map: 'tab-map', Club: 'tab-club', You: 'tab-you' };
 const LABELS = { Home: 'Home', Map: 'Map', Club: 'Club', You: 'You' };
 
 function TabItem({ route, isFocused, accent, onPress }) {
-  const Icon = ICONS[route.name] || Home;
+  const key = ICON_KEY[route.name] || 'tab-home';
+  // Colour icons aren't tinted — inactive reads as faded + a hair smaller.
   const color = isFocused ? accent : INACTIVE;
   // The flex:1 lives on this wrapper View, not on PressableScale — PressableScale
   // forwards its style prop to an inner Animated.View, so flex there wouldn't
@@ -37,7 +38,7 @@ function TabItem({ route, isFocused, accent, onPress }) {
         accessibilityState={{ selected: isFocused }}
         accessibilityLabel={LABELS[route.name]}
       >
-        <Icon size={24} color={color} strokeWidth={isFocused ? 2.4 : 2} />
+        <AppIcon name={key} size={isFocused ? 30 : 26} faded={!isFocused} />
         <Text style={[styles.label, { color }]}>{LABELS[route.name]}</Text>
       </PressableScale>
     </View>
@@ -45,6 +46,7 @@ function TabItem({ route, isFocused, accent, onPress }) {
 }
 
 function RecordButton({ accent, onPress }) {
+  const { colors } = useTheme();
   const { isRecording } = useRecording();
   const reduce = useReduceMotion();
   const pulse = useSharedValue(1);
@@ -62,15 +64,15 @@ function RecordButton({ accent, onPress }) {
   return (
     <View style={styles.recordSlot}>
       <PressableScale
-        style={[styles.record, { borderColor: accent }]}
+        style={styles.record}
         scaleTo={0.94}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={isRecording ? 'Recording in progress' : 'Start a run'}
       >
-        <Footprints size={26} color={accent} strokeWidth={2.4} />
+        <AppIcon name="tab-record" size={60} />
         {isRecording && (
-          <Animated.View style={[styles.recBadge, { backgroundColor: accent }, badgeStyle]} />
+          <Animated.View style={[styles.recBadge, { backgroundColor: accent, borderColor: colors.card }, badgeStyle]} />
         )}
       </PressableScale>
     </View>
@@ -78,6 +80,7 @@ function RecordButton({ accent, onPress }) {
 }
 
 export default function TabBar({ state, navigation }) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const accent = useAccent();
 
@@ -93,7 +96,7 @@ export default function TabBar({ state, navigation }) {
   const right = routes.slice(2);
 
   return (
-    <View style={[styles.bar, { paddingBottom: insets.bottom, height: 64 + insets.bottom }]}>
+    <View style={[styles.bar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom, height: 64 + insets.bottom }]}>
       {left.map((route) => (
         <TabItem
           key={route.key}
@@ -123,9 +126,7 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: colors.card,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
     paddingTop: space.sm,
   },
   slot: { flex: 1 },
@@ -134,12 +135,9 @@ const styles = StyleSheet.create({
 
   recordSlot: { width: 72, alignItems: 'center' },
   record: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginTop: -20, // raised above the bar
-    borderWidth: 2.5,
-    backgroundColor: colors.card,
+    width: 60,
+    height: 60,
+    marginTop: -22, // raised above the bar
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -151,6 +149,5 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 2,
-    borderColor: colors.card,
   },
 });

@@ -120,17 +120,26 @@ class RunDaysOut(BaseModel):
 
 
 class ClaimIn(BaseModel):
-    """Place the run's circle claim. (lat, lon) is the circle centre and must
-    lie on (within claim_snap_tolerance_m of) the run's recorded trail."""
+    """Place the run's claim. (lat, lon) is the claim centre and must lie on
+    (within claim_snap_tolerance_m of) the run's recorded trail. `shape` is the
+    cosmetic claim shape (level-unlocked; server falls back to circle if the
+    runner hasn't unlocked it)."""
     run_id: str
     lat: float = Field(..., ge=-90.0, le=90.0)
     lon: float = Field(..., ge=-180.0, le=180.0)
+    shape: str = "circle"
 
 
 class ClaimOut(BaseModel):
     territory: TerritoryOut
     stolen_m2: float = 0.0
     stolen_from: Optional[str] = None
+    # XP awarded for placing this claim (base + area-scaled + steal), so the
+    # result screen can show the reward the moment the claim lands.
+    xp_gained: int = 0
+    # Energy left after the claim's cost was deducted (claims are energy-gated).
+    energy: int = 0
+    energy_max: int = 0
 
 
 class LeaderboardEntry(BaseModel):
@@ -275,6 +284,7 @@ class PushTokenIn(BaseModel):
 
 class NotifPrefs(BaseModel):
     stolen: bool = True
+    captured: bool = True
     clan_goal: bool = True
     kudos: bool = True
     season: bool = True
@@ -338,6 +348,7 @@ class ClanOut(BaseModel):
     season_rank: Optional[int] = None
     members: List[ClanMemberOut] = []
     week_goal: Optional[WeekGoalOut] = None
+    xp: int = 0                            # collective club XP (all members' earned XP)
 
 
 class ClanSummary(BaseModel):

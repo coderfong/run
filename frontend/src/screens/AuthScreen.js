@@ -1,11 +1,16 @@
-// PACER welcome + auth. Step 1: full-bleed hero (art/hero-welcome.png),
-// PACER wordmark, gradient Sign in + outline Create account. Step 2: the
-// dark form with inline validation (rules mirror the backend exactly).
+// PASER welcome + auth.
+//
+// Step 1 (Welcome): moimoi-style landing — the big PASER wordmark up top, the
+// mascot hero filling the screen, the image DISSOLVING into solid black at the
+// bottom (not hard-cropped) where two stacked pill buttons sit. Step 2 (Form):
+// the username/password form with inline validation (rules mirror the backend).
+//
+// The two steps CROSSFADE (both absolutely filled, fade in/out) instead of the
+// old hard swap. Honors Reduce Motion.
 
 import React, { useState } from 'react';
 import {
   Image,
-  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -14,14 +19,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthContext';
-import { brand, colors, radius, space, type } from '../theme';
+import { brand, radius, space, type, useTheme } from '../theme';
 import { Screen, Button } from '../components/ui';
-import { Reveal } from '../ui/motion';
+import { Reveal, useReduceMotion } from '../ui/motion';
+import SocialAuthButtons from '../components/SocialAuthButtons';
+
+const AUTH_HERO = require('../../assets/art/auth-hero.png');
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
 
@@ -48,25 +57,20 @@ function passwordError(pw, isSignup) {
 function Welcome({ onSignIn, onCreate }) {
   const insets = useSafeAreaInsets();
   return (
-    <ImageBackground
-      source={require('../../assets/art/onboarding-loop.png')}
-      style={styles.hero}
-      resizeMode="cover"
-    >
-      {/* scrim so type + CTAs always read: light overall tint + strong dark
-          bands top (wordmark) and bottom (buttons) */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(11,13,16,0.34)' }]} />
+    <View style={styles.hero}>
+      {/* the bottom fades to solid black — a clean stage for the buttons */}
       <LinearGradient
-        colors={['rgba(11,13,16,0.9)', 'rgba(11,13,16,0.2)', 'rgba(11,13,16,0)']}
-        locations={[0, 0.5, 1]}
-        style={[StyleSheet.absoluteFill, { bottom: '55%' }]}
+        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.4)', '#000000', '#000000']}
+        locations={[0.55, 0.72, 0.9, 1]}
+        style={StyleSheet.absoluteFill}
       />
-      <LinearGradient
-        colors={['rgba(11,13,16,0)', 'rgba(11,13,16,0.6)', 'rgba(11,13,16,0.96)']}
-        locations={[0, 0.45, 1]}
-        style={[StyleSheet.absoluteFill, { top: '42%' }]}
-      />
-      <View style={[styles.heroInner, { paddingTop: insets.top + space.huge, paddingBottom: insets.bottom + space.xl }]}>
+
+      <View
+        style={[
+          styles.heroInner,
+          { paddingTop: insets.top + space.xxl, paddingBottom: insets.bottom + space.xl },
+        ]}
+      >
         <View style={styles.wordmarkWrap}>
           <Reveal>
             <Text style={styles.wordmark}>{brand.name}</Text>
@@ -74,32 +78,47 @@ function Welcome({ onSignIn, onCreate }) {
           <Reveal delay={120} style={{ alignItems: 'center' }}>
             <Text style={styles.tagline}>{brand.tagline}</Text>
           </Reveal>
+          {/* the full crew — aspect ratio lives on the wrapper View (reliable),
+              the image just fills it and is contained, so all runners show */}
+          <Reveal delay={240} style={{ width: '100%' }}>
+            <View style={styles.crewWrap}>
+              <Image source={AUTH_HERO} style={styles.crew} resizeMode="contain" />
+            </View>
+          </Reveal>
         </View>
 
-        <View style={{ gap: space.md }}>
+        <View style={{ gap: space.md, marginBottom: space.xxl }}>
           <Reveal from="up" delay={300}>
-            <Button title="Sign in" variant="gradient" onPress={onSignIn} />
+            <Button title="Sign in" variant="primary" onPress={onSignIn} />
           </Reveal>
           <Reveal from="up" delay={380}>
-            <Button title="Create account" variant="outline" onPress={onCreate} />
+            <Button title="Create account" variant="gradient" onPress={onCreate} />
           </Reveal>
-          <Reveal from="none" delay={520}>
+
+          {/* social sign-in */}
+          <Reveal from="up" delay={440}>
+            <SocialAuthButtons />
+          </Reveal>
+
+          <Reveal from="none" delay={560}>
             <Text style={styles.legal}>
               By continuing, you agree to our Terms of Service and Privacy Policy
             </Text>
           </Reveal>
         </View>
       </View>
-    </ImageBackground>
+    </View>
   );
 }
 
 // --- step 2: the form ---------------------------------------------------------
 
-export default function AuthScreen() {
+function AuthForm({ onBack }) {
   const { signIn, signUp } = useAuth();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [step, setStep] = useState('welcome'); // 'welcome' | 'form'
+  const s = formStyles(colors);
+
   const [mode, setMode] = useState('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -110,13 +129,6 @@ export default function AuthScreen() {
   const isSignup = mode === 'signup';
   const uErr = touched ? usernameError(username) : null;
   const pErr = touched ? passwordError(password, isSignup) : null;
-
-  const open = (m) => {
-    setMode(m);
-    setTouched(false);
-    setApiError(null);
-    setStep('form');
-  };
 
   const onSubmit = async () => {
     setTouched(true);
@@ -134,16 +146,11 @@ export default function AuthScreen() {
     }
   };
 
-  if (step === 'welcome') {
-    return <Welcome onSignIn={() => open('signin')} onCreate={() => open('signup')} />;
-  }
-
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {/* form block is vertically centred; the back affordance stays pinned */}
       <Screen scroll contentStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: space.huge }}>
         <Reveal>
-          <Text style={[type.display, { marginBottom: space.sm, textAlign: 'center' }]}>
+          <Text style={[type.display, { marginBottom: space.sm, textAlign: 'center', color: colors.text }]}>
             {isSignup ? 'Create account' : 'Welcome back'}
           </Text>
           <Text style={[type.body, { color: colors.textMuted, marginBottom: space.xl, textAlign: 'center' }]}>
@@ -154,9 +161,9 @@ export default function AuthScreen() {
         </Reveal>
 
         <Reveal delay={90}>
-          <Text style={styles.label}>Username</Text>
+          <Text style={s.label}>Username</Text>
           <TextInput
-            style={[styles.input, uErr && styles.inputError]}
+            style={[s.input, uErr && s.inputError]}
             placeholder="runner_42"
             placeholderTextColor={colors.textDim}
             autoCapitalize="none"
@@ -166,14 +173,14 @@ export default function AuthScreen() {
             maxLength={32}
             accessibilityLabel="Username"
           />
-          {uErr ? <Text style={styles.fieldError}>{uErr}</Text> : null}
-          {isSignup && !uErr ? <Text style={styles.fieldHint}>3–32 characters: a–z, 0–9, underscore.</Text> : null}
+          {uErr ? <Text style={s.fieldError}>{uErr}</Text> : null}
+          {isSignup && !uErr ? <Text style={s.fieldHint}>3–32 characters: a–z, 0–9, underscore.</Text> : null}
         </Reveal>
 
         <Reveal delay={170}>
-          <Text style={styles.label}>Password</Text>
+          <Text style={s.label}>Password</Text>
           <TextInput
-            style={[styles.input, pErr && styles.inputError]}
+            style={[s.input, pErr && s.inputError]}
             placeholder={isSignup ? 'At least 8 characters, letter + digit' : 'Your password'}
             placeholderTextColor={colors.textDim}
             secureTextEntry
@@ -183,13 +190,13 @@ export default function AuthScreen() {
             maxLength={128}
             accessibilityLabel="Password"
           />
-          {pErr ? <Text style={styles.fieldError}>{pErr}</Text> : null}
+          {pErr ? <Text style={s.fieldError}>{pErr}</Text> : null}
         </Reveal>
 
         {apiError ? (
           <Reveal from="none">
-            <View style={styles.apiErrorBox}>
-              <Text style={styles.apiErrorText}>{apiError}</Text>
+            <View style={s.apiErrorBox}>
+              <Text style={s.apiErrorText}>{apiError}</Text>
             </View>
           </Reveal>
         ) : null}
@@ -204,7 +211,7 @@ export default function AuthScreen() {
           />
 
           <TouchableOpacity
-            style={styles.switch}
+            style={s.switch}
             onPress={() => { setMode(isSignup ? 'signin' : 'signup'); setTouched(false); setApiError(null); }}
             accessibilityRole="button"
           >
@@ -216,8 +223,8 @@ export default function AuthScreen() {
       </Screen>
 
       <TouchableOpacity
-        onPress={() => setStep('welcome')}
-        style={[styles.back, { top: insets.top + space.md }]}
+        onPress={onBack}
+        style={[s.back, { top: insets.top + space.md }]}
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel="Back"
@@ -229,52 +236,81 @@ export default function AuthScreen() {
   );
 }
 
+// --- root: crossfades welcome <-> form ---------------------------------------
+
+export default function AuthScreen() {
+  const [step, setStep] = useState('welcome'); // 'welcome' | 'form'
+  const reduced = useReduceMotion();
+
+  const enter = reduced ? undefined : FadeIn.duration(320);
+  const exit = reduced ? undefined : FadeOut.duration(200);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      {step === 'welcome' ? (
+        <Animated.View key="welcome" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
+          <Welcome onSignIn={() => setStep('form')} onCreate={() => setStep('form')} />
+        </Animated.View>
+      ) : (
+        <Animated.View key="form" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
+          <AuthForm onBack={() => setStep('welcome')} />
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
+// --- styles ------------------------------------------------------------------
+
 const styles = StyleSheet.create({
-  hero: { flex: 1, backgroundColor: colors.bg },
+  hero: { flex: 1, backgroundColor: '#fdcf15' },
   heroInner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: space.gutter },
-  wordmarkWrap: { alignItems: 'center', marginTop: space.huge },
+  wordmarkWrap: { alignItems: 'center', marginTop: space.lg },
+  crewWrap: { width: '100%', aspectRatio: 1.555, marginTop: space.xl },
+  crew: { width: '100%', height: '100%' },
   wordmark: {
-    ...type.hero,
-    fontSize: 56,
-    lineHeight: 70,
-    color: '#ffffff',
-    transform: [{ skewX: '-6deg' }],
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 12,
+    fontFamily: type.hero.fontFamily,
+    fontSize: 68,
+    lineHeight: 74,
+    letterSpacing: -1,
+    textTransform: 'uppercase',
+    color: '#141414',
   },
   tagline: {
     ...type.labelSm,
-    color: brand.pink,
+    color: '#141414',
+    opacity: 0.7,
     letterSpacing: 3,
     marginTop: space.sm,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
   },
-  legal: { ...type.caption, color: colors.textMuted, textAlign: 'center', marginTop: space.xs },
-
-  back: {
-    position: 'absolute',
-    left: space.gutter,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  label: { ...type.labelSm, marginBottom: 6, marginTop: space.md },
-  input: {
-    ...type.body,
-    backgroundColor: colors.card,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    paddingVertical: 14,
-  },
-  inputError: { borderColor: colors.danger },
-  fieldError: { ...type.caption, color: colors.danger, marginTop: 6 },
-  fieldHint: { ...type.caption, color: colors.textDim, marginTop: 6 },
-  apiErrorBox: { backgroundColor: colors.dangerSoft, borderRadius: radius.sm, padding: space.md, marginTop: space.lg },
-  apiErrorText: { ...type.bodySm, color: colors.danger },
-  switch: { marginTop: space.lg, alignItems: 'center' },
+  legal: { ...type.caption, color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginTop: space.xs },
 });
+
+// Form chrome is themed (light/dark ready) — built from the active palette.
+const formStyles = (colors) =>
+  StyleSheet.create({
+    back: {
+      position: 'absolute',
+      left: space.gutter,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
+    label: { ...type.labelSm, color: colors.textMuted, marginBottom: 6, marginTop: space.md },
+    input: {
+      ...type.body,
+      color: colors.text,
+      backgroundColor: colors.card,
+      borderColor: colors.border,
+      borderWidth: 1,
+      borderRadius: radius.md,
+      paddingHorizontal: space.md,
+      paddingVertical: 14,
+    },
+    inputError: { borderColor: colors.danger },
+    fieldError: { ...type.caption, color: colors.danger, marginTop: 6 },
+    fieldHint: { ...type.caption, color: colors.textDim, marginTop: 6 },
+    apiErrorBox: { backgroundColor: colors.dangerSoft, borderRadius: radius.sm, padding: space.md, marginTop: space.lg },
+    apiErrorText: { ...type.bodySm, color: colors.danger },
+    switch: { marginTop: space.lg, alignItems: 'center' },
+  });

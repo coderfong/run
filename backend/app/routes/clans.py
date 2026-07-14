@@ -124,7 +124,7 @@ def _clan_summary(db: Session, row) -> schemas.ClanSummary:
 def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanOut:
     c = db.execute(
         text("SELECT id::text, name, tag, description, color_key, badge_icon, privacy, member_cap, "
-             "created_by::text, created_at FROM clans WHERE id = :cid"),
+             "created_by::text, created_at, COALESCE(xp, 0) FROM clans WHERE id = :cid"),
         {"cid": clan_id},
     ).fetchone()
     if not c:
@@ -175,7 +175,7 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
         color=_color(c[4]), badge_icon=c[5], privacy=c[6], member_cap=c[7],
         member_count=_member_count(db, clan_id), created_by=c[8], created_at=c[9],
         my_role=my[1] if my else None, league=league, season_area_m2=area, season_rank=rank,
-        members=members, week_goal=week_goal,
+        members=members, week_goal=week_goal, xp=int(c[10] or 0),
     )
 
 
@@ -256,6 +256,20 @@ def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool
 def clan_member_ids(db: Session, clan_id: str, exclude=None):
     rows = db.execute(text("SELECT user_id::text FROM clan_members WHERE clan_id = :c"), {"c": clan_id}).fetchall()
     return [r[0] for r in rows if r[0] != exclude]
+
+
+def add_clan_xp(db: Session, clan_id: str | None, amount: int):
+    """Advance a club's collective XP total. No-op for clanless runners or
+    non-positive amounts. Committed by the caller alongside the user XP write."""
+    if not clan_id or amount <= 0:
+        return
+    share = int(round(amount * settings.club_xp_share))
+    if share <= 0:
+        return
+    db.execute(
+        text("UPDATE clans SET xp = xp + :g WHERE id = :cid"),
+        {"g": share, "cid": clan_id},
+    )
 
 
 # ---------------------------------------------------------------------------

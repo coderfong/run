@@ -77,6 +77,13 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   refresh: () => request('/auth/refresh', { method: 'POST', body: '{}' }),
+  // OAuth: send the provider's identity token; backend verifies it and returns
+  // our own access token (find-or-create the user). provider = 'google'|'apple'.
+  oauthLogin: (provider, idToken, extra = {}) =>
+    request(`/auth/${provider}`, {
+      method: 'POST',
+      body: JSON.stringify({ id_token: idToken, ...extra }),
+    }),
   me: () => request('/me'),
   renameMe: (username) =>
     request('/me', { method: 'PATCH', body: JSON.stringify({ username }) }),
@@ -96,10 +103,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ run_id: runId, points, step_count: stepCount }),
     }),
-  claimTerritory: (runId, lat, lon) =>
+  claimTerritory: (runId, lat, lon, shape = 'circle') =>
     request('/claim-territory', {
       method: 'POST',
-      body: JSON.stringify({ run_id: runId, lat, lon }),
+      body: JSON.stringify({ run_id: runId, lat, lon, shape }),
     }),
 
   // ----- feed + profile stats ------------------------------------------
@@ -120,6 +127,18 @@ export const api = {
     request(`/clans/${clanId}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),
   registerPushToken: (token, platform) =>
     request('/me/push-token', { method: 'POST', body: JSON.stringify({ token, platform }) }),
+  // ----- progression + energy ------------------------------------------
+  progression: () => request('/me/progression'),
+  energyStatus: () => request('/me/energy'),
+  openLootbox: () => request('/me/lootbox/open', { method: 'POST', body: '{}' }),
+  addUnlock: (itemId) =>
+    request('/me/unlocks', { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
+  purchaseEnergy: (productId, receipt, platform) =>
+    request('/me/energy/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, receipt, platform }),
+    }),
+
   getNotifPrefs: () => request('/me/notif-prefs'),
   setNotifPrefs: (prefs) => request('/me/notif-prefs', { method: 'PUT', body: JSON.stringify(prefs) }),
   notifications: () => request('/me/notifications'),

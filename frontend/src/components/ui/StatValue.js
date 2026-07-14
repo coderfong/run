@@ -5,9 +5,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 
-import { colors, type } from '../../theme';
-
-const SIZES = { hero: type.statHero, lg: type.stat, md: type.statMd, sm: type.statSm };
+import { useTheme, useThemedType } from '../../theme';
 
 export default function StatValue({
   value,
@@ -18,6 +16,9 @@ export default function StatValue({
   align = 'flex-start',
   style,
 }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const SIZES = { hero: type.statHero, lg: type.stat, md: type.statMd, sm: type.statSm };
   const valueStyle = SIZES[size] || SIZES.md;
   return (
     <View style={[{ alignItems: align === 'center' ? 'center' : 'flex-start' }, style]}>

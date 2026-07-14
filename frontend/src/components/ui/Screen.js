@@ -6,7 +6,7 @@ import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, darkColors, space } from '../../theme';
+import { darkColors, space, useTheme } from '../../theme';
 
 export default function Screen({
   children,
@@ -19,6 +19,7 @@ export default function Screen({
   refreshControl,
   center = false,
 }) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const bg = dark ? darkColors.bg : colors.bg;
   const pad = {

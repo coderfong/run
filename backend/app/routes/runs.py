@@ -16,25 +16,32 @@ from shapely.geometry import LineString
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .. import energy as energy_mod
 from .. import fitness, models, schemas
 from ..anticheat import is_verified, validate_run
 from ..notifications import notify
-from .clans import clan_member_ids, record_clan_activity
+from .clans import add_clan_xp, clan_member_ids, record_clan_activity
+from .progression import sync_level_rewards
 from ..config import settings
 from ..database import get_db
 from ..geospatial import (
     circle_polygon_wgs,
     claim_area_m2,
     claim_radius_m,
+    claim_shape_polygon_wgs,
     clean_path,
     detect_loop,
     geometry_to_rings,
     polygon_to_lonlat_ring,
 )
+from ..progression import SHAPE_UNLOCKS, level_from_xp
 from ..ratelimit import limiter
 from ..security import current_user
 
 router = APIRouter()
+
+# Cosmetic claim shape → minimum level required (reverse of SHAPE_UNLOCKS).
+_SHAPE_MIN_LEVEL = {shape: lvl for lvl, shape in SHAPE_UNLOCKS.items()}
 
 
 @router.post("/start-run", response_model=schemas.StartRunOut)
@@ -153,8 +160,16 @@ def end_run(
                 text("UPDATE users SET xp = xp + :g WHERE id = :uid"),
                 {"g": xp_gain, "uid": user.id},
             )
+            # Distance XP also advances the runner's club.
+            add_clan_xp(db, clan_id or user.clan_id, xp_gain)
+        # Finishing a run refills a little energy — exercise powers the meter.
+        energy_mod.grant(db, user.id, settings.energy_per_run)
 
     db.commit()
+
+    # Grant any level-up rewards (lootboxes) now that XP is committed.
+    if run.verified and xp_gain > 0:
+        sync_level_rewards(db, user.id)
 
     if goal_reached and clan_id:
         background.add_task(
@@ -212,6 +227,18 @@ def claim_territory(
     if not on_trail:
         raise HTTPException(422, "claim centre must be on your route")
 
+    # Claiming costs energy (runs are always free — this is the game-layer
+    # limiter). Check affordability BEFORE any mutation so a blocked claim
+    # costs nothing; the actual deduction happens once the claim lands.
+    if not energy_mod.can_afford(db, user.id, settings.energy_cost_claim):
+        st = energy_mod.status(db, user.id)
+        db.commit()
+        raise HTTPException(
+            402,
+            f"Not enough energy to claim — {st['energy']}/{settings.energy_cost_claim}. "
+            "It refills over time, or top up in the shop.",
+        )
+
     # Sweep decayed land first: expired territories free up (and stop
     # defending). Lifetime = strength × life_days_per_strength.
     db.execute(
@@ -222,35 +249,61 @@ def claim_territory(
         {"life_per": settings.territory_life_days_per_strength},
     )
 
-    radius = claim_radius_m(run.distance_m)
-    circle = circle_polygon_wgs(payload.lat, payload.lon, radius)
+    area = claim_area_m2(run.distance_m)
+
+    # Cosmetic claim shape (equal-area), gated by level — circle is always
+    # allowed; an un-unlocked shape silently falls back to a circle.
+    shape = (payload.shape or "circle").lower()
+    if shape != "circle":
+        xp = db.execute(text("SELECT COALESCE(xp,0) FROM users WHERE id = :u"), {"u": user.id}).scalar()
+        if level_from_xp(int(xp or 0)) < _SHAPE_MIN_LEVEL.get(shape, 999):
+            shape = "circle"
+    claim_poly = claim_shape_polygon_wgs(payload.lat, payload.lon, area, shape)
 
     territory_out, stolen_m2, stolen_from = _claim_territory(
         db=db,
         user_id=run.user_id,
         run_id=run.id,
-        polygon_wgs=circle,
-        initial_area_m2=claim_area_m2(run.distance_m),
+        polygon_wgs=claim_poly,
+        initial_area_m2=area,
         strength=claim_strength(run.distance_m, run.duration_s),
         verified=run.verified,
         clan_id=user.clan_id,
     )
     run.claimed_at = datetime.utcnow()
 
+    # The claim landed — deduct its energy cost.
+    energy_mod.spend(db, user.id, settings.energy_cost_claim)
+
     goal_reached, clan_id = (False, None)
+    xp_gain = 0
     if run.verified:
         goal_reached, clan_id = record_clan_activity(
             db, user, distance_m=0.0, closed_loop=True, stolen=stolen_m2
         )
-        xp_gain = settings.xp_per_claim + (settings.xp_per_steal if stolen_m2 > 0 else 0)
+        # Area-scaled reward: bigger claims — and bigger steals — earn more.
+        # `claim_area_m2` is the ground this run's circle covers (not the
+        # merged total), so re-claiming your own land can't farm XP.
+        area_taken = claim_area_m2(run.distance_m)
+        xp_gain = settings.xp_per_claim + round((area_taken / 1e6) * settings.xp_per_km2_claimed)
+        if stolen_m2 > 0:
+            xp_gain += settings.xp_per_steal + round((stolen_m2 / 1e6) * settings.xp_per_km2_stolen)
         db.execute(
             text("UPDATE users SET xp = xp + :g WHERE id = :uid"),
             {"g": xp_gain, "uid": user.id},
         )
+        # Claims + steals also advance the runner's club.
+        add_clan_xp(db, clan_id or user.clan_id, xp_gain)
 
     db.commit()
 
-    # Best-effort push notifications, off the request path.
+    # Hand out any level-up rewards (lootboxes) unlocked by this claim's XP.
+    if run.verified and xp_gain > 0:
+        sync_level_rewards(db, user.id)
+
+    # Best-effort push notifications, off the request path. BOTH sides of a
+    # take are notified: the victim who lost land ("stolen") and the attacker
+    # who took it ("captured").
     if stolen_m2 > 0 and stolen_from:
         victim = db.execute(
             text("SELECT id::text FROM users WHERE username = :u"), {"u": stolen_from}
@@ -260,16 +313,27 @@ def claim_territory(
                 notify, [victim[0]], "stolen", "Your land is under attack",
                 f"{user.username} took {round(stolen_m2):,} m² of your territory.",
             )
+    if stolen_m2 > 0:
+        from_str = f" from {stolen_from}" if stolen_from else ""
+        background.add_task(
+            notify, [str(user.id)], "captured", "Territory captured",
+            f"You took {round(stolen_m2):,} m²{from_str} · +{xp_gain} XP.",
+        )
     if goal_reached and clan_id:
         background.add_task(
             notify, clan_member_ids(db, clan_id, exclude=user.id), "clan_goal",
             "Weekly goal reached!", "Your club hit this week's goal. Badge frame unlocked.",
         )
 
+    est = energy_mod.status(db, user.id)
+    db.commit()
     return schemas.ClaimOut(
         territory=territory_out,
         stolen_m2=stolen_m2,
         stolen_from=stolen_from,
+        xp_gained=xp_gain,
+        energy=est["energy"],
+        energy_max=est["energy_max"],
     )
 
 

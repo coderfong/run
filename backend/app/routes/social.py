@@ -179,12 +179,12 @@ def register_push_token(request: Request, response: Response, payload: schemas.P
 @router.get("/me/notif-prefs", response_model=schemas.NotifPrefs)
 def get_prefs(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     row = db.execute(
-        text("SELECT stolen, clan_goal, kudos, season, recap FROM notif_prefs WHERE user_id = :u"),
+        text("SELECT stolen, captured, clan_goal, kudos, season, recap FROM notif_prefs WHERE user_id = :u"),
         {"u": user.id},
     ).fetchone()
     if not row:
         return schemas.NotifPrefs()
-    return schemas.NotifPrefs(stolen=row[0], clan_goal=row[1], kudos=row[2], season=row[3], recap=row[4])
+    return schemas.NotifPrefs(stolen=row[0], captured=row[1], clan_goal=row[2], kudos=row[3], season=row[4], recap=row[5])
 
 
 @router.put("/me/notif-prefs", response_model=schemas.NotifPrefs)
@@ -192,13 +192,13 @@ def set_prefs(payload: schemas.NotifPrefs, user: models.User = Depends(current_u
     db.execute(
         text(
             """
-            INSERT INTO notif_prefs (user_id, stolen, clan_goal, kudos, season, recap)
-            VALUES (:u, :s, :g, :k, :se, :r)
-            ON CONFLICT (user_id) DO UPDATE SET stolen=:s, clan_goal=:g, kudos=:k, season=:se, recap=:r
+            INSERT INTO notif_prefs (user_id, stolen, captured, clan_goal, kudos, season, recap)
+            VALUES (:u, :s, :cap, :g, :k, :se, :r)
+            ON CONFLICT (user_id) DO UPDATE SET stolen=:s, captured=:cap, clan_goal=:g, kudos=:k, season=:se, recap=:r
             """
         ),
-        {"u": user.id, "s": payload.stolen, "g": payload.clan_goal, "k": payload.kudos,
-         "se": payload.season, "r": payload.recap},
+        {"u": user.id, "s": payload.stolen, "cap": payload.captured, "g": payload.clan_goal,
+         "k": payload.kudos, "se": payload.season, "r": payload.recap},
     )
     db.commit()
     return payload

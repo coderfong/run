@@ -12,7 +12,8 @@
 
 import React, { useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Check, Dices, Lock } from 'lucide-react-native';
+import { Check, Lock } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 
 import { colors, radius, space, type } from '../theme';
 import { Button, Screen } from '../components/ui';
@@ -192,7 +193,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
           accessibilityRole="button"
           accessibilityLabel="Randomize character"
         >
-          <Dices size={20} color={colors.text} />
+          <AppIcon name="randomize" size={22} />
         </PressableScale>
         <Text style={[type.caption, styles.hint]}>Tap your runner to say hi</Text>
       </View>

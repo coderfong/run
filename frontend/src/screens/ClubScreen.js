@@ -2,14 +2,14 @@
 // the club hub (header, weekly goal, members, role-gated management).
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { ArrowRight, MessageCircle, UserPlus } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
-import { colors, radius, space, type, withAlpha } from '../theme';
+import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, EmptyState } from '../components/ui';
 import ClanBadge from '../components/ClanBadge';
 import { toast } from '../ui/toast';
@@ -22,6 +22,9 @@ const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinu
 // ---------------------------------------------------------------------------
 
 function Directory({ navigation }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { refresh } = useClan();
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
@@ -52,7 +55,12 @@ function Directory({ navigation }) {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
-      <Text style={[type.display, { marginTop: space.sm }]}>Clubs</Text>
+      <View style={styles.dirHeader}>
+        <Text style={type.display}>Clubs</Text>
+        <View style={styles.dirCrewWrap}>
+          <Image source={require('../../assets/art/club-crew.png')} style={styles.dirCrew} resizeMode="contain" />
+        </View>
+      </View>
       <Text style={[type.body, { color: colors.textMuted, marginTop: 4, marginBottom: space.lg }]}>
         Solo land is grey. Club land claims.
       </Text>
@@ -86,7 +94,12 @@ function Directory({ navigation }) {
         {!results ? (
           <Skeleton width="100%" height={64} style={{ borderRadius: 16 }} />
         ) : results.length === 0 ? (
-          <Text style={[type.caption, { paddingVertical: space.lg }]}>No clubs found. Be the first — create one.</Text>
+          <EmptyState
+            art={require('../../assets/art/empty-club.png')}
+            title="No clubs yet"
+            body="Be the first — create a club and claim land together."
+            style={{ paddingTop: space.lg }}
+          />
         ) : (
           results.map((c) => (
             <Card key={c.id} onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })} style={{ marginBottom: space.sm }}>
@@ -118,6 +131,9 @@ function Directory({ navigation }) {
 // ---------------------------------------------------------------------------
 
 function MemberHub({ clanId, navigation }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
   const { refresh } = useClan();
   const [clan, setClan] = useState(null);
@@ -292,6 +308,8 @@ function MemberHub({ clanId, navigation }) {
 }
 
 function GoalBar({ label, pct, mine, accent }) {
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={{ marginBottom: space.md }}>
       <Text style={[type.caption, { marginBottom: 6 }]}>{label}</Text>
@@ -316,7 +334,10 @@ export default function ClubScreen({ navigation }) {
   return clan?.clan_id ? <MemberHub clanId={clan.clan_id} navigation={navigation} /> : <Directory navigation={navigation} />;
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+  dirHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.sm },
+  dirCrewWrap: { width: 190, aspectRatio: 2.57 },
+  dirCrew: { width: '100%', height: '100%' },
   input: {
     ...type.body, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1,
     borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: 12,

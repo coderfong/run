@@ -31,11 +31,16 @@ import { PressableScale, Reveal, haptic, useReduceMotion } from '../ui/motion';
 
 const { width } = Dimensions.get('window');
 
+// Each slide carries its own background (matching the art's baked background,
+// so a `contain` image never letterboxes against a mismatched colour) and a
+// `dark` flag that drives text/chrome colour. The claim art is transparent, so
+// its slide is a light cream with dark text.
 const SLIDES = [
   {
     key: 'claim',
-    // simple dark background; the explainer graphic does the teaching
-    explainer: require('../../assets/art/claim-explainer.png'),
+    art: require('../../assets/art/claim-explainer.png'),
+    bg: '#F4EEE1',
+    dark: false,
     headline: ['Run.', 'Turn distance'],
     accentLine: 'into territory.',
     accent: brand.pink,
@@ -44,6 +49,8 @@ const SLIDES = [
   {
     key: 'clans',
     art: require('../../assets/art/onboarding-clans.png'),
+    bg: '#261742',
+    dark: true,
     headline: ['Clubs fight.'],
     accentLine: 'Defend your land.',
     accent: brand.purple,
@@ -52,6 +59,8 @@ const SLIDES = [
   {
     key: 'safety',
     art: require('../../assets/art/onboarding-safety.png'),
+    bg: '#0B322A',
+    dark: true,
     headline: ['Territory can wait.'],
     accentLine: "Traffic can't.",
     accent: brand.teal,
@@ -66,14 +75,16 @@ const SLIDES = [
 
 function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
   const range = [(index - 1) * width, index * width, (index + 1) * width];
+  const fg = item.dark ? '#ffffff' : '#141414';
+  const fgMuted = item.dark ? 'rgba(255,255,255,0.9)' : 'rgba(20,20,20,0.7)';
 
-  // Art: gentle pan-and-zoom against the swipe direction.
+  // Art: gentle parallax pan against the swipe (no zoom — `contain` must show
+  // the whole illustration; scaling would crop it).
   const artStyle = useAnimatedStyle(() => {
     if (reduced) return {};
     return {
       transform: [
-        { translateX: interpolate(scrollX.value, range, [width * 0.14, 0, -width * 0.14], Extrapolation.CLAMP) },
-        { scale: 1.14 },
+        { translateX: interpolate(scrollX.value, range, [width * 0.08, 0, -width * 0.08], Extrapolation.CLAMP) },
       ],
     };
   });
@@ -99,45 +110,22 @@ function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
   });
 
   return (
-    <View style={{ width, flex: 1, overflow: 'hidden', backgroundColor: colors.bg }}>
-      {item.art ? (
-        <>
-          <Animated.Image source={item.art} style={[StyleSheet.absoluteFill, { width, height: '100%' }, artStyle]} resizeMode="cover" />
-          {/* light overall tint so the art never washes the type out */}
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(11,13,16,0.28)' }]} />
-          {/* strong dark band behind the headline (top) */}
-          <LinearGradient
-            colors={['rgba(11,13,16,0.94)', 'rgba(11,13,16,0.6)', 'rgba(11,13,16,0)']}
-            locations={[0, 0.5, 1]}
-            style={[StyleSheet.absoluteFill, { bottom: '52%' }]}
-          />
-          {/* strong dark band behind the body + CTA (bottom) */}
-          <LinearGradient
-            colors={['rgba(11,13,16,0)', 'rgba(11,13,16,0.66)', 'rgba(11,13,16,0.96)']}
-            locations={[0, 0.5, 1]}
-            style={[StyleSheet.absoluteFill, { top: '48%' }]}
-          />
-        </>
-      ) : null}
+    <View style={{ width, flex: 1, overflow: 'hidden', backgroundColor: item.bg }}>
+      {/* the full illustration, never cropped — the matching slide background
+          fills the letterbox so it reads as edge-to-edge */}
+      <Animated.Image
+        source={item.art}
+        style={[StyleSheet.absoluteFill, { width, height: '100%' }, artStyle]}
+        resizeMode="contain"
+      />
       {/* the copy band: fixed offsets clear of the top + bottom chrome */}
       <View style={[styles.slideInner, { paddingTop: insets.top + 76, paddingBottom: insets.bottom + 92 }]}>
         <Animated.View style={headStyle}>
           {item.headline.map((line) => (
-            <Text key={line} style={styles.headline}>{line}</Text>
+            <Text key={line} style={[styles.headline, { color: fg }]}>{line}</Text>
           ))}
           <Text style={[styles.headline, { color: item.accent }]}>{item.accentLine}</Text>
         </Animated.View>
-
-        {/* instruction graphic (slides without full-bleed art) */}
-        {item.explainer ? (
-          <Animated.View style={[{ flex: 1, marginVertical: space.md }, lowerStyle]}>
-            <Animated.Image
-              source={item.explainer}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode="contain"
-            />
-          </Animated.View>
-        ) : null}
 
         <Animated.View style={lowerStyle}>
           {item.bullets ? (
@@ -155,13 +143,13 @@ function Slide({ item, index, scrollX, insets, last, onDone, reduced }) {
               ))}
             </View>
           ) : (
-            <Text style={styles.body}>{item.body}</Text>
+            <Text style={[styles.body, { color: fgMuted }]}>{item.body}</Text>
           )}
 
           {last ? (
             <PressableScale onPress={onDone} accessibilityRole="button" accessibilityLabel="Get started">
               <LinearGradient
-                colors={brand.gradientTeal}
+                colors={brand.gradient}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 style={styles.cta}
@@ -200,6 +188,10 @@ export default function OnboardingScreen({ onDone }) {
   const [index, setIndex] = useState(0);
   const scrollX = useSharedValue(0);
   const last = index === SLIDES.length - 1;
+  // Chrome (progress, skip, next) flips to dark ink on the light claim slide.
+  const slide = SLIDES[index];
+  const chromeFg = slide.dark ? '#ffffff' : '#141414';
+  const chromeMuted = slide.dark ? 'rgba(255,255,255,0.7)' : 'rgba(20,20,20,0.6)';
 
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollX.value = e.contentOffset.x;
@@ -239,11 +231,11 @@ export default function OnboardingScreen({ onDone }) {
 
       {/* top chrome: progress + skip */}
       <Reveal from="down" style={[styles.topBar, { top: insets.top + space.sm }]}>
-        <Text style={styles.progress}>
-          <Text style={{ color: SLIDES[index].accent }}>{index + 1}</Text> / {SLIDES.length}
+        <Text style={[styles.progress, { color: chromeMuted }]}>
+          <Text style={{ color: slide.accent }}>{index + 1}</Text> / {SLIDES.length}
         </Text>
         <TouchableOpacity onPress={finish} hitSlop={12} accessibilityRole="button" accessibilityLabel="Skip intro">
-          <Text style={[type.bodyMedium, { color: 'rgba(255,255,255,0.8)' }]}>Skip</Text>
+          <Text style={[type.bodyMedium, { color: chromeMuted }]}>Skip</Text>
         </TouchableOpacity>
       </Reveal>
 
@@ -256,12 +248,12 @@ export default function OnboardingScreen({ onDone }) {
         </View>
         {!last && (
           <PressableScale
-            style={styles.nextBtn}
+            style={[styles.nextBtn, { borderColor: chromeFg, backgroundColor: slide.dark ? 'rgba(11,13,16,0.4)' : 'rgba(255,255,255,0.55)' }]}
             onPress={() => { haptic.light(); next(); }}
             accessibilityRole="button"
             accessibilityLabel="Next slide"
           >
-            <ArrowRight size={22} color="#fff" />
+            <ArrowRight size={22} color={chromeFg} />
           </PressableScale>
         )}
       </Reveal>
@@ -273,12 +265,8 @@ const styles = StyleSheet.create({
   slideInner: { flex: 1, justifyContent: 'space-between', paddingHorizontal: space.gutter },
   headline: {
     ...type.hero,
-    color: '#ffffff',
     lineHeight: 50,
     paddingVertical: 2,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
   },
   bulletCard: {
     gap: space.lg,
@@ -291,12 +279,8 @@ const styles = StyleSheet.create({
   },
   body: {
     ...type.body,
-    color: 'rgba(255,255,255,0.92)',
     lineHeight: 22,
     maxWidth: '86%',
-    textShadowColor: 'rgba(0,0,0,0.55)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
   },
 
   bullet: { flexDirection: 'row', alignItems: 'center', gap: space.md },

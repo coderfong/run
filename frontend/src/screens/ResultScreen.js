@@ -12,9 +12,15 @@ import * as Sharing from 'expo-sharing';
 
 import { LinearGradient } from 'expo-linear-gradient';
 
-import GameMap, { MAP_READY, TerritoryFill, Trail, UserMarker } from '../components/GameMap';
+import GameMap, { MAP_READY, TerritoryFill, TerritoryLayer, Trail, UserMarker } from '../components/GameMap';
 import { CharacterBust } from '../components/character/CharacterRig';
+import { buildBoardFeatures, buildLandPortraits, estimateClaims } from '../components/territoryBoard';
+import EnergyMeter from '../components/EnergyMeter';
+import BuyEnergySheet from '../components/BuyEnergySheet';
+import ClaimFx from '../components/ClaimFx';
+import { shapeRing } from '../config/claimShapes';
 import { useAvatar } from '../state/avatar';
+import { useAuth } from '../auth/AuthContext';
 import { api } from '../api/client';
 import { brand, darkColors, radius, shadow, space, type, withAlpha } from '../theme';
 import { useClan } from '../state/clan';
@@ -258,6 +264,7 @@ export default function ResultScreen({ navigation, route }) {
   const { result } = route.params;
   const { color, clan } = useClan();
   const { equipped } = useAvatar();
+  const { user } = useAuth();
   const { trailGlowColor } = useSettings();
   const team = color; // {fill, stroke, glow} — clan color or neutral
   const label = clan?.tag || 'Solo';
@@ -272,6 +279,7 @@ export default function ResultScreen({ navigation, route }) {
     territory: result.territory || null,
     stolen_m2: result.stolen_m2 || 0,
     stolen_from: result.stolen_from || null,
+    xp_gained: 0,
   });
   // The circle's position = a fraction along the trail (slider-driven; a
   // map tap snaps it too). Derived, so it can never be null while a path
@@ -289,6 +297,59 @@ export default function ResultScreen({ navigation, route }) {
   const claimRadius = result.claim_radius_m || 0;
   const claimArea = result.claim_area_m2 || 0;
   const canPlace = !captured && claimRadius > 0 && path.length >= 2;
+
+  // Everyone's nearby land, so the placement map matches the global map:
+  // rival territories painted underneath, owner portraits pinned on each plot.
+  const [board, setBoard] = useState([]);
+  useEffect(() => {
+    if (!MAP_READY || path.length < 2) return;
+    const lats = path.map((p) => p.latitude);
+    const lons = path.map((p) => p.longitude);
+    const m = 0.012; // pad the run's bbox so surrounding turf is included
+    const bbox = {
+      minLon: Math.min(...lons) - m, minLat: Math.min(...lats) - m,
+      maxLon: Math.max(...lons) + m, maxLat: Math.max(...lats) + m,
+    };
+    let alive = true;
+    api.mapPolygons(bbox, 15)
+      .then((d) => { if (alive) setBoard(d.territories || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [path]);
+
+  const boardFC = useMemo(
+    () => ({ type: 'FeatureCollection', features: buildBoardFeatures(board, { userId: user.id, accent: team.stroke }) }),
+    [board, user.id, team.stroke]
+  );
+  const boardPortraits = useMemo(
+    () => buildLandPortraits(board, { userId: user.id, accent: team.stroke, equipped, cap: 24 }),
+    [board, user.id, team.stroke, equipped]
+  );
+  // Live "who + how much you're taking" as the circle slides along the route.
+  const preview = useMemo(
+    () => (center && claimRadius ? estimateClaims(board, center, claimRadius, { userId: user.id }) : { rivals: [], sampleArea: 0 }),
+    [board, center, claimRadius, user.id]
+  );
+  const claimingFrom = preview.rivals;
+  const takingTotal = claimingFrom.reduce((s, r) => s + r.area, 0);
+
+  // Cosmetic claim shape (level-unlocked; defaults to circle). Server enforces
+  // the unlock and rebuilds the authoritative polygon.
+  const claimShape = equipped?.claimShape || 'circle';
+  const claimFx = equipped?.claimFx || 'burst';
+  const [fxPlaying, setFxPlaying] = useState(false);
+
+  // Energy gates claiming (not running). Fetch it so the placement card can
+  // show the meter and block/redirect to the shop when it's too low.
+  const [energyStatus, setEnergyStatus] = useState(null);
+  const [shopOpen, setShopOpen] = useState(false);
+  useEffect(() => {
+    if (!canPlace) return;
+    let alive = true;
+    api.energyStatus().then((s) => { if (alive) setEnergyStatus(s); }).catch(() => {});
+    return () => { alive = false; };
+  }, [canPlace]);
+  const refreshEnergy = () => api.energyStatus().then(setEnergyStatus).catch(() => {});
 
   const rings = captured
     ? (t.rings?.length ? t.rings : [t.polygon])
@@ -323,17 +384,27 @@ export default function ResultScreen({ navigation, route }) {
     setClaiming(true);
     try {
       haptic.light();
-      const out = await api.claimTerritory(result.run_id, center.latitude, center.longitude);
+      const out = await api.claimTerritory(result.run_id, center.latitude, center.longitude, claimShape);
       setClaim({
         territory: out.territory,
         stolen_m2: out.stolen_m2 || 0,
         stolen_from: out.stolen_from || null,
+        xp_gained: out.xp_gained || 0,
       });
+      if (out.energy_max) setEnergyStatus((s) => ({ ...(s || {}), energy: out.energy, energy_max: out.energy_max }));
+      setFxPlaying(true); // level-unlocked claim explosion (no-op until art added)
       haptic.success();
-      toast.success('Territory claimed');
+      toast.success(out.xp_gained ? `Territory claimed · +${out.xp_gained} XP` : 'Territory claimed');
     } catch (e) {
-      // Unmissable — a silent failure here looks like a dead button.
-      Alert.alert('Could not place your claim', e.message || 'Check your connection and try again.');
+      if (e.status === 402) {
+        // Out of energy — send them straight to the refill shop.
+        refreshEnergy();
+        toast.error(e.message || 'Not enough energy to claim.');
+        setShopOpen(true);
+      } else {
+        // Unmissable — a silent failure here looks like a dead button.
+        Alert.alert('Could not place your claim', e.message || 'Check your connection and try again.');
+      }
     } finally {
       setClaiming(false);
     }
@@ -382,17 +453,26 @@ export default function ResultScreen({ navigation, route }) {
                 initialZoom={14}
                 onPress={onMapPress}
               >
+                {/* everyone's nearby land, painted underneath the run */}
+                <TerritoryLayer id="r-board" featureCollection={boardFC} dark />
                 <Trail id="r-trail" points={path} color={trailGlowColor || team.stroke} width={4} glow />
                 {center && (
                   <TerritoryFill
                     id="r-claim"
-                    points={circlePoints(center, claimRadius)}
+                    points={shapeRing(center, claimRadius, claimShape)}
                     fillColor={team.stroke}
                     strokeColor={team.glow}
                     fillOpacity={0.22}
                     glow
                   />
                 )}
+                {/* owner portrait on every plot — stays on the land they still
+                    hold even after a slice is taken (largest-ring centroid) */}
+                {boardPortraits.map((m) => (
+                  <UserMarker key={m.id} point={m.at}>
+                    <CharacterBust equipped={m.avatar} size={28} ring={m.ring} bg="rgba(21,24,29,0.9)" />
+                  </UserMarker>
+                ))}
                 {/* your portrait marks the centre of the claim */}
                 {center && (
                   <UserMarker point={center}>
@@ -413,6 +493,36 @@ export default function ResultScreen({ navigation, route }) {
             <Text style={[type.caption, { color: D.textDim }]}>Finish</Text>
           </View>
 
+          {/* live: who — and how much — this position takes */}
+          {claimingFrom.length > 0 && (
+            <View style={styles.takeCard}>
+              <Text style={styles.takeTitle}>
+                Taking {formatArea(takingTotal)} from {claimingFrom.length} runner{claimingFrom.length === 1 ? '' : 's'}
+              </Text>
+              {claimingFrom.slice(0, 4).map((r) => (
+                <View key={r.id} style={styles.takeRow}>
+                  <CharacterBust equipped={r.avatar} size={26} ring={r.ring} bg="rgba(21,24,29,0.9)" />
+                  <Text style={styles.takeName} numberOfLines={1}>
+                    {r.username}{r.clanTag ? ` · ${r.clanTag}` : ''}
+                  </Text>
+                  <Text style={[styles.takeArea, { color: team.glow }]}>{formatArea(r.area)}</Text>
+                </View>
+              ))}
+              {claimingFrom.length > 4 && (
+                <Text style={[type.caption, { color: D.textDim, marginTop: 4 }]}>
+                  +{claimingFrom.length - 4} more
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* energy gates claiming — tap the meter to refill */}
+          {energyStatus && (
+            <View style={{ marginBottom: space.md }}>
+              <EnergyMeter status={energyStatus} onPress={() => setShopOpen(true)} />
+            </View>
+          )}
+
           <TouchableOpacity
             style={[styles.claimBtn, { backgroundColor: team.stroke, opacity: claiming ? 0.6 : 1 }]}
             onPress={placeClaim}
@@ -421,10 +531,14 @@ export default function ResultScreen({ navigation, route }) {
             accessibilityRole="button"
             accessibilityLabel="Claim territory here"
           >
-            <Text style={styles.claimBtnText}>{claiming ? 'Claiming…' : 'Claim here'}</Text>
+            <Text style={styles.claimBtnText}>
+              {claiming ? 'Claiming…' : `Claim here${energyStatus ? ` · ${energyStatus.claim_cost ?? 25}⚡` : ''}`}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
+
+      <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={refreshEnergy} />
 
       {/* the shareable card */}
       <Reveal delay={canPlace ? 140 : 0}>
@@ -464,11 +578,16 @@ export default function ResultScreen({ navigation, route }) {
           <View style={styles.deltaRow}>
             {stolen > 0 ? (
               <Text style={[styles.deltaText, { color: team.glow }]}>
-                Stole {formatArea(stolen)}{result.stolen_from ? ` from ${result.stolen_from}` : ''}
+                Stole {formatArea(stolen)}{claim.stolen_from ? ` from ${claim.stolen_from}` : ''}
               </Text>
             ) : (
               <Text style={[styles.deltaText, { color: team.glow }]}>
                 +{formatArea(heroAreaM2)} · {label} holds more
+              </Text>
+            )}
+            {claim.xp_gained > 0 && (
+              <Text style={[styles.deltaText, { color: team.glow, marginTop: 4 }]}>
+                +{claim.xp_gained} XP
               </Text>
             )}
           </View>
@@ -528,6 +647,7 @@ export default function ResultScreen({ navigation, route }) {
       </Reveal>
     </ScrollView>
     {showConfetti && <Confetti />}
+    <ClaimFx fx={claimFx} play={fxPlaying} onDone={() => setFxPlaying(false)} />
     </View>
   );
 }
@@ -588,6 +708,17 @@ const styles = StyleSheet.create({
     marginBottom: space.md,
     marginTop: 2,
   },
+
+  takeCard: {
+    backgroundColor: D.cardAlt,
+    borderRadius: radius.md,
+    padding: space.md,
+    marginBottom: space.md,
+  },
+  takeTitle: { ...type.bodySmBold, color: D.text, marginBottom: space.sm },
+  takeRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: 6 },
+  takeName: { ...type.bodySm, color: D.textMuted, flex: 1 },
+  takeArea: { ...type.bodySmBold },
 
   claimBtn: { paddingVertical: 15, borderRadius: radius.pill, alignItems: 'center' },
   claimBtnText: { ...type.button, color: '#fff' },

@@ -314,6 +314,63 @@ def circle_polygon_wgs(lat: float, lon: float, radius_m: float) -> Polygon:
 
 
 # ---------------------------------------------------------------------------
+# Claim shapes (cosmetic geometry — level-unlocked). Each shape is built as a
+# UNIT polygon in local meters centred at the origin, then uniformly scaled so
+# its area EQUALS the target circle area. Equal-area keeps gameplay balanced:
+# a star and a circle from the same run cover the same ground.
+# ---------------------------------------------------------------------------
+
+def _regular_ngon(n: int) -> Polygon:
+    pts = [(math.cos(2 * math.pi * i / n), math.sin(2 * math.pi * i / n)) for i in range(n)]
+    return Polygon(pts)
+
+
+def _star(points: int, inner_ratio: float) -> Polygon:
+    pts = []
+    for i in range(points * 2):
+        r = 1.0 if i % 2 == 0 else inner_ratio
+        a = math.pi * i / points - math.pi / 2  # point up
+        pts.append((r * math.cos(a), r * math.sin(a)))
+    return Polygon(pts)
+
+
+def _heart() -> Polygon:
+    pts = []
+    for i in range(72):
+        t = 2 * math.pi * i / 72
+        x = 16 * math.sin(t) ** 3
+        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
+        pts.append((x, y))
+    return Polygon(pts)
+
+
+def _unit_shape(shape: str) -> Optional[Polygon]:
+    if shape == "hexagon":
+        return _regular_ngon(6)
+    if shape == "gem":
+        return _regular_ngon(8)
+    if shape == "star":
+        return _star(5, 0.5)
+    if shape == "heart":
+        return _heart()
+    return None  # circle / unknown → caller uses the disc
+
+
+def claim_shape_polygon_wgs(lat: float, lon: float, area_m2: float, shape: str = "circle") -> Polygon:
+    """A claim polygon of the given `shape` centred at (lat, lon) whose area
+    equals `area_m2`. Falls back to a circle for 'circle'/unknown shapes."""
+    unit = _unit_shape(shape or "circle")
+    if unit is None or unit.area <= 0:
+        return circle_polygon_wgs(lat, lon, math.sqrt(area_m2 / math.pi))
+    scale = math.sqrt(area_m2 / unit.area)
+    scaled = Polygon([(x * scale, y * scale) for x, y in unit.exterior.coords])
+    if not scaled.is_valid:
+        scaled = make_valid(scaled)
+    _to_m, to_wgs = _make_transformers(lat, lon)
+    return reproject_geometry_to_wgs84(scaled, to_wgs)
+
+
+# ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
 

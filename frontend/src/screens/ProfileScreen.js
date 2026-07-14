@@ -5,7 +5,8 @@ import React, { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 
-import { Award, Flame, Medal, Shirt, Trophy } from 'lucide-react-native';
+import { Award, Flame, Medal, Trophy } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -13,11 +14,13 @@ import { useClan } from '../state/clan';
 import { useAvatar } from '../state/avatar';
 import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
 import { CharacterBust } from '../components/character/CharacterRig';
+import PortraitBorder from '../components/PortraitBorder';
 import StreakCalendar from '../components/StreakCalendar';
 import { PressableScale, Reveal, haptic } from '../ui/motion';
 import { getHealthEnabled, setHealthEnabled, requestHealthPermission } from '../health';
-import { colors, radius, space, type, withAlpha } from '../theme';
+import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Card, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
+import ThemeToggle from '../components/ThemeToggle';
 import { toast } from '../ui/toast';
 
 // Trophy shelf — derived from live stats; earned trophies glow in the accent.
@@ -30,6 +33,7 @@ const TROPHIES = [
 
 const NOTIF_ROWS = [
   ['stolen', 'Land under attack'],
+  ['captured', 'Land you capture'],
   ['clan_goal', 'Club weekly goal'],
   ['kudos', 'Kudos received'],
   ['season', 'Season & promotion'],
@@ -45,6 +49,7 @@ const km = (m) => (m / 1000).toFixed(1);
 const km2 = (m2) => (m2 / 1e6).toFixed(2);
 
 function StatTile({ label, value, unit, accent }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <Card style={styles.tile} padded>
       <StatValue size="md" label={label} value={value} unit={unit} color={accent} />
@@ -53,6 +58,9 @@ function StatTile({ label, value, unit, accent }) {
 }
 
 export default function ProfileScreen({ navigation }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
   const { color, clan } = useClan();
   const { equipped } = useAvatar();
@@ -129,7 +137,9 @@ export default function ProfileScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="Your runner — tap to customize"
         >
-          <CharacterBust equipped={equipped} size={96} ring={accent} />
+          <PortraitBorder level={stats?.level ?? 0} size={104}>
+            <CharacterBust equipped={equipped} size={96} ring={accent} />
+          </PortraitBorder>
         </PressableScale>
         <Text style={[type.title, { marginTop: space.md }]}>{user?.username}</Text>
         <Pill label={clan?.tag ? `[${clan.tag}]` : 'Solo'} color={accent} dot style={{ marginTop: space.sm }} />
@@ -138,14 +148,19 @@ export default function ProfileScreen({ navigation }) {
           variant="secondary"
           size="sm"
           full={false}
-          icon={<Shirt size={16} color={colors.text} />}
+          icon={<AppIcon name="customize" size={18} />}
           onPress={() => navigation.navigate('AvatarStudio')}
           style={{ marginTop: space.md }}
         />
 
-        {/* level + XP bar */}
+        {/* level + XP bar — taps through to the reward ladder */}
         {stats && (
-          <View style={styles.xpWrap}>
+          <PressableScale
+            style={styles.xpWrap}
+            onPress={() => navigation.navigate('Progression')}
+            accessibilityRole="button"
+            accessibilityLabel="View levels and rewards"
+          >
             <View style={[styles.levelBadge, { borderColor: accent }]}>
               <Text style={[type.statSm, { color: accent }]}>{stats.level ?? 0}</Text>
             </View>
@@ -162,10 +177,10 @@ export default function ProfileScreen({ navigation }) {
                 />
               </View>
               <Text style={[type.caption, { marginTop: 4 }]}>
-                {(stats.xp || 0).toLocaleString()} / {(stats.next_level_xp || 100).toLocaleString()} XP
+                {(stats.xp || 0).toLocaleString()} / {(stats.next_level_xp || 100).toLocaleString()} XP · Levels & rewards →
               </Text>
             </View>
-          </View>
+          </PressableScale>
         )}
       </Reveal>
 
@@ -308,6 +323,16 @@ export default function ProfileScreen({ navigation }) {
         </View>
       </Card>
 
+      {/* appearance */}
+      <SectionHeader title="Appearance" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <Card>
+        <Text style={type.labelSm}>Theme</Text>
+        <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
+          Follow your device, or force light or dark.
+        </Text>
+        <ThemeToggle />
+      </Card>
+
       {/* notifications */}
       <SectionHeader title="Notifications" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card padded={false}>
@@ -377,7 +402,7 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   header: { alignItems: 'center', marginTop: space.md, marginBottom: space.xl },
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },

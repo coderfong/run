@@ -4,19 +4,22 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 
-import { colors, radius, space, type, withAlpha } from '../../theme';
+import { radius, space, withAlpha, useTheme, useThemedType } from '../../theme';
 
 export default function Pill({
   label,
-  color = colors.primary,
+  color,
   variant = 'tint',
   dot = false,
   textColor,
   style,
 }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const col = color ?? colors.primary;
   const bg =
-    variant === 'solid' ? color : variant === 'outline' ? 'transparent' : withAlpha(color, 0.14);
-  const fg = textColor || (variant === 'solid' ? '#fff' : color);
+    variant === 'solid' ? col : variant === 'outline' ? 'transparent' : withAlpha(col, 0.14);
+  const fg = textColor || (variant === 'solid' ? '#fff' : col);
   return (
     <View
       style={[
@@ -29,12 +32,12 @@ export default function Pill({
           paddingHorizontal: space.md,
           paddingVertical: 5,
           backgroundColor: bg,
-          ...(variant === 'outline' ? { borderWidth: 1, borderColor: color } : {}),
+          ...(variant === 'outline' ? { borderWidth: 1, borderColor: col } : {}),
         },
         style,
       ]}
     >
-      {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color }} /> : null}
+      {dot ? <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: col }} /> : null}
       <Text style={[type.labelSm, { color: fg, textTransform: 'none', letterSpacing: 0.2 }]}>
         {label}
       </Text>

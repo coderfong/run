@@ -4,10 +4,12 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 
-import { colors, radius, type } from '../../theme';
+import { radius, useTheme, useThemedType } from '../../theme';
 import { PressableScale } from '../../ui/motion';
 
 export default function Segmented({ options, value, onChange, style }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
   return (
     <View
       style={[

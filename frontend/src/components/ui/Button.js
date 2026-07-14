@@ -1,13 +1,13 @@
 // Button — the one button. Variants: primary (accent fill), secondary
 // (neutral surface), destructive (desaturated danger), ghost (text only),
-// gradient (the PACER pink→purple brand CTA), outline (thin brand border).
+// gradient (the PASER pink→purple brand CTA), outline (thin brand border).
 // Press feedback = scale 0.97 + light haptic.
 
 import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { brand, colors, radius, space, type } from '../../theme';
+import { brand, radius, space, useTheme, useThemedType } from '../../theme';
 import { haptic, PressableScale } from '../../ui/motion';
 
 export default function Button({
@@ -15,20 +15,23 @@ export default function Button({
   onPress,
   variant = 'primary',
   size = 'md',
-  accent = colors.primary,
+  accent,
   loading = false,
   disabled = false,
   icon = null,
   full = true,
   style,
 }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const acc = accent ?? colors.primary;
   const height = size === 'sm' ? 44 : 52;
   const textStyle = size === 'sm' ? type.buttonSm : type.button;
 
-  let bg = accent;
-  // Primary fills with `accent` (white by default) — so its text must be the
-  // dark ink, not white-on-white.
-  let fg = accent === colors.primary ? colors.primaryInk : '#ffffff';
+  let bg = acc;
+  // Primary fills with `acc` (the neutral ink by default) — so its text must
+  // be the contrasting ink, not white-on-white.
+  let fg = acc === colors.primary ? colors.primaryInk : '#ffffff';
   let border = null;
   if (variant === 'secondary') {
     bg = colors.cardAlt;
@@ -38,7 +41,7 @@ export default function Button({
     fg = '#ffffff';
   } else if (variant === 'ghost') {
     bg = 'transparent';
-    fg = accent;
+    fg = acc;
   } else if (variant === 'outline') {
     bg = 'transparent';
     fg = brand.pink;

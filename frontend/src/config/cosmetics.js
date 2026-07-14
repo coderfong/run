@@ -130,10 +130,18 @@ export function itemImage(slot, item, equipped) {
   return item.art[Math.max(0, Math.min(item.art.length - 1, idx))];
 }
 
-// Everything is unlocked — all cosmetics are freely available. (Unlock
-// metadata is kept on the items in case gating returns later.)
-export function isUnlocked() {
-  return true;
+// Unlock evaluation. `unlock` is null (free) or { stat, value, label } — the
+// stat is read from ctx.stats (which is /me/stats, so it includes `level`,
+// `runs_count`, `career_distance_m`, `territory_count`, `current_streak_weeks`).
+// A `{ clan: true }` predicate requires club membership. Missing ctx/stats →
+// unlocked (so the studio never wrongly locks before stats load).
+export function isUnlocked(item, ctx) {
+  const u = item?.unlock;
+  if (!u) return true;
+  if (!ctx) return true;
+  if (u.clan) return !!ctx.hasClan;
+  if (!ctx.stats) return true;
+  return Number(ctx.stats[u.stat] || 0) >= Number(u.value || 0);
 }
 
 export function unlockLabel(item) {

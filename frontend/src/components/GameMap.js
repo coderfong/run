@@ -10,25 +10,38 @@
 // configured; screens can render a placeholder in that case.
 
 import React, { forwardRef, useImperativeHandle, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Mapbox, {
-  Camera,
-  CircleLayer,
-  FillLayer,
-  LineLayer,
-  MapView,
-  MarkerView,
-  ShapeSource,
-  UserLocation,
-} from '@rnmapbox/maps';
+import { StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 
 import { activeCity, cityMaxBounds } from '../config/cities';
-import { MAPBOX_PUBLIC_TOKEN, MAP_READY, styleForTheme } from '../config/map';
+import { MAPBOX_PUBLIC_TOKEN, MAP_READY as MAP_CONFIGURED, styleForTheme } from '../config/map';
+import { colors, space, type } from '../theme';
 
-export { MAP_READY };
+// @rnmapbox/maps has NO native module in Expo Go — importing or using it there
+// redboxes the whole app at startup (this module is pulled in eagerly via the
+// map screens). So load it only OUTSIDE Expo Go, behind try/catch, and fall
+// back to a placeholder anywhere the map would render.
+const IN_EXPO_GO = Constants.executionEnvironment === 'storeClient';
+
+let RN = null;
+if (!IN_EXPO_GO) {
+  try {
+    RN = require('@rnmapbox/maps');
+  } catch (e) {
+    RN = null;
+  }
+}
+const Mapbox = RN?.default ?? null;
+const { Camera, CircleLayer, FillLayer, LineLayer, MapView, MarkerView, ShapeSource, UserLocation } = RN ?? {};
+
+export const MAPBOX_AVAILABLE = !!(RN && MapView);
+
+// MAP_READY now also requires the native module, so it is false in Expo Go and
+// every screen that guards on it shows a placeholder instead of crashing.
+export const MAP_READY = MAP_CONFIGURED && MAPBOX_AVAILABLE;
 
 // Set the runtime public token once. Telemetry off — this is a fitness app.
-if (MAPBOX_PUBLIC_TOKEN) {
+if (MAPBOX_AVAILABLE && MAPBOX_PUBLIC_TOKEN) {
   Mapbox.setAccessToken(MAPBOX_PUBLIC_TOKEN);
   Mapbox.setTelemetryEnabled(false);
 }
@@ -96,6 +109,20 @@ const GameMap = forwardRef(function GameMap(
     },
   }));
 
+  // Expo Go / no native module — show a graceful placeholder instead of the
+  // native map (which would crash). Hooks above already ran, so this early
+  // return is safe.
+  if (!MAPBOX_AVAILABLE) {
+    return (
+      <View style={[styles.map, styles.placeholder, style]}>
+        <Text style={styles.placeholderTitle}>Map preview</Text>
+        <Text style={styles.placeholderBody}>
+          The live map needs a development build — it can’t render in Expo Go. Everything else works here.
+        </Text>
+      </View>
+    );
+  }
+
   const bounds = cityMaxBounds();
 
   return (
@@ -134,6 +161,7 @@ export default GameMap;
 // A running/route trail. `glow` adds a soft wide underlayer (dark theme only);
 // `glowColor` overrides its colour (defaults to the line colour).
 export function Trail({ id = 'trail', points, color, width = 5, glow = false, glowColor }) {
+  if (!MAPBOX_AVAILABLE) return null;
   if (!points || points.length < 2) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={lineFeature(points)}>
@@ -153,6 +181,7 @@ export function Trail({ id = 'trail', points, color, width = 5, glow = false, gl
 
 // A single filled territory / live preview polygon.
 export function TerritoryFill({ id = 'territory', points, fillColor, strokeColor, fillOpacity = 0.35, glow = false }) {
+  if (!MAPBOX_AVAILABLE) return null;
   if (!points || points.length < 3) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={polygonFeature(points)}>
@@ -171,6 +200,7 @@ export function TerritoryFill({ id = 'territory', points, fillColor, strokeColor
 // An arbitrary React view pinned to a map coordinate — used for the player's
 // character-portrait location marker and territory-owner portraits.
 export function UserMarker({ point, children, anchor = { x: 0.5, y: 0.5 } }) {
+  if (!MAPBOX_AVAILABLE) return null;
   if (!point) return null;
   return (
     <MarkerView coordinate={toLngLat(point)} anchor={anchor} allowOverlap>
@@ -181,6 +211,7 @@ export function UserMarker({ point, children, anchor = { x: 0.5, y: 0.5 } }) {
 
 // A point marker (e.g. run start), rendered as a bordered dot.
 export function MapPoint({ id = 'point', point, color, radius = 7 }) {
+  if (!MAPBOX_AVAILABLE) return null;
   if (!point) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={{ type: 'Feature', geometry: { type: 'Point', coordinates: toLngLat(point) }, properties: {} }}>
@@ -196,6 +227,7 @@ export function MapPoint({ id = 'point', point, color, radius = 7 }) {
 // this for the whole board). Each feature carries `fillColor`/`strokeColor`
 // properties so one source paints every clan.
 export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark = false }) {
+  if (!MAPBOX_AVAILABLE) return null;
   if (!featureCollection) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={featureCollection} onPress={onPress}>
@@ -211,6 +243,7 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
 // Contested-zone outline: a bright per-feature stroke whose opacity the
 // screen pulses. Rendered above the base board for recently-claimed land.
 export function ContestedOutline({ id = 'contested', featureCollection, opacity = 0.8 }) {
+  if (!MAPBOX_AVAILABLE) return null;
   if (!featureCollection?.features?.length) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={featureCollection}>
@@ -224,6 +257,14 @@ export function ContestedOutline({ id = 'contested', featureCollection, opacity 
 
 const styles = StyleSheet.create({
   map: { flex: 1 },
+  placeholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.bgElevated,
+    padding: space.xl,
+  },
+  placeholderTitle: { ...type.title, color: colors.text, marginBottom: space.sm },
+  placeholderBody: { ...type.body, color: colors.textMuted, textAlign: 'center', lineHeight: 22, maxWidth: 300 },
 });
 
 // Placeholder shown where the map can't render yet (no token / Expo Go).

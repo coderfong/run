@@ -2,18 +2,19 @@
 
 import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { Bell, Heart, Shield, Swords, Trophy } from 'lucide-react-native';
-
 import { api } from '../api/client';
-import { brand, colors, radius, space, type } from '../theme';
+import { brand, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Skeleton, EmptyState } from '../components/ui';
+import AppIcon from '../components/AppIcon';
 
+// category → generated sticker icon (assets/icons/*).
 const CATEGORY_ICON = {
-  stolen: Swords,
-  clan_goal: Shield,
-  kudos: Heart,
-  season: Trophy,
-  recap: Bell,
+  stolen: 'steal',
+  captured: 'claim',
+  clan_goal: 'clan-shield',
+  kudos: 'like',
+  season: 'trophy',
+  recap: 'bell',
 };
 
 function timeAgo(iso) {
@@ -25,6 +26,9 @@ function timeAgo(iso) {
 }
 
 export default function NotificationsScreen() {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const [items, setItems] = useState(null);
 
   useEffect(() => {
@@ -53,7 +57,7 @@ export default function NotificationsScreen() {
     return (
       <Screen center>
         <EmptyState
-          icon={<Bell size={40} color={colors.textMuted} />}
+          art={require('../../assets/art/empty-notifications.png')}
           title="Nothing yet"
           body="Attacks on your land, club goals, and kudos land here."
         />
@@ -68,11 +72,11 @@ export default function NotificationsScreen() {
         keyExtractor={(n) => n.id}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl, paddingTop: space.md }}
         renderItem={({ item }) => {
-          const Icon = CATEGORY_ICON[item.category] || Bell;
+          const iconName = CATEGORY_ICON[item.category] || 'bell';
           return (
             <View style={[styles.row, !item.read && styles.unread]}>
               <View style={styles.icon}>
-                <Icon size={18} color={item.read ? colors.textMuted : brand.pink} strokeWidth={2} />
+                <AppIcon name={iconName} size={22} faded={item.read} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{item.title}</Text>
@@ -87,22 +91,23 @@ export default function NotificationsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: space.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
-    padding: space.lg,
-    marginBottom: space.sm,
-  },
-  unread: { backgroundColor: colors.cardAlt },
-  icon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      gap: space.md,
+      backgroundColor: colors.card,
+      borderRadius: radius.card,
+      padding: space.lg,
+      marginBottom: space.sm,
+    },
+    unread: { backgroundColor: colors.cardAlt },
+    icon: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });

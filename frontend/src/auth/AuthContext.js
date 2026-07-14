@@ -114,6 +114,18 @@ export function AuthProvider({ children }) {
     setNeedsOnboarding(true); // new account → show the intro once
   }, []);
 
+  // OAuth sign-in (Google / Apple). `idToken` is the provider's identity
+  // token; the backend verifies it and returns our own session. New users are
+  // routed through onboarding just like a fresh signup.
+  const signInWithProvider = useCallback(async (provider, idToken, extra = {}) => {
+    const res = await api.oauthLogin(provider, idToken, extra);
+    setAuthToken(res.access_token);
+    await persist(res.access_token, res.user);
+    setToken(res.access_token);
+    setUser(res.user);
+    if (res.created) setNeedsOnboarding(true);
+  }, []);
+
   const completeOnboarding = useCallback(() => {
     setNeedsOnboarding(false);
   }, []);
@@ -149,6 +161,7 @@ export function AuthProvider({ children }) {
       needsOnboarding,
       signIn,
       signUp,
+      signInWithProvider,
       signOut,
       completeOnboarding,
       updateUsername,
@@ -161,6 +174,7 @@ export function AuthProvider({ children }) {
       needsOnboarding,
       signIn,
       signUp,
+      signInWithProvider,
       signOut,
       completeOnboarding,
       updateUsername,

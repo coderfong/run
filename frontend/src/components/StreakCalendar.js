@@ -6,7 +6,7 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 
-import { colors, radius, space, type } from '../theme';
+import { radius, space, useTheme, useThemedType } from '../theme';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -16,7 +16,17 @@ function iso(y, m, d) {
   return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-export default function StreakCalendar({ runDays = [], accent = colors.primary }) {
+export default function StreakCalendar({ runDays = [], accent }) {
+  // Theme-aware: on a light (white) card the day numbers/labels must read as
+  // dark text, not the dark-palette greys that vanish against white.
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const ac = accent || colors.primary;
+  // Accent-filled "ran" days: dark ink reads on the clan/brand accents (which
+  // are the same colour in both themes), so keep it constant. The real fix is
+  // the surrounding numbers/labels below, which now use themed text colours
+  // instead of the dark-palette greys that vanished on a white card.
+  const ranInk = '#0b0d10';
   const runSet = useMemo(() => new Set(runDays), [runDays]);
   const today = new Date();
   const [offset, setOffset] = useState(0); // months back from the current one
@@ -54,7 +64,7 @@ export default function StreakCalendar({ runDays = [], accent = colors.primary }
 
       <View style={styles.weekRow}>
         {WEEKDAYS.map((w, i) => (
-          <Text key={i} style={styles.weekLabel}>{w}</Text>
+          <Text key={i} style={[styles.weekLabel, type.caption, { color: colors.textDim }]}>{w}</Text>
         ))}
       </View>
 
@@ -69,14 +79,14 @@ export default function StreakCalendar({ runDays = [], accent = colors.primary }
               <View
                 style={[
                   styles.day,
-                  ran && { backgroundColor: accent },
-                  isToday && { borderWidth: 1.5, borderColor: ran ? '#fff' : accent },
+                  ran && { backgroundColor: ac },
+                  isToday && { borderWidth: 1.5, borderColor: ran ? '#fff' : ac },
                 ]}
               >
                 <Text
                   style={[
                     type.caption,
-                    { color: ran ? '#0b0d10' : colors.textMuted, fontVariant: ['tabular-nums'] },
+                    { color: ran ? ranInk : colors.textMuted, fontVariant: ['tabular-nums'] },
                   ]}
                 >
                   {d}
@@ -104,7 +114,7 @@ const styles = StyleSheet.create({
     marginBottom: space.md,
   },
   weekRow: { flexDirection: 'row' },
-  weekLabel: { ...type.caption, color: colors.textDim, flex: 1, textAlign: 'center', marginBottom: 4 },
+  weekLabel: { flex: 1, textAlign: 'center', marginBottom: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
   day: {

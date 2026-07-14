@@ -41,6 +41,10 @@ class User(Base):
     # this runner's character portrait on feeds/cards.
     avatar = Column(JSONB, nullable=True)
 
+    # Social sign-in identity (Google / Apple). Null for password accounts.
+    oauth_provider = Column(Text, nullable=True)
+    oauth_sub = Column(Text, nullable=True)
+
     runs = relationship("Run", back_populates="user")
     territories = relationship("Territory", back_populates="user")
 

@@ -7,14 +7,15 @@ import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { Crown } from 'lucide-react-native';
+import AppIcon from './AppIcon';
 
 import { api } from '../api/client';
-import { colors, radius, shadow, space, type, withAlpha } from '../theme';
+import { radius, shadow, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAccent } from '../hooks/useAccent';
 import { Skeleton, useReduceMotion } from '../ui/motion';
+import { EmptyState } from './ui';
 import { toast } from '../ui/toast';
 
 const RANKS_KEY = 'tr.lastRanks';
@@ -25,11 +26,14 @@ const PODIUM = {
 };
 
 function RankDelta({ delta }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   if (!delta) return null;
   return <Text style={[styles.delta, { color: delta > 0 ? colors.ok : colors.danger }]}>{delta > 0 ? '▲' : '▼'}</Text>;
 }
 
 function RowSkeleton() {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <Skeleton width={28} height={18} />
@@ -44,6 +48,9 @@ function RowSkeleton() {
 }
 
 export default function LeaderboardView() {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
   const accent = useAccent();
   const reduce = useReduceMotion();
@@ -103,14 +110,12 @@ export default function LeaderboardView() {
   if (rows.length === 0) {
     return (
       <View style={styles.listContent}>
-        <View style={{ alignItems: 'center', paddingTop: space.xxl }}>
-          <Text style={[type.title, { textAlign: 'center', marginBottom: space.sm }]}>
-            Nobody has claimed land yet.
-          </Text>
-          <Text style={[type.body, { color: colors.textMuted, textAlign: 'center' }]}>
-            Be first — run a loop and the ground inside is yours.
-          </Text>
-        </View>
+        <EmptyState
+          art={require('../../assets/art/empty-leaderboard.png')}
+          title="Nobody has claimed land yet"
+          body="Be first — run a loop and the ground inside is yours."
+          style={{ paddingTop: space.xl }}
+        />
       </View>
     );
   }
@@ -131,7 +136,7 @@ export default function LeaderboardView() {
         const isFirst = r.rank === 1;
         return (
           <View key={r.user_id} style={[styles.podiumCol, isFirst && styles.podiumFirst]}>
-            {isFirst && <Crown size={18} color="#eab308" fill="#eab308" style={{ marginBottom: 4 }} />}
+            {isFirst && <AppIcon name="crown" size={20} style={{ marginBottom: 4 }} />}
             <View
               style={[
                 styles.podiumAvatar,
@@ -210,7 +215,7 @@ export default function LeaderboardView() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   list: { backgroundColor: colors.bg },
   listContent: { paddingHorizontal: space.gutter, paddingTop: space.md, paddingBottom: space.xxl },
   row: {

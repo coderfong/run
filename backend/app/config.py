@@ -88,8 +88,33 @@ class Settings(BaseSettings):
 
     # ---- XP (verified runs only) ------------------------------------------
     xp_per_km: int = 10
-    xp_per_claim: int = 100
-    xp_per_steal: int = 50
+    xp_per_claim: int = 100          # flat base for placing any claim
+    xp_per_steal: int = 50           # flat base bonus when a claim takes rival land
+    # Area-scaled XP: taking territory earns MORE the larger the ground taken.
+    # Areas are m²; a 2 km run's circle is ~0.3 km², a steal is usually smaller.
+    xp_per_km2_claimed: int = 200    # per km² of land the claim covers
+    xp_per_km2_stolen: int = 400     # per km² carved off rivals (worth more)
+    # Club XP: a member's earned XP also advances their club by this fraction,
+    # so clubs progress collectively without double-counting the solo total.
+    club_xp_share: float = 1.0
+
+    # ---- Energy (gates territory CLAIMS only — runs are always allowed) -----
+    energy_base_max: int = 100          # cap at level 0 (grows +5 / 10 levels)
+    energy_regen_seconds: int = 360     # 1 energy per 6 min → full in ~10h
+    energy_cost_claim: int = 25         # energy spent to place a claim
+    energy_per_run: int = 8             # energy granted for a verified finished run
+
+    # ---- In-app purchases (energy refills) --------------------------------
+    # TODO(prod): flip on and wire real Apple StoreKit / Google Play receipt
+    # verification in routes/progression.py before shipping paid packs.
+    iap_verify_receipts: bool = False
+
+    # ---- Social sign-in (Google / Apple) ----------------------------------
+    # Comma-separated allowed audiences (OAuth client ids for Google; bundle /
+    # service ids for Apple). Tokens whose `aud` isn't listed are rejected.
+    # Empty → that provider's endpoint returns 501 (not configured).
+    google_client_ids: str = ""
+    apple_client_ids: str = ""
 
     class Config:
         env_file = ".env"

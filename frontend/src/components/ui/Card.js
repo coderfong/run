@@ -5,15 +5,17 @@
 import React from 'react';
 import { View } from 'react-native';
 
-import { colors, darkColors, radius, shadow, space } from '../../theme';
+import { darkColors, radius, shadow, space, useTheme } from '../../theme';
 import { PressableScale } from '../../ui/motion';
 
 export default function Card({ children, dark = false, padded = true, onPress, style, ...rest }) {
+  const { colors, scheme } = useTheme();
+  const isDark = dark || scheme === 'dark';
   const surface = {
     backgroundColor: dark ? darkColors.card : colors.card,
     borderRadius: radius.card,
     padding: padded ? space.lg : 0,
-    ...(dark ? {} : shadow.card),
+    ...(isDark ? {} : shadow.card),
   };
 
   if (onPress) {

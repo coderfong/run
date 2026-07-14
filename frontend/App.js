@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StatusBar, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Alert, StatusBar, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
@@ -41,11 +42,12 @@ import ClubDetailScreen from './src/screens/ClubDetailScreen';
 import ClubChatScreen from './src/screens/ClubChatScreen';
 import SeasonScreen from './src/screens/SeasonScreen';
 import AvatarStudioScreen from './src/screens/AvatarStudioScreen';
+import ProgressionScreen from './src/screens/ProgressionScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ClanProvider } from './src/state/clan';
 import { AvatarProvider, useAvatar } from './src/state/avatar';
-import { MotionProvider } from './src/ui/motion';
+import { MotionProvider, useReduceMotion, MascotLoader } from './src/ui/motion';
 import { RecordingProvider, useRecording } from './src/state/recording';
 import { SettingsProvider } from './src/state/settings';
 import { OfflineBanner } from './src/ui/offline';
@@ -53,7 +55,7 @@ import { ToastHost } from './src/ui/toast';
 import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
-import { colors, darkColors, fonts } from './src/theme';
+import { colors, darkColors, fonts, ThemeProvider, useTheme } from './src/theme';
 
 // Crash telemetry — a strict no-op unless a DSN is provided via env/extra.
 const SENTRY_DSN =
@@ -172,6 +174,11 @@ function YouStack() {
   return (
     <YouStackNav.Navigator screenOptions={{ headerShown: false }}>
       <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
+      <YouStackNav.Screen
+        name="Progression"
+        component={ProgressionScreen}
+        options={{ headerShown: true, title: 'Levels & rewards', ...headerLight }}
+      />
       <YouStackNav.Screen
         name="AvatarStudio"
         component={AvatarStudioScreen}
@@ -302,11 +309,18 @@ function RootStack() {
   );
 }
 
+// Status bar icons follow the active theme (dark icons on light, and vice versa).
+function ThemedStatusBar() {
+  const { scheme, colors } = useTheme();
+  return <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={colors.bg} />;
+}
+
 function FullScreenSpinner() {
+  // Light stage so the black-outlined runner reads without any backdrop/border.
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center' }}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
-      <ActivityIndicator size="large" color={colors.primary} />
+    <View style={{ flex: 1, backgroundColor: '#fbf7ee', justifyContent: 'center', alignItems: 'center' }}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fbf7ee" />
+      <MascotLoader source={require('./assets/art/loading.png')} />
     </View>
   );
 }
@@ -314,6 +328,7 @@ function FullScreenSpinner() {
 function RootNavigator() {
   const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
   const { needsSetup: avatarNeedsSetup, loading: avatarLoading } = useAvatar();
+  const reduced = useReduceMotion();
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
   usePushRegistration(signedIn);
@@ -325,25 +340,35 @@ function RootNavigator() {
       .catch(() => setLocStatus('granted'));
   }, [signedIn]);
 
-  if (loading) return <FullScreenSpinner />;
-
-  if (!signedIn) {
-    return (
+  // Pick the current phase + its screen. Each phase CROSSFADES in (keyed
+  // Animated.View) instead of hard-swapping. Only one NavigationContainer is
+  // ever mounted at a time (no `exiting`), so phases never overlap in the tree.
+  let phase = 'app';
+  let content;
+  if (loading) {
+    phase = 'loading';
+    content = <FullScreenSpinner />;
+  } else if (!signedIn) {
+    phase = 'auth';
+    content = (
       <NavigationContainer theme={navTheme}>
         <AuthNavigator />
       </NavigationContainer>
     );
-  }
-
-  if (needsOnboarding) return <OnboardingScreen onDone={completeOnboarding} />;
-
-  // First-time avatar setup — right after the intro slides (also catches
-  // existing accounts that predate the avatar system, exactly once).
-  if (avatarLoading) return <FullScreenSpinner />;
-  if (avatarNeedsSetup) return <AvatarStudioScreen standalone />;
-
-  if (locStatus === 'undetermined' && !locHandled) {
-    return (
+  } else if (needsOnboarding) {
+    phase = 'onboarding';
+    content = <OnboardingScreen onDone={completeOnboarding} />;
+  } else if (avatarLoading) {
+    // First-time avatar setup — right after the intro slides (also catches
+    // existing accounts that predate the avatar system, exactly once).
+    phase = 'loading';
+    content = <FullScreenSpinner />;
+  } else if (avatarNeedsSetup) {
+    phase = 'avatar';
+    content = <AvatarStudioScreen standalone />;
+  } else if (locStatus === 'undetermined' && !locHandled) {
+    phase = 'location';
+    content = (
       <LocationPermissionScreen
         onDone={(granted) => {
           setLocHandled(true);
@@ -351,12 +376,23 @@ function RootNavigator() {
         }}
       />
     );
+  } else {
+    phase = 'app';
+    content = (
+      <NavigationContainer theme={navTheme} linking={linking}>
+        <RootStack />
+      </NavigationContainer>
+    );
   }
 
   return (
-    <NavigationContainer theme={navTheme} linking={linking}>
-      <RootStack />
-    </NavigationContainer>
+    <Animated.View
+      key={phase}
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      entering={reduced ? undefined : FadeIn.duration(300)}
+    >
+      {content}
+    </Animated.View>
   );
 }
 
@@ -381,22 +417,24 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <MotionProvider>
-        <AuthProvider>
-          <ClanProvider>
-            <AvatarProvider>
-              <RecordingProvider>
-                <SettingsProvider>
-                  <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
-                  <RootNavigator />
-                  <OfflineBanner />
-                  <ToastHost />
-                </SettingsProvider>
-              </RecordingProvider>
-            </AvatarProvider>
-          </ClanProvider>
-        </AuthProvider>
-      </MotionProvider>
+      <ThemeProvider>
+        <MotionProvider>
+          <AuthProvider>
+            <ClanProvider>
+              <AvatarProvider>
+                <RecordingProvider>
+                  <SettingsProvider>
+                    <ThemedStatusBar />
+                    <RootNavigator />
+                    <OfflineBanner />
+                    <ToastHost />
+                  </SettingsProvider>
+                </RecordingProvider>
+              </AvatarProvider>
+            </ClanProvider>
+          </AuthProvider>
+        </MotionProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }

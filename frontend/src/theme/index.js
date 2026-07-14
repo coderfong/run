@@ -16,6 +16,7 @@ export * from './dark';
 export * from './motion';
 export { haptic } from './haptics';
 export { colors as lightColors } from './light';
+export { ThemeProvider, useTheme, useThemedStyles, useThemedType } from './ThemeContext';
 
 import { darkColors } from './dark';
 import { fonts, radius, space, shadow, type, runTuning, withAlpha } from './tokens';
@@ -34,7 +35,10 @@ export const brand = {
   pink: '#ec4899',
   purple: '#8b5cf6',
   teal: '#2dd4bf',
-  gradient: ['#ec4899', '#8b5cf6'],
+  // The CTA fill. Flat PASER pink (both stops equal) — the old pink→purple
+  // gradient is retired. Kept as a 2-stop array so every LinearGradient CTA
+  // (Button, Result share, etc.) picks up the change with no call-site edits.
+  gradient: ['#ec4899', '#ec4899'],
   gradientTeal: ['#8b5cf6', '#2dd4bf'],
 };
 
