@@ -24,11 +24,12 @@ from ..ratelimit import limiter
 from ..security import current_user
 from .. import energy as energy_mod
 from ..progression import (
-    LOOTBOX_LEVELS,
+    MAX_LEVEL,
     current_border,
     level_from_xp,
-    lootbox_rarity,
+    premium_rewards_for_level,
     reward_ladder,
+    rewards_for_level,
     xp_for_level,
 )
 
@@ -39,33 +40,27 @@ router = APIRouter(tags=["progression"])
 # level-up reward grants (called from runs.py after XP is written)
 # ---------------------------------------------------------------------------
 def sync_level_rewards(db: Session, user_id: str) -> dict:
-    """Grant any not-yet-granted level rewards. Only LOOTBOXES need persisting
-    (they roll a random cosmetic); borders/shapes/FX are derived from level.
-    Idempotent via users.reward_level. Self-committing.
+    """Track level-ups after XP is written. Rewards are no longer auto-granted
+    here — the pass ladder is tap-to-claim (POST /me/rewards/claim), so a
+    level-up just makes new tiers claimable. reward_level survives as the
+    high-water mark (and is what migration 0015 backfilled claims from).
+    Self-committing.
 
-    Returns {leveled_up, level, prev_level, new_lootboxes}."""
+    Returns {leveled_up, level, prev_level}."""
     row = db.execute(
         text("SELECT COALESCE(xp,0), COALESCE(reward_level,0) FROM users WHERE id = :u"),
         {"u": user_id},
     ).fetchone()
     if not row:
-        return {"leveled_up": False, "level": 0, "prev_level": 0, "new_lootboxes": 0}
+        return {"leveled_up": False, "level": 0, "prev_level": 0}
     xp, prev_level = int(row[0]), int(row[1])
     level = level_from_xp(xp)
     if level <= prev_level:
-        return {"leveled_up": False, "level": level, "prev_level": prev_level, "new_lootboxes": 0}
+        return {"leveled_up": False, "level": level, "prev_level": prev_level}
 
-    boxes = 0
-    for lvl in range(prev_level + 1, level + 1):
-        if lvl in LOOTBOX_LEVELS:
-            db.execute(
-                text("INSERT INTO user_unlocks (user_id, kind, item_id) VALUES (:u, 'lootbox', :r)"),
-                {"u": user_id, "r": lootbox_rarity(lvl)},
-            )
-            boxes += 1
     db.execute(text("UPDATE users SET reward_level = :l WHERE id = :u"), {"l": level, "u": user_id})
     db.commit()
-    return {"leveled_up": True, "level": level, "prev_level": prev_level, "new_lootboxes": boxes}
+    return {"leveled_up": True, "level": level, "prev_level": prev_level}
 
 
 # ---------------------------------------------------------------------------
@@ -80,8 +75,12 @@ def my_energy(user: models.User = Depends(current_user), db: Session = Depends(g
 
 @router.get("/me/progression")
 def my_progression(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
-    row = db.execute(text("SELECT COALESCE(xp,0) FROM users WHERE id = :u"), {"u": user.id}).fetchone()
+    row = db.execute(
+        text("SELECT COALESCE(xp,0), COALESCE(premium_pass,false) FROM users WHERE id = :u"),
+        {"u": user.id},
+    ).fetchone()
     xp = int(row[0]) if row else 0
+    premium = bool(row[1]) if row else False
     level = level_from_xp(xp)
     base = xp_for_level(level)
     nxt = xp_for_level(level + 1)
@@ -96,6 +95,10 @@ def my_progression(user: models.User = Depends(current_user), db: Session = Depe
         text("SELECT item_id FROM user_unlocks WHERE user_id = :u AND kind = 'cosmetic'"),
         {"u": user.id},
     ).fetchall()
+    claims = db.execute(
+        text("SELECT level, track FROM reward_claims WHERE user_id = :u"),
+        {"u": user.id},
+    ).fetchall()
     db.commit()
 
     return {
@@ -105,10 +108,92 @@ def my_progression(user: models.User = Depends(current_user), db: Session = Depe
         "xp_for_next": max(1, nxt - base),
         "border": current_border(level),
         "energy": st,
+        "premium_active": premium,
         "ladder": reward_ladder(),
+        "claims": [{"level": int(c[0]), "track": c[1]} for c in claims],
         "pending_lootboxes": [{"id": r[0], "rarity": r[1]} for r in pending],
         "unlocks": [r[0] for r in unlocked],
     }
+
+
+@router.post("/me/rewards/claim")
+@limiter.limit(settings.rate_limit_default)
+def claim_reward(request: Request, response: Response, body: dict,
+                 user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Collect one tier of the pass. Grants whatever the tier holds: lootboxes
+    become an unopened box, energy packs credit the meter, and derived rewards
+    (borders/shapes/FX/energy-cap — already active from level alone) just get
+    marked collected so the tile settles.
+
+    The UNIQUE(user_id, level, track) index is the real double-claim guard;
+    the pre-check only exists to return a friendly 409."""
+    try:
+        tier = int(body.get("level"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "bad level")
+    track = body.get("track")
+    if track not in ("free", "premium"):
+        raise HTTPException(400, "track must be free or premium")
+    if not 1 <= tier <= MAX_LEVEL:
+        raise HTTPException(400, "bad level")
+
+    row = db.execute(
+        text("SELECT COALESCE(xp,0), COALESCE(premium_pass,false) FROM users WHERE id = :u"),
+        {"u": user.id},
+    ).fetchone()
+    level = level_from_xp(int(row[0]))
+    if tier > level:
+        raise HTTPException(403, "level not reached yet")
+    if track == "premium" and not bool(row[1]):
+        raise HTTPException(402, "premium pass required")
+
+    inserted = db.execute(
+        text("INSERT INTO reward_claims (user_id, level, track) VALUES (:u, :l, :t) "
+             "ON CONFLICT DO NOTHING"),
+        {"u": user.id, "l": tier, "t": track},
+    ).rowcount
+    if not inserted:
+        raise HTTPException(409, "already claimed")
+
+    rewards = rewards_for_level(tier) if track == "free" else premium_rewards_for_level(tier)
+    for rw in rewards:
+        if rw["kind"] == "lootbox":
+            db.execute(
+                text("INSERT INTO user_unlocks (user_id, kind, item_id) VALUES (:u, 'lootbox', :r)"),
+                {"u": user.id, "r": rw["key"]},
+            )
+        elif rw["kind"] == "energy":
+            energy_mod.grant(db, user.id, int(rw["key"].lstrip("+")))
+    st = energy_mod.status(db, user.id)
+    db.commit()
+    return {"ok": True, "level": tier, "track": track, "rewards": rewards, "energy": st}
+
+
+# The premium track unlock. One product; permanent (the ladder is career-long,
+# not seasonal), so re-buying is a no-op rather than an error — store retries
+# and restore-purchases both land here.
+PASS_PRODUCTS = {"premium_pass"}
+
+
+@router.post("/me/pass/purchase")
+@limiter.limit(settings.rate_limit_default)
+def purchase_pass(request: Request, response: Response, body: dict,
+                  user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Unlock the premium track after a store purchase.
+
+    TODO(prod): same receipt-verification gap as purchase_energy — when
+    settings.iap_verify_receipts is on, verify against the store and dedupe on
+    the transaction id BEFORE unlocking. Dev accepts unverified."""
+    product_id = (body.get("product_id") or "").strip()
+    if product_id not in PASS_PRODUCTS:
+        raise HTTPException(400, "unknown product")
+    if settings.iap_verify_receipts:
+        if not body.get("receipt"):
+            raise HTTPException(402, "missing receipt")
+        raise HTTPException(501, "receipt verification not implemented — see TODO")
+    db.execute(text("UPDATE users SET premium_pass = true WHERE id = :u"), {"u": user.id})
+    db.commit()
+    return {"ok": True, "premium_active": True}
 
 
 @router.post("/me/lootbox/open")

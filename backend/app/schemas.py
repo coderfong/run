@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -289,6 +289,68 @@ class NotifPrefs(BaseModel):
     kudos: bool = True
     season: bool = True
     recap: bool = True
+    pasers: bool = True
+
+
+# ---- pasers ---------------------------------------------------------------
+
+# How the viewer relates to another runner. Drives which button the client
+# shows, so every user-facing endpoint that names a runner returns one.
+#   none      — no link; offer "Add paser"
+#   pending_out — viewer asked, waiting on them; offer "Requested" (cancel)
+#   pending_in  — they asked the viewer; offer "Accept" / "Decline"
+#   paser     — accepted both ways; offer "Remove"
+#   self      — the viewer
+PaserState = Literal["none", "pending_out", "pending_in", "paser", "self"]
+
+
+class RunnerCard(BaseModel):
+    """A runner as they appear in a list — search results, pasers, requests."""
+
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    clan_tag: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
+    level: int = 0
+    state: PaserState = "none"
+    # Only set on rows that came from a request, so the client can act on it.
+    request_id: Optional[str] = None
+
+
+class PaserRequestIn(BaseModel):
+    user_id: str
+
+
+class PaserListOut(BaseModel):
+    pasers: List[RunnerCard]
+    incoming: List[RunnerCard]
+    outgoing: List[RunnerCard]
+
+
+class RunnerProfile(BaseModel):
+    """Another runner's public profile — the tap-through from a paser row."""
+
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    clan_tag: Optional[str] = None
+    clan_name: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
+    state: PaserState = "none"
+    # Set when state is pending_in/pending_out, so the profile can accept or
+    # decline without a second round trip to find the link.
+    request_id: Optional[str] = None
+    paser_count: int = 0
+    level: int = 0
+    xp: int = 0
+    total_area_m2: float = 0
+    territory_count: int = 0
+    biggest_claim_m2: float = 0
+    runs_count: int = 0
+    career_distance_m: float = 0
+    current_streak_days: int = 0
+    recent_runs: List[RunSummary] = []
 
 
 # ---- clans (Phase 5) ------------------------------------------------------

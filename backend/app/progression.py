@@ -72,6 +72,21 @@ def lootbox_rarity(level: int) -> str:
     return "common"
 
 
+_RARITY_UP = {"common": "rare", "rare": "epic", "epic": "legendary", "legendary": "legendary"}
+
+
+def premium_rewards_for_level(level: int) -> list[dict]:
+    """The premium track: same tiers, juicier drops. Lootbox levels give a box
+    one rarity above the free one; every other level is an energy pack. Only
+    kinds the grant path already knows (lootbox / energy) — premium never
+    gates borders/shapes/FX, which stay derived from level for everyone."""
+    if level in LOOTBOX_LEVELS:
+        rarity = _RARITY_UP[lootbox_rarity(level)]
+        return [{"kind": "lootbox", "key": rarity, "label": f"{rarity.title()} lootbox"}]
+    amount = 50 if level % 10 == 0 else 25
+    return [{"kind": "energy", "key": f"+{amount}", "label": f"+{amount} energy"}]
+
+
 def rewards_for_level(level: int) -> list[dict]:
     """Every reward unlocked exactly AT `level` (used to grant on level-up and
     to render the ladder). Levels with no milestone still grant a collectible
@@ -96,9 +111,14 @@ def rewards_for_level(level: int) -> list[dict]:
 
 
 def reward_ladder() -> list[dict]:
-    """The full 1..MAX_LEVEL ladder for the progression screen."""
+    """The full 1..MAX_LEVEL two-track ladder for the progression screen."""
     return [
-        {"level": lvl, "xp_required": xp_for_level(lvl), "rewards": rewards_for_level(lvl)}
+        {
+            "level": lvl,
+            "xp_required": xp_for_level(lvl),
+            "rewards": rewards_for_level(lvl),
+            "premium": premium_rewards_for_level(lvl),
+        }
         for lvl in range(1, MAX_LEVEL + 1)
     ]
 
