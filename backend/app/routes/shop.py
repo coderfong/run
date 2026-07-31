@@ -43,6 +43,9 @@ def get_coins(request: Request, response: Response,
         "packs": [{"product_id": p, "coins": c}
                   for p, c in coins_mod.COIN_PRODUCTS.items()],
         "items": coins_mod.catalog_for(db, user.id),
+        # Client counts down to this; the selection changes when it passes.
+        "expires_at": coins_mod.window_expires_at(),
+        "rotation_hours": coins_mod.ROTATION_HOURS,
     }
 
 
@@ -83,6 +86,8 @@ def buy_cosmetic(request: Request, response: Response, body: dict,
             raise HTTPException(402, err)
         if err == "already owned":
             raise HTTPException(409, err)
+        if err == "not in the shop right now":
+            raise HTTPException(410, err)   # the window rotated under them
         raise HTTPException(400, err or "could not buy")
     db.commit()
     return {

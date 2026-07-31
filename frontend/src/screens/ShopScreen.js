@@ -1,62 +1,46 @@
-// ShopScreen — spend coins on cosmetics, or buy coins with real money.
+// ShopScreen — a small, rotating storefront.
 //
-// Two halves:
-//   * coin packs (real-money IAP, products mirror COIN_PRODUCTS in coins.py)
-//   * the cosmetics catalogue, filtered by slot, priced BY THE SERVER
+// Twelve items at a time on a 12-hour clock, not the whole 155-item
+// catalogue: a shop you can exhaust in one sitting has no reason to be
+// revisited, and everything looks equally unremarkable when it's all on
+// display at once. The selection is derived from the window index server-side
+// (coins.py) so it needs no state and can't drift between client and server.
 //
-// Prices and the owned flag come from GET /me/coins — never computed here. The
-// client showing a price is cosmetic; the server charges what its own
-// catalogue says, so a tampered client just gets a 402.
+// Prices come from the SERVER catalogue — the numbers here are decoration.
+// Buying an item that has since rotated out returns 410, which is handled by
+// reloading rather than by trusting the local list.
 //
-// PASER PRO exclusives are absent by design: shop_catalog.py omits them, so
-// they can't be bought with coins at any price.
+// Coin packs deliberately DON'T live here — they're real-money IAP and sit
+// with the energy packs in one "Get more" sheet.
 
-import React, { useCallback, useMemo, useState } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { api } from '../api/client';
 import { useAvatar } from '../state/avatar';
-import { brand, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
-import { Card, Row, Screen, Skeleton, Pill } from '../components/ui';
+import { radius, space, useTheme, useThemedType, withAlpha } from '../theme';
+import { Card, Row, Screen, Skeleton, Button } from '../components/ui';
 import { PartThumb } from '../components/character/CharacterRig';
-import { getItem, SLOTS } from '../config/cosmetics';
+import { getItem } from '../config/cosmetics';
 import { RARITY_COLOR } from '../components/RewardArt';
 import AppIcon from '../components/AppIcon';
+import BuyEnergySheet from '../components/BuyEnergySheet';
 import { toast } from '../ui/toast';
 
-const PACK_PRICE = {
-  coins_pouch: '$0.99',
-  coins_sack: '$1.99',
-  coins_chest: '$4.99',
-  coins_vault: '$9.99',
-};
-
-// Pack tile art. Keys mirror COIN_PRODUCTS in backend/app/coins.py; the pile
-// grows with the price so the tiers read at a glance.
-const PACK_ICON = {
-  coins_pouch: 'coin-pouch',
-  coins_sack: 'coin-sack',
-  coins_chest: 'coin-chest',
-  coins_vault: 'coin-vault',
-};
-
-// Same deliberate no-op as BuyEnergySheet: no store SDK is installed, and
-// Metro resolves imports at build time so we can't require() one defensively.
-// Returning null means "no store", which the backend accepts only while
-// receipt verification is off (dev). See docs/RELEASE_V2.md.
-async function storePurchase(/* productId */) {
-  return null;
-}
-
-function CoinBalance({ coins }) {
-  const type = useThemedType();
-  return (
-    <Row gap={6} style={styles.balance}>
-      <AppIcon name="coin" size={20} />
-      <Text style={[type.bodyBold, { color: '#eab308' }]}>{coins}</Text>
-    </Row>
-  );
+function useCountdown(expiresAt) {
+  const [left, setLeft] = useState(0);
+  useEffect(() => {
+    if (!expiresAt) return undefined;
+    const tick = () => setLeft(Math.max(0, expiresAt * 1000 - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [expiresAt]);
+  const h = Math.floor(left / 3600000);
+  const m = Math.floor((left % 3600000) / 60000);
+  const s = Math.floor((left % 60000) / 1000);
+  return { left, text: `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s` };
 }
 
 export default function ShopScreen() {
@@ -64,20 +48,22 @@ export default function ShopScreen() {
   const type = useThemedType();
   const { refreshUnlocks } = useAvatar();
   const [data, setData] = useState(null);
-  const [slot, setSlot] = useState('headwear');
   const [busy, setBusy] = useState(null);
+  const [getMore, setGetMore] = useState(false);
 
   const load = useCallback(async () => {
     try { setData(await api.shop()); } catch { setData(false); }
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const shown = useMemo(() => {
-    if (!data?.items) return [];
-    return data.items
-      .filter((i) => i.slot === slot)
-      .sort((a, b) => Number(a.owned) - Number(b.owned) || a.price - b.price);
-  }, [data, slot]);
+  const { left, text: countdown } = useCountdown(data?.expires_at);
+  // The window rolled over while the screen was open — pull the new lineup.
+  useEffect(() => {
+    if (data?.expires_at && left === 0) load();
+  }, [left, data?.expires_at, load]);
+
+  const items = data?.items || [];
+  const coins = data?.coins ?? 0;
 
   const buy = async (item) => {
     if (busy) return;
@@ -94,23 +80,8 @@ export default function ShopScreen() {
     } catch (e) {
       if (e.status === 402) toast.error('Not enough coins');
       else if (e.status === 409) toast.error('You already own that');
+      else if (e.status === 410) { toast.error('That just rotated out'); load(); }
       else toast.error(e.message || 'Could not buy that');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const buyCoins = async (pack) => {
-    if (busy) return;
-    setBusy(pack.product_id);
-    try {
-      const receipt = await storePurchase(pack.product_id);
-      const res = await api.purchaseCoins(pack.product_id, receipt, Platform.OS);
-      toast.success(`+${pack.coins} coins`);
-      setData((d) => (d ? { ...d, coins: res.coins } : d));
-    } catch (e) {
-      toast.error(e.status === 402 ? 'Purchases aren’t live yet.'
-        : (e.message || 'Could not complete purchase'));
     } finally {
       setBusy(null);
     }
@@ -122,8 +93,8 @@ export default function ShopScreen() {
   if (!data) {
     return (
       <Screen>
-        <Skeleton width="100%" height={90} style={{ borderRadius: radius.card, marginTop: space.md }} />
-        <Skeleton width="100%" height={320} style={{ borderRadius: radius.card, marginTop: space.md }} />
+        <Skeleton width="100%" height={72} style={{ borderRadius: radius.card, marginTop: space.md }} />
+        <Skeleton width="100%" height={360} style={{ borderRadius: radius.card, marginTop: space.md }} />
       </Screen>
     );
   }
@@ -133,75 +104,52 @@ export default function ShopScreen() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
     >
-      <Row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={type.title}>Shop</Text>
-        <CoinBalance coins={data.coins} />
-      </Row>
-
-      {/* coin packs */}
-      <Card style={{ marginTop: space.md }}>
-        <Text style={[type.bodyBold, { marginBottom: space.sm }]}>Get coins</Text>
-        <View style={styles.packRow}>
-          {(data.packs || []).map((p) => (
-            <TouchableOpacity
-              key={p.product_id}
-              style={[styles.pack, { borderColor: colors.border, backgroundColor: colors.cardAlt }]}
-              onPress={() => buyCoins(p)}
-              disabled={!!busy}
-              accessibilityRole="button"
-              accessibilityLabel={`Buy ${p.coins} coins`}
-            >
-              <AppIcon name={PACK_ICON[p.product_id] || 'coin'} size={40} />
-              <Text style={[type.bodyBold, { marginTop: 2 }]}>{p.coins}</Text>
-              <Text style={[type.caption, { color: colors.textMuted }]}>
-                {PACK_PRICE[p.product_id] || ''}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <Text style={[type.caption, { color: colors.textMuted, marginTop: space.sm }]}>
-          You also earn coins for every run and every level.
-        </Text>
+      {/* balance + top-up */}
+      <Card style={styles.wallet}>
+        <Row gap={8} style={{ alignItems: 'center', flex: 1 }}>
+          <AppIcon name="coin" size={28} />
+          <View>
+            <Text style={[type.title, { color: '#eab308' }]}>{coins.toLocaleString()}</Text>
+            <Text style={[type.caption, { color: colors.textMuted }]}>
+              Earn coins on every run and level
+            </Text>
+          </View>
+        </Row>
+        <Button title="Get more" size="sm" full={false} onPress={() => setGetMore(true)} />
       </Card>
 
-      {/* slot filter */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ marginTop: space.md }}
-        contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
-      >
-        {SLOTS.map((s) => (
-          <TouchableOpacity key={s.key} onPress={() => setSlot(s.key)} accessibilityRole="button">
-            <Pill
-              label={s.label}
-              color={slot === s.key ? brand.pink : colors.textMuted}
-              variant={slot === s.key ? 'solid' : 'outline'}
-            />
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* rotation clock */}
+      <Row gap={6} style={styles.timer}>
+        <AppIcon name="timer" size={16} />
+        <Text style={[type.captionMedium, { color: colors.textMuted }]}>
+          New items in {countdown}
+        </Text>
+      </Row>
 
-      {/* items */}
       <View style={styles.grid}>
-        {shown.map((item) => {
+        {items.map((item) => {
           const cat = getItem(item.slot, item.item_id);
           const tint = RARITY_COLOR[item.rarity] || colors.border;
-          const afford = data.coins >= item.price;
+          const afford = coins >= item.price;
           return (
             <TouchableOpacity
               key={item.item_id}
               style={[
                 styles.cell,
                 { backgroundColor: colors.card, borderColor: item.owned ? colors.border : tint },
-                item.owned && { opacity: 0.55 },
+                item.owned && { opacity: 0.5 },
               ]}
               onPress={() => !item.owned && buy(item)}
               disabled={item.owned || !!busy}
               accessibilityRole="button"
-              accessibilityLabel={`${cat?.label || item.item_id}, ${item.owned ? 'owned' : `${item.price} coins`}`}
+              accessibilityLabel={`${cat?.label || item.item_id}, ${item.rarity}, ${item.owned ? 'owned' : `${item.price} coins`}`}
             >
-              <PartThumb slot={item.slot} item={cat} equipped={{}} size={54} />
+              <View style={[styles.rarityTag, { backgroundColor: withAlpha(tint, 0.18) }]}>
+                <Text style={[type.caption, { color: tint, fontSize: 9 }]}>
+                  {item.rarity.toUpperCase()}
+                </Text>
+              </View>
+              <PartThumb slot={item.slot} item={cat} equipped={{}} size={56} />
               <Text style={[type.caption, { textAlign: 'center' }]} numberOfLines={1}>
                 {cat?.label || item.item_id}
               </Text>
@@ -219,23 +167,30 @@ export default function ShopScreen() {
           );
         })}
       </View>
+
+      <BuyEnergySheet
+        visible={getMore}
+        onClose={() => setGetMore(false)}
+        onPurchased={load}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  balance: { alignItems: 'center' },
-  packRow: { flexDirection: 'row', gap: 8 },
-  pack: {
-    flex: 1, alignItems: 'center', paddingVertical: space.md,
-    borderRadius: radius.card, borderWidth: 1,
-  },
+  wallet: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  timer: { alignItems: 'center', justifyContent: 'center', marginTop: space.md },
   grid: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
     marginTop: space.md,
   },
   cell: {
-    width: '31.5%', alignItems: 'center', gap: 4, paddingVertical: space.md,
-    borderRadius: radius.card, borderWidth: 1.5, marginBottom: space.md,
+    width: '31.5%', alignItems: 'center', gap: 4, paddingTop: space.lg,
+    paddingBottom: space.md, borderRadius: radius.card, borderWidth: 1.5,
+    marginBottom: space.md,
+  },
+  rarityTag: {
+    position: 'absolute', top: 6, alignSelf: 'center',
+    paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill,
   },
 });

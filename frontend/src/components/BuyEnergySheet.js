@@ -25,6 +25,15 @@ const PACKS = [
   { id: 'energy_refill_full', label: 'Full refill', price: '$2.99' },
 ];
 
+// Mirrors COIN_PRODUCTS in backend/app/coins.py. Prices must match the App
+// Store tiers or the sheet advertises a number Apple doesn't charge.
+const COIN_PACKS = [
+  { id: 'coins_pouch', coins: 500, price: '$0.99', icon: 'coin-pouch' },
+  { id: 'coins_sack', coins: 1200, price: '$1.99', icon: 'coin-sack' },
+  { id: 'coins_chest', coins: 3000, price: '$4.99', icon: 'coin-chest' },
+  { id: 'coins_vault', coins: 6500, price: '$9.99', icon: 'coin-vault' },
+];
+
 // No store SDK is installed yet, so we can't reference one: Metro resolves
 // imports at BUILD time, and a require() of a missing package is a bundling
 // error (try/catch doesn't help). Note `expo-in-app-purchases` is deprecated and
@@ -62,11 +71,36 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
     }
   };
 
+  const buyCoins = async (pack) => {
+    if (busy) return;
+    setBusy(pack.id);
+    try {
+      const receipt = await storePurchase(pack.id);
+      const res = await api.purchaseCoins(pack.id, receipt, Platform.OS);
+      toast.success(`+${pack.coins} coins`);
+      onPurchased?.();
+      onClose?.();
+    } catch (e) {
+      toast.error(e.status === 402 ? 'Purchases aren’t live yet.'
+        : (e.message || 'Could not complete purchase'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // Both currencies in one sheet: they're both real-money IAP, and splitting
+  // them across two screens made "get more of the thing I ran out of" a
+  // navigation puzzle.
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <Text style={[type.heading, { marginBottom: 4 }]}>Refill energy</Text>
+      <Text style={[type.heading, { marginBottom: 4 }]}>Get more</Text>
       <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
-        Energy powers territory claims. It also refills on its own over time.
+        Energy powers territory claims and refills on its own over time. Coins
+        buy cosmetics in the shop — you also earn them every run and level.
+      </Text>
+
+      <Text style={[type.bodySmBold, { color: colors.textMuted, marginBottom: space.sm }]}>
+        ENERGY
       </Text>
       {PACKS.map((pack) => (
         <TouchableOpacity
@@ -75,10 +109,33 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
           onPress={() => buy(pack)}
           disabled={!!busy}
           activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={`${pack.label} for ${pack.price}`}
         >
           <AppIcon name="energy" size={22} />
           <Text style={[type.bodyBold, { flex: 1 }]}>{pack.label}</Text>
           <View style={[styles.price, { backgroundColor: brand.pink }]}>
+            <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : pack.price}</Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+
+      <Text style={[type.bodySmBold, { color: colors.textMuted, marginTop: space.lg, marginBottom: space.sm }]}>
+        COINS
+      </Text>
+      {COIN_PACKS.map((pack) => (
+        <TouchableOpacity
+          key={pack.id}
+          style={[styles.row, { backgroundColor: colors.card }]}
+          onPress={() => buyCoins(pack)}
+          disabled={!!busy}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={`${pack.coins} coins for ${pack.price}`}
+        >
+          <AppIcon name={pack.icon} size={26} />
+          <Text style={[type.bodyBold, { flex: 1 }]}>{pack.coins.toLocaleString()} coins</Text>
+          <View style={[styles.price, { backgroundColor: '#eab308' }]}>
             <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : pack.price}</Text>
           </View>
         </TouchableOpacity>

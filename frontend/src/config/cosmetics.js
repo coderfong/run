@@ -185,8 +185,10 @@ export const ITEMS = {
     { id: 'shieldvisor', label: 'Shield visor', art: ART.specs5, layout: { w: 0.55 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
     { id: 'cleargoggles', label: 'Clear goggles', art: ART.specs10, layout: { w: 0.56 }, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
     { id: 'sportshield', label: 'Sport shield', img: require('../../assets/character/glasses/specs3.png'), layout: { w: 0.56 }, rarity: 'epic', unlock: level(20) },
-    { id: 'skigoggles', label: 'Ski goggles', img: require('../../assets/character/glasses/specs6.png'), layout: { w: 0.58, cy: 0.162 }, rarity: 'epic', unlock: level(30) },
-    { id: 'monocle', label: 'Monocle', img: require('../../assets/character/glasses/specs11.png'), layout: { w: 0.42 }, rarity: 'epic', unlock: premiumOnly },
+    // Tallest eyewear art by a distance — narrower so its height lands in
+    // line with the rest instead of covering half the face.
+    { id: 'skigoggles', label: 'Ski goggles', img: require('../../assets/character/glasses/specs6.png'), layout: { w: 0.52, cy: 0.166 }, rarity: 'epic', unlock: level(30) },
+    { id: 'monocle', label: 'Monocle', img: require('../../assets/character/glasses/specs11.png'), layout: { w: 0.5 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'cybershades', label: 'Cyber shades', img: require('../../assets/character/glasses/specs12.png'), layout: { w: 0.56 }, rarity: 'legendary', unlock: premiumOnly },
     { id: 'mirrorvisor', label: 'Mirror visor', img: require('../../assets/character/glasses/specs13.png'), layout: { w: 0.56 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'starglasses', label: 'Star shades', img: require('../../assets/character/glasses/specs14.png'), layout: { w: 0.54 }, rarity: 'rare', unlock: streak(2, 'Hold a 2-week streak') },
@@ -195,7 +197,7 @@ export const ITEMS = {
     { id: 'cateye', label: 'Cat-eye', img: require('../../assets/character/glasses/specs17.png'), layout: { w: 0.52 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'pixelshades', label: 'Pixel shades', img: require('../../assets/character/glasses/specs18.png'), layout: { w: 0.54 }, rarity: 'epic', unlock: level(20) },
     { id: 'aviators', label: 'Aviators', img: require('../../assets/character/glasses/specs19.png'), layout: { w: 0.52 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'eyepatch', label: 'Eyepatch', img: require('../../assets/character/glasses/specs20.png'), layout: { w: 0.44 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
+    { id: 'eyepatch', label: 'Eyepatch', img: require('../../assets/character/glasses/specs20.png'), layout: { w: 0.52 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
     { id: 'clownglasses', label: 'Clown glasses', img: require('../../assets/character/glasses/specs21.png'), layout: { w: 0.56 }, rarity: 'rare', unlock: runs(20, 'Finish 20 runs') },
     { id: 'sleepmask', label: 'Sleep mask', img: require('../../assets/character/glasses/specs22.png'), layout: { w: 0.5 }, rarity: 'common', unlock: streak(3, 'Hold a 3-week streak') },
     { id: 'heromask', label: 'Hero mask', img: require('../../assets/character/glasses/specs23.png'), layout: { w: 0.56 }, rarity: 'epic', unlock: level(24) },
@@ -214,7 +216,9 @@ export const ITEMS = {
     { id: 'polo', label: 'PE polo', art: ART.top13, layout: { w: 0.95, top: 0.302 }, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
     { id: 'croptee', label: 'Crop tee', art: ART.top15, layout: { w: 0.9, top: 0.335 }, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
     { id: 'windbreaker', label: 'Windbreaker', art: ART.top14, layout: { w: 0.98, top: 0.3 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
-    { id: 'champjersey', label: 'Champion jersey', img: require('../../assets/character/outfit/top18.png'), rarity: 'legendary', unlock: premiumOnly },
+    // Drawn much longer than the other tops (313px against a 225px median),
+    // so at full width it hung past the hips and over the bottoms.
+    { id: 'champjersey', label: 'Champion jersey', img: require('../../assets/character/outfit/top18.png'), layout: { w: 0.78 }, rarity: 'legendary', unlock: premiumOnly },
     { id: 'aurorajacket', label: 'Aurora jacket', img: require('../../assets/character/outfit/top19.png'), rarity: 'epic', unlock: premiumOnly },
     { id: 'varsity', label: 'Varsity jacket', img: require('../../assets/character/outfit/top20.png'), rarity: 'epic', unlock: premiumOnly },
     { id: 'stripedtee', label: 'Striped tee', img: require('../../assets/character/outfit/top21.png'), rarity: 'common', unlock: free },

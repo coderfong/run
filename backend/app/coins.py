@@ -13,9 +13,56 @@ is what makes "where did my coins go" answerable and gives support a paper
 trail for refunds.
 """
 
+import random
+import time
+
 from sqlalchemy import text
 
 from .shop_catalog import SHOP_ITEMS, price_of
+
+# ---------------------------------------------------------------------------
+# Rotating storefront
+# ---------------------------------------------------------------------------
+# 155 buyable items shown at once is a catalogue, not a shop — nothing feels
+# special and there's no reason to come back. Instead a small window rotates
+# on a fixed clock.
+#
+# The selection is DERIVED from the window index rather than stored: seeding a
+# PRNG with it means every client and the server independently compute the
+# same list, with no table to write, no cron to miss, and no drift between a
+# client that cached yesterday's shop and a server that moved on.
+ROTATION_HOURS = 12
+# Rarity mix per window — enough commons to always be affordable, one
+# legendary so there's something to save for.
+FEATURED_MIX = {"common": 5, "rare": 4, "epic": 2, "legendary": 1}
+
+
+def current_window(now: float | None = None) -> int:
+    return int((now if now is not None else time.time()) // (ROTATION_HOURS * 3600))
+
+
+def window_expires_at(window: int | None = None) -> int:
+    """Unix seconds when the current selection is replaced."""
+    w = current_window() if window is None else window
+    return (w + 1) * ROTATION_HOURS * 3600
+
+
+def featured_ids(window: int | None = None) -> list[str]:
+    """The item ids on sale in `window`. Deterministic for a given window."""
+    w = current_window() if window is None else window
+    by_rarity: dict[str, list[str]] = {}
+    for item_id, (_slot, rarity) in SHOP_ITEMS.items():
+        by_rarity.setdefault(rarity, []).append(item_id)
+    picked: list[str] = []
+    for rarity, count in FEATURED_MIX.items():
+        pool = sorted(by_rarity.get(rarity, []))     # sorted = stable seed
+        if not pool:
+            continue
+        # A distinct seed per rarity stops the same offset being sampled from
+        # every pool, which would make the tiers rotate in lockstep.
+        rng = random.Random(f"{w}:{rarity}")
+        picked.extend(rng.sample(pool, min(count, len(pool))))
+    return picked
 
 # Earn rates. A common item (150) is ~6 runs; a legendary (2000) is a goal.
 COINS_PER_RUN = 25
@@ -95,6 +142,10 @@ def buy_cosmetic(db, user_id, item_id: str):
     if price is None:
         # Either not a real id, or a PRO exclusive that coins must not reach.
         return False, "not purchasable", None
+    # Must be in the CURRENT window. Without this the rotation is decorative:
+    # anyone could buy any of the 155 items by posting its id directly.
+    if item_id not in featured_ids():
+        return False, "not in the shop right now", price
     if owns(db, user_id, item_id):
         return False, "already owned", price
     if not spend(db, user_id, price, "buy_cosmetic", item_id):
@@ -108,15 +159,17 @@ def buy_cosmetic(db, user_id, item_id: str):
 
 
 def catalog_for(db, user_id) -> list[dict]:
-    """Every shop item with its price and whether the player already has it."""
+    """This window's featured items, priced, with an owned flag."""
     have = {
         r[0] for r in db.execute(
             text("SELECT item_id FROM user_unlocks WHERE user_id = :u"),
             {"u": user_id},
         ).fetchall()
     }
+    rank = {"common": 0, "rare": 1, "epic": 2, "legendary": 3}
     out = []
-    for item_id, (slot, rarity) in SHOP_ITEMS.items():
+    for item_id in featured_ids():
+        slot, rarity = SHOP_ITEMS[item_id]
         out.append({
             "item_id": item_id,
             "slot": slot,
@@ -124,4 +177,6 @@ def catalog_for(db, user_id) -> list[dict]:
             "price": price_of(item_id),
             "owned": item_id in have,
         })
+    # Cheapest first within rarity, so the grid reads as a price ladder.
+    out.sort(key=lambda i: (rank.get(i["rarity"], 0), i["price"], i["item_id"]))
     return out
