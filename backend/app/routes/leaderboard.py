@@ -10,13 +10,67 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, ranks, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
 from ..security import current_user_optional
 
 router = APIRouter()
+
+
+@router.get("/leaderboard/ranks", response_model=List[schemas.LeaderboardEntry])
+def rank_leaderboard(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=500),
+):
+    """Standings by RANK POINTS — the competitive board.
+
+    Points decay with inactivity, so this ranks who's winning ground now
+    rather than who has ever played the most. Decay is applied per row on read
+    (same lazy model as everywhere else), which is why the ordering is done in
+    Python after the fetch: a stored balance can be stale, and sorting on the
+    stale column would show a decayed player above an active one.
+    """
+    rows = db.execute(
+        text(
+            """
+            SELECT u.id::text, u.username, COALESCE(u.rank_points, 0),
+                   u.rank_points_at, c.tag, c.color_key
+            FROM users u
+            LEFT JOIN clan_members cm ON cm.user_id = u.id
+            LEFT JOIN clans c ON c.id = cm.clan_id
+            WHERE COALESCE(u.rank_points, 0) > 0
+            ORDER BY u.rank_points DESC
+            LIMIT :limit
+            """
+        ),
+        {"limit": limit * 2},   # over-fetch: decay can reorder the tail
+    ).fetchall()
+
+    scored = []
+    for r in rows:
+        pts = ranks.effective_points(int(r[2]), r[3])
+        if pts <= 0:
+            continue
+        info = ranks.rank_for_points(pts)
+        scored.append((pts, r, info))
+    scored.sort(key=lambda x: -x[0])
+
+    return [
+        schemas.LeaderboardEntry(
+            user_id=r[0],
+            username=r[1],
+            total_area_m2=0.0,
+            territory_count=0,
+            clan_tag=r[4],
+            clan_color=schemas.ClanColor(**color_triple(r[5])) if r[5] else None,
+            rank_points=pts,
+            rank_key=info["key"],
+            rank_label=info["label"],
+        )
+        for pts, r, info in scored[:limit]
+    ]
 
 
 @router.get("/leaderboard", response_model=List[schemas.LeaderboardEntry])

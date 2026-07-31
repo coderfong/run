@@ -25,9 +25,9 @@ from ..security import current_user
 from .. import coins as coins_mod
 from .. import energy as energy_mod
 from .. import iap
+from .. import ranks
 from ..progression import (
     MAX_LEVEL,
-    current_border,
     level_from_xp,
     premium_rewards_for_level,
     reward_ladder,
@@ -114,7 +114,9 @@ def my_progression(user: models.User = Depends(current_user), db: Session = Depe
         "level": level,
         "xp_into_level": xp - base,
         "xp_for_next": max(1, nxt - base),
-        "border": current_border(level),
+        # Border follows RANK, not level — level is a one-way ladder, rank can
+        # be lost. `current_border(level)` is gone for exactly that reason.
+        "rank": ranks.status(db, user.id),
         "energy": st,
         "premium_active": premium,
         "ladder": reward_ladder(),

@@ -175,6 +175,10 @@ class LeaderboardEntry(BaseModel):
     territory_count: int
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
+    # Populated on the rank board; null on the land board.
+    rank_points: Optional[int] = None
+    rank_key: Optional[str] = None
+    rank_label: Optional[str] = None
 
 
 class MapPolygonsOut(BaseModel):
@@ -225,6 +229,15 @@ class MeStats(BaseModel):
     xp: int = 0
     level: int = 0
     next_level_xp: int = 100
+    # Rank — territorial standing, and what the portrait border is drawn from.
+    # Separate ladder to XP: points come from claiming/stealing/defending only,
+    # and decay with inactivity. `rank_best` is the high-water mark.
+    rank_points: int = 0
+    rank_key: str = "wood"
+    rank_label: str = "Wood"
+    rank_next_points: Optional[int] = None
+    rank_progress: float = 0.0
+    rank_best_key: str = "wood"
 
 
 class NotificationItem(BaseModel):

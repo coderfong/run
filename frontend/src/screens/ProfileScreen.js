@@ -174,41 +174,15 @@ export default function ProfileScreen({ navigation }) {
           {/* Bust must FILL the border's hole (both 104) and sit on an opaque
               disc — at 96 with a translucent backdrop, the banner behind it
               showed through the 8px gap. Same pairing as ProgressionScreen. */}
-          <PortraitBorder level={stats?.level ?? 0} size={104}>
+          {/* Border comes from RANK (territorial standing), not level. */}
+          <PortraitBorder borderKey={stats?.rank_key || 'wood'} size={104}>
             <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
           </PortraitBorder>
         </PressableScale>
         <Text style={[type.title, { marginTop: space.md }]}>{user?.username}</Text>
         <Pill label={clan?.tag ? `[${clan.tag}]` : 'Solo'} color={accent} dot style={{ marginTop: space.sm }} />
-        {/* the two runner actions sit as a pair; the badge on Add pasers is
-            requests waiting on you */}
-        <Row gap={8} style={{ marginTop: space.md }}>
-          <Button
-            title="Customize runner"
-            variant="secondary"
-            size="sm"
-            full={false}
-            icon={<AppIcon name="customize" size={18} />}
-            onPress={() => navigation.navigate('AvatarStudio')}
-          />
-          <View>
-            <Button
-              title="Add pasers"
-              variant="secondary"
-              size="sm"
-              full={false}
-              icon={<AppIcon name="invite" size={18} />}
-              onPress={() => navigation.navigate('Pasers')}
-            />
-            {paserInfo?.incoming?.length ? (
-              <View style={[styles.badge, { backgroundColor: brand.pink, borderColor: colors.bg }]} pointerEvents="none">
-                <Text style={[type.captionMedium, { color: '#fff' }]}>{paserInfo.incoming.length}</Text>
-              </View>
-            ) : null}
-          </View>
-        </Row>
-
-        {/* level + XP bar — taps through to the reward ladder */}
+        {/* level + XP bar — taps through to the reward ladder. Sits directly
+            under the name so progress reads before the actions. */}
         {stats && (
           <PressableScale
             style={styles.xpWrap}
@@ -237,6 +211,34 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </PressableScale>
         )}
+
+        {/* the two runner actions sit as a pair; the badge on Add pasers is
+            requests waiting on you */}
+        <Row gap={8} style={{ marginTop: space.md }}>
+          <Button
+            title="Customize runner"
+            variant="secondary"
+            size="sm"
+            full={false}
+            icon={<AppIcon name="customize" size={18} />}
+            onPress={() => navigation.navigate('AvatarStudio')}
+          />
+          <View>
+            <Button
+              title="Add pasers"
+              variant="secondary"
+              size="sm"
+              full={false}
+              icon={<AppIcon name="invite" size={18} />}
+              onPress={() => navigation.navigate('Pasers')}
+            />
+            {paserInfo?.incoming?.length ? (
+              <View style={[styles.badge, { backgroundColor: brand.pink, borderColor: colors.bg }]} pointerEvents="none">
+                <Text style={[type.captionMedium, { color: '#fff' }]}>{paserInfo.incoming.length}</Text>
+              </View>
+            ) : null}
+          </View>
+        </Row>
 
         {/* claim energy — tap to refill */}
         {energy && (
@@ -526,9 +528,13 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   header: { alignItems: 'center', marginTop: space.md, marginBottom: space.xl, paddingTop: space.lg },
   // Scene band behind the bust: wider than the content box so it bleeds to the
   // screen edges, and anchored to the top so the runner stands on the path.
+  // Tall enough that the bust + its border ring sit INSIDE the scene rather
+  // than hanging off the bottom edge of it.
+  // aspectRatio (not a fixed height) so the band matches the art's own 1400x600
+  // and `cover` has nothing left to crop — the full scene shows.
   banner: {
     position: 'absolute', top: 0, left: -space.gutter, right: -space.gutter,
-    height: 150, borderRadius: radius.card,
+    aspectRatio: 1400 / 600, borderRadius: radius.card,
   },
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },

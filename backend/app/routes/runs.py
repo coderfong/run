@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from .. import coins as coins_mod
 from .. import energy as energy_mod
+from .. import ranks
 from .. import fitness, models, schemas
 from ..anticheat import is_verified, validate_run
 from ..notifications import notify
@@ -307,6 +308,23 @@ def claim_territory(
 
     # The claim landed — deduct its energy cost.
     energy_mod.spend(db, user.id, settings.energy_cost_claim)
+
+    # ---- rank points -------------------------------------------------------
+    # Territorial only: claiming, taking and defending ground. Distance is
+    # already paid in XP, so ranks stay a measure of standing, not mileage.
+    ranks.award(db, user.id, ranks.POINTS_CLAIM, "claim")
+    for ev in steal_events:
+        if ev["area_m2"] < STEAL_LEDGER_MIN_M2:
+            continue
+        if ev["defended"]:
+            # The attack bounced — the DEFENDER is the one who earned here.
+            ranks.award(db, ev["victim_id"], ranks.POINTS_DEFEND, "defend")
+        else:
+            # A steal moves points BOTH ways: the attacker gains, the victim
+            # loses. Without the loss side, rank could only ever go up and
+            # would just be a slower level.
+            ranks.award(db, user.id, ranks.POINTS_STEAL, "steal")
+            ranks.award(db, ev["victim_id"], ranks.POINTS_LOST, "lost_ground")
 
     goal_reached, clan_id = (False, None)
     xp_gain = 0

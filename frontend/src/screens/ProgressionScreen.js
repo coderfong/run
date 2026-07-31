@@ -18,9 +18,9 @@ import { brand, radius, space, toon, toonSurface, toonType, useTheme, useThemedT
 import { Card, Row, Button, Pill, Skeleton, Screen, OutlinedText, ProgressTrack, ToonButton } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
-import RewardArt from '../components/RewardArt';
+import RewardArt, { RARITY_COLOR } from '../components/RewardArt';
+import RewardReveal from '../components/RewardReveal';
 import BuyPassSheet, { GOLD } from '../components/BuyPassSheet';
-import { borderForLevel } from '../config/progression';
 import { art } from '../config/onboardingArt';
 import { ITEMS } from '../config/cosmetics';
 import { toast } from '../ui/toast';
@@ -65,7 +65,6 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
   const chipClaimedArt = art('chipClaimed');
   const chipLockedArt = art('chipLocked');
   const chipLockedProArt = art('chipLockedPro');
-  const claimBtnArt = art(busy ? 'btnClaimPressed' : 'btnClaim');
   const stampArt = art('stampClaimed');
   return (
     <TouchableOpacity
@@ -112,10 +111,10 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
           </View>
         )
       ) : claimable ? (
-        <View style={[styles.state, styles.claimPill, !claimBtnArt && { backgroundColor: accent }]}>
-          {claimBtnArt && (
-            <Image source={claimBtnArt} style={styles.claimBtnArt} resizeMode="stretch" fadeDuration={0} />
-          )}
+        // Code-drawn pill. The btn-claim art is another 9-slice asset: stretched
+        // into this ~46x22 chip it blew up into a full-width pink bar across
+        // every row. Same reason tile-free/tile-pro aren't used above.
+        <View style={[styles.state, styles.claimPill, { backgroundColor: accent }]}>
           <Text style={[type.captionMedium, { color: '#fff', fontSize: 10 }]}>{busy ? '…' : 'CLAIM'}</Text>
         </View>
       ) : chipLockedArt ? (
@@ -191,6 +190,8 @@ export default function ProgressionScreen() {
   const [opening, setOpening] = useState(false);
   const [passOpen, setPassOpen] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
+  // What the reveal is currently showing: { rewards, accent } or null.
+  const [reveal, setReveal] = useState(null);
 
   const load = useCallback(async () => {
     try { setData(await api.progression()); } catch { setData(false); }
@@ -204,7 +205,12 @@ export default function ProgressionScreen() {
       const { rarity } = await api.openLootbox();
       const roll = rollCosmetic(rarity);
       await api.addUnlock(roll.item.id);
-      toast.success(`${rarity[0].toUpperCase() + rarity.slice(1)} lootbox: ${roll.item.label}!`);
+      // The box is the lucky-draw moment — reveal what fell out of it rather
+      // than reporting it in a toast that's gone in two seconds.
+      setReveal({
+        rewards: [{ kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label }],
+        accent: RARITY_COLOR[rarity] || brand.pink,
+      });
       await load();
     } catch (e) {
       toast.error(e.message || 'Could not open lootbox');
@@ -219,7 +225,7 @@ export default function ProgressionScreen() {
     setBusyKey(key);
     try {
       const res = await api.claimReward(tierLevel, track);
-      toast.success(`Claimed: ${res.rewards.map((r) => r.label).join(' + ')}`);
+      setReveal({ rewards: res.rewards, accent: track === 'premium' ? GOLD : brand.pink });
       await load();
     } catch (e) {
       toast.error(e.message || 'Could not claim');
@@ -240,9 +246,8 @@ export default function ProgressionScreen() {
     );
   }
 
-  const { level, xp_into_level, xp_for_next, ladder, pending_lootboxes, premium_active, claims } = data;
+  const { level, xp_into_level, xp_for_next, ladder, pending_lootboxes, premium_active, claims, rank } = data;
   const pct = Math.max(0, Math.min(1, xp_into_level / xp_for_next));
-  const tier = borderForLevel(level);
   const claimed = new Set(claims.map((c) => `${c.level}:${c.track}`));
   // Unclaimed count on tiers you've reached — surfaced on the header so the
   // screen tells you there's something to collect before you scroll.
@@ -266,11 +271,19 @@ export default function ProgressionScreen() {
       )}
       {/* header: portrait + level + xp */}
       <Card style={{ alignItems: 'center' }}>
-        <PortraitBorder tier={tier} size={104}>
+        <PortraitBorder borderKey={rank?.key || 'wood'} size={104}>
           <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
         </PortraitBorder>
         <Text style={[type.title, { marginTop: space.sm }]}>Level {level}</Text>
-        <Text style={[type.caption, { color: colors.textMuted }]}>{tier.label} border</Text>
+        {/* Rank, not level — and it shows progress toward the next tier so the
+            border reads as something you're climbing, not something you were
+            handed at a level. */}
+        <Text style={[type.caption, { color: colors.textMuted }]}>
+          {rank?.label || 'Wood'}
+          {rank?.next_points
+            ? ` · ${rank.points}/${rank.next_points} to ${rank.next_label}`
+            : ' · top rank'}
+        </Text>
         <View style={[styles.xpTrack, { backgroundColor: colors.cardAlt }]}>
           <View style={[styles.xpFill, { width: `${pct * 100}%` }]} />
         </View>
@@ -336,15 +349,21 @@ export default function ProgressionScreen() {
 
       {/* track headers — sticky-feeling tickets that name each column */}
       <View style={styles.trackHead}>
-        {/* Lane plates are 9-slice art too — same stretch problem as the
-            tiles, so these stay code-drawn. */}
-        <View style={[styles.ticket, { backgroundColor: colors.card, borderColor: toon.ink }]}>
-          <OutlinedText style={[toonType.label, { color: colors.textMuted }]} outline={toon.ink} width={0}>
+        {/* Lane plates were regenerated at the pill's real ~4:1 aspect, so
+            stretching them is near-uniform and no longer distorts. */}
+        <View style={[styles.ticket, art('laneFree') ? styles.ticketArt : { backgroundColor: colors.card, borderColor: toon.ink }]}>
+          {art('laneFree') && (
+            <Image source={art('laneFree')} style={styles.laneArt} resizeMode="stretch" fadeDuration={0} />
+          )}
+          <OutlinedText style={[toonType.label, { color: '#fff' }]} outline={toon.ink} width={1.5}>
             FREE
           </OutlinedText>
         </View>
         <View style={{ width: SPINE_W }} />
-        <View style={[styles.ticket, styles.ticketPro, { backgroundColor: GOLD }]}>
+        <View style={[styles.ticket, styles.ticketPro, art('lanePro') ? styles.ticketArt : { backgroundColor: GOLD }]}>
+          {art('lanePro') && (
+            <Image source={art('lanePro')} style={styles.laneArt} resizeMode="stretch" fadeDuration={0} />
+          )}
           {art('crestPro') && (
             <Image source={art('crestPro')} style={styles.crest} resizeMode="contain" fadeDuration={0} />
           )}
@@ -388,6 +407,13 @@ export default function ProgressionScreen() {
       })}
 
       <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={load} />
+      <RewardReveal
+        visible={!!reveal}
+        rewards={reveal?.rewards}
+        accent={reveal?.accent}
+        equipped={equipped}
+        onClose={() => setReveal(null)}
+      />
     </ScrollView>
   );
 }
@@ -423,8 +449,9 @@ const styles = StyleSheet.create({
   artRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 54 },
   banner: { width: '100%', height: 128, borderRadius: radius.card, marginBottom: space.md },
   crest: { width: 22, height: 22, marginRight: 6 },
+  ticketArt: { backgroundColor: 'transparent', borderWidth: 0 },
+  laneArt: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 },
   chipArt: { position: 'absolute', bottom: 4, width: 26, height: 26 },
-  claimBtnArt: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 },
   stamp: { position: 'absolute', width: '86%', height: '52%', opacity: 0.75 },
   state: {
     position: 'absolute', bottom: 8, borderRadius: radius.pill,

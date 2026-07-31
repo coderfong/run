@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, ranks, schemas
 from ..config import settings
 from ..database import get_db
 from ..security import current_user
@@ -87,7 +87,14 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
         db.execute(text("SELECT COALESCE(xp, 0) FROM users WHERE id = :uid"), {"uid": user.id}).scalar() or 0
     )
     level = int((xp / 100) ** 0.5)
+    rk = ranks.status(db, user.id)
     return schemas.MeStats(
+        rank_points=rk["points"],
+        rank_key=rk["key"],
+        rank_label=rk["label"],
+        rank_next_points=rk["next_points"],
+        rank_progress=rk["progress"],
+        rank_best_key=rk["best_key"],
         total_area_m2=float(terr[0]),
         territory_count=int(terr[1]),
         biggest_claim_m2=float(terr[2]),

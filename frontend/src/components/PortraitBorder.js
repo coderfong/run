@@ -22,34 +22,52 @@ export default function PortraitBorder({ tier, level, borderKey, size = 72, widt
   const gid = `pb-${t.key}-${size}`;
 
   // Real ring art when the tier has it. `hole` is the art's inner opening as a
-  // fraction of its square canvas (measured by scripts/slice-borders.py), so
-  // scaling by 1/hole makes the opening exactly `size` — the portrait fills it
-  // regardless of how thick that tier's frame is. Ornament bleeds outside the
-  // box on purpose, so the wrapper must not clip.
+  // fraction of its square canvas (measured by scripts/slice-borders.py).
+  //
+  // Two things matter here, and getting either wrong wrecks the layout:
+  //  1. HOLE_FLOOR caps how far the ring can scale up. Ornate tiers have a
+  //     small opening (mythic 0.487), and size/0.487 made a 104px portrait
+  //     wear a 213px wreath that swallowed the level text beside it.
+  //  2. The wrapper is sized to the RING, not the portrait, so the badge
+  //     reserves its real footprint instead of silently overlapping whatever
+  //     is above and below it.
   const artTier = BORDER_ART[t.key];
   if (artTier) {
+    // Exact fit first: at this ring size the opening is precisely `size`, so
+    // the portrait fills it whatever the tier's frame thickness.
     const ringSize = size / artTier.hole;
+    // Then bound the footprint. Ornate tiers have a small opening (mythic
+    // 0.487 → a 213px wreath around a 104px bust) which swallowed the level
+    // text beside it. Scale the WHOLE badge — ring and portrait together — so
+    // the fit is preserved and only the footprint shrinks. Clamping ringSize
+    // alone would leave the bust poking over the frame's inner edge.
+    const outer = Math.min(ringSize, size * 1.5);
+    const scale = outer / ringSize;
     return (
       <View
         style={[
-          { width: size, height: size, alignItems: 'center', justifyContent: 'center' },
+          { width: outer, height: outer, alignItems: 'center', justifyContent: 'center' },
           style,
         ]}
       >
-        {children}
-        <Image
-          source={artTier.src}
+        <View
           style={{
-            position: 'absolute',
             width: ringSize,
             height: ringSize,
-            left: (size - ringSize) / 2,
-            top: (size - ringSize) / 2,
+            alignItems: 'center',
+            justifyContent: 'center',
+            transform: [{ scale }],
           }}
-          resizeMode="contain"
-          fadeDuration={0}
-          pointerEvents="none"
-        />
+        >
+          {children}
+          <Image
+            source={artTier.src}
+            style={{ position: 'absolute', width: ringSize, height: ringSize }}
+            resizeMode="contain"
+            fadeDuration={0}
+            pointerEvents="none"
+          />
+        </View>
       </View>
     );
   }

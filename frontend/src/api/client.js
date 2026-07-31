@@ -146,6 +146,9 @@ export const api = {
       body: JSON.stringify({ product_id: 'premium_pass', receipt, platform }),
     }),
 
+  // Standings by rank points (the competitive board) rather than land held.
+  rankLeaderboard: (limit = 50) => request(`/leaderboard/ranks?limit=${limit}`),
+
   // ----- coin shop -------------------------------------------------------
   // The catalogue (prices, owned flags) is SERVER-side; never price locally.
   shop: () => request('/me/coins'),

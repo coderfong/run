@@ -52,11 +52,14 @@ ENERGY_CAP_LEVELS = {10, 20, 30, 40, 50}
 
 
 def _label_for(kind: str, key: str) -> str:
+    # Labels sit under a tile that already SHOWS the thing, so they name it and
+    # nothing more — "Mythic", not "Mythic border". The kind is obvious from
+    # the art; repeating it just made every tile wrap to two lines.
     for lvl, k, label in BORDER_TIERS:
         if kind == "border" and k == key:
-            return f"{label} border"
-    return {"shape": f"{key.title()} claim",
-            "lootbox": "Lootbox", "energy_cap": "+5 energy cap",
+            return label
+    return {"shape": key.title(),
+            "lootbox": f"{key.title()} box", "energy_cap": "+5 cap",
             "cosmetic": "Collectible"}.get(kind, key)
 
 
@@ -121,15 +124,15 @@ def premium_rewards_for_level(level: int) -> list[dict]:
     out: list[dict] = []
     if level in LOOTBOX_LEVELS:
         rarity = _RARITY_UP[lootbox_rarity(level)]
-        out.append({"kind": "lootbox", "key": rarity, "label": f"{rarity.title()} lootbox"})
-        out.append({"kind": "energy", "key": "+25", "label": "+25 energy"})
+        out.append({"kind": "lootbox", "key": rarity, "label": _label_for("lootbox", rarity)})
+        out.append({"kind": "energy", "key": "+25", "label": "+25"})
         return out
     if level in PREMIUM_ITEMS:
         key, label = PREMIUM_ITEMS[level]
         out.append({"kind": "cosmetic", "key": key, "label": label})
         return out
     amount = 50 if level % 10 == 0 else 30
-    return [{"kind": "energy", "key": f"+{amount}", "label": f"+{amount} energy"}]
+    return [{"kind": "energy", "key": f"+{amount}", "label": f"+{amount}"}]
 
 
 # The free track's filler tiers. Every level that isn't a border/shape/FX/box
@@ -142,6 +145,9 @@ def premium_rewards_for_level(level: int) -> list[dict]:
 # PREMIUM_ITEMS, and none are the five level-gated items (crown, angel wings,
 # neon wings, sport shield, ski goggles) that free players already earn.
 FREE_ITEMS = {
+    # 1 and 43 used to be border tiers; borders moved to rank, so they get a
+    # real item rather than falling through to the generic energy fallback.
+    1: ("headwear:catears", "Cat ears"),
     2: ("face:grump", "Grump"),
     3: ("hair:messy", "Messy"),
     4: ("top:crewtee", "Crew tee"),
@@ -173,6 +179,7 @@ FREE_ITEMS = {
     39: ("bottom:leggings", "Leggings"),
     41: ("glasses:cleargoggles", "Clear goggles"),
     42: ("hair:surfer", "Surfer"),
+    43: ("accessory:katanas", "Twin blades"),
     46: ("top:oversized", "Oversized tee"),
     47: ("headwear:bikehelmet", "Bike helmet"),
     48: ("accessory:capepauldron", "Champion cape"),
@@ -185,15 +192,16 @@ def rewards_for_level(level: int) -> list[dict]:
     to render the ladder). Levels with no milestone still grant a collectible
     so every level gives something."""
     out = []
-    for lvl, key, _label in BORDER_TIERS:
-        if lvl == level:
-            out.append({"kind": "border", "key": key, "label": _label_for("border", key)})
+    # Borders are NOT granted here any more — they come from rank (app/ranks.py),
+    # which is earned by taking and holding ground. Handing the same ring out on
+    # the level ladder would make the badge mean two different things at once.
     if level in SHAPE_UNLOCKS:
         out.append({"kind": "shape", "key": SHAPE_UNLOCKS[level], "label": _label_for("shape", SHAPE_UNLOCKS[level])})
     if level in LOOTBOX_LEVELS:
-        out.append({"kind": "lootbox", "key": lootbox_rarity(level), "label": f"{lootbox_rarity(level).title()} lootbox"})
+        out.append({"kind": "lootbox", "key": lootbox_rarity(level),
+                    "label": _label_for("lootbox", lootbox_rarity(level))})
     if level in ENERGY_CAP_LEVELS:
-        out.append({"kind": "energy_cap", "key": "+5", "label": "+5 energy cap"})
+        out.append({"kind": "energy_cap", "key": "+5", "label": "+5 cap"})
     # No milestone at this level → a named cosmetic, so the tile can show the
     # actual item instead of a generic "Collectible".
     if not out and level in FREE_ITEMS:
@@ -201,7 +209,13 @@ def rewards_for_level(level: int) -> list[dict]:
         out.append({"kind": "cosmetic", "key": key, "label": label})
     elif not out and level > 0:
         # Only reachable if FREE_ITEMS falls out of sync with the milestones.
-        out.append({"kind": "energy", "key": "+15", "label": "+15 energy"})
+        out.append({"kind": "energy", "key": "+15", "label": "+15"})
+    # Free track gets energy too, on the same cadence as premium — it's just
+    # smaller (15 vs 30, 25 vs 50). Energy only on the paid side made the free
+    # ladder feel like it was withholding the one consumable that gates play.
+    if level % 2 == 0:
+        amount = 25 if level % 10 == 0 else 15
+        out.append({"kind": "energy", "key": f"+{amount}", "label": f"+{amount}"})
     return out
 
 
@@ -219,6 +233,8 @@ def reward_ladder() -> list[dict]:
 
 
 def current_border(level: int) -> str:
+    """DEPRECATED — borders now come from rank, see app/ranks.py.
+    Kept only so any stale caller keeps returning something sensible."""
     """Highest border tier the player has reached."""
     tier = BORDER_TIERS[0][1]
     for lvl, key, _ in BORDER_TIERS:

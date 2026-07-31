@@ -55,7 +55,10 @@ function RowSkeleton() {
   );
 }
 
-export default function LeaderboardView() {
+// `board`: 'land' (area held) or 'rank' (rank points). Rank is the
+// competitive read — it decays and can be lost, so it answers "who's winning
+// now", where land answers "who holds the most".
+export default function LeaderboardView({ board = 'land' }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
@@ -79,12 +82,12 @@ export default function LeaderboardView() {
       try {
         if (prevRanksRef.current === null) {
           try {
-            prevRanksRef.current = JSON.parse(await AsyncStorage.getItem(RANKS_KEY)) || {};
+            prevRanksRef.current = JSON.parse(await AsyncStorage.getItem(`${RANKS_KEY}.${board}`)) || {};
           } catch {
             prevRanksRef.current = {};
           }
         }
-        const data = await api.leaderboard();
+        const data = board === 'rank' ? await api.rankLeaderboard() : await api.leaderboard();
         const withDelta = (data || []).map((r, i) => {
           const prev = prevRanksRef.current[r.user_id];
           return { ...r, rank: i + 1, delta: prev ? prev - (i + 1) : 0 };
@@ -92,7 +95,9 @@ export default function LeaderboardView() {
         setRows(withDelta);
         const ranks = {};
         withDelta.forEach((r) => (ranks[r.user_id] = r.rank));
-        AsyncStorage.setItem(RANKS_KEY, JSON.stringify(ranks)).catch(() => {});
+        // Keyed per board: the two lists have different orderings, so sharing
+        // one snapshot made every board switch show phantom movement arrows.
+        AsyncStorage.setItem(`${RANKS_KEY}.${board}`, JSON.stringify(ranks)).catch(() => {});
       } catch (e) {
         toast.error(e.message || 'Could not load leaderboard');
         setRows((prev) => prev || []);
@@ -100,7 +105,7 @@ export default function LeaderboardView() {
         if (isRefresh) setRefreshing(false);
       }
     },
-    []
+    [board]
   );
 
   useEffect(() => {
@@ -170,7 +175,9 @@ export default function LeaderboardView() {
               {r.username}
             </Text>
             <Text style={[type.captionMedium, { color: c.stroke }]}>
-              {Math.round(r.total_area_m2).toLocaleString()}
+              {board === 'rank'
+                ? `${(r.rank_points || 0).toLocaleString()} pts`
+                : Math.round(r.total_area_m2).toLocaleString()}
             </Text>
           </View>
         );
@@ -222,7 +229,9 @@ export default function LeaderboardView() {
                 <Text style={type.caption}>{item.clan_tag ? 'club' : 'solo'} · {item.territory_count} territories</Text>
               </View>
               <Text style={[styles.area, { color: c.stroke }]}>
-                {Math.round(item.total_area_m2).toLocaleString()} m²
+                {board === 'rank'
+                  ? `${(item.rank_points || 0).toLocaleString()} pts · ${item.rank_label || ''}`
+                  : `${Math.round(item.total_area_m2).toLocaleString()} m²`}
               </Text>
             </Animated.View>
           );
@@ -236,7 +245,9 @@ export default function LeaderboardView() {
             <Text style={type.bodyBold}>{myRow.username} · you</Text>
           </View>
           <Text style={[styles.area, { color: (myRow.clan_color || NEUTRAL).stroke }]}>
-            {Math.round(myRow.total_area_m2).toLocaleString()} m²
+            {board === 'rank'
+              ? `${(myRow.rank_points || 0).toLocaleString()} pts`
+              : `${Math.round(myRow.total_area_m2).toLocaleString()} m²`}
           </Text>
         </View>
       )}

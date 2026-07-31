@@ -75,7 +75,10 @@ export const ITEMS = {
     { id: 'tongueout', label: 'Cheeky', img: require('../../assets/character/face/face14.png'), rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
     { id: 'stareyes', label: 'Star eyes', img: require('../../assets/character/face/face11.png'), rarity: 'rare', unlock: zones(1, 'Claim your first zone') },
     { id: 'hearteyes', label: 'Heart eyes', img: require('../../assets/character/face/face12.png'), rarity: 'rare', unlock: streak(2, 'Hold a 2-week streak') },
-    { id: 'exhausted', label: 'Cooked', img: require('../../assets/character/face/face13.png'), layout: { w: 0.37 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
+    // No layout override: the art is centred like every other face, and the
+    // wider `w` this used to carry pushed it out of step with the glasses
+    // layer, which is what made eyewear sit wrong on this face only.
+    { id: 'exhausted', label: 'Cooked', img: require('../../assets/character/face/face13.png'), rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
   ],
   hair: [
     { id: 'none', label: 'Bald', art: null, rarity: 'common', unlock: free },
@@ -122,7 +125,7 @@ export const ITEMS = {
     { id: 'skatehelmet', label: 'Skate helmet', img: require('../../assets/character/headwear/hat9.png'), layout: { w: 0.82 }, hideHair: true, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'hardhat', label: 'Hard hat', img: require('../../assets/character/headwear/hat12.png'), layout: { top: -0.095 }, hidesBulky: true, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
     { id: 'bikehelmet', label: 'Bike helmet', img: require('../../assets/character/headwear/hat8.png'), layout: { top: -0.085 }, hideHair: true, rarity: 'epic', unlock: dist(50, 'Run 50 km total') },
-    { id: 'crown', label: 'Crown', img: require('../../assets/character/headwear/hat7.png'), layout: { w: 0.62, top: -0.085 }, rarity: 'epic', unlock: level(25) },
+    { id: 'crown', label: 'Crown', img: require('../../assets/character/headwear/hat7.png'), backImg: require('../../assets/character/headwear/hat7b.png'), layout: { w: 0.66, top: -0.075 }, rarity: 'epic', unlock: level(25) },
     { id: 'laurel', label: 'Laurel wreath', img: require('../../assets/character/headwear/hat13.png'), layout: { w: 0.72, top: -0.045 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'flamecrown', label: 'Flame crown', img: require('../../assets/character/headwear/hat14.png'), rarity: 'legendary', unlock: premiumOnly },
     { id: 'halo', label: 'Halo', img: require('../../assets/character/headwear/hat15.png'), layout: { w: 0.62, top: -0.13 }, rarity: 'legendary', unlock: premiumOnly },
@@ -138,7 +141,7 @@ export const ITEMS = {
     { id: 'headdress', label: 'Feather crown', img: require('../../assets/character/headwear/hat25.png'), layout: { w: 0.85, top: -0.12 }, rarity: 'epic', unlock: level(28) },
     { id: 'gradcap', label: 'Grad cap', img: require('../../assets/character/headwear/hat26.png'), layout: { top: -0.09 }, hidesBulky: true, rarity: 'rare', unlock: runs(25, 'Finish 25 runs') },
     { id: 'bowler', label: 'Bowler', img: require('../../assets/character/headwear/hat27.png'), hidesBulky: true, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'sunhat', label: 'Sun hat', img: require('../../assets/character/headwear/hat28.png'), hidesBulky: true, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
+    { id: 'sunhat', label: 'Sun hat', img: require('../../assets/character/headwear/hat28.png'), layout: { w: 0.96, top: -0.055 }, hidesBulky: true, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
     { id: 'tiara', label: 'Tiara', img: require('../../assets/character/headwear/hat29.png'), layout: { w: 0.6, top: -0.075 }, rarity: 'epic', unlock: level(12) },
     { id: 'turban', label: 'Turban', img: require('../../assets/character/headwear/hat30.png'), hideHair: true, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
     { id: 'catears', label: 'Cat ears', img: require('../../assets/character/headwear/hat31.png'), layout: { w: 0.62, top: -0.085 }, rarity: 'common', unlock: runs(1, 'Finish 1 runs') },
@@ -168,7 +171,7 @@ export const ITEMS = {
     { id: 'tealscarf', label: 'Winter scarf', img: require('../../assets/character/accessory/acc18.png'), backImg: require('../../assets/character/accessory/acc18b.png'), z: 'front', layout: { w: 0.55, top: 0.27 }, rarity: 'common', unlock: dist(15, 'Run 15 km total') },
     { id: 'fannypack', label: 'Bum bag', img: require('../../assets/character/accessory/acc19.png'), z: 'front', layout: { w: 0.62, top: 0.52 }, rarity: 'common', unlock: runs(6, 'Finish 6 runs') },
     { id: 'gaiter', label: 'Neck gaiter', img: require('../../assets/character/accessory/acc20.png'), backImg: require('../../assets/character/accessory/acc20b.png'), z: 'front', layout: { w: 0.46, top: 0.265 }, rarity: 'common', unlock: runs(2, 'Finish 2 runs') },
-    { id: 'headset', label: 'Headset', img: require('../../assets/character/accessory/acc21.png'), z: 'front', layout: { w: 0.72, cy: 0.155 }, rarity: 'rare', unlock: level(8) },
+    { id: 'headset', label: 'Headset', img: require('../../assets/character/accessory/acc21.png'), backImg: require('../../assets/character/accessory/acc21b.png'), z: 'front', layout: { w: 0.66, cy: 0.145 }, rarity: 'rare', unlock: level(8) },
     { id: 'katanas', label: 'Twin blades', img: require('../../assets/character/accessory/acc22.png'), z: 'back', layout: { w: 1.25, cy: 0.4 }, rarity: 'epic', unlock: level(34) },
   ],
   glasses: [
