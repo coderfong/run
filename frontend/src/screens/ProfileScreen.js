@@ -1,8 +1,9 @@
 // You — profile + your stats. Header, stat wall, recent runs, and settings.
 // Trophy shelf (PRs + badges) and tap-through run detail arrive in Phase 6.
 
-import React, { useEffect, useState } from 'react';
-import { Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Image, Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 
 import { Award, Flame, Medal, Trophy } from 'lucide-react-native';
@@ -16,11 +17,15 @@ import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
 import StreakCalendar from '../components/StreakCalendar';
+import RivalCard from '../components/RivalCard';
 import { PressableScale, Reveal, haptic } from '../ui/motion';
 import { getHealthEnabled, setHealthEnabled, requestHealthPermission } from '../health';
-import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
-import { Screen, Card, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
+import { brand, radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { art } from '../config/onboardingArt';
+import { Screen, Card, Row, Button, StatValue, SectionHeader, Pill, Skeleton } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
+import EnergyMeter from '../components/EnergyMeter';
+import BuyEnergySheet from '../components/BuyEnergySheet';
 import { toast } from '../ui/toast';
 
 // Trophy shelf — derived from live stats; earned trophies glow in the accent.
@@ -36,6 +41,7 @@ const NOTIF_ROWS = [
   ['captured', 'Land you capture'],
   ['clan_goal', 'Club weekly goal'],
   ['kudos', 'Kudos received'],
+  ['pasers', 'Paser requests'],
   ['season', 'Season & promotion'],
   ['recap', 'Weekly recap'],
 ];
@@ -78,12 +84,30 @@ export default function ProfileScreen({ navigation }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteDraft, setDeleteDraft] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [energy, setEnergy] = useState(null);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [paserInfo, setPaserInfo] = useState(null);
+
+  const loadEnergy = () => { api.energyStatus().then(setEnergy).catch(() => {}); };
+
+  const [rivals, setRivals] = useState(null);
+
+  // On focus, not mount: the badge has to settle after you answer a request
+  // over on the Pasers screen and come back. Rivalries move while you're
+  // away too — someone can take your land at any time.
+  useFocusEffect(
+    useCallback(() => {
+      api.pasers().then(setPaserInfo).catch(() => {});
+      api.rivals(3).then((d) => setRivals(d.rivals || [])).catch(() => setRivals([]));
+    }, [])
+  );
 
   useEffect(() => {
     api.meStats().then(setStats).catch(() => setStats({}));
     api.meRuns().then(setRuns).catch(() => setRuns([]));
     api.runDays().then((d) => setRunDays(d.days || [])).catch(() => setRunDays([]));
     api.getNotifPrefs().then(setPrefs).catch(() => setPrefs(null));
+    api.energyStatus().then(setEnergy).catch(() => {});
     getHealthEnabled().then(setHealthOn);
   }, []);
 
@@ -130,28 +154,59 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
-      {/* header — profile picture is a head-and-shoulders bust */}
+      {/* header — profile picture is a head-and-shoulders bust, sitting on a
+          roadside scene band (the banner art leaves its centre clear for it) */}
       <Reveal style={styles.header}>
+        {art('profileBanner') && (
+          <Image
+            source={art('profileBanner')}
+            style={styles.banner}
+            resizeMode="cover"
+            fadeDuration={0}
+            pointerEvents="none"
+          />
+        )}
         <PressableScale
           onPress={() => navigation.navigate('AvatarStudio')}
           accessibilityRole="button"
           accessibilityLabel="Your runner — tap to customize"
         >
+          {/* Bust must FILL the border's hole (both 104) and sit on an opaque
+              disc — at 96 with a translucent backdrop, the banner behind it
+              showed through the 8px gap. Same pairing as ProgressionScreen. */}
           <PortraitBorder level={stats?.level ?? 0} size={104}>
-            <CharacterBust equipped={equipped} size={96} ring={accent} />
+            <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
           </PortraitBorder>
         </PressableScale>
         <Text style={[type.title, { marginTop: space.md }]}>{user?.username}</Text>
         <Pill label={clan?.tag ? `[${clan.tag}]` : 'Solo'} color={accent} dot style={{ marginTop: space.sm }} />
-        <Button
-          title="Customize runner"
-          variant="secondary"
-          size="sm"
-          full={false}
-          icon={<AppIcon name="customize" size={18} />}
-          onPress={() => navigation.navigate('AvatarStudio')}
-          style={{ marginTop: space.md }}
-        />
+        {/* the two runner actions sit as a pair; the badge on Add pasers is
+            requests waiting on you */}
+        <Row gap={8} style={{ marginTop: space.md }}>
+          <Button
+            title="Customize runner"
+            variant="secondary"
+            size="sm"
+            full={false}
+            icon={<AppIcon name="customize" size={18} />}
+            onPress={() => navigation.navigate('AvatarStudio')}
+          />
+          <View>
+            <Button
+              title="Add pasers"
+              variant="secondary"
+              size="sm"
+              full={false}
+              icon={<AppIcon name="invite" size={18} />}
+              onPress={() => navigation.navigate('Pasers')}
+            />
+            {paserInfo?.incoming?.length ? (
+              <View style={[styles.badge, { backgroundColor: brand.pink, borderColor: colors.bg }]} pointerEvents="none">
+                <Text style={[type.captionMedium, { color: '#fff' }]}>{paserInfo.incoming.length}</Text>
+              </View>
+            ) : null}
+          </View>
+        </Row>
 
         {/* level + XP bar — taps through to the reward ladder */}
         {stats && (
@@ -182,6 +237,16 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </PressableScale>
         )}
+
+        {/* claim energy — tap to refill */}
+        {energy && (
+          <EnergyMeter
+            status={energy}
+            onPress={() => setShopOpen(true)}
+            style={{ alignSelf: 'stretch', marginTop: space.md }}
+          />
+        )}
+
       </Reveal>
 
       {/* stat wall */}
@@ -201,6 +266,60 @@ export default function ProfileScreen({ navigation }) {
           </>
         )}
       </Reveal>
+
+      {/* Rivals — the newest beat, with every rivalry a tap away. The header
+          shows even at zero: rivalries only start accruing once someone takes
+          your land, and hiding the row entirely meant a new player had no way
+          to reach the Rivals page at all. */}
+      {rivals && !rivals.length ? (
+        <Reveal delay={120}>
+          <SectionHeader
+            title="Rivals"
+            action="See all"
+            onAction={() => navigation.navigate('Rivals')}
+            style={{ marginTop: space.xl, marginBottom: space.md }}
+          />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Rivals')}
+            accessibilityRole="button"
+            accessibilityLabel="Rivals — none yet"
+          >
+            <Card padded>
+              <Text style={[type.bodySm, { color: colors.textMuted, textAlign: 'center' }]}>
+                No rivals yet. Claim ground someone else wants and you’ll get one.
+              </Text>
+            </Card>
+          </TouchableOpacity>
+        </Reveal>
+      ) : null}
+      {rivals?.length ? (
+        <Reveal delay={120}>
+          <SectionHeader
+            title="Rivals"
+            action={rivals.length > 1 ? `See all ${rivals.length}` : 'See all'}
+            onAction={() => navigation.navigate('Rivals')}
+            style={{ marginTop: space.xl, marginBottom: space.md }}
+          />
+          <RivalCard
+            rival={rivals[0]}
+            myAvatar={equipped}
+            compact
+            onPress={() => navigation.navigate('Rivals')}
+            onTakeBack={() => navigation.navigate('Record')}
+            onViewLand={
+              rivals[0].last_event?.lat != null
+                ? () =>
+                    navigation.navigate('Map', {
+                      screen: 'MapMain',
+                      params: {
+                        focus: { lat: rivals[0].last_event.lat, lon: rivals[0].last_event.lon },
+                      },
+                    })
+                : undefined
+            }
+          />
+        </Reveal>
+      ) : null}
 
       {/* running streak calendar */}
       <Reveal delay={150}>
@@ -398,17 +517,37 @@ export default function ProfileScreen({ navigation }) {
         <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Privacy Policy</Text>
       </TouchableOpacity>
       <Text style={styles.legal}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
+      <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={loadEnergy} />
     </Screen>
   );
 }
 
 const makeStyles = (colors, _scheme, type) => StyleSheet.create({
-  header: { alignItems: 'center', marginTop: space.md, marginBottom: space.xl },
+  header: { alignItems: 'center', marginTop: space.md, marginBottom: space.xl, paddingTop: space.lg },
+  // Scene band behind the bust: wider than the content box so it bleeds to the
+  // screen edges, and anchored to the top so the runner stands on the path.
+  banner: {
+    position: 'absolute', top: 0, left: -space.gutter, right: -space.gutter,
+    height: 150, borderRadius: radius.card,
+  },
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: { width: '31.5%', marginBottom: space.md },
 
   xpWrap: { flexDirection: 'row', alignItems: 'center', gap: space.md, alignSelf: 'stretch', marginTop: space.lg },
+  // sits over the top-right corner of the Add pasers button
+  badge: {
+    position: 'absolute',
+    top: -7,
+    right: -7,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   levelBadge: {
     width: 44,
     height: 44,

@@ -20,7 +20,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { BODY_IMG, getItem, itemImage } from '../../config/cosmetics';
+import { BODY_IMG, getItem, itemBackImage, itemImage } from '../../config/cosmetics';
 import { useReduceMotion } from '../../ui/motion';
 
 // Body art is 248×640 after trimming.
@@ -38,9 +38,11 @@ const LAYOUT = {
   face: { w: 0.34, cy: 0.1813 },
   glasses: { w: 0.42, cy: 0.166 },
   hair: { w: 0.92, top: -0.025 }, // lifted so the forehead shows
+  headwear: { w: 0.85, top: -0.07 }, // sits over the hair
   top: { w: 0.9718, top: 0.3169 },
   bottom: { w: 0.62, top: 0.555 },
   onepiece: { w: 0.62, top: 0.42 },
+  accessory: { w: 0.9, top: 0.32 }, // per-item layout does the real placement
 };
 
 // Bust framing (profile picture): head-and-shoulders inside a circle of
@@ -146,16 +148,36 @@ const CharacterRig = forwardRef(function CharacterRig(
   const it = {
     face: happy ? getItem('face', 'laugh') : getItem('face', equipped.face),
     hair: getItem('hair', equipped.hair),
+    headwear: getItem('headwear', equipped.headwear || 'none'),
     glasses: getItem('glasses', equipped.glasses),
     top: getItem('top', equipped.top),
     bottom: getItem('bottom', equipped.bottom),
+    accessory: getItem('accessory', equipped.accessory || 'none'),
   };
+  // Accessories carry a z: wings/capes/packs go BEHIND the body, medals/vests
+  // in front of the top garment.
+  const accImg = itemImage('accessory', it.accessory, equipped);
+  const accBack = it.accessory.z === 'back' ? accImg : null;
+  const accFront = it.accessory.z !== 'back' ? accImg : null;
+  // Wrap-around split layers: the far side of a band/ribbon renders behind
+  // the body so the item reads as going around the head/neck.
+  const accBackHalf = itemBackImage('accessory', it.accessory, equipped);
+  const hatBackHalf = itemBackImage('headwear', it.headwear, equipped);
+  // Full-coverage hats hide all hair; crown-enclosing hats (caps, hard hat)
+  // also hide bulky updos/afros that would jut out of the hat outline. Open
+  // headwear (sweatband, visor, crown, bandana) lets bulky hair show — a
+  // sweatband under an afro or a top knot through a visor reads naturally.
+  const hideHair =
+    it.headwear.hideHair || (it.headwear.hidesBulky && it.hair.bulky);
 
   return (
     <Animated.View
       style={[{ width: bodyW, height: bodyH + headroom, overflow: 'visible' }, bodyStyle, style]}
     >
       <View style={{ position: 'absolute', top: headroom, width: bodyW, height: bodyH }}>
+        <Layer img={accBack} slot="accessory" layout={it.accessory.layout} bodyW={bodyW} bodyH={bodyH} />
+        <Layer img={accBackHalf} slot="accessory" layout={it.accessory.layout} bodyW={bodyW} bodyH={bodyH} />
+        <Layer img={hatBackHalf} slot="headwear" layout={it.headwear.layout} bodyW={bodyW} bodyH={bodyH} />
         <Image
           source={BODY_IMG}
           style={{ position: 'absolute', width: bodyW, height: bodyH }}
@@ -164,9 +186,13 @@ const CharacterRig = forwardRef(function CharacterRig(
         />
         <Layer img={itemImage('bottom', it.bottom, equipped)} slot="bottom" layout={it.bottom.layout} bodyW={bodyW} bodyH={bodyH} />
         <Layer img={itemImage('top', it.top, equipped)} slot="top" fit={it.top.fit} layout={it.top.layout} bodyW={bodyW} bodyH={bodyH} />
+        <Layer img={accFront} slot="accessory" layout={it.accessory.layout} bodyW={bodyW} bodyH={bodyH} />
         <Layer img={itemImage('face', it.face, equipped)} slot="face" layout={it.face.layout} bodyW={bodyW} bodyH={bodyH} />
-        <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} bodyW={bodyW} bodyH={bodyH} />
+        {!hideHair && (
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} bodyW={bodyW} bodyH={bodyH} />
+        )}
         <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} bodyW={bodyW} bodyH={bodyH} />
+        <Layer img={itemImage('headwear', it.headwear, equipped)} slot="headwear" layout={it.headwear.layout} bodyW={bodyW} bodyH={bodyH} />
       </View>
     </Animated.View>
   );

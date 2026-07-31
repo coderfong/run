@@ -53,15 +53,6 @@ export const SHAPES = {
   gem: { key: 'gem', label: 'Gem', type: 'polygon', sides: 8 },
 };
 
-// Claim-land explosion FX ids → the Lottie asset dropped in at that key.
-// (Art TODO: assets/lottie/claim-<key>.json — component no-ops until present.)
-export const CLAIM_FX = {
-  burst: { key: 'burst', label: 'Burst' },
-  shockwave: { key: 'shockwave', label: 'Shockwave' },
-  fireworks: { key: 'fireworks', label: 'Fireworks' },
-  supernova: { key: 'supernova', label: 'Supernova' },
-};
-
 export const RARITY_COLORS = {
   common: '#9aa0a6',
   rare: '#4aa3ff',
@@ -73,7 +64,6 @@ export const RARITY_COLORS = {
 export const REWARD_KIND_LABEL = {
   border: 'Portrait border',
   shape: 'Claim shape',
-  fx: 'Claim explosion',
   lootbox: 'Lootbox',
   energy_cap: 'Energy cap',
   cosmetic: 'Collectible',

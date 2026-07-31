@@ -16,6 +16,7 @@ from shapely.geometry import LineString
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .. import coins as coins_mod
 from .. import energy as energy_mod
 from .. import fitness, models, schemas
 from ..anticheat import is_verified, validate_run
@@ -34,7 +35,8 @@ from ..geospatial import (
     geometry_to_rings,
     polygon_to_lonlat_ring,
 )
-from ..progression import SHAPE_UNLOCKS, level_from_xp
+from ..clans_meta import color_triple
+from ..progression import SHAPE_UNLOCKS, level_from_xp, xp_for_level
 from ..ratelimit import limiter
 from ..security import current_user
 
@@ -42,6 +44,10 @@ router = APIRouter()
 
 # Cosmetic claim shape → minimum level required (reverse of SHAPE_UNLOCKS).
 _SHAPE_MIN_LEVEL = {shape: lvl for lvl, shape in SHAPE_UNLOCKS.items()}
+
+# Rivalry ledger floor: a clipped sliver isn't a rivalry beat (see the insert
+# in claim_run and migration 0016). 25 m² ≈ a 5×5 m patch.
+STEAL_LEDGER_MIN_M2 = 25.0
 
 
 @router.post("/start-run", response_model=schemas.StartRunOut)
@@ -164,6 +170,8 @@ def end_run(
             add_clan_xp(db, clan_id or user.clan_id, xp_gain)
         # Finishing a run refills a little energy — exercise powers the meter.
         energy_mod.grant(db, user.id, settings.energy_per_run)
+        # ...and pays coins, so the cosmetics shop is reachable by running.
+        coins_mod.grant(db, user.id, coins_mod.COINS_PER_RUN, "run", str(run.id))
 
     db.commit()
 
@@ -260,7 +268,7 @@ def claim_territory(
             shape = "circle"
     claim_poly = claim_shape_polygon_wgs(payload.lat, payload.lon, area, shape)
 
-    territory_out, stolen_m2, stolen_from = _claim_territory(
+    territory_out, stolen_m2, stolen_from, steal_events = _claim_territory(
         db=db,
         user_id=run.user_id,
         run_id=run.id,
@@ -272,11 +280,42 @@ def claim_territory(
     )
     run.claimed_at = datetime.utcnow()
 
+    # Rivalry ledger (migration 0016) — one row per victim, takes AND bounced
+    # attacks. Slivers are dropped: a 3 m² clip off a polygon edge is a
+    # rounding artefact, not a rivalry beat, and would drown the real ones.
+    for ev in steal_events:
+        if ev["area_m2"] < STEAL_LEDGER_MIN_M2:
+            continue
+        db.execute(
+            text(
+                """
+                INSERT INTO territory_steals
+                    (attacker_id, victim_id, run_id, area_m2, defended, lat, lon)
+                VALUES (:a, :v, :r, :area, :defended, :lat, :lon)
+                """
+            ),
+            {
+                "a": user.id,
+                "v": ev["victim_id"],
+                "r": run.id,
+                "area": ev["area_m2"],
+                "defended": ev["defended"],
+                "lat": payload.lat,
+                "lon": payload.lon,
+            },
+        )
+
     # The claim landed — deduct its energy cost.
     energy_mod.spend(db, user.id, settings.energy_cost_claim)
 
     goal_reached, clan_id = (False, None)
     xp_gain = 0
+    # Snapshot XP before the award so the payoff screen can fill the bar from
+    # where it was, and know whether this claim crossed a level.
+    xp_before = int(
+        db.execute(text("SELECT COALESCE(xp, 0) FROM users WHERE id = :u"), {"u": user.id}).scalar()
+        or 0
+    )
     if run.verified:
         goal_reached, clan_id = record_clan_activity(
             db, user, distance_m=0.0, closed_loop=True, stolen=stolen_m2
@@ -325,16 +364,83 @@ def claim_territory(
             "Weekly goal reached!", "Your club hit this week's goal. Badge frame unlocked.",
         )
 
+    new_xp = xp_before + xp_gain
+    level_before, new_level = level_from_xp(xp_before), level_from_xp(new_xp)
+
     est = energy_mod.status(db, user.id)
     db.commit()
     return schemas.ClaimOut(
         territory=territory_out,
         stolen_m2=stolen_m2,
         stolen_from=stolen_from,
+        victims=_claim_victims(db, user.id, steal_events),
         xp_gained=xp_gain,
+        level=new_level,
+        xp=new_xp,
+        next_level_xp=xp_for_level(new_level + 1),
+        leveled_up=new_level > level_before,
         energy=est["energy"],
         energy_max=est["energy_max"],
     )
+
+
+def _claim_victims(db: Session, attacker_id, events) -> list[schemas.ClaimVictim]:
+    """Turn this claim's steal events into cards for the payoff screen.
+
+    `reclaimed` is the good bit: it marks victims who had ALREADY taken land
+    off this runner, which is what turns "territory claimed" into "you took it
+    back". It reads the same ledger the rivals list does, so the two can never
+    tell different stories.
+    """
+    if not events:
+        return []
+    by_id: dict[str, dict] = {}
+    for ev in events:
+        vid = str(ev["victim_id"])
+        cur = by_id.setdefault(vid, {"area_m2": 0.0, "defended": True})
+        cur["area_m2"] += ev["area_m2"]
+        # One successful take is enough to call the whole encounter a take.
+        if not ev["defended"]:
+            cur["defended"] = False
+
+    rows = db.execute(
+        text(
+            """
+            SELECT u.id::text, u.username, u.avatar, c.color_key,
+                   EXISTS (
+                       SELECT 1 FROM territory_steals s
+                       WHERE s.attacker_id = u.id
+                         AND s.victim_id = :me
+                         AND NOT s.defended
+                   ) AS took_from_me
+            FROM users u
+            LEFT JOIN clan_members cm ON cm.user_id = u.id
+            LEFT JOIN clans c ON c.id = cm.clan_id
+            WHERE u.id = ANY(CAST(:ids AS uuid[]))
+            """
+        ),
+        {"me": attacker_id, "ids": list(by_id.keys())},
+    ).fetchall()
+
+    out = []
+    for r in rows:
+        agg = by_id.get(r[0])
+        if not agg:
+            continue
+        out.append(
+            schemas.ClaimVictim(
+                user_id=r[0],
+                username=r[1],
+                avatar=r[2],
+                clan_color=schemas.ClanColor(**color_triple(r[3])) if r[3] else None,
+                area_m2=agg["area_m2"],
+                defended=agg["defended"],
+                reclaimed=bool(r[4]),
+            )
+        )
+    # Biggest loss first; runners who held their ground sink to the bottom.
+    out.sort(key=lambda v: (v.defended, -v.area_m2))
+    return out
 
 
 # Reference pace for strength: 7:00/km. Faster runs earn a stronger claim,
@@ -361,7 +467,7 @@ def _claim_territory(
     strength: float = 1.0,
     verified: bool = True,
     clan_id: str | None = None,
-):  # -> (TerritoryOut | None, stolen_m2, stolen_from)
+):  # -> (TerritoryOut | None, stolen_m2, stolen_from, events)
     """Insert the new polygon, resolving overlaps with existing territories.
 
     Rules (strength model):
@@ -411,7 +517,7 @@ def _claim_territory(
             ),
             {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id, "strength": strength},
         ).fetchone()
-        return _territory_out(db, new_row[0]), 0.0, None
+        return _territory_out(db, new_row[0]), 0.0, None, []
 
     # Pull rivals that intersect: other users OUTSIDE the claimer's club.
     rivals = db.execute(
@@ -431,10 +537,14 @@ def _claim_territory(
     # Steal summary for the Result screen: total area taken from rivals + the
     # rival who lost the most. `defended_ids` collects rivals whose strength
     # held — their land is carved out of the new claim afterwards.
+    # `events` is the per-victim ledger the caller persists (rivalries) —
+    # successful takes AND bounced attacks, since a defence is a rivalry beat
+    # too.
     stolen_total = 0.0
     best_steal = 0.0
     stolen_from = None
     defended_ids = []
+    events = []
 
     for rid, _ruid in rivals:
         steal = db.execute(
@@ -467,12 +577,14 @@ def _claim_territory(
         if strength <= defense:
             # The land holds: attacker's claim will be carved around it.
             defended_ids.append(rid)
+            events.append({"victim_id": _ruid, "area_m2": float(steal[0]), "defended": True})
             continue
 
         stolen_total += float(steal[0])
         if float(steal[0]) > best_steal:
             best_steal = float(steal[0])
             stolen_from = steal[1]
+        events.append({"victim_id": _ruid, "area_m2": float(steal[0]), "defended": False})
 
         # Subtract the new polygon from the rival's territory. ALL surviving
         # fragments are kept as one MultiPolygon — only sub-1m² slivers are
@@ -638,7 +750,7 @@ def _claim_territory(
             {"uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "clan_id": clan_id, "strength": strength},
         ).fetchone()
 
-    return _territory_out(db, new_row[0]), stolen_total, stolen_from
+    return _territory_out(db, new_row[0]), stolen_total, stolen_from, events
 
 
 def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:

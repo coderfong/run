@@ -28,6 +28,19 @@ export const ICONS = {
   claim: require('../../assets/icons/claim.png'),
   locate: require('../../assets/icons/locate.png'),
   lootbox: require('../../assets/icons/lootbox.png'),
+  // Per-rarity crates — same silhouette family, escalating material. Used by
+  // RewardArt for lootbox tiers; falls back to `lootbox` if a key is missing.
+  'lootbox-common': require('../../assets/icons/lootbox-common.png'),
+  'lootbox-rare': require('../../assets/icons/lootbox-rare.png'),
+  'lootbox-epic': require('../../assets/icons/lootbox-epic.png'),
+  'lootbox-legendary': require('../../assets/icons/lootbox-legendary.png'),
+  // Coin currency: the single coin sits beside every price (down to 12px), the
+  // rest are the IAP pack tiles keyed to COIN_PRODUCTS in backend/app/coins.py.
+  coin: require('../../assets/icons/coin.png'),
+  'coin-pouch': require('../../assets/icons/coin-pouch.png'),
+  'coin-sack': require('../../assets/icons/coin-sack.png'),
+  'coin-chest': require('../../assets/icons/coin-chest.png'),
+  'coin-vault': require('../../assets/icons/coin-vault.png'),
   // batch 2
   add: require('../../assets/icons/add.png'),
   award: require('../../assets/icons/award.png'),

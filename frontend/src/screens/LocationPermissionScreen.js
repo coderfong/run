@@ -1,6 +1,18 @@
 // Pre-permission explainer (PACER dark). Shown BEFORE the OS location prompt:
-// purple radar glow, why-we-need-it bullets, gradient Allow Location. If the
+// purple radar glow, why-we-need-it bullets, and a neutral Continue. If the
 // user already denied at the OS level, becomes a Settings recovery screen.
+//
+// APP REVIEW — guideline 5.1.1(iv), rejection 2026-07-21. Two rules this
+// screen must keep obeying; both were violations in v2.0.0 (7):
+//   1. The button may NOT urge a choice. "Continue"/"Next" only — never
+//      "Allow location", which reads as directing the user to grant access.
+//   2. There is NO way to dismiss this screen without reaching the OS prompt.
+//      The old "Not now" let the user delay the request; Apple requires the
+//      explainer to always hand off to the system dialog. The system dialog's
+//      own "Don't Allow" IS the user's out.
+// The escape hatch below ("Explore the app first") only exists in the DENIED
+// state — by then the prompt has already been shown and can't be shown again,
+// so offering Settings + a way past is what Apple asks for.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -92,7 +104,7 @@ export default function LocationPermissionScreen({ onDone }) {
 
       <View style={{ alignItems: 'center' }}>
         <Text style={styles.title}>
-          {denied ? 'Location is off' : 'We use your location to track runs and close loops.'}
+          {denied ? 'Location is off' : 'We use your location to record your run and claim the ground you cover.'}
         </Text>
         {denied ? (
           <Text style={styles.body}>
@@ -129,7 +141,7 @@ export default function LocationPermissionScreen({ onDone }) {
             onPress={request}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel="Allow location"
+            accessibilityLabel="Continue"
             style={busy && { opacity: 0.6 }}
           >
             <LinearGradient
@@ -138,20 +150,23 @@ export default function LocationPermissionScreen({ onDone }) {
               end={{ x: 1, y: 0.5 }}
               style={styles.cta}
             >
-              <Text style={[type.button, { color: '#fff' }]}>Allow location</Text>
+              <Text style={[type.button, { color: '#fff' }]}>Continue</Text>
             </LinearGradient>
           </PressableScale>
         )}
-        <TouchableOpacity
-          onPress={() => onDone(false)}
-          style={{ alignItems: 'center', paddingVertical: space.sm }}
-          accessibilityRole="button"
-          accessibilityLabel={denied ? 'Explore the app first' : 'Not now'}
-        >
-          <Text style={[type.bodyMedium, { color: colors.textMuted }]}>
-            {denied ? 'Explore the app first' : 'Not now'}
-          </Text>
-        </TouchableOpacity>
+        {/* Only in the denied state — see the 5.1.1(iv) note at the top. */}
+        {denied ? (
+          <TouchableOpacity
+            onPress={() => onDone(false)}
+            style={{ alignItems: 'center', paddingVertical: space.sm }}
+            accessibilityRole="button"
+            accessibilityLabel="Explore the app first"
+          >
+            <Text style={[type.bodyMedium, { color: colors.textMuted }]}>
+              Explore the app first
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );

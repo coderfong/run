@@ -15,8 +15,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.pacerrun.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": ["whatsapp"],
         "NSLocationWhenInUseUsageDescription": "PASER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "PASER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
         "NSMotionUsageDescription": "Motion data verifies your runs are on foot.",
@@ -57,11 +59,13 @@
       "expo-notifications",
       "expo-secure-store",
       "expo-font",
+      "expo-web-browser",
+      "expo-apple-authentication",
       "@sentry/react-native",
       "@rnmapbox/maps"
     ],
     "extra": {
-      "apiBase": "https://chargers-use-asylum-composed.trycloudflare.com",
+      "apiBase": "https://run-mdlv.onrender.com",
       "mapboxPublicToken": "",
       "mapStyleLight": "",
       "mapStyleDark": "",

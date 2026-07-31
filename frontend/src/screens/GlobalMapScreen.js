@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { Flame, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
@@ -75,20 +76,48 @@ function toFeatures(territories, userId) {
   return features;
 }
 
-// Tile-ish cache key so returning to a viewport is instant.
-function viewportKey(bbox, zoom) {
-  const r = (n) => n.toFixed(2);
-  return `${Math.round(zoom)}:${r(bbox.minLon)},${r(bbox.minLat)},${r(bbox.maxLon)},${r(bbox.maxLat)}`;
+// We fetch a REGION bigger than the screen and remember exactly what it covers.
+// (The old code keyed a cache on the bbox rounded to 2dp / zoom rounded to an
+// int — two genuinely different viewports collapsed to the same key, so a pan
+// early-returned and the newly revealed strip, which was never fetched, drew
+// empty. Land "disappearing" while panning was that.)
+const VIEW_PAD = 0.6; // fetch 60% beyond each edge so small pans are pre-loaded
+
+function padBbox(b, f = VIEW_PAD) {
+  const dLon = (b.maxLon - b.minLon) * f;
+  const dLat = (b.maxLat - b.minLat) * f;
+  return {
+    minLon: b.minLon - dLon,
+    minLat: b.minLat - dLat,
+    maxLon: b.maxLon + dLon,
+    maxLat: b.maxLat + dLat,
+  };
 }
 
-export default function GlobalMapScreen() {
+// Is `inner` fully inside `outer`? Only then can we skip a refetch.
+function bboxContains(outer, inner) {
+  return (
+    !!outer &&
+    inner.minLon >= outer.minLon &&
+    inner.maxLon <= outer.maxLon &&
+    inner.minLat >= outer.minLat &&
+    inner.maxLat <= outer.maxLat
+  );
+}
+
+export default function GlobalMapScreen({ route }) {
   const { user } = useAuth();
   const { equipped } = useAvatar();
   const accent = useAccent();
   const reduce = useReduceMotion();
   const mapRef = useRef(null);
-  const cacheRef = useRef(new Map());
-  const lastKeyRef = useRef(null);
+  // The padded region we've already loaded: { minLon,minLat,maxLon,maxLat, capped }.
+  const coveredRef = useRef(null);
+  // Latest in-flight request wins — stops a slow older response (fetched for a
+  // smaller bbox) from landing last and wiping out land.
+  const seqRef = useRef(0);
+  // Last viewport the map settled on, so we can refetch on focus without a move.
+  const lastViewRef = useRef(null);
 
   const [list, setList] = useState(null); // null = first load
   const [loadError, setLoadError] = useState(false);
@@ -100,6 +129,19 @@ export default function GlobalMapScreen() {
   const [myLoc, setMyLoc] = useState(null);
   // 'pending' | 'ok' | 'fail' — territory auto-fit only runs as a fallback.
   const [locState, setLocState] = useState('pending');
+
+  // "VIEW LAND" from a rivalry / notification hands us a point to open on.
+  // It wins over the my-location fly-in below: the caller is pointing at
+  // something specific, and a `focus` only ever arrives on an explicit tap.
+  const focus = route?.params?.focus;
+  useEffect(() => {
+    if (!focus?.lat) return;
+    const t = setTimeout(
+      () => mapRef.current?.flyTo({ latitude: focus.lat, longitude: focus.lon }, 15, 700),
+      450
+    );
+    return () => clearTimeout(t);
+  }, [focus?.lat, focus?.lon]);
 
   // Land on the player's dot as soon as the screen opens.
   useEffect(() => {
@@ -129,21 +171,29 @@ export default function GlobalMapScreen() {
     return () => clearInterval(id);
   }, [heatOn, reduce]);
 
-  const fetchViewport = async (bbox, z) => {
-    const key = viewportKey(bbox, z);
-    if (key === lastKeyRef.current) return;
-    lastKeyRef.current = key;
-    if (cacheRef.current.has(key)) {
-      setList(cacheRef.current.get(key));
-      setLoadError(false);
-      return;
-    }
+  // Load land for `bbox`. Skips only when the visible viewport is genuinely
+  // INSIDE what we already loaded (and the server's zoom cap band hasn't
+  // changed) — never on a lossy rounded key. `force` bypasses the skip so a
+  // fresh claim shows when returning to the map.
+  const fetchViewport = async (bbox, z, force = false) => {
+    // Mirrors the backend feature cap (map_zoom_vlow=11): crossing it changes
+    // how much comes back, so re-fetch rather than reuse the capped set.
+    const capped = (z ?? zoom) < 11;
+    const cov = coveredRef.current;
+    if (!force && cov && cov.capped === capped && bboxContains(cov, bbox)) return;
+
+    const padded = padBbox(bbox);
+    const seq = ++seqRef.current;
     try {
-      const data = await api.mapPolygons(bbox, z);
-      cacheRef.current.set(key, data.territories);
+      const data = await api.mapPolygons(padded, z);
+      if (seq !== seqRef.current) return; // superseded by a newer viewport
+      coveredRef.current = { ...padded, capped };
       setList(data.territories);
       setLoadError(false);
     } catch {
+      if (seq !== seqRef.current) return;
+      // Leave coveredRef untouched so the next idle retries instead of
+      // believing this region is loaded.
       setLoadError(true);
       setList((prev) => prev || []);
     }
@@ -157,8 +207,18 @@ export default function GlobalMapScreen() {
       maxLon: bounds.ne[0],
       maxLat: bounds.ne[1],
     };
+    lastViewRef.current = { bbox, z: z ?? zoom };
     fetchViewport(bbox, z ?? zoom);
   };
+
+  // Coming back to the map (e.g. straight after claiming) refetches the current
+  // view — otherwise no camera move means no idle, and the new land is missing.
+  useFocusEffect(
+    useCallback(() => {
+      const v = lastViewRef.current;
+      if (v) fetchViewport(v.bbox, v.z, true);
+    }, [])
+  );
 
   const locateMe = async () => {
     try {

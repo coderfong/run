@@ -14,6 +14,7 @@
 export * from './tokens';
 export * from './dark';
 export * from './motion';
+export * from './toon';
 export { haptic } from './haptics';
 export { colors as lightColors } from './light';
 export { ThemeProvider, useTheme, useThemedStyles, useThemedType } from './ThemeContext';

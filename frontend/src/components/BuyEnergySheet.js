@@ -25,19 +25,16 @@ const PACKS = [
   { id: 'energy_refill_full', label: 'Full refill', price: '$2.99' },
 ];
 
-// Best-effort store handle (undefined when the module isn't present).
-let IAP = null;
-try { IAP = require('expo-in-app-purchases'); } catch { IAP = null; }
-
-async function storePurchase(productId) {
-  // Returns a receipt string, or null to signal "no store — credit directly".
-  if (!IAP?.connectAsync) return null;
-  await IAP.connectAsync();
-  const { responseCode, results } = await IAP.getProductsAsync([productId]);
-  if (!responseCode || !results?.length) throw new Error('Product unavailable');
-  await IAP.purchaseItemAsync(productId);
-  // Real apps read the receipt from the purchase listener; simplified here.
-  return 'pending-store-receipt';
+// No store SDK is installed yet, so we can't reference one: Metro resolves
+// imports at BUILD time, and a require() of a missing package is a bundling
+// error (try/catch doesn't help). Note `expo-in-app-purchases` is deprecated and
+// removed from modern Expo SDKs — use `react-native-iap` (or `expo-iap`) when
+// you wire real billing, then do the purchase here and return its receipt.
+//
+// Returning null means "no store": the backend credits the pack directly while
+// settings.iap_verify_receipts is false, so the whole flow is testable in dev.
+async function storePurchase(/* productId */) {
+  return null;
 }
 
 export default function BuyEnergySheet({ visible, onClose, onPurchased }) {

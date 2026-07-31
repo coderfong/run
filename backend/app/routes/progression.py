@@ -22,7 +22,9 @@ from ..config import settings
 from ..database import get_db
 from ..ratelimit import limiter
 from ..security import current_user
+from .. import coins as coins_mod
 from .. import energy as energy_mod
+from .. import iap
 from ..progression import (
     MAX_LEVEL,
     current_border,
@@ -59,6 +61,12 @@ def sync_level_rewards(db: Session, user_id: str) -> dict:
         return {"leveled_up": False, "level": level, "prev_level": prev_level}
 
     db.execute(text("UPDATE users SET reward_level = :l WHERE id = :u"), {"l": level, "u": user_id})
+    # Coins for every level crossed — catching up several at once still pays
+    # for each one.
+    gained = level - prev_level
+    if gained > 0:
+        coins_mod.grant(db, user_id, gained * coins_mod.COINS_PER_LEVEL,
+                        "level_up", f"L{prev_level}->L{level}")
     db.commit()
     return {"leveled_up": True, "level": level, "prev_level": prev_level}
 
@@ -164,6 +172,19 @@ def claim_reward(request: Request, response: Response, body: dict,
             )
         elif rw["kind"] == "energy":
             energy_mod.grant(db, user.id, int(rw["key"].lstrip("+")))
+        elif rw["kind"] == "cosmetic" and ":" in rw["key"]:
+            # Pass cosmetics (both tracks) are real grants: the client treats a
+            # server unlock as equippable regardless of the item's usual stat
+            # gate, so this row IS the reward. Deduped in case a claim retries.
+            db.execute(
+                text(
+                    "INSERT INTO user_unlocks (user_id, kind, item_id) "
+                    "SELECT :u, 'cosmetic', :i WHERE NOT EXISTS ("
+                    "  SELECT 1 FROM user_unlocks WHERE user_id = :u"
+                    "    AND kind = 'cosmetic' AND item_id = :i)"
+                ),
+                {"u": user.id, "i": rw["key"]},
+            )
     st = energy_mod.status(db, user.id)
     db.commit()
     return {"ok": True, "level": tier, "track": track, "rewards": rewards, "energy": st}
@@ -175,22 +196,38 @@ def claim_reward(request: Request, response: Response, body: dict,
 PASS_PRODUCTS = {"premium_pass"}
 
 
+def _claim_txn(db: Session, user_id, txn: str, product_id: str) -> bool:
+    """Record a store transaction id, returning False if it was already used.
+
+    The unique index on transaction_id is what actually enforces this — two
+    concurrent requests with the same receipt race here, and exactly one wins
+    the insert. Checking-then-inserting would let both through.
+    """
+    res = db.execute(
+        text("INSERT INTO iap_transactions (transaction_id, user_id, product_id) "
+             "VALUES (:t, :u, :p) ON CONFLICT (transaction_id) DO NOTHING"),
+        {"t": txn, "u": user_id, "p": product_id},
+    )
+    return res.rowcount > 0
+
+
 @router.post("/me/pass/purchase")
 @limiter.limit(settings.rate_limit_default)
 def purchase_pass(request: Request, response: Response, body: dict,
                   user: models.User = Depends(current_user), db: Session = Depends(get_db)):
-    """Unlock the premium track after a store purchase.
+    """Unlock the premium track after a verified store purchase.
 
-    TODO(prod): same receipt-verification gap as purchase_energy — when
-    settings.iap_verify_receipts is on, verify against the store and dedupe on
-    the transaction id BEFORE unlocking. Dev accepts unverified."""
+    The pass is permanent, so a repeat call (store retry, restore-purchases)
+    is an idempotent no-op rather than an error."""
     product_id = (body.get("product_id") or "").strip()
     if product_id not in PASS_PRODUCTS:
         raise HTTPException(400, "unknown product")
-    if settings.iap_verify_receipts:
-        if not body.get("receipt"):
-            raise HTTPException(402, "missing receipt")
-        raise HTTPException(501, "receipt verification not implemented — see TODO")
+    txn = iap.verify(platform=body.get("platform"), receipt=body.get("receipt"),
+                     product_id=product_id)
+    if txn and not _claim_txn(db, user.id, txn, product_id):
+        # Already redeemed. The pass is permanent so the user still has it —
+        # report success rather than failing a legitimate restore.
+        return {"ok": True, "premium_active": True, "duplicate": True}
     db.execute(text("UPDATE users SET premium_pass = true WHERE id = :u"), {"u": user.id})
     db.commit()
     return {"ok": True, "premium_active": True}
@@ -249,23 +286,18 @@ ENERGY_PRODUCTS = {
 @limiter.limit(settings.rate_limit_default)
 def purchase_energy(request: Request, response: Response, body: dict,
                     user: models.User = Depends(current_user), db: Session = Depends(get_db)):
-    """Credit an energy pack after a successful store purchase.
+    """Credit an energy pack after a verified store purchase.
 
-    TODO(prod): when settings.iap_verify_receipts is on, verify `receipt`
-    against Apple (verifyReceipt / App Store Server API) or Google Play
-    (purchases.products.get) for `platform` BEFORE crediting, and dedupe on
-    the store transaction id. Dev path accepts unverified so the flow is
-    testable end-to-end."""
+    Energy packs are CONSUMABLE, so unlike the pass a replayed receipt must
+    not top the player up again — a duplicate transaction id is rejected."""
     product_id = (body.get("product_id") or "").strip()
     amount = ENERGY_PRODUCTS.get(product_id)
     if amount is None:
         raise HTTPException(400, "unknown product")
-    if settings.iap_verify_receipts:
-        receipt = body.get("receipt")
-        if not receipt:
-            raise HTTPException(402, "missing receipt")
-        # raise HTTPException(402, "receipt verification not configured")
-        raise HTTPException(501, "receipt verification not implemented — see TODO")
+    txn = iap.verify(platform=body.get("platform"), receipt=body.get("receipt"),
+                     product_id=product_id)
+    if txn and not _claim_txn(db, user.id, txn, product_id):
+        raise HTTPException(409, "receipt already redeemed")
     energy_mod.grant(db, user.id, amount)
     st = energy_mod.status(db, user.id)
     db.commit()

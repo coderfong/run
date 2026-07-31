@@ -1,6 +1,8 @@
-// Custom bottom tab bar. Flat (constitution: the tab bar has no signature
-// effects), 64pt + safe area. Four real tabs with a raised circular Record
-// button injected in the middle. Active tint = accent; inactive = #9CA3AF.
+// Custom bottom tab bar — a floating outlined pill (game-style), 64pt of bar
+// plus safe area. Four real tabs with a raised circular Record button injected
+// in the middle. The active tab gets a filled pill behind it; the sticker
+// icons are full-colour art, so state is shown with the pill + opacity, never
+// a colour swap.
 
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -11,7 +13,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { space, type, useTheme } from '../theme';
+import { space, toonRadius, toonSurface, type, useTheme } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { useAccent } from '../hooks/useAccent';
 import { useRecording } from '../state/recording';
@@ -23,8 +25,8 @@ const ICON_KEY = { Home: 'tab-home', Map: 'tab-map', Club: 'tab-club', You: 'tab
 const LABELS = { Home: 'Home', Map: 'Map', Club: 'Club', You: 'You' };
 
 function TabItem({ route, isFocused, accent, onPress }) {
+  const { colors } = useTheme();
   const key = ICON_KEY[route.name] || 'tab-home';
-  // Colour icons aren't tinted — inactive reads as faded + a hair smaller.
   const color = isFocused ? accent : INACTIVE;
   // The flex:1 lives on this wrapper View, not on PressableScale — PressableScale
   // forwards its style prop to an inner Animated.View, so flex there wouldn't
@@ -32,7 +34,7 @@ function TabItem({ route, isFocused, accent, onPress }) {
   return (
     <View style={styles.slot}>
       <PressableScale
-        style={styles.item}
+        style={[styles.item, isFocused && { backgroundColor: colors.cardAlt }]}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityState={{ selected: isFocused }}
@@ -80,7 +82,8 @@ function RecordButton({ accent, onPress }) {
 }
 
 export default function TabBar({ state, navigation }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
+  const surface = toonSurface(colors, scheme);
   const insets = useSafeAreaInsets();
   const accent = useAccent();
 
@@ -95,49 +98,61 @@ export default function TabBar({ state, navigation }) {
   const left = routes.slice(0, 2);
   const right = routes.slice(2);
 
+  const item = (route) => {
+    const isFocused = state.index === routes.indexOf(route);
+    return (
+      <TabItem
+        key={route.key}
+        route={route}
+        isFocused={isFocused}
+        accent={accent}
+        onPress={() => go(route, isFocused)}
+      />
+    );
+  };
+
   return (
-    <View style={[styles.bar, { backgroundColor: colors.card, borderTopColor: colors.border, paddingBottom: insets.bottom, height: 64 + insets.bottom }]}>
-      {left.map((route) => (
-        <TabItem
-          key={route.key}
-          route={route}
-          isFocused={state.index === state.routes.indexOf(route)}
-          accent={accent}
-          onPress={() => go(route, state.index === state.routes.indexOf(route))}
-        />
-      ))}
-
-      <RecordButton accent={accent} onPress={() => { haptic.light(); navigation.navigate('Record'); }} />
-
-      {right.map((route) => (
-        <TabItem
-          key={route.key}
-          route={route}
-          isFocused={state.index === state.routes.indexOf(route)}
-          accent={accent}
-          onPress={() => go(route, state.index === state.routes.indexOf(route))}
-        />
-      ))}
+    // The outer view keeps the safe-area gap so screen content never runs under
+    // the floating pill.
+    <View style={[styles.dock, { paddingBottom: insets.bottom ? insets.bottom - 4 : space.sm }]}>
+      <View
+        style={[
+          styles.bar,
+          { backgroundColor: colors.card, ...surface.outline, ...surface.shadow },
+        ]}
+      >
+        {left.map(item)}
+        <RecordButton accent={accent} onPress={() => { haptic.light(); navigation.navigate('Record'); }} />
+        {right.map(item)}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  dock: { paddingHorizontal: space.md, paddingTop: space.sm, backgroundColor: 'transparent' },
   bar: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: space.sm,
+    alignItems: 'center',
+    borderRadius: toonRadius.panel,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.xs,
   },
   slot: { flex: 1 },
-  item: { alignItems: 'center', justifyContent: 'flex-start', gap: 3, paddingTop: 2 },
+  item: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: 6,
+    borderRadius: toonRadius.cell,
+  },
   label: { ...type.labelSm, fontSize: 11, letterSpacing: 0.2, textTransform: 'none' },
 
   recordSlot: { width: 72, alignItems: 'center' },
   record: {
     width: 60,
     height: 60,
-    marginTop: -22, // raised above the bar
+    marginTop: -26, // raised above the bar
     alignItems: 'center',
     justifyContent: 'center',
   },

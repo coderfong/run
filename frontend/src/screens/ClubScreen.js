@@ -10,6 +10,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { art } from '../config/onboardingArt';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, EmptyState } from '../components/ui';
 import ClanBadge from '../components/ClanBadge';
 import { toast } from '../ui/toast';
@@ -215,8 +216,18 @@ function MemberHub({ clanId, navigation }) {
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={accent} />}
     >
-      {/* header */}
+      {/* header — crew-standoff art sits behind the crest, faded so the
+          club's own colour and text stay dominant */}
       <View style={[styles.header, { backgroundColor: withAlpha(accent, 0.1) }]}>
+        {art('headerClub') && (
+          <Image
+            source={art('headerClub')}
+            style={styles.headerArt}
+            resizeMode="cover"
+            fadeDuration={0}
+            pointerEvents="none"
+          />
+        )}
         <View style={[styles.badgeChip, { backgroundColor: clan.color.fill, width: 56, height: 56 }]}>
           <ClanBadge icon={clan.badge_icon} size={30} color={accent} />
         </View>
@@ -335,15 +346,17 @@ export default function ClubScreen({ navigation }) {
 }
 
 const makeStyles = (colors, _scheme, type) => StyleSheet.create({
-  dirHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.sm },
-  dirCrewWrap: { width: 190, aspectRatio: 2.57 },
+  // title and crew sit together on the left rather than pushed to opposite edges
+  dirHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
+  dirCrewWrap: { flex: 1, maxWidth: 190, aspectRatio: 2.57 },
   dirCrew: { width: '100%', height: '100%' },
   input: {
     ...type.body, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1,
     borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: 12,
   },
   badgeChip: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl },
+  header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl, overflow: 'hidden' },
+  headerArt: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.22 },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.bgElevated, overflow: 'hidden' },
   barFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 5 },
   barMine: {},

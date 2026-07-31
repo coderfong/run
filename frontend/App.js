@@ -4,7 +4,11 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
-import { DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import {
+  createNavigationContainerRef,
+  DefaultTheme,
+  NavigationContainer,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -30,7 +34,8 @@ import ResultScreen from './src/screens/ResultScreen';
 import GlobalMapScreen from './src/screens/GlobalMapScreen';
 import LeaderboardScreen from './src/screens/LeaderboardScreen';
 import AuthScreen from './src/screens/AuthScreen';
-import OnboardingScreen from './src/screens/OnboardingScreen';
+import OnboardingFlow from './src/onboarding/OnboardingFlow';
+import TutorialOverlay from './src/onboarding/TutorialOverlay';
 import ProfileScreen from './src/screens/ProfileScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
 import RunDetailScreen from './src/screens/RunDetailScreen';
@@ -42,11 +47,16 @@ import ClubDetailScreen from './src/screens/ClubDetailScreen';
 import ClubChatScreen from './src/screens/ClubChatScreen';
 import SeasonScreen from './src/screens/SeasonScreen';
 import AvatarStudioScreen from './src/screens/AvatarStudioScreen';
+import ShopScreen from './src/screens/ShopScreen';
 import ProgressionScreen from './src/screens/ProgressionScreen';
+import PasersScreen from './src/screens/PasersScreen';
+import RivalsScreen from './src/screens/RivalsScreen';
+import RunnerProfileScreen from './src/screens/RunnerProfileScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ClanProvider } from './src/state/clan';
 import { AvatarProvider, useAvatar } from './src/state/avatar';
+import { ProfileProvider, useProfile } from './src/state/profile';
 import { MotionProvider, useReduceMotion, MascotLoader } from './src/ui/motion';
 import { RecordingProvider, useRecording } from './src/state/recording';
 import { SettingsProvider } from './src/state/settings';
@@ -189,6 +199,16 @@ function YouStack() {
         component={RunDetailScreen}
         options={{ headerShown: true, title: 'Run', ...headerLight }}
       />
+      {/* Pasers and Rivals draw their own gradient headers (with a back
+          button), so the native one is off. */}
+      <YouStackNav.Screen name="Pasers" component={PasersScreen} />
+      <YouStackNav.Screen name="Rivals" component={RivalsScreen} />
+      <YouStackNav.Screen
+        name="RunnerProfile"
+        component={RunnerProfileScreen}
+        // title is set by the screen once the runner's name loads
+        options={{ headerShown: true, title: 'Runner', ...headerLight }}
+      />
     </YouStackNav.Navigator>
   );
 }
@@ -233,7 +253,18 @@ function MainTabs() {
       <Tab.Screen name="Home" component={HomeTab} />
       <Tab.Screen name="Map" component={MapTab} options={{ swipeEnabled: false }} />
       <Tab.Screen name="Club" component={ClubTab} />
-      <Tab.Screen name="You" component={YouTab} />
+      {/* Home deep-links into You › Pasers / Rivals, which leaves the You
+          stack sitting on that inner screen. Tapping the You tab then
+          re-showed Pasers instead of the profile, because navigate('You')
+          restores the stack's existing state. Reset to the profile on every
+          tab press — the standard "tap the tab, go to its root" behaviour. */}
+      <Tab.Screen
+        name="You"
+        component={YouTab}
+        listeners={({ navigation }) => ({
+          tabPress: () => navigation.navigate('You', { screen: 'YouMain' }),
+        })}
+      />
     </Tab.Navigator>
   );
 }
@@ -300,6 +331,15 @@ function RootStack() {
   return (
     <RootStackNav.Navigator screenOptions={{ headerShown: false }}>
       <RootStackNav.Screen name="Tabs" component={MainTabs} />
+      {/* Shop lives at the ROOT, not inside the You stack. The Home side rail
+          opens it, and when it sat under You that deep-link left the You tab
+          resting on the shop — tapping You then reopened the shop instead of
+          the profile. */}
+      <RootStackNav.Screen
+        name="Shop"
+        component={ShopScreen}
+        options={{ headerShown: true, title: 'Shop', ...headerLight }}
+      />
       <RootStackNav.Screen
         name="Record"
         component={RecordModal}
@@ -325,9 +365,14 @@ function FullScreenSpinner() {
   );
 }
 
+// Lets the tutorial overlay (which lives OUTSIDE the navigator) hand off to a
+// screen inside it.
+const navigationRef = createNavigationContainerRef();
+
 function RootNavigator() {
   const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
   const { needsSetup: avatarNeedsSetup, loading: avatarLoading } = useAvatar();
+  const { profile, displayName, loading: profileLoading, completeTutorial } = useProfile();
   const reduced = useReduceMotion();
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
@@ -355,17 +400,22 @@ function RootNavigator() {
         <AuthNavigator />
       </NavigationContainer>
     );
-  } else if (needsOnboarding) {
-    phase = 'onboarding';
-    content = <OnboardingScreen onDone={completeOnboarding} />;
-  } else if (avatarLoading) {
-    // First-time avatar setup — right after the intro slides (also catches
-    // existing accounts that predate the avatar system, exactly once).
+  } else if (avatarLoading || profileLoading) {
+    // The intro builds the avatar, so wait for the saved loadout + profile
+    // before deciding whether it needs to run at all.
     phase = 'loading';
     content = <FullScreenSpinner />;
-  } else if (avatarNeedsSetup) {
-    phase = 'avatar';
-    content = <AvatarStudioScreen standalone />;
+  } else if (needsOnboarding || avatarNeedsSetup) {
+    // New account → the full intro (name · birthday · character · PRO).
+    // Existing account with no avatar (predates the avatar system) → just the
+    // character steps, exactly once.
+    phase = 'onboarding';
+    content = (
+      <OnboardingFlow
+        mode={needsOnboarding ? 'full' : 'character'}
+        onDone={completeOnboarding}
+      />
+    );
   } else if (locStatus === 'undetermined' && !locHandled) {
     phase = 'location';
     content = (
@@ -379,9 +429,25 @@ function RootNavigator() {
   } else {
     phase = 'app';
     content = (
-      <NavigationContainer theme={navTheme} linking={linking}>
-        <RootStack />
-      </NavigationContainer>
+      <>
+        <NavigationContainer ref={navigationRef} theme={navTheme} linking={linking}>
+          <RootStack />
+        </NavigationContainer>
+        {/* first-run coach marks, dimming the real home screen behind them */}
+        {profile.tutorialPending ? (
+          <TutorialOverlay
+            name={displayName}
+            onDone={completeTutorial}
+            onAddPaser={() => {
+              if (!navigationRef.isReady()) return;
+              navigationRef.navigate('Tabs', {
+                screen: 'You',
+                params: { screen: 'Pasers' },
+              });
+            }}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -422,14 +488,16 @@ function App() {
           <AuthProvider>
             <ClanProvider>
               <AvatarProvider>
-                <RecordingProvider>
-                  <SettingsProvider>
-                    <ThemedStatusBar />
-                    <RootNavigator />
-                    <OfflineBanner />
-                    <ToastHost />
-                  </SettingsProvider>
-                </RecordingProvider>
+                <ProfileProvider>
+                  <RecordingProvider>
+                    <SettingsProvider>
+                      <ThemedStatusBar />
+                      <RootNavigator />
+                      <OfflineBanner />
+                      <ToastHost />
+                    </SettingsProvider>
+                  </RecordingProvider>
+                </ProfileProvider>
               </AvatarProvider>
             </ClanProvider>
           </AuthProvider>

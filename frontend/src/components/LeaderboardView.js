@@ -3,7 +3,7 @@
 // Clan and solo standings live on the Season screen (SeasonScreen).
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
@@ -17,6 +17,14 @@ import { useAccent } from '../hooks/useAccent';
 import { Skeleton, useReduceMotion } from '../ui/motion';
 import { EmptyState } from './ui';
 import { toast } from '../ui/toast';
+import { art } from '../config/onboardingArt';
+
+// Rank -> place sticker. Null entries fall back to the plain "#n" text.
+const PLACE_BADGE = {
+  1: art('badge1st'),
+  2: art('badge2nd'),
+  3: art('badge3rd'),
+};
 
 const RANKS_KEY = 'tr.lastRanks';
 const PODIUM = {
@@ -131,6 +139,15 @@ export default function LeaderboardView() {
 
   const podium = (
     <View style={styles.podium}>
+      {art('headerLeaderboard') && (
+        <Image
+          source={art('headerLeaderboard')}
+          style={styles.podiumArt}
+          resizeMode="cover"
+          fadeDuration={0}
+          pointerEvents="none"
+        />
+      )}
       {podiumOrder.map((r) => {
         const c = r.clan_color || NEUTRAL;
         const isFirst = r.rank === 1;
@@ -185,7 +202,19 @@ export default function LeaderboardView() {
                 isMe && { backgroundColor: withAlpha(c.stroke, 0.08) },
               ]}
             >
-              <Text style={[styles.rank, podium && { color: podium.rankColor }]}>#{item.rank}</Text>
+              {/* Top three get the comic place sticker instead of "#n" —
+                  the art has the ordinal lettering baked in. */}
+              {PLACE_BADGE[item.rank] ? (
+                <Image
+                  source={PLACE_BADGE[item.rank]}
+                  style={styles.placeBadge}
+                  resizeMode="contain"
+                  fadeDuration={0}
+                  accessibilityLabel={`Rank ${item.rank}`}
+                />
+              ) : (
+                <Text style={[styles.rank, podium && { color: podium.rankColor }]}>#{item.rank}</Text>
+              )}
               <RankDelta delta={item.delta} />
               <View style={[styles.dot, { backgroundColor: c.stroke }]} />
               <View style={{ flex: 1 }}>
@@ -229,6 +258,7 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     ...shadow.card,
   },
   rank: { ...type.statSm, width: 36 },
+  placeBadge: { width: 36, height: 30, marginRight: 2 },
   delta: { ...type.caption, width: 14 },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
   area: { ...type.statSm },
@@ -251,7 +281,12 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     justifyContent: 'center',
     gap: space.xl,
     marginBottom: space.lg,
+    paddingVertical: space.md,
+    borderRadius: radius.card,
+    overflow: 'hidden',
   },
+  // Podium scene behind the top three, faded so the real avatars read first.
+  podiumArt: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.18 },
   podiumCol: { alignItems: 'center', width: 88 },
   podiumFirst: { marginBottom: space.sm },
   podiumAvatar: {

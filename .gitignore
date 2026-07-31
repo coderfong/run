@@ -30,3 +30,8 @@ Thumbs.db
 # Editor local history
 .history/
 backend/reset_db.py
+
+# Raw generation sources / design mockups — working files, not app assets.
+# The shipped art lives in frontend/assets/.
+new/
+here/

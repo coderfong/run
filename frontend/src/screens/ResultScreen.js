@@ -17,7 +17,7 @@ import { CharacterBust } from '../components/character/CharacterRig';
 import { buildBoardFeatures, buildLandPortraits, estimateClaims } from '../components/territoryBoard';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
-import ClaimFx from '../components/ClaimFx';
+import ClaimPayoff from '../components/ClaimPayoff';
 import { shapeRing } from '../config/claimShapes';
 import { useAvatar } from '../state/avatar';
 import { useAuth } from '../auth/AuthContext';
@@ -291,6 +291,8 @@ export default function ResultScreen({ navigation, route }) {
     [path, geo, frac]
   );
   const [claiming, setClaiming] = useState(false);
+  // The full claim response, held for the payoff overlay (victims + level).
+  const [payoff, setPayoff] = useState(null);
 
   const t = claim.territory;
   const captured = !!t;
@@ -336,8 +338,6 @@ export default function ResultScreen({ navigation, route }) {
   // Cosmetic claim shape (level-unlocked; defaults to circle). Server enforces
   // the unlock and rebuilds the authoritative polygon.
   const claimShape = equipped?.claimShape || 'circle';
-  const claimFx = equipped?.claimFx || 'burst';
-  const [fxPlaying, setFxPlaying] = useState(false);
 
   // Energy gates claiming (not running). Fetch it so the placement card can
   // show the meter and block/redirect to the shop when it's too low.
@@ -392,9 +392,8 @@ export default function ResultScreen({ navigation, route }) {
         xp_gained: out.xp_gained || 0,
       });
       if (out.energy_max) setEnergyStatus((s) => ({ ...(s || {}), energy: out.energy, energy_max: out.energy_max }));
-      setFxPlaying(true); // level-unlocked claim explosion (no-op until art added)
-      haptic.success();
-      toast.success(out.xp_gained ? `Territory claimed · +${out.xp_gained} XP` : 'Territory claimed');
+      // The payoff carries the celebration now — no toast on top of it.
+      setPayoff({ ...out, center });
     } catch (e) {
       if (e.status === 402) {
         // Out of energy — send them straight to the refill shop.
@@ -540,6 +539,22 @@ export default function ResultScreen({ navigation, route }) {
 
       <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={refreshEnergy} />
 
+      {/* the payoff: who you took it from, the XP, the level bar */}
+      <ClaimPayoff
+        visible={!!payoff}
+        claim={payoff}
+        myAvatar={equipped}
+        onClose={() => setPayoff(null)}
+        onViewMap={() => {
+          const c = payoff?.center;
+          setPayoff(null);
+          navigation.navigate('Tabs', {
+            screen: 'Map',
+            params: c ? { screen: 'MapMain', params: { focus: { lat: c.latitude, lon: c.longitude } } } : undefined,
+          });
+        }}
+      />
+
       {/* the shareable card */}
       <Reveal delay={canPlace ? 140 : 0}>
       <View ref={cardRef} collapsable={false} style={styles.card}>
@@ -647,7 +662,6 @@ export default function ResultScreen({ navigation, route }) {
       </Reveal>
     </ScrollView>
     {showConfetti && <Confetti />}
-    <ClaimFx fx={claimFx} play={fxPlaying} onDone={() => setFxPlaying(false)} />
     </View>
   );
 }

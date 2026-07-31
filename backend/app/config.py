@@ -104,10 +104,18 @@ class Settings(BaseSettings):
     energy_cost_claim: int = 25         # energy spent to place a claim
     energy_per_run: int = 8             # energy granted for a verified finished run
 
-    # ---- In-app purchases (energy refills) --------------------------------
-    # TODO(prod): flip on and wire real Apple StoreKit / Google Play receipt
-    # verification in routes/progression.py before shipping paid packs.
+    # ---- In-app purchases (PASER PRO + energy packs) ----------------------
+    # MUST be true in production. With it off, /me/pass/purchase and
+    # /me/energy/purchase grant their goods to any authenticated caller with
+    # no receipt at all — the entire premium track for free. Verification
+    # lives in app/iap.py and FAILS CLOSED if the secrets below are unset.
     iap_verify_receipts: bool = False
+    # Apple: App Store Connect → your app → App-Specific Shared Secret.
+    apple_shared_secret: str = ""
+    # Google Play: an OAuth access token for the Android Publisher API, plus
+    # the package name receipts are validated against.
+    google_play_access_token: str = ""
+    android_package: str = "com.pacerrun.app"
 
     # ---- Social sign-in (Google / Apple) ----------------------------------
     # Comma-separated allowed audiences (OAuth client ids for Google; bundle /

@@ -14,6 +14,11 @@ Formats: **icons → SVG** (crisp + tintable) or PNG @1x/@2x/@3x. **Illustration
 → PNG** transparent, @2x/@3x. **Animations → Lottie JSON** (from After Effects
 via Bodymovin, or a Lottie generator), transparent, ≤200 KB, ≤2 s.
 
+> **First-run art (onboarding steps + tutorial coach marks) has its own spec:**
+> [ONBOARDING_ASSETS.md](ONBOARDING_ASSETS.md) — story panels, step thumbnails,
+> the creator stage, and the body-build / skin-tone sheets the new character
+> creator needs.
+
 ---
 
 ## 1. Navigation & UI icons (P0 — this is why screens look "plain")
@@ -50,6 +55,22 @@ Sparkles, Swords, Timer, TriangleAlert, Trophy, User, UserPlus, X, Zap.
 ---
 
 ## 2. Character collectibles / wearables (P0 — core of progression)
+
+> **✅ DONE 2026-07-17** — 53 items integrated: 12 headwear + 8 accessories
+> (both NEW slots wired into CharacterRig/SLOTS), 8 hair (incl. sports hijab),
+> 8 glasses, 6 tops, 5 bottoms, 6 faces. Colorables have 10 palette variants.
+> Pipeline: `frontend/scripts/asset-pipeline.py` (de-checkerboard, slice,
+> fit, recolor), QA: `frontend/scripts/composite-qa.py`.
+>
+> **✅ DONE 2026-07-29** — +76 more items (catalogue now 177): 22 headwear,
+> 13 glasses, 14 tops, 13 bottoms, 14 accessories. These keep their **original
+> drawn colours** (fixed `img:`, no palette recolour). 17 of them are
+> **PASER PRO exclusives** (`unlock: premiumOnly`, no stat route) and are now
+> what `PREMIUM_ITEMS` hands out — §6d of ONBOARDING_ASSETS.md is closed.
+> Harvested from 70 sheets by `frontend/scripts/harvest-sheets.py`
+> (auto-slice + concept-cluster dedupe against the live catalogue) and
+> installed by `frontend/scripts/install-items.py` (neck-hole cuts,
+> front/back wrap splits). Verify with `node scripts/check-catalog.js`.
 
 New level-gated items in the avatar rig. Existing slots live in
 `frontend/assets/character/`: **body, face, hair, glasses, outfit**. Match those

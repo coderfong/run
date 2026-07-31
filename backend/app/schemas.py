@@ -130,13 +130,39 @@ class ClaimIn(BaseModel):
     shape: str = "circle"
 
 
+class ClaimVictim(BaseModel):
+    """A runner this claim landed on — the faces on the payoff screen.
+
+    `defended = True` means their land held (nothing was taken); `reclaimed`
+    means they had taken land off the claimer before, which is what earns the
+    "you took it back" framing.
+    """
+
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    clan_color: Optional[ClanColor] = None
+    area_m2: float = 0.0
+    defended: bool = False
+    reclaimed: bool = False
+
+
 class ClaimOut(BaseModel):
     territory: TerritoryOut
     stolen_m2: float = 0.0
     stolen_from: Optional[str] = None
+    # Everyone this claim touched, biggest loss first. `stolen_from` is just
+    # the top name — this is the whole story the result screen tells.
+    victims: List[ClaimVictim] = []
     # XP awarded for placing this claim (base + area-scaled + steal), so the
     # result screen can show the reward the moment the claim lands.
     xp_gained: int = 0
+    # Level state AFTER the claim, so the payoff can fill the XP bar (and
+    # celebrate a level-up) without a second round trip.
+    level: int = 0
+    xp: int = 0
+    next_level_xp: int = 100
+    leveled_up: bool = False
     # Energy left after the claim's cost was deducted (claims are energy-gated).
     energy: int = 0
     energy_max: int = 0
@@ -316,6 +342,61 @@ class RunnerCard(BaseModel):
     state: PaserState = "none"
     # Only set on rows that came from a request, so the client can act on it.
     request_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Rivalries — head-to-head land history between two runners (migration 0016).
+# ---------------------------------------------------------------------------
+
+# What happened, from the VIEWER's side. `they_took` / `you_took` are
+# successful steals; `you_held` / `they_held` are attacks that bounced off the
+# defender's strength.
+RivalEventKind = Literal["you_took", "they_took", "you_held", "they_held"]
+
+
+class RivalEvent(BaseModel):
+    kind: RivalEventKind
+    area_m2: float
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    at: datetime
+
+
+class RivalCard(BaseModel):
+    """One rivalry, always phrased from the requesting runner's side."""
+
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    clan_tag: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
+    level: int = 0
+
+    # Career totals of land moved between the two, in m².
+    you_took_m2: float = 0
+    they_took_m2: float = 0
+    # you_took - they_took. Positive = you're up on them.
+    net_m2: float = 0
+
+    # Event counts, for the "4 times" line under each bar.
+    you_took_times: int = 0
+    they_took_times: int = 0
+    you_held_times: int = 0
+
+    # Their land right now (m²) — the "3.8 km² vs 4.1 km²" comparison.
+    your_land_m2: float = 0
+    their_land_m2: float = 0
+
+    last_event: Optional[RivalEvent] = None
+
+
+class RivalsOut(BaseModel):
+    rivals: List[RivalCard]
+
+
+class RivalDetail(BaseModel):
+    rival: RivalCard
+    events: List[RivalEvent]
 
 
 class PaserRequestIn(BaseModel):

@@ -9,7 +9,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { brand, radius, space, useTheme, useThemedType } from '../theme';
 import AppIcon from './AppIcon';
 
-export default function EnergyMeter({ status, onPress, compact = false }) {
+export default function EnergyMeter({ status, onPress, compact = false, style }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const [energy, setEnergy] = useState(status?.energy ?? 0);
@@ -35,7 +35,7 @@ export default function EnergyMeter({ status, onPress, compact = false }) {
   const Wrap = onPress ? TouchableOpacity : View;
   return (
     <Wrap
-      style={[styles.wrap, compact && styles.compact, { backgroundColor: colors.card }]}
+      style={[styles.wrap, compact && styles.compact, { backgroundColor: colors.card }, style]}
       onPress={onPress}
       activeOpacity={0.85}
       accessibilityRole={onPress ? 'button' : undefined}

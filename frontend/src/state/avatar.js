@@ -22,6 +22,7 @@ import { useClan } from './clan';
 import {
   DEFAULT_EQUIPPED,
   isUnlocked as itemUnlocked,
+  unlockSet,
   randomEquipped,
 } from '../config/cosmetics';
 
@@ -46,6 +47,7 @@ export function AvatarProvider({ children }) {
 
   const [equipped, setEquipped] = useState(DEFAULT_EQUIPPED);
   const [stats, setStats] = useState(null);
+  const [unlocks, setUnlocks] = useState(() => new Set());
   const [needsSetup, setNeedsSetup] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -77,17 +79,35 @@ export function AvatarProvider({ children }) {
       .catch(() => {})
       .finally(() => alive && setLoading(false));
     api.meStats().then((s) => alive && setStats(s)).catch(() => {});
+    // Server-granted cosmetics (premium pass tiers, lootbox rolls) — these
+    // beat the stat gates, so the studio can't tell what's equippable
+    // without them.
+    api
+      .progression()
+      .then((p) => alive && setUnlocks(unlockSet(p?.unlocks)))
+      .catch(() => {});
     return () => {
       alive = false;
     };
   }, [signedIn, user?.username]);
 
   const unlockCtx = useMemo(
-    () => ({ stats, hasClan: !!clan?.clan_id }),
-    [stats, clan?.clan_id]
+    () => ({ stats, hasClan: !!clan?.clan_id, unlocks }),
+    [stats, clan?.clan_id, unlocks]
   );
 
   const isUnlocked = useCallback((item) => itemUnlocked(item, unlockCtx), [unlockCtx]);
+
+  // Re-pull server-granted unlocks. The shop calls this after a coin purchase
+  // so the item is equippable immediately instead of after an app restart.
+  const refreshUnlocks = useCallback(async () => {
+    try {
+      const p = await api.progression();
+      setUnlocks(unlockSet(p?.unlocks));
+    } catch {
+      // Non-fatal: the studio just keeps the unlocks it already had.
+    }
+  }, []);
 
   const persist = useCallback(
     (next) => {
@@ -124,8 +144,10 @@ export function AvatarProvider({ children }) {
   }, [equipped, persist]);
 
   const value = useMemo(
-    () => ({ equipped, setPart, randomize, save, isUnlocked, unlockCtx, needsSetup, loading }),
-    [equipped, setPart, randomize, save, isUnlocked, unlockCtx, needsSetup, loading]
+    () => ({ equipped, setPart, randomize, save, isUnlocked, unlockCtx, needsSetup, loading,
+             refreshUnlocks }),
+    [equipped, setPart, randomize, save, isUnlocked, unlockCtx, needsSetup, loading,
+     refreshUnlocks]
   );
 
   return <AvatarContext.Provider value={value}>{children}</AvatarContext.Provider>;

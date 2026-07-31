@@ -7,10 +7,11 @@
 // `level` (we derive the tier).
 
 import React from 'react';
-import { View } from 'react-native';
+import { Image, View } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { borderForLevel, borderByKey } from '../config/progression';
+import { BORDER_ART } from '../config/borderArt';
 
 export default function PortraitBorder({ tier, level, borderKey, size = 72, width, children, style }) {
   const t = tier || (borderKey ? borderByKey(borderKey) : borderForLevel(level || 0));
@@ -19,6 +20,39 @@ export default function PortraitBorder({ tier, level, borderKey, size = 72, widt
   const stops = isGradient ? t.ring : [t.ring, t.ring];
   const r = size / 2 - w / 2;
   const gid = `pb-${t.key}-${size}`;
+
+  // Real ring art when the tier has it. `hole` is the art's inner opening as a
+  // fraction of its square canvas (measured by scripts/slice-borders.py), so
+  // scaling by 1/hole makes the opening exactly `size` — the portrait fills it
+  // regardless of how thick that tier's frame is. Ornament bleeds outside the
+  // box on purpose, so the wrapper must not clip.
+  const artTier = BORDER_ART[t.key];
+  if (artTier) {
+    const ringSize = size / artTier.hole;
+    return (
+      <View
+        style={[
+          { width: size, height: size, alignItems: 'center', justifyContent: 'center' },
+          style,
+        ]}
+      >
+        {children}
+        <Image
+          source={artTier.src}
+          style={{
+            position: 'absolute',
+            width: ringSize,
+            height: ringSize,
+            left: (size - ringSize) / 2,
+            top: (size - ringSize) / 2,
+          }}
+          resizeMode="contain"
+          fadeDuration={0}
+          pointerEvents="none"
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, style]}>

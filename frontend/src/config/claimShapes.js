@@ -30,7 +30,9 @@ function circleUnit(n = 48) {
   });
 }
 
-function unitShape(shape) {
+// Exported so reward tiles can draw the REAL claim shape as their icon
+// (components/RewardArt.js) instead of a stand-in glyph.
+export function unitShape(shape) {
   switch (shape) {
     case 'hexagon': return regularNgon(6);
     case 'gem': return regularNgon(8);

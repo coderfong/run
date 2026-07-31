@@ -138,6 +138,42 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ product_id: productId, receipt, platform }),
     }),
+  claimReward: (level, track) =>
+    request('/me/rewards/claim', { method: 'POST', body: JSON.stringify({ level, track }) }),
+  purchasePass: (receipt, platform) =>
+    request('/me/pass/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: 'premium_pass', receipt, platform }),
+    }),
+
+  // ----- coin shop -------------------------------------------------------
+  // The catalogue (prices, owned flags) is SERVER-side; never price locally.
+  shop: () => request('/me/coins'),
+  purchaseCoins: (productId, receipt, platform) =>
+    request('/me/coins/purchase', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, receipt, platform }),
+    }),
+  buyCosmetic: (itemId) =>
+    request('/me/coins/buy', { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
+
+  // ----- pasers (mutual friends) ---------------------------------------
+  // Every mutation returns the other runner's card with a fresh `state`, so
+  // callers can swap the button straight from the response.
+  pasers: () => request('/pasers'),
+  searchPasers: (q) => request(`/pasers/search?q=${encodeURIComponent(q)}`),
+  addPaser: (userId) =>
+    request('/pasers/requests', { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+  respondToPaser: (linkId, action) =>
+    request(`/pasers/requests/${linkId}/${action}`, { method: 'POST', body: '{}' }),
+  removePaser: (userId) => request(`/pasers/${userId}`, { method: 'DELETE' }),
+
+  // ----- rivalries (head-to-head land history) --------------------------
+  // Cards are always phrased from the caller's side: `you_took_m2` is land
+  // YOU took from them. Ordered by most recent beat, not biggest score.
+  rivals: (limit = 25) => request(`/me/rivals?limit=${limit}`),
+  rivalDetail: (userId) => request(`/me/rivals/${userId}`),
+  runnerProfile: (userId) => request(`/users/${userId}/profile`),
 
   getNotifPrefs: () => request('/me/notif-prefs'),
   setNotifPrefs: (prefs) => request('/me/notif-prefs', { method: 'PUT', body: JSON.stringify(prefs) }),

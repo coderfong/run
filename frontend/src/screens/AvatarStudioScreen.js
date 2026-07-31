@@ -1,8 +1,10 @@
-// Avatar Studio — the character customizer. Two entry points:
-//   · onboarding (standalone): shown once after the intro slides; gradient
-//     "Save & continue" CTA completes setup via onDone.
+// Avatar Studio — the character customizer. Entry points:
 //   · profile (navigated): opened from You → settings; edits persist live,
-//     the header back button is the exit.
+//     the header back button is the exit. This is the live path.
+//   · standalone: the legacy first-run setup. First-run character building
+//     now happens step-by-step in `src/onboarding/` (CharacterStep), so
+//     nothing renders this with `standalone` today — the branch is kept as a
+//     working fallback.
 //
 // Layout: rig preview (tap = wave) + randomize · slot chips · item grid with
 // locked states (unlock condition shown on locked cells) · color swatches

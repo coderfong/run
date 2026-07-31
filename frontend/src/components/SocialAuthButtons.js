@@ -1,155 +1,176 @@
 // Google + Apple sign-in buttons.
 //
-// The OAuth SDKs are loaded LAZILY (dynamic require inside the press handler),
-// so the app bundles and runs even before you install them. Until the packages
-// + client IDs are configured, a tap shows a friendly "set up" toast instead of
-// crashing.
+// Backend half is live: POST /auth/google and /auth/apple verify the provider's
+// id_token (audience + signature) and return our own session — see
+// backend/app/routes/auth.py. AuthContext.signInWithProvider() consumes it.
 //
-// SETUP (do all of these to make it live):
-//   1. npx expo install expo-apple-authentication expo-auth-session expo-web-browser expo-crypto
-//   2. Google Cloud console → OAuth client IDs (iOS, Android, Web). Put them in
-//      app.config.js `extra`: googleIosClientId / googleAndroidClientId / googleWebClientId.
-//   3. Apple Developer → enable "Sign in with Apple" capability; set
-//      `ios.usesAppleSignIn: true` in app config. Backend needs your bundle id
-//      as APPLE_CLIENT_IDS (see backend/app/config.py).
-//   4. Rebuild the dev client (these are native modules — not in Expo Go).
+// SETUP STATE
+//   ✔ packages installed (expo-apple-authentication, expo-auth-session, expo-web-browser)
+//   ✔ config plugins + ios.usesAppleSignIn in app.json
+//   ⋯ Google client ids: set EXPO_PUBLIC_GOOGLE_{IOS,ANDROID,WEB}_CLIENT_ID in .env
+//     (surfaced via app.config.js `extra`). Until set, the Google button explains
+//     it isn't configured rather than crashing.
+//   ⋯ backend: GOOGLE_CLIENT_IDS / APPLE_CLIENT_IDS env must list the same ids
+//     (APPLE_CLIENT_IDS = com.pacerrun.app). Otherwise those endpoints 501.
+//   ⋯ these are NATIVE modules — needs a dev-client / EAS rebuild, not Expo Go.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Constants from 'expo-constants';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../auth/AuthContext';
 import { radius, space, useTheme, useThemedType } from '../theme';
 import { toast } from '../ui/toast';
-import Constants from 'expo-constants';
+
+// Lets the auth popup hand control back to the app.
+WebBrowser.maybeCompleteAuthSession();
 
 const extra = Constants?.expoConfig?.extra || {};
+const GOOGLE_IDS = {
+  iosClientId: extra.googleIosClientId || undefined,
+  androidClientId: extra.googleAndroidClientId || undefined,
+  clientId: extra.googleWebClientId || undefined,
+};
+// Only mount the Google hook when there's an id for it to use — the provider
+// throws at render if the current platform has no client id.
+const HAS_GOOGLE = !!(
+  Platform.select({ ios: GOOGLE_IDS.iosClientId, android: GOOGLE_IDS.androidClientId }) ||
+  GOOGLE_IDS.clientId
+);
 
-function tryRequire(name) {
-  try { return require(name); } catch { return null; }
+function Row({ bg, glyph, glyphStyle, label, fg, onPress, disabled }) {
+  return (
+    <TouchableOpacity
+      style={[styles.btn, { backgroundColor: bg }]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={[styles.glyph, glyphStyle, { color: fg }]}>{glyph}</Text>
+      <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+    </TouchableOpacity>
+  );
 }
 
-// A random URL-safe nonce for the Google implicit id_token flow.
-function nonce(len = 24) {
-  const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let s = '';
-  for (let i = 0; i < len; i++) s += abc[Math.floor(Math.random() * abc.length)];
-  return s;
+// Isolated so the auth-request hook only ever runs when configured.
+function GoogleButton() {
+  const { signInWithProvider } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest(GOOGLE_IDS);
+
+  useEffect(() => {
+    if (!response) return;
+    if (response.type !== 'success') {
+      setBusy(false);
+      return;
+    }
+    const idToken = response.params?.id_token || response.authentication?.idToken;
+    if (!idToken) {
+      setBusy(false);
+      toast.error('Google didn’t return an identity token.');
+      return;
+    }
+    signInWithProvider('google', idToken)
+      .catch((e) => toast.error(e.message || 'Google sign-in failed'))
+      .finally(() => setBusy(false));
+  }, [response, signInWithProvider]);
+
+  return (
+    <Row
+      bg="#fff"
+      glyph="G"
+      glyphStyle={styles.gGlyph}
+      fg="#1f1f1f"
+      label={busy ? 'Signing in…' : 'Continue with Google'}
+      disabled={!request || busy}
+      onPress={() => {
+        setBusy(true);
+        promptAsync().catch((e) => {
+          setBusy(false);
+          toast.error(e.message || 'Google sign-in failed');
+        });
+      }}
+    />
+  );
 }
 
 export default function SocialAuthButtons() {
   const { signInWithProvider } = useAuth();
-  const { colors } = useTheme();
-  const type = useThemedType();
-  const [busy, setBusy] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [appleOk, setAppleOk] = useState(false);
 
-  const appleAvailable = Platform.OS === 'ios';
+  // Apple only exists on iOS, and only on devices that support it.
+  useEffect(() => {
+    let alive = true;
+    if (Platform.OS !== 'ios') return undefined;
+    AppleAuthentication.isAvailableAsync()
+      .then((ok) => alive && setAppleOk(!!ok))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   const signInApple = async () => {
     if (busy) return;
-    setBusy('apple');
+    setBusy(true);
     try {
-      const AA = tryRequire('expo-apple-authentication');
-      if (!AA?.signInAsync) {
-        toast.error('Apple sign-in isn’t set up yet.');
-        return;
-      }
-      const cred = await AA.signInAsync({
-        requestedScopes: [AA.AppleAuthenticationScope.FULL_NAME, AA.AppleAuthenticationScope.EMAIL],
+      const cred = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
       });
       if (!cred?.identityToken) throw new Error('No identity token from Apple');
+      // Apple only sends the name on the FIRST authorization — pass it through
+      // so the backend can seed a username from it.
       const name = cred.fullName
         ? [cred.fullName.givenName, cred.fullName.familyName].filter(Boolean).join(' ')
         : undefined;
       await signInWithProvider('apple', cred.identityToken, { name });
     } catch (e) {
-      if (e?.code === 'ERR_REQUEST_CANCELED') return; // user backed out
+      if (e?.code === 'ERR_REQUEST_CANCELED') return; // user backed out — not an error
       toast.error(e.message || 'Apple sign-in failed');
     } finally {
-      setBusy(null);
-    }
-  };
-
-  const signInGoogle = async () => {
-    if (busy) return;
-    setBusy('google');
-    try {
-      const AuthSession = tryRequire('expo-auth-session');
-      const WebBrowser = tryRequire('expo-web-browser');
-      if (!AuthSession?.AuthRequest || !WebBrowser) {
-        toast.error('Google sign-in isn’t set up yet.');
-        return;
-      }
-      const clientId =
-        Platform.select({ ios: extra.googleIosClientId, android: extra.googleAndroidClientId }) ||
-        extra.googleWebClientId;
-      if (!clientId) {
-        toast.error('Add your Google client IDs to app config.');
-        return;
-      }
-      WebBrowser.maybeCompleteAuthSession();
-      const redirectUri = AuthSession.makeRedirectUri();
-      const n = nonce();
-      const req = new AuthSession.AuthRequest({
-        clientId,
-        redirectUri,
-        scopes: ['openid', 'profile', 'email'],
-        responseType: 'id_token',
-        extraParams: { nonce: n },
-      });
-      const discovery = {
-        authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-      };
-      const result = await req.promptAsync(discovery);
-      if (result.type !== 'success') return; // cancelled/dismissed
-      const idToken = result.params?.id_token;
-      if (!idToken) throw new Error('No id_token from Google');
-      await signInWithProvider('google', idToken, { nonce: n });
-    } catch (e) {
-      toast.error(e.message || 'Google sign-in failed');
-    } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
 
   return (
     <View>
-      {/* divider */}
       <View style={styles.dividerRow}>
         <View style={styles.line} />
-        <Text style={[type.caption, { color: 'rgba(255,255,255,0.6)', marginHorizontal: space.md }]}>or</Text>
+        <Text style={styles.orText}>or</Text>
         <View style={styles.line} />
       </View>
 
       <View style={{ gap: space.sm }}>
-        {appleAvailable && (
-          <TouchableOpacity
-            style={[styles.btn, { backgroundColor: '#000' }]}
+        {appleOk && (
+          <Row
+            bg="#000"
+            glyph=""
+            fg="#fff"
+            label={busy ? 'Signing in…' : 'Continue with Apple'}
+            disabled={busy}
             onPress={signInApple}
-            disabled={!!busy}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Continue with Apple"
-          >
-            <Text style={[styles.glyph, { color: '#fff' }]}></Text>
-            <Text style={[styles.btnText, { color: '#fff' }]}>
-              {busy === 'apple' ? 'Signing in…' : 'Continue with Apple'}
-            </Text>
-          </TouchableOpacity>
+          />
         )}
 
-        <TouchableOpacity
-          style={[styles.btn, { backgroundColor: '#fff' }]}
-          onPress={signInGoogle}
-          disabled={!!busy}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Continue with Google"
-        >
-          <Text style={[styles.glyph, styles.gGlyph]}>G</Text>
-          <Text style={[styles.btnText, { color: '#1f1f1f' }]}>
-            {busy === 'google' ? 'Signing in…' : 'Continue with Google'}
-          </Text>
-        </TouchableOpacity>
+        {HAS_GOOGLE ? (
+          <GoogleButton />
+        ) : (
+          <Row
+            bg="#fff"
+            glyph="G"
+            glyphStyle={styles.gGlyph}
+            fg="#1f1f1f"
+            label="Continue with Google"
+            onPress={() => toast.error('Google sign-in isn’t configured yet.')}
+          />
+        )}
       </View>
     </View>
   );
@@ -158,6 +179,7 @@ export default function SocialAuthButtons() {
 const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: space.md },
   line: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.25)' },
+  orText: { color: 'rgba(255,255,255,0.6)', marginHorizontal: space.md, fontSize: 12 },
   btn: {
     height: 52,
     borderRadius: radius.md,

@@ -1,3 +1,8 @@
+// SUPERSEDED (2026-07-27) — the first run now uses `src/onboarding/`
+// (OnboardingFlow: name · birthday · character · PRO) and the story slides
+// below live on as the in-app coach marks in `onboarding/TutorialOverlay.js`.
+// Kept for reference; nothing imports this screen.
+//
 // PACER onboarding — three full-bleed art slides (assets/art/*):
 // 1 the claim mechanic · 2 clubs + defending land · 3 the safety contract.
 // Top: "1 / 3" + Skip. Bottom: dots + circular next (slide 3: gradient CTA).
