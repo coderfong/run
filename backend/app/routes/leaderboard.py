@@ -4,7 +4,7 @@ Shadow-flagging: unverified territories are invisible here for everyone
 except their owner (who sees their own numbers looking normal).
 """
 
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
@@ -17,6 +17,25 @@ from ..database import get_db
 from ..security import current_user_optional
 
 router = APIRouter()
+
+SeasonCategory = Literal["land", "claims", "captures", "defenses", "distance"]
+SeasonScope = Literal["clans", "solo"]
+
+
+def _season_window(db: Session):
+    """Return the active season, or the most recently ended one."""
+    row = db.execute(
+        text(
+            "SELECT id::text, starts_at, ends_at FROM seasons "
+            "WHERE now() BETWEEN starts_at AND ends_at "
+            "ORDER BY ends_at DESC LIMIT 1"
+        )
+    ).fetchone()
+    if row:
+        return row
+    return db.execute(
+        text("SELECT id::text, starts_at, ends_at FROM seasons ORDER BY ends_at DESC LIMIT 1")
+    ).fetchone()
 
 
 @router.get("/leaderboard/ranks", response_model=List[schemas.LeaderboardEntry])
@@ -73,6 +92,210 @@ def rank_leaderboard(
     ]
 
 
+@router.get("/leaderboard/season", response_model=List[schemas.SeasonLeaderboardEntry])
+def season_leaderboard(
+    scope: SeasonScope = Query("clans"),
+    category: SeasonCategory = Query("land"),
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, le=200),
+    viewer: Optional[models.User] = Depends(current_user_optional),
+):
+    """Current season standings across several competitive categories.
+
+    Land is a live view of verified, unexpired territory. The other metrics
+    are bounded by the season dates. Club distance/captures use the existing
+    claim-time season ledger so changing club later cannot move that credit.
+    """
+    season = _season_window(db)
+    if not season:
+        return []
+
+    params = {
+        "season_id": season[0],
+        "starts_at": season[1],
+        "ends_at": season[2],
+        "life_per": settings.territory_life_days_per_strength,
+        "limit": limit,
+        "viewer_id": viewer.id if viewer else None,
+    }
+
+    if scope == "clans":
+        metric_sql = {
+            "land": "COALESCE(l.total_area_m2, 0)",
+            "claims": "COALESCE(q.claim_count, 0)",
+            "captures": "COALESCE(s.steals, 0)",
+            "defenses": "COALESCE(d.defense_count, 0)",
+            "distance": "COALESCE(s.distance_sum, 0)",
+        }[category]
+        rows = db.execute(
+            text(
+                f"""
+                WITH land AS (
+                    SELECT t.clan_id,
+                           COALESCE(SUM(t.area_m2), 0) AS total_area_m2,
+                           COUNT(t.id) AS territory_count
+                    FROM territories t
+                    WHERE t.clan_id IS NOT NULL
+                      AND t.verified
+                      AND now() < COALESCE(t.expires_at, t.created_at + make_interval(
+                          secs => GREATEST(t.strength, 0.1) * :life_per * 86400
+                      ))
+                    GROUP BY t.clan_id
+                ),
+                claims AS (
+                    SELECT cm.clan_id, COUNT(r.id) AS claim_count
+                    FROM runs r
+                    JOIN clan_members cm ON cm.user_id = r.user_id
+                    WHERE r.verified
+                      AND r.claimed_at >= :starts_at
+                      AND r.claimed_at < :ends_at
+                    GROUP BY cm.clan_id
+                ),
+                defenses AS (
+                    SELECT cm.clan_id, COUNT(e.id) AS defense_count
+                    FROM territory_steals e
+                    JOIN clan_members cm ON cm.user_id = e.victim_id
+                    LEFT JOIN runs attack_run ON attack_run.id = e.run_id
+                    WHERE e.defended
+                      AND e.created_at >= :starts_at
+                      AND e.created_at < :ends_at
+                      AND COALESCE(attack_run.verified, TRUE)
+                    GROUP BY cm.clan_id
+                )
+                SELECT c.id::text, c.name, c.tag, c.color_key, c.badge_icon,
+                       s.league,
+                       (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id) AS member_count,
+                       COALESCE(l.total_area_m2, 0) AS total_area_m2,
+                       COALESCE(l.territory_count, 0) AS territory_count,
+                       COALESCE(q.claim_count, 0) AS claim_count,
+                       COALESCE(s.steals, 0) AS capture_count,
+                       COALESCE(d.defense_count, 0) AS defense_count,
+                       COALESCE(s.distance_sum, 0) AS distance_m
+                FROM clans c
+                LEFT JOIN clan_season_stats s
+                  ON s.clan_id = c.id AND s.season_id = :season_id
+                LEFT JOIN land l ON l.clan_id = c.id
+                LEFT JOIN claims q ON q.clan_id = c.id
+                LEFT JOIN defenses d ON d.clan_id = c.id
+                WHERE {metric_sql} > 0
+                ORDER BY {metric_sql} DESC, c.name ASC
+                LIMIT :limit
+                """
+            ),
+            params,
+        ).fetchall()
+        return [
+            schemas.SeasonLeaderboardEntry(
+                clan_id=r[0],
+                name=r[1],
+                tag=r[2],
+                color=schemas.ClanColor(**color_triple(r[3])),
+                badge_icon=r[4] or "shield",
+                league=r[5],
+                member_count=int(r[6] or 0),
+                total_area_m2=float(r[7] or 0),
+                territory_count=int(r[8] or 0),
+                claim_count=int(r[9] or 0),
+                capture_count=int(r[10] or 0),
+                defense_count=int(r[11] or 0),
+                distance_m=float(r[12] or 0),
+            )
+            for r in rows
+        ]
+
+    metric_sql = {
+        "land": "COALESCE(l.total_area_m2, 0)",
+        "claims": "COALESCE(q.claim_count, 0)",
+        "captures": "COALESCE(capture.capture_count, 0)",
+        "defenses": "COALESCE(defense.defense_count, 0)",
+        "distance": "COALESCE(distance.distance_m, 0)",
+    }[category]
+    rows = db.execute(
+        text(
+            f"""
+            WITH land AS (
+                SELECT t.user_id,
+                       COALESCE(SUM(t.area_m2), 0) AS total_area_m2,
+                       COUNT(t.id) AS territory_count
+                FROM territories t
+                WHERE (t.verified OR t.user_id = :viewer_id)
+                  AND now() < COALESCE(t.expires_at, t.created_at + make_interval(
+                      secs => GREATEST(t.strength, 0.1) * :life_per * 86400
+                  ))
+                GROUP BY t.user_id
+            ),
+            claims AS (
+                SELECT r.user_id, COUNT(r.id) AS claim_count
+                FROM runs r
+                WHERE (r.verified OR r.user_id = :viewer_id)
+                  AND r.claimed_at >= :starts_at
+                  AND r.claimed_at < :ends_at
+                GROUP BY r.user_id
+            ),
+            captures AS (
+                SELECT e.attacker_id AS user_id, COUNT(e.id) AS capture_count
+                FROM territory_steals e
+                LEFT JOIN runs attack_run ON attack_run.id = e.run_id
+                WHERE NOT e.defended
+                  AND e.created_at >= :starts_at
+                  AND e.created_at < :ends_at
+                  AND (COALESCE(attack_run.verified, TRUE) OR e.attacker_id = :viewer_id)
+                GROUP BY e.attacker_id
+            ),
+            defenses AS (
+                SELECT e.victim_id AS user_id, COUNT(e.id) AS defense_count
+                FROM territory_steals e
+                LEFT JOIN runs attack_run ON attack_run.id = e.run_id
+                WHERE e.defended
+                  AND e.created_at >= :starts_at
+                  AND e.created_at < :ends_at
+                  AND COALESCE(attack_run.verified, TRUE)
+                GROUP BY e.victim_id
+            ),
+            distances AS (
+                SELECT r.user_id, COALESCE(SUM(r.distance_m), 0) AS distance_m
+                FROM runs r
+                WHERE (r.verified OR r.user_id = :viewer_id)
+                  AND r.ended_at >= :starts_at
+                  AND r.ended_at < :ends_at
+                GROUP BY r.user_id
+            )
+            SELECT u.id::text, u.username,
+                   COALESCE(l.total_area_m2, 0) AS total_area_m2,
+                   COALESCE(l.territory_count, 0) AS territory_count,
+                   COALESCE(q.claim_count, 0) AS claim_count,
+                   COALESCE(capture.capture_count, 0) AS capture_count,
+                   COALESCE(defense.defense_count, 0) AS defense_count,
+                   COALESCE(distance.distance_m, 0) AS distance_m
+            FROM users u
+            LEFT JOIN clan_members cm ON cm.user_id = u.id
+            LEFT JOIN land l ON l.user_id = u.id
+            LEFT JOIN claims q ON q.user_id = u.id
+            LEFT JOIN captures capture ON capture.user_id = u.id
+            LEFT JOIN defenses defense ON defense.user_id = u.id
+            LEFT JOIN distances distance ON distance.user_id = u.id
+            WHERE cm.user_id IS NULL AND {metric_sql} > 0
+            ORDER BY {metric_sql} DESC, u.username ASC
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).fetchall()
+    return [
+        schemas.SeasonLeaderboardEntry(
+            user_id=r[0],
+            username=r[1],
+            total_area_m2=float(r[2] or 0),
+            territory_count=int(r[3] or 0),
+            claim_count=int(r[4] or 0),
+            capture_count=int(r[5] or 0),
+            defense_count=int(r[6] or 0),
+            distance_m=float(r[7] or 0),
+        )
+        for r in rows
+    ]
+
+
 @router.get("/leaderboard", response_model=List[schemas.LeaderboardEntry])
 def leaderboard(
     db: Session = Depends(get_db),
@@ -94,7 +317,7 @@ def leaderboard(
             LEFT JOIN territories t
               ON t.user_id = u.id
              AND (t.verified OR t.user_id = :viewer_id)
-             AND now() < t.created_at + make_interval(secs => GREATEST(t.strength,0.1) * :life_per * 86400)
+             AND now() < COALESCE(t.expires_at, t.created_at + make_interval(secs => GREATEST(t.strength,0.1) * :life_per * 86400))
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
             {solo_clause}

@@ -30,9 +30,14 @@ def _expo_send(messages):
         pass  # best-effort
 
 
-def notify(user_ids, category, title, body, data=None):
+def notify(user_ids, category, title, body, data=None, actor_id=None):
     """Open an own session (runs post-response), respect prefs, write the
-    in-app inbox row, then push."""
+    in-app inbox row, then push.
+
+    `actor_id` is the user who CAUSED this — the runner who took your land,
+    gave you kudos, sent the request. The inbox shows their portrait, so pass
+    it wherever there is a person behind the event; leave it off for system
+    notices (season, recap) that nobody sent."""
     if not user_ids:
         return
     db = SessionLocal()
@@ -52,10 +57,13 @@ def notify(user_ids, category, title, body, data=None):
         for uid in allowed:
             db.execute(
                 text(
-                    "INSERT INTO notifications (user_id, category, title, body) "
-                    "VALUES (:u, :c, :t, :b)"
+                    "INSERT INTO notifications (user_id, category, title, body, actor_id) "
+                    "VALUES (:u, :c, :t, :b, CAST(:a AS uuid))"
                 ),
-                {"u": uid, "c": category, "t": title, "b": body},
+                {"u": uid, "c": category, "t": title, "b": body,
+                 # never point a row at its own recipient — "you did this to
+                 # yourself" would just be your own face staring back
+                 "a": str(actor_id) if actor_id and str(actor_id) != str(uid) else None},
             )
         db.commit()
         # user_id is uuid; the bound list arrives as text[] — cast the column.

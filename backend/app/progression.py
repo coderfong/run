@@ -44,8 +44,10 @@ BORDER_TIERS = [
     (30, "onyx", "Onyx"), (36, "ember", "Ember"), (43, "prismatic", "Prismatic"),
     (50, "mythic", "Mythic"),
 ]
-# Claim polygon shapes — the stamp your run leaves.
-SHAPE_UNLOCKS = {8: "hexagon", 20: "star", 32: "heart", 44: "gem"}
+# Claim polygon shapes used to unlock here (hexagon/star/heart/gem). They are
+# gone: a claim is no longer a stamp you choose but a territory grown around
+# the route you actually ran, so there is no shape left to own. Levels 8, 32
+# and 44 hand over a collectible instead (FREE_ITEMS below).
 # Lootboxes (random cosmetic) and energy-cap bumps.
 LOOTBOX_LEVELS = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50}
 ENERGY_CAP_LEVELS = {10, 20, 30, 40, 50}
@@ -58,8 +60,7 @@ def _label_for(kind: str, key: str) -> str:
     for lvl, k, label in BORDER_TIERS:
         if kind == "border" and k == key:
             return label
-    return {"shape": key.title(),
-            "lootbox": f"{key.title()} box", "energy_cap": "+5 cap",
+    return {"lootbox": f"{key.title()} box", "energy_cap": "+5 cap",
             "cosmetic": "Collectible"}.get(kind, key)
 
 
@@ -90,22 +91,35 @@ _RARITY_UP = {"common": "rare", "rare": "epic", "epic": "legendary", "legendary"
 # lose nothing (their level-gated crown/wings/shields are untouched); the pass
 # adds seventeen items they simply never had. Rarity skews epic/legendary on
 # purpose — a paid tier handing over a common tee reads as a scam.
+# 2026-08-08: the bottom and footwear slots were emptied, so the seven tiers
+# that handed over a pair of shorts, joggers or a skirt had to name something
+# else. The five free tiers moved to items that were already in the catalogue
+# and unclaimed. The two PRO tiers moved to wave-5 tops promoted to
+# premium-only — brand new art nobody had earned, so the rule above still
+# holds: free players lose nothing, and the pass keeps all seventeen of its
+# cosmetic tiers rather than degrading two of them to an energy pack.
 PREMIUM_ITEMS = {
     2: ("headwear:laurel", "Laurel wreath"),
     4: ("glasses:monocle", "Monocle"),
     6: ("top:varsity", "Varsity jacket"),
-    8: ("bottom:flameshorts", "Flame shorts"),
+    8: ("top:k7t", "Zip gilet"),
     12: ("headwear:wolfears", "Wolf ears"),
+    # Refilled 2026-07-31 with wave-3 PRO art. Both are new items, never on
+    # the free track, so nothing was taken from non-payers to fill them.
     14: ("accessory:boombox", "Boombox"),
+    26: ("headwear:kabuto", "Kabuto"),
     16: ("top:aurorajacket", "Aurora jacket"),
     18: ("glasses:mirrorvisor", "Mirror visor"),
-    22: ("headwear:jester", "Jester crown"),
-    26: ("accessory:trophypack", "Adventure pack"),
-    28: ("top:champjersey", "Champion jersey"),
+    22: ("headwear:punkcrown", "Punk crown"),
+    # Champion jersey was cut from the catalogue 2026-08-06. Knight armour
+    # takes the tier: it is legendary, it was not on either track, and PRO gets
+    # it here at 28 instead of level 46 or 2000 coins. Early access rather than
+    # an exclusive, so nothing was taken from non-payers to fill the hole.
+    28: ("top:knightarmor", "Knight armour"),
     32: ("headwear:flamecrown", "Flame crown"),
     34: ("glasses:cybershades", "Cyber shades"),
     38: ("accessory:dragonwings", "Dragon wings"),
-    42: ("bottom:flamejoggers", "Flame joggers"),
+    42: ("top:k10t", "Varsity jacket"),
     46: ("accessory:jetpack", "Jetpack"),
     48: ("headwear:halo", "Halo"),
 }
@@ -150,39 +164,45 @@ FREE_ITEMS = {
     1: ("headwear:catears", "Cat ears"),
     2: ("face:grump", "Grump"),
     3: ("hair:messy", "Messy"),
-    4: ("top:crewtee", "Crew tee"),
-    6: ("bottom:shorts", "Shorts"),
+    4: ("top:polo", "PE polo"),
+    6: ("top:sportpolo", "Sport polo"),
     7: ("face:wink", "Wink"),
+    # 8, 32 and 44 used to be claim-shape unlocks (see SHAPE_UNLOCKS above).
+    8: ("headwear:snapback", "Snapback"),
     9: ("hair:buzz", "Buzz cut"),
     11: ("headwear:cap", "Cap"),
     12: ("headwear:cowboyhat", "Cowboy hat"),
-    13: ("top:pockettee", "Pocket tee"),
-    14: ("bottom:cargos", "Cargos"),
+    13: ("top:greyhoodie", "Hoodie"),
+    14: ("headwear:bucket", "Bucket hat"),
     16: ("glasses:rects", "Rects"),
     17: ("hair:softwaves", "Soft waves"),
     18: ("face:tongueout", "Cheeky"),
     19: ("top:stripetee", "Stripe tee"),
     21: ("headwear:bandana", "Bandana"),
-    22: ("bottom:trackpants", "Track pants"),
+    22: ("top:windbreaker", "Windbreaker"),
     23: ("hair:braids", "Braided pigtails"),
     24: ("glasses:steampunk", "Steampunk goggles"),
     26: ("top:singlet", "Race singlet"),
     27: ("face:stareyes", "Star eyes"),
     28: ("glasses:roundgold", "Round golds"),
-    29: ("bottom:fbtshorts", "Runner shorts"),
+    29: ("accessory:hydrovest", "Race vest"),
     31: ("headwear:beanie", "Beanie"),
+    32: ("glasses:aviators", "Aviators"),
     33: ("hair:spacebuns", "Space buns"),
     34: ("top:sweater", "Sweater"),
     36: ("top:puffer", "Puffer jacket"),
-    37: ("accessory:hydropack", "Hydration pack"),
-    38: ("face:hearteyes", "Heart eyes"),
-    39: ("bottom:leggings", "Leggings"),
+    37: ("accessory:dogtags", "Dog tags"),
+    # id kept (users may be wearing it, and this tier may already be claimed);
+    # the new face art has no heart eyes, so it now points at the dizzy face.
+    38: ("face:hearteyes", "Dizzy"),
+    39: ("headwear:piratehat", "Pirate hat"),
     41: ("glasses:cleargoggles", "Clear goggles"),
     42: ("hair:surfer", "Surfer"),
     43: ("accessory:katanas", "Twin blades"),
+    44: ("accessory:trophychain", "Trophy chain"),
     46: ("top:oversized", "Oversized tee"),
     47: ("headwear:bikehelmet", "Bike helmet"),
-    48: ("accessory:capepauldron", "Champion cape"),
+    48: ("accessory:redcape", "Hero cape"),
     49: ("accessory:goldmedal", "Gold medal"),
 }
 
@@ -195,8 +215,6 @@ def rewards_for_level(level: int) -> list[dict]:
     # Borders are NOT granted here any more — they come from rank (app/ranks.py),
     # which is earned by taking and holding ground. Handing the same ring out on
     # the level ladder would make the badge mean two different things at once.
-    if level in SHAPE_UNLOCKS:
-        out.append({"kind": "shape", "key": SHAPE_UNLOCKS[level], "label": _label_for("shape", SHAPE_UNLOCKS[level])})
     if level in LOOTBOX_LEVELS:
         out.append({"kind": "lootbox", "key": lootbox_rarity(level),
                     "label": _label_for("lootbox", lootbox_rarity(level))})

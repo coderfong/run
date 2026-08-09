@@ -14,13 +14,17 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, privacy, ranks, schemas
 from ..clans_meta import color_triple
 from ..database import get_db
 from ..geospatial import geometry_to_rings
 from ..security import current_user
 
 router = APIRouter()
+
+# Matches MAX_STEAL_HEADS in frontend/src/components/TerritoryStealBanner.js —
+# the banner has six flight paths, so a seventh face has nowhere to be thrown.
+MAX_FEED_VICTIMS = 6
 
 
 def _rings_from_wkt(wkt):
@@ -61,7 +65,12 @@ def feed(
                    (SELECT COUNT(*) FROM run_comments rc WHERE rc.run_id = r.id) AS comment_count,
                    u.avatar,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, 0.00004)) AS poly_wkt,
-                   ST_AsText(ST_Simplify(r.path, 0.00004)) AS path_wkt
+                   ST_AsText(ST_Simplify(r.path, 0.00004)) AS path_wkt,
+                   COALESCE(u.rank_points, 0), u.rank_points_at,
+                   -- Privacy, selected alongside rather than looked up per row:
+                   -- a page can carry fifty runs from fifty different runners.
+                   COALESCE(r.visibility, 'public'),
+                   u.route_trim_m, u.privacy_zones, u.route_publish_delay_h, u.birthday
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -69,6 +78,9 @@ def feed(
             LEFT JOIN clans c ON c.id = cm.clan_id
             WHERE r.ended_at IS NOT NULL
               AND (r.verified OR r.user_id = :uid)
+              -- A private run does not appear on anyone else's feed at all.
+              -- It still records, still claims, still counts for every total.
+              AND (COALESCE(r.visibility, 'public') = 'public' OR r.user_id = :uid)
               AND (:cursor IS NULL OR r.ended_at < :cursor)
             ORDER BY r.ended_at DESC
             LIMIT :limit
@@ -79,6 +91,48 @@ def feed(
 
     has_more = len(rows) > limit
     rows = rows[:limit]
+
+    # The steal, per run — the faces the card throws out of the blast. One
+    # extra query for the whole page rather than a correlated subquery per
+    # row, and capped at MAX_FEED_VICTIMS because the banner can only fling
+    # six heads; anything past that is counted, not drawn.
+    victims_by_run: dict[str, list] = {}
+    stolen_by_run: dict[str, float] = {}
+    run_ids = [r[0] for r in rows]
+    if run_ids:
+        for s in db.execute(
+            text(
+                """
+                SELECT ts.run_id::text, ts.victim_id::text, u.username, u.avatar,
+                       ts.area_m2, c.color_key,
+                       COALESCE(u.rank_points, 0), u.rank_points_at
+                FROM territory_steals ts
+                JOIN users u ON u.id = ts.victim_id
+                LEFT JOIN clan_members cm ON cm.user_id = ts.victim_id
+                LEFT JOIN clans c ON c.id = cm.clan_id
+                WHERE ts.run_id = ANY(CAST(:rids AS uuid[])) AND NOT ts.defended
+                ORDER BY ts.run_id, ts.area_m2 DESC
+                """
+            ),
+            {"rids": run_ids},
+        ).fetchall():
+            rid = s[0]
+            stolen_by_run[rid] = stolen_by_run.get(rid, 0.0) + float(s[4] or 0)
+            bucket = victims_by_run.setdefault(rid, [])
+            if len(bucket) >= MAX_FEED_VICTIMS:
+                continue
+            bucket.append(
+                schemas.ClaimVictim(
+                    user_id=s[1],
+                    username=s[2],
+                    avatar=s[3],
+                    rank_key=ranks.key_for(s[6], s[7]),
+                    clan_color=schemas.ClanColor(**color_triple(s[5])) if s[5] else None,
+                    area_m2=float(s[4] or 0),
+                    defended=False,
+                )
+            )
+
     items = [
         schemas.FeedItem(
             id=r[0],
@@ -96,8 +150,21 @@ def feed(
             kudoed=bool(r[11]),
             comment_count=int(r[12] or 0),
             avatar=r[13],
+            rank_key=ranks.key_for(r[16], r[17]),
             rings=_rings_from_wkt(r[14]),
-            path=_path_from_wkt(r[15]),
+            # The trace, but only as much of it as this viewer may see. The
+            # feed used to ship a simplified path for every run on the page to
+            # everyone — simplification hides a corner, not an address.
+            path=privacy.path_for_viewer(
+                _path_from_wkt(r[15]),
+                owner_id=r[1],
+                viewer_id=user.id,
+                prefs=privacy.prefs_from_row(r[19], r[20], r[21], r[22]),
+                visibility=r[18],
+                ended_at=r[5],
+            ),
+            victims=victims_by_run.get(r[0], []),
+            stolen_m2=stolen_by_run.get(r[0], 0.0),
         )
         for r in rows
     ]

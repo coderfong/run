@@ -19,11 +19,17 @@ from datetime import datetime
 # What each territorial action is worth. Rank is a LADDER, not a counter:
 # points move both ways, so standing reflects how you're doing now. (Levels
 # are the opposite — XP only ever accumulates and never falls.)
-POINTS_CLAIM = 10        # claim a zone
+# Rebalanced so rank answers "how well are you competing?" rather than "how
+# often did you press Claim". A neutral expansion used to pay 10 against a
+# defence's 15 — two thirds of the reward of actually holding your ground off
+# somebody, for running somewhere nobody contests. It is now a rounding error
+# next to a contested outcome, which is the point: painting empty map can
+# contribute a little, but it must never be the easiest way up the PvP ladder.
+POINTS_CLAIM = 3         # claim open ground — participation, not achievement
 POINTS_STEAL = 25        # take ground off another runner
 POINTS_DEFEND = 15       # their attack failed against your land
-POINTS_HOLD = 5          # a zone survived a decay cycle still yours
-POINTS_LOST = -15        # someone took YOUR ground — the other half of a steal
+POINTS_HOLD = 2          # a zone survived 48h still yours (see hold_credit)
+POINTS_LOST = -10        # someone took YOUR ground — the other half of a steal
 
 # Rank thresholds, widening so the top tiers stay rare. Keys match
 # BORDER_TIERS in progression.py so the art lines up 1:1.
@@ -89,6 +95,21 @@ def rank_for_points(points: int) -> dict:
             min(1.0, max(0.0, (pts - need) / max(1, nxt[0] - need)))
         ),
     }
+
+
+SELECT_COLS = "COALESCE(u.rank_points, 0), u.rank_points_at"
+
+
+def key_for(points, last_earned_at, now: datetime | None = None) -> str:
+    """Border tier key straight from a row's two raw rank columns.
+
+    Every payload that carries an `avatar` also carries a `rank_key`, because
+    the client draws the portrait's frame from it — a portrait without one
+    would render bare. Select `ranks.SELECT_COLS` alongside the avatar and
+    hand both values here; decay is applied on the way through, so a list and
+    the profile it links to can never disagree about someone's tier.
+    """
+    return rank_for_points(effective_points(int(points or 0), last_earned_at, now))["key"]
 
 
 def award(db, user_id, delta: int, reason: str) -> None:

@@ -7,12 +7,92 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, ranks, schemas
+from fastapi import HTTPException
+
+from .. import models, privacy, ranks, schemas
 from ..config import settings
 from ..database import get_db
 from ..security import current_user
 
 router = APIRouter(tags=["users"])
+
+
+# ---------------------------------------------------------------------------
+# Route privacy
+# ---------------------------------------------------------------------------
+
+
+@router.get("/me/privacy", response_model=schemas.PrivacyOut)
+def get_privacy(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """What of this runner's routes other people can see.
+
+    Defaults are returned as REAL numbers rather than nulls: an account that
+    has never opened these settings is still protected, and the screen should
+    show what is actually in force, not an empty form.
+    """
+    p = privacy.load(db, user.id)
+    return schemas.PrivacyOut(
+        route_trim_m=p["trim_m"],
+        publish_delay_h=p["delay_h"],
+        zones=[schemas.PrivacyZone(**z) for z in p["zones"]],
+        min_zone_radius_m=privacy.MIN_ZONE_RADIUS_M,
+        max_zone_radius_m=privacy.MAX_ZONE_RADIUS_M,
+        max_zones=privacy.MAX_ZONES,
+        minor=bool(p.get("minor")),
+    )
+
+
+@router.put("/me/privacy", response_model=schemas.PrivacyOut)
+def set_privacy(
+    payload: schemas.PrivacyIn,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Update any subset. Zones are clamped and capped on the way in, so a
+    client cannot store a 5 m 'privacy' circle that identifies a doorway or a
+    hundred of them."""
+    sets, params = [], {"u": user.id}
+    if payload.route_trim_m is not None:
+        sets.append("route_trim_m = :trim")
+        params["trim"] = int(payload.route_trim_m)
+    if payload.publish_delay_h is not None:
+        sets.append("route_publish_delay_h = :delay")
+        params["delay"] = int(payload.publish_delay_h)
+    if payload.zones is not None:
+        import json
+
+        cleaned = privacy.clean_zones([z.model_dump() for z in payload.zones])
+        sets.append("privacy_zones = CAST(:zones AS jsonb)")
+        params["zones"] = json.dumps(cleaned)
+    if sets:
+        db.execute(text(f"UPDATE users SET {', '.join(sets)} WHERE id = :u"), params)
+        db.commit()
+    return get_privacy(user=user, db=db)
+
+
+@router.put("/runs/{run_id}/visibility")
+def set_run_visibility(
+    run_id: str,
+    payload: schemas.RunVisibilityIn,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Hide or re-publish one run's route.
+
+    A private run still records, still claims territory and still counts for
+    every total — only its trace stops being shown to anyone else. Retroactive
+    on purpose: the run you wish you had hidden is always one you already did.
+    """
+    if payload.visibility not in privacy.VISIBILITIES:
+        raise HTTPException(400, f"visibility must be one of {list(privacy.VISIBILITIES)}")
+    res = db.execute(
+        text("UPDATE runs SET visibility = :v WHERE id = :r AND user_id = :u"),
+        {"v": payload.visibility, "r": run_id, "u": user.id},
+    )
+    if res.rowcount == 0:
+        raise HTTPException(404, "run not found")
+    db.commit()
+    return {"ok": True, "run_id": run_id, "visibility": payload.visibility}
 
 
 def _streak_days(run_dates: List) -> int:
@@ -57,7 +137,8 @@ def me_stats(user: models.User = Depends(current_user), db: Session = Depends(ge
         text(
             "SELECT COALESCE(SUM(area_m2),0), COUNT(*), COALESCE(MAX(area_m2),0) "
             "FROM territories WHERE user_id = :uid "
-            "AND now() < created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400)"
+            "AND now() < COALESCE(expires_at, created_at + make_interval("
+            "secs => GREATEST(strength,0.1) * :life_per * 86400))"
         ),
         {"uid": user.id, "life_per": settings.territory_life_days_per_strength},
     ).fetchone()

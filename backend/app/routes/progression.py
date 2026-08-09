@@ -3,6 +3,8 @@
 - GET  /me/progression   full state for the level screen (level, xp, energy,
                          the 1..50 ladder, pending lootboxes, unlocked cosmetics)
 - GET  /me/energy        just the energy meter (cheap poll for the HUD)
+- POST /me/rewards/claim      collect one tier
+- POST /me/rewards/claim-all  collect every unlocked, unclaimed tier at once
 - POST /me/lootbox/open  open the oldest unopened box → returns its rarity so
                          the client rolls a still-locked cosmetic of that tier
 - POST /me/unlocks       persist a cosmetic the client granted (lootbox roll)
@@ -166,14 +168,22 @@ def claim_reward(request: Request, response: Response, body: dict,
         raise HTTPException(409, "already claimed")
 
     rewards = rewards_for_level(tier) if track == "free" else premium_rewards_for_level(tier)
+    _grant_rewards(db, user.id, rewards)
+    st = energy_mod.status(db, user.id)
+    db.commit()
+    return {"ok": True, "level": tier, "track": track, "rewards": rewards, "energy": st}
+
+
+def _grant_rewards(db: Session, user_id, rewards: list[dict]) -> None:
+    """Hand over one tier's contents. Caller owns the commit."""
     for rw in rewards:
         if rw["kind"] == "lootbox":
             db.execute(
                 text("INSERT INTO user_unlocks (user_id, kind, item_id) VALUES (:u, 'lootbox', :r)"),
-                {"u": user.id, "r": rw["key"]},
+                {"u": user_id, "r": rw["key"]},
             )
         elif rw["kind"] == "energy":
-            energy_mod.grant(db, user.id, int(rw["key"].lstrip("+")))
+            energy_mod.grant(db, user_id, int(rw["key"].lstrip("+")))
         elif rw["kind"] == "cosmetic" and ":" in rw["key"]:
             # Pass cosmetics (both tracks) are real grants: the client treats a
             # server unlock as equippable regardless of the item's usual stat
@@ -185,11 +195,54 @@ def claim_reward(request: Request, response: Response, body: dict,
                     "  SELECT 1 FROM user_unlocks WHERE user_id = :u"
                     "    AND kind = 'cosmetic' AND item_id = :i)"
                 ),
-                {"u": user.id, "i": rw["key"]},
+                {"u": user_id, "i": rw["key"]},
             )
+
+
+@router.post("/me/rewards/claim-all")
+@limiter.limit(settings.rate_limit_default)
+def claim_all_rewards(request: Request, response: Response,
+                      user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Collect every tier that is unlocked and unclaimed, in one transaction.
+
+    A player who comes back at level 40 has ~80 tiers waiting. Eighty taps —
+    or eighty requests from a client-side loop — is not a reward, it's a chore,
+    so the sweep happens here.
+
+    The INSERT ... RETURNING is the guard AND the worklist: whatever rows it
+    actually wrote are exactly the tiers this call is allowed to pay out, so
+    two concurrent sweeps can never grant the same tier twice."""
+    row = db.execute(
+        text("SELECT COALESCE(xp,0), COALESCE(premium_pass,false) FROM users WHERE id = :u"),
+        {"u": user.id},
+    ).fetchone()
+    level = level_from_xp(int(row[0]))
+    premium = bool(row[1])
+    if level < 1:
+        return {"ok": True, "claimed": 0, "rewards": [], "energy": energy_mod.status(db, user.id)}
+
+    tracks = ["free"] + (["premium"] if premium else [])
+    pairs = [(lvl, tr) for lvl in range(1, min(level, MAX_LEVEL) + 1) for tr in tracks]
+    won = db.execute(
+        text(
+            # Every parameter is cast: in a SELECT (unlike a VALUES list)
+            # Postgres has no column to infer a bare placeholder's type from.
+            "INSERT INTO reward_claims (user_id, level, track) "
+            "SELECT CAST(:u AS uuid), l, t "
+            "FROM UNNEST(CAST(:levels AS int[]), CAST(:tracks AS text[])) AS x(l, t) "
+            "ON CONFLICT DO NOTHING RETURNING level, track"
+        ),
+        {"u": str(user.id), "levels": [p[0] for p in pairs], "tracks": [p[1] for p in pairs]},
+    ).fetchall()
+
+    rewards: list[dict] = []
+    for lvl, track in won:
+        tier = rewards_for_level(int(lvl)) if track == "free" else premium_rewards_for_level(int(lvl))
+        _grant_rewards(db, user.id, tier)
+        rewards.extend(tier)
     st = energy_mod.status(db, user.id)
     db.commit()
-    return {"ok": True, "level": tier, "track": track, "rewards": rewards, "energy": st}
+    return {"ok": True, "claimed": len(won), "rewards": rewards, "energy": st}
 
 
 # The premium track unlock. One product; permanent (the ladder is career-long,

@@ -84,20 +84,33 @@ def can_afford(db, user_id, amount: int) -> bool:
 
 def spend(db, user_id, amount: int) -> bool:
     """Deduct `amount` if affordable (after regen). Returns False (no change)
-    when the player can't afford it. Starts the regen clock if they were full."""
+    when the player can't afford it. Starts the regen clock if they were full.
+
+    The deduction is a single conditional UPDATE, not a read followed by a
+    write: two claims racing for the last of the meter would both pass a
+    Python check and drive the balance negative. Here the second one matches
+    no rows and reports failure, exactly as `coins.spend` does.
+    """
+    if amount <= 0:
+        return True
     energy, updated_at, xp = _read(db, user_id)
     level = level_from_xp(xp)
     eff, eff_t = _regen(energy, updated_at, level)
+    # Credit the regen first so the guard below is measured against the
+    # balance the player actually has.
+    if eff != energy or eff_t != updated_at:
+        _persist(db, user_id, eff, eff_t)
     if eff < amount:
-        if eff != energy or eff_t != updated_at:
-            _persist(db, user_id, eff, eff_t)
         return False
     was_full = eff >= energy_max(level)
-    new_e = eff - amount
-    # If they were full, regen was paused (timestamp == now); starting to spend
-    # begins the clock from now.
-    _persist(db, user_id, new_e, datetime.utcnow() if was_full else eff_t)
-    return True
+    res = db.execute(
+        text(
+            "UPDATE users SET energy = COALESCE(energy, 0) - :a, energy_updated_at = :t "
+            "WHERE id = :u AND COALESCE(energy, 0) >= :a"
+        ),
+        {"a": amount, "t": datetime.utcnow() if was_full else eff_t, "u": user_id},
+    )
+    return res.rowcount > 0
 
 
 def grant(db, user_id, amount: int) -> None:

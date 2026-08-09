@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, ranks, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -70,7 +70,8 @@ def search_users(
         text(
             f"""
             SELECT u.id::text, u.username, u.avatar, c.tag, c.color_key, u.xp,
-                   pl.requester_id::text, pl.status, pl.id::text
+                   pl.requester_id::text, pl.status, pl.id::text,
+                   COALESCE(u.rank_points, 0), u.rank_points_at
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -89,6 +90,7 @@ def search_users(
             avatar=r[2],
             clan_tag=r[3],
             clan_color=_clan_color(r[4]),
+            rank_key=ranks.key_for(r[9], r[10]),
             level=_level(r[5]),
             state=_state_for(r[6], r[7], user.id),
             # A hit can already be pending_in — the row offers Accept, which
@@ -107,7 +109,8 @@ def my_pasers(user: models.User = Depends(current_user), db: Session = Depends(g
         text(
             """
             SELECT pl.id::text, pl.status, pl.requester_id::text,
-                   u.id::text, u.username, u.avatar, c.tag, c.color_key, u.xp
+                   u.id::text, u.username, u.avatar, c.tag, c.color_key, u.xp,
+                   COALESCE(u.rank_points, 0), u.rank_points_at
             FROM paser_links pl
             JOIN users u
               ON u.id = CASE WHEN pl.requester_id = :uid THEN pl.addressee_id
@@ -130,6 +133,7 @@ def my_pasers(user: models.User = Depends(current_user), db: Session = Depends(g
             avatar=r[5],
             clan_tag=r[6],
             clan_color=_clan_color(r[7]),
+            rank_key=ranks.key_for(r[9], r[10]),
             level=_level(r[8]),
             state=state,
             request_id=r[0],
@@ -188,7 +192,7 @@ def send_request(
         background.add_task(
             notify, [target_id], "pasers", "You're now pasers",
             f"{user.username} accepted your paser request.",
-            {"kind": "paser_accepted", "user_id": user.id},
+            {"kind": "paser_accepted", "user_id": user.id}, str(user.id),
         )
         return _card_for(db, target_id, user.id)
 
@@ -203,7 +207,7 @@ def send_request(
     background.add_task(
         notify, [target_id], "pasers", "New paser request",
         f"{user.username} wants to be your paser.",
-        {"kind": "paser_request", "user_id": user.id},
+        {"kind": "paser_request", "user_id": user.id}, str(user.id),
     )
     return _card_for(db, target_id, user.id)
 
@@ -249,7 +253,7 @@ def respond_to_request(
     background.add_task(
         notify, [requester_id], "pasers", "You're now pasers",
         f"{user.username} accepted your paser request.",
-        {"kind": "paser_accepted", "user_id": user.id},
+        {"kind": "paser_accepted", "user_id": user.id}, str(user.id),
     )
     return _card_for(db, requester_id, user.id)
 
@@ -284,7 +288,8 @@ def _card_for(db, other_id: str, viewer_id: str) -> schemas.RunnerCard:
         text(
             f"""
             SELECT u.id::text, u.username, u.avatar, c.tag, c.color_key, u.xp,
-                   pl.requester_id::text, pl.status, pl.id::text
+                   pl.requester_id::text, pl.status, pl.id::text,
+                   COALESCE(u.rank_points, 0), u.rank_points_at
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -302,6 +307,7 @@ def _card_for(db, other_id: str, viewer_id: str) -> schemas.RunnerCard:
         avatar=r[2],
         clan_tag=r[3],
         clan_color=_clan_color(r[4]),
+        rank_key=ranks.key_for(r[9], r[10]),
         level=_level(r[5]),
         state=_state_for(r[6], r[7], viewer_id),
         request_id=r[8],
@@ -319,7 +325,8 @@ def runner_profile(
         text(
             f"""
             SELECT u.id::text, u.username, u.avatar, c.tag, c.name, c.color_key, u.xp,
-                   pl.requester_id::text, pl.status, pl.id::text
+                   pl.requester_id::text, pl.status, pl.id::text,
+                   COALESCE(u.rank_points, 0), u.rank_points_at
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -340,7 +347,8 @@ def runner_profile(
         text(
             "SELECT COALESCE(SUM(area_m2),0), COUNT(*), COALESCE(MAX(area_m2),0) "
             "FROM territories WHERE user_id = :uid AND verified "
-            "AND now() < created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400)"
+            "AND now() < COALESCE(expires_at, created_at + make_interval("
+            "secs => GREATEST(strength,0.1) * :life_per * 86400))"
         ),
         {"uid": other_id, "life_per": settings.territory_life_days_per_strength},
     ).fetchone()
@@ -385,6 +393,7 @@ def runner_profile(
         clan_tag=u[3],
         clan_name=u[4],
         clan_color=_clan_color(u[5]),
+        rank_key=ranks.key_for(u[10], u[11]),
         state=state,
         request_id=u[9],
         paser_count=int(paser_count or 0),

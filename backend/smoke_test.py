@@ -1,14 +1,16 @@
 """End-to-end smoke suite for the Territory Run v2 API (stdlib only).
 
 Covers the whole surface: auth -> clan create -> invite/join -> two runs
-whose placed circle claims overlap (steal resolves) -> clan weekly goal +
+whose claims overlap (steal resolves) -> clan weekly goal +
 season stats advance -> feed shows the runs -> splits/PRs/kudos -> a spoofed
 run is shadow-excluded from public reads but visible to its owner ->
 leaderboards.
 
-CIRCLE-CLAIM MODEL: /end-run returns claim_radius_m/claim_area_m2 (the
-circle whose circumference = run distance); /claim-territory places it at a
-chosen point on the trail and creates the territory.
+ROUTE-GROWN CLAIM MODEL: /end-run returns claim_area_m2 (linear in distance)
+plus claim_ring — the territory the run will take, grown around the middle of
+the route. /runs/{id}/claim-options then offers a grid of moves — each position
+along the route × each heading it can be turned to — and /claim-territory
+takes the one those two indices address (never a client-supplied shape).
 
 Run against a live local server:  python smoke_test.py
 """
@@ -63,25 +65,57 @@ def signup(name):
     return res["access_token"], res["user"]["id"]
 
 
-def run_loop(token, clat, clon, pace_s_per_km=None, **kw):
-    """pace_s_per_km backdates started_at so the server derives that pace
-    (drives claim strength: ~0.87 at 8:00/km, ~1.38 at 5:00/km)."""
-    body = {}
-    if pace_s_per_km:
-        dur = pace_s_per_km * 0.63  # ~630 m loop
-        body["started_at"] = (datetime.utcnow() - timedelta(seconds=dur)).isoformat()
-    _, r = call("POST", "/start-run", body, token=token)
-    rid = r["run_id"]
+def run_loop(token, clat, clon, pace_s_per_km=480, r=200.0, expect_tier="qualified_for_claim", **kw):
+    """A loop that actually qualifies as a run.
+
+    Three bars have to be cleared now (see economy.run_tier): 1 km, 7 minutes,
+    and 700 m of DISTINCT ground. A 200 m-radius dodecagon is ~1.24 km round,
+    and started_at is ALWAYS backdated so the derived duration clears the time
+    bar — a loop timed in real seconds is an activity, not a run.
+
+    pace_s_per_km drives claim strength (~0.90 at 8:00/km, ~1.13 at 5:00/km,
+    in the post-rebalance 0.85-1.20 band)."""
+    km = 2 * math.pi * r * 0.9886 / 1000.0  # 12-gon perimeter ≈ 98.9% of a circle
+    # Never shorter than the 7-minute claim bar, whatever pace was asked for.
+    dur = max(pace_s_per_km * km, 460.0)
+    body = {"started_at": (datetime.utcnow() - timedelta(seconds=dur)).isoformat()}
+    kw.setdefault("r", r)
+    # The POINT timestamps have to imply the same pace as started_at does, or
+    # anti-cheat reads the gap between them as a teleport and shadow-flags the
+    # run — which then earns nothing at all and fails every later assertion for
+    # reasons that look nothing like the cause.
+    n = kw.setdefault("n", 12)
+    kw.setdefault("step", dur / n)
+    kw.setdefault("t0", time.time() - dur)
+    _, started = call("POST", "/start-run", body, token=token)
+    rid = started["run_id"]
     pts = loop(clat, clon, **kw)
     st, end = call("POST", "/end-run", {"run_id": rid, "points": pts}, token=token)
     assert st == 200, f"end-run: {st} {end}"
-    assert end["claim_radius_m"] > 0 and end["claim_area_m2"] > 0, end
+    assert end.get("tier") == expect_tier, \
+        f"expected tier {expect_tier}: got {end.get('tier')} {end.get('qualification_reason')}"
+    assert end["claim_area_m2"] > 0, end
+    assert len(end.get("claim_ring") or []) >= 4, f"end-run must preview the claim: {end}"
     return rid, end, pts
 
 
-def place_claim(token, rid, at):
-    """Place the run's circle claim at a point on its trail."""
-    st, res = call("POST", "/claim-territory", {"run_id": rid, "lat": at["lat"], "lon": at["lon"]}, token=token)
+def claim_options(token, rid):
+    """Where this run could deploy its land — the "choose your attack" step."""
+    st, res = call("GET", f"/runs/{rid}/claim-options", token=token)
+    assert st == 200, f"claim-options: {st} {res}"
+    return res
+
+
+def place_claim(token, rid, at=None, placement=None, rotation=None):
+    """Take the run's claim. The shape comes from the route; `placement` is
+    where along it the land lands and `rotation` which way it faces — both
+    indices into claim-options, or None for the middle of the run, unturned."""
+    body = {"run_id": rid}
+    if placement is not None:
+        body["placement"] = placement
+    if rotation is not None:
+        body["rotation"] = rotation
+    st, res = call("POST", "/claim-territory", body, token=token)
     assert st == 200, f"claim-territory: {st} {res}"
     assert res.get("territory"), res
     return res
@@ -116,16 +150,109 @@ def main():
     rid_a, ea, pts_a = run_loop(ta, lat_a, lon_a)
     ca = place_claim(ta, rid_a, pts_a[0])
     print(f"  leader claimed {round(ca['territory']['area_m2']):,} m² "
-          f"(circle r={round(ea['claim_radius_m'])} m, strength {ca['territory']['strength']})")
-    # Placing again must be rejected — one claim per run.
-    st, dup = call("POST", "/claim-territory",
-                   {"run_id": rid_a, "lat": pts_a[0]["lat"], "lon": pts_a[0]["lon"]}, token=ta)
-    assert st == 409, f"duplicate claim should 409: {st} {dup}"
-    # A centre off the trail must be rejected.
-    st, off = call("POST", "/claim-territory",
-                   {"run_id": rid_a, "lat": pts_a[0]["lat"] + 0.01, "lon": pts_a[0]["lon"]}, token=ta)
-    assert st in (409, 422), f"off-trail centre should be rejected: {st} {off}"
+          f"(earned {round(ea['claim_area_m2']):,} m², strength {ca['territory']['strength']})")
+    # Claiming again REPLAYS the stored result rather than erroring — the run
+    # is spent either way, and a client that lost its response needs the
+    # answer, not a 409. What must not happen is a second payout.
+    _, me_before = call("GET", "/me", token=ta)
+    st, dup = call("POST", "/claim-territory", {"run_id": rid_a}, token=ta)
+    assert st == 200, f"duplicate claim should replay: {st} {dup}"
+    assert dup["territory"]["id"] == ca["territory"]["id"], "replay must return the same territory"
+    assert dup["xp_gained"] == ca["xp_gained"], "replay must report the same XP"
+    _, me_after = call("GET", "/me", token=ta)
+    assert me_after.get("xp") == me_before.get("xp"), \
+        f"a replayed claim must not pay again: {me_before.get('xp')} -> {me_after.get('xp')}"
+    # ...and a placement/rotation that differs must not create a second claim.
+    st, dup2 = call("POST", "/claim-territory",
+                    {"run_id": rid_a, "placement": 8, "rotation": 3}, token=ta)
+    assert st == 200 and dup2["territory"]["id"] == ca["territory"]["id"], \
+        f"a retry with different aim must not re-place the claim: {st} {dup2}"
+    print("  duplicate claim replayed the stored result; no second payout")
 
+    print("=== economy gates: a 20 m walk is not a run ===")
+    tg, _ug = signup(f"gate_{SFX}")
+    _, sg = call("POST", "/start-run", {}, token=tg)
+    t0 = time.time()
+    tiny = [
+        {"lat": 1.31, "lon": 103.91, "t": t0 * 1000},
+        {"lat": 1.31 + 20 / 111320.0, "lon": 103.91, "t": (t0 + 8) * 1000},
+    ]
+    st, te = call("POST", "/end-run", {"run_id": sg["run_id"], "points": tiny}, token=tg)
+    assert st == 200, te
+    assert te["tier"] == "unqualified_for_rewards", f"a 20 m walk must not qualify: {te}"
+    assert te["coins_gained"] == 0 and te["energy_gained"] == 0, \
+        f"unqualified activities must pay nothing: {te}"
+    assert te["qualification_reason"], "an activity that earned nothing must say why"
+    assert te["claim_eligible"] is False, te
+    _, cg = call("GET", "/me/coins", token=tg)
+    assert (cg.get("coins") or 0) == 0, f"a 20 m walk minted coins: {cg}"
+    st, gone = call("POST", "/claim-territory", {"run_id": sg["run_id"]}, token=tg)
+    assert st == 422, f"a 20 m walk must not be claimable: {st} {gone}"
+    print(f"  20 m / 8 s: tier={te['tier']}, 0 coins, 0 energy, claim refused")
+    print(f"  reason surfaced: \"{te['qualification_reason']}\"")
+
+    # ...and a real run pays, scaled to its distance.
+    rid_g, eg, _ = run_loop(tg, 1.3200 + OX, 103.7600 + OX)
+    assert eg["coins_gained"] > 0 and eg["energy_gained"] > 0, eg
+    assert eg["tier"] == "qualified_for_claim", eg
+    print(f"  {eg['distance_m']:.0f} m run: +{eg['coins_gained']} coins, "
+          f"+{eg['energy_gained']} energy, {eg['xp_gained']} XP")
+
+    print("=== choose your attack: placement options ===")
+    # The run earns a fixed area; WHERE it lands is the runner's move. Fresh
+    # ground so the breakdown is pure new land and nothing gets carved.
+    tp, _up = signup(f"aim_{SFX}")
+    lat_p, lon_p = 1.3500 + OX, 103.7800 + OX
+    rid_p, ep, _pts_p = run_loop(tp, lat_p, lon_p)
+    opts = claim_options(tp, rid_p)
+    ps = opts["placements"]
+    assert ps, f"claim-options must offer at least one placement: {opts}"
+    assert all(len(p["ring"]) >= 4 for p in ps), "every placement needs a drawable ring"
+    # Same land wherever it goes — the choice is position, not size.
+    areas = [p["area_m2"] for p in ps]
+    assert max(areas) - min(areas) < max(areas) * 0.05, f"placements must cover equal land: {areas}"
+    assert abs(max(areas) - ep["claim_area_m2"]) < ep["claim_area_m2"] * 0.1, \
+        f"placement area should match the land earned: {max(areas)} vs {ep['claim_area_m2']}"
+    # `held_m2` is what survives the carve, so it can only ever be smaller, and
+    # its parts must add up to it.
+    for p in ps:
+        parts = p["new_m2"] + p["enemy_m2"] + p["mine_m2"] + p["ally_m2"]
+        assert abs(parts - p["held_m2"]) < 1.0, f"held_m2 must be its own parts: {p}"
+        assert p["held_m2"] <= p["area_m2"] + 1.0, f"held more than covered: {p}"
+    # The grid is position × heading, laid out position-major, and complete.
+    n_pos, n_rot = opts["placement_count"], opts["rotation_count"]
+    assert len(ps) == n_pos * n_rot, f"grid must be complete: {len(ps)} vs {n_pos}×{n_rot}"
+    for i, p in enumerate(ps):
+        assert p["index"] == i and p["placement"] == i // n_rot and p["rotation"] == i % n_rot, \
+            f"grid not position-major at {i}: {p}"
+    if n_pos > 1:
+        # Positions must actually be different places, or the choice is fake.
+        assert ps[0]["ring"][0] != ps[(n_pos - 1) * n_rot]["ring"][0], \
+            "placements must move along the route"
+    if n_rot > 1:
+        # ...and headings must actually turn it.
+        assert ps[0]["ring"][0] != ps[1]["ring"][0], "rotations must turn the claim"
+        assert ps[0]["rotation_deg"] == 0, "heading 0 must be the shape as it was run"
+    assert 0 <= opts["default_index"] < len(ps), opts["default_index"]
+    # Every move is priced, and the price follows what the move DOES.
+    assert all(p["energy_cost"] > 0 for p in ps), "every placement must carry a cost"
+    assert opts["first_claim_of_day"] is True, "this account has not claimed today"
+    empties = [p for p in ps if p["action"] == "empty"]
+    assert empties, f"a claim on open ground must read as 'empty': {set(p['action'] for p in ps)}"
+    print(f"  actions offered: {sorted(set(p['action'] for p in ps))}; "
+          f"costs {sorted(set(p['energy_cost'] for p in ps))} "
+          f"(first claim of the day, half price)")
+    # Indices the client made up must not land a claim off the route.
+    st, bad = call("POST", "/claim-territory",
+                   {"run_id": rid_p, "placement": 62, "rotation": 61}, token=tp)
+    assert st == 200, f"out-of-range move should fall back, not fail: {st} {bad}"
+    print(f"  {n_pos} positions × {n_rot} headings (window {opts['window_frac']:.2f}), "
+          f"each ~{round(max(areas)):,} m²; out-of-range indices fell back safely")
+    # Already claimed — the chooser must not offer a second move.
+    st, gone = call("GET", f"/runs/{rid_p}/claim-options", token=tp)
+    assert st == 409, f"claim-options after claiming should 409: {st} {gone}"
+
+    print("=== circle claims (continued) ===")
     # Clubmate overlap: never steals; both rows coexist (stacked defense).
     rid_b, eb, pts_b = run_loop(tb, lat_a + 0.00012, lon_a + 0.00012)
     cb = place_claim(tb, rid_b, pts_b[0])
@@ -175,14 +302,17 @@ def main():
     print(f"  run detail path={len(det['path'])} pts, rings={len(det['territory_rings'])}; kudos={k['kudos_count']}")
 
     print("=== spoofed run is shadow-excluded ===")
-    _, r = call("POST", "/start-run", {}, token=tc)
-    rid_c = r["run_id"]
-    # mocked + inhuman pace (step 6.5s over ~52m segs ~= 8 m/s, 2:05/km)
-    pts_c = loop(1.3100, 103.8600, step=6.5, mocked=True)
-    st, ec = call("POST", "/end-run", {
-        "run_id": rid_c, "points": pts_c, "step_count": 40,
-    }, token=tc)
-    assert st == 200 and ec["claim_radius_m"] > 0, "spoofer must see a normal success"
+    # A QUALIFYING run — right distance, right duration, right spread — that is
+    # nonetheless mock-located. The shadow-flag has to be what excludes it, not
+    # the economy gates: a spoof that simply fails to qualify would prove
+    # nothing about whether flagged land stays hidden.
+    rid_c, ec, pts_c = run_loop(tc, 1.3100, 103.8600, mocked=True,
+                                expect_tier="shadow_flagged")
+    assert ec["claim_radius_m"] > 0, "spoofer must see a normal success"
+    assert ec["claim_eligible"] is True, "a flagged run must still look claimable"
+    assert ec["qualification_reason"] is None, \
+        f"a flagged run must not be told why: {ec['qualification_reason']}"
+    assert ec["coins_gained"] == 0, "a flagged run must not pay out"
     cc = place_claim(tc, rid_c, pts_c[0])
     assert cc.get("territory"), "spoofer must see a normal-looking claim"
     print("  spoofer sees normal success")
@@ -211,9 +341,8 @@ def main():
     # fresh claims carry high freshness (decay signal)
     assert owned.get("freshness", 0) > 0.9, f"fresh territory should be ~1.0: {owned.get('freshness')}"
     # end-run returns xp for the distance covered
-    _, rr = call("POST", "/start-run", {}, token=tb)
-    st, endx = call("POST", "/end-run", {"run_id": rr["run_id"], "points": loop(1.360, 103.80, r=140)}, token=tb)
-    assert st == 200 and endx["xp_gained"] > 0, f"xp not returned: {endx}"
+    _rid_x, endx, _ = run_loop(tb, 1.360, 103.80)
+    assert endx["xp_gained"] > 0, f"xp not returned: {endx}"
     print(f"  avatar visible on others' feed; run-days={len(days['days'])}; xp_gained={endx['xp_gained']}")
 
     print("=== comments + club chat ===")

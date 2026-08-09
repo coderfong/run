@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     # Sentry — no-op when unset.
     sentry_dsn: str = ""
 
+    # Shared secret for the /admin/* maintenance endpoints (the expiry sweep,
+    # the season recompute). These mutate every player's data, so they are NOT
+    # open: without a token set they return 404 — the endpoint simply does not
+    # exist as far as the outside world is concerned, which tells a prober
+    # nothing. Set it in the environment and send it as `X-Admin-Token`.
+    admin_token: str = ""
+
     # App version reported by GET /version (override per deploy).
     app_version: str = "2.0.0"
 
@@ -29,19 +36,85 @@ class Settings(BaseSettings):
     # Tuned to filter out GPS jitter and trivial micro-loops.
     min_loop_points: int = 8           # minimum GPS samples before we look for a loop
     min_loop_area_m2: float = 200.0    # ignore loops smaller than this (anti-jitter)
-    max_polygon_area_m2: float = 5_000_000.0  # 5 km^2 sanity cap
+    max_polygon_area_m2: float = 1_250_000.0  # 1.25 km^2 — the ceiling one claim
+                                       # can reach. With diminishing returns it
+                                       # needs ~74 real km to touch, so it is a
+                                       # sanity bound rather than the wall the
+                                       # old 12.5 km cap was.
     closure_radius_m: float = 25.0     # if current point is within this of an earlier
                                        # segment, we treat it as a loop closure
     simplify_tolerance_m: float = 1.5  # douglas-peucker tolerance for cleanup
     max_speed_mps: float = 12.0        # ~43 km/h, drop GPS points exceeding this
 
-    # ---- circle claims ---------------------------------------------------
-    # A run converts to a circular claim whose CIRCUMFERENCE equals the run
-    # distance (r = d/2π, area = d²/4π); the runner places it anywhere along
-    # their trail after the run.
-    claim_snap_tolerance_m: float = 30.0   # circle centre must be this close to the trail
-    min_claim_distance_m: float = 50.0     # shorter runs earn no claim (~200 m² circle)
+    # ---- what counts as a run --------------------------------------------
+    # Two thresholds, because "worth rewarding" and "worth a piece of the map"
+    # are different bars. Below the REWARDED line an activity still saves, but
+    # pays nothing at all — a phone shaken on a desk must not mint currency.
+    # Between the lines it pays distance XP but cannot take ground. Only above
+    # the CLAIM line does the full loop open up.
+    min_rewarded_distance_m: float = 500.0
+    min_rewarded_duration_s: float = 240.0
+    min_claim_distance_m: float = 1000.0
+    min_claim_duration_s: float = 420.0
+    # Distance alone is spoofable by pacing a room: this is how much DISTINCT
+    # ground the route covered (see geospatial.route_unique_length_m), so
+    # forty laps of a corridor stay forty laps of a corridor.
+    min_unique_route_length_m: float = 700.0
+
+    # ---- claims ----------------------------------------------------------
+    # How much land a run earns, per metre of TERRITORIAL distance (see
+    # `territorial_distance_m` — real distance with diminishing returns past
+    # 5 km). 75 m²/m is about a 75 m-wide corridor along the route, which is a
+    # neighbourhood; the old 400 was a ~400 m-wide swathe and a few runners
+    # could paint out most of a city.
+    claim_area_per_m: float = 75.0
     claim_circle_segments: int = 64        # polygon vertices approximating the circle
+    claim_snap_tolerance_m: float = 30.0   # legacy: how close a given centre must sit
+
+    # ---- route-grown territory -------------------------------------------
+    # The earned area is not stamped as a fixed shape: it is GROWN around the
+    # run's own route, so the territory keeps the silhouette of where you
+    # went. See geospatial.route_claim_polygon_wgs.
+    claim_anchor_min: int = 4          # simplified route keeps at least this many turns
+    claim_anchor_max: int = 12         # ...and at most this many, so the silhouette is
+                                       # the broad shape and not every GPS wobble
+    claim_min_width_m: float = 140.0   # no part of a claim may be narrower than this —
+                                       # what stops a run reading as a coloured ribbon
+    claim_max_aspect: float = 10.0     # compactness pressure: a claim may span at most
+                                       # sqrt(aspect × area) end to end, so a very long
+                                       # run makes a fat capsule, never a 40 km streak
+    claim_smooth_frac: float = 0.55    # closing/opening radius as a fraction of the
+                                       # half-width: fills necks, then kills tentacles
+
+    # ---- claim placement (\"choose your attack\") ---------------------------
+    # The run earns a fixed amount of land; WHERE along the route it lands is
+    # the runner's move. The earned area is grown around a WINDOW of the route
+    # rather than the whole of it, and the window slides from start to finish.
+    # A shorter window means the same land packed thicker, which is what makes
+    # the choice a real trade rather than a cosmetic one.
+    claim_window_frac: float = 0.55    # window length as a fraction of the route
+    claim_window_min_m: float = 400.0  # ...but never shorter than this, or a 1 km
+                                       # run would deploy onto a 550 m stub
+    claim_placement_count: int = 9     # candidate positions offered (odd, so one
+                                       # of them is dead centre). The client picks
+                                       # BY INDEX and the server rebuilds the list,
+                                       # so a placement can never be forged.
+    # ...and the claim can be TURNED about its own centre, which is the second
+    # half of the move: sliding aims along the run, rotating aims across it.
+    # The pivot is always on the route, so a turned claim still covers ground
+    # that was actually run — but at 360° it can also reach streets that were
+    # not. Narrow the span (e.g. 120) to keep claims hugging the route.
+    claim_rotation_count: int = 8      # headings offered, 0 = exactly as run
+    claim_rotation_span_deg: float = 360.0
+    # ...but a turned claim must still be ground the runner actually went near.
+    # Rotation is a real tactical choice (aim ACROSS the route rather than
+    # along it); unbounded rotation is a claim on streets they never ran, which
+    # breaks the one promise the whole game rests on — you own where you ran.
+    # A candidate must keep at least `claim_min_route_attachment` of its area
+    # within `claim_route_attachment_buffer_m` of the actual trail. Heading 0 is
+    # exempt: it IS the shape as run, so it can never be "detached" from itself.
+    claim_route_attachment_buffer_m: float = 100.0
+    claim_min_route_attachment: float = 0.60
 
     # ---- anti-cheat (validate_run) -------------------------------------
     # Flagged runs are shadow-flagged: the submitter sees normal success,
@@ -64,6 +137,17 @@ class Settings(BaseSettings):
     rate_limit_end_run: str = "10/minute"
     rate_limit_default: str = "120/minute"
 
+    # ---- claim-options latency cache --------------------------------------
+    # Building the 72-candidate grid is ~1.8 s of geometry and PostGIS. It is
+    # deterministic from the stored route, the frozen area and the land around
+    # it, so the result is cached per run and re-priced on every request.
+    #
+    # PER WORKER and in-process, deliberately: it is a latency cache, never a
+    # source of truth. Each worker keys on a fingerprint of the surrounding
+    # territory, so two workers cannot disagree — the worst case is that one of
+    # them recomputes. Set to 0 to turn it off entirely.
+    claim_options_cache_size: int = 32
+
     # ---- map viewport simplification -------------------------------------
     # Server-side ST_SimplifyPreserveTopology tolerance (WGS84 degrees) and a
     # feature cap, chosen by the client's map zoom so low zooms send far
@@ -77,23 +161,96 @@ class Settings(BaseSettings):
     map_tol_vlow: float = 0.0009    # zoom < vlow
     map_cap_low_zoom: int = 400     # feature cap once zoomed out past `low`
 
+    # ---- route privacy ----------------------------------------------------
+    # A GPS trace is a home address. These are the DEFAULTS for an account that
+    # has never touched its privacy settings, and they are deliberately
+    # protective: a default that protects nobody is not a default. Runners can
+    # lower them, and the owner always sees their own routes in full.
+    route_trim_default_m: float = 250.0      # cut from BOTH ends before publishing
+    route_publish_delay_default_h: float = 3.0   # withhold from others this long
+    # Under-18 accounts get FLOORS, not defaults: they cannot publish more of
+    # themselves than this even if they turn the controls down. Age comes from
+    # `users.birthday`, which onboarding always collected but never sent.
+    minor_age: int = 18
+    minor_min_trim_m: float = 500.0
+    minor_min_delay_h: float = 24.0
+
     # ---- contested / "changed hands" window ------------------------------
     contested_days: int = 7         # a territory claimed within N days reads as hot
 
     # ---- territory decay -------------------------------------------------
-    # A claim's lifetime = strength × this many days, then it expires and the
-    # land frees up. Stronger claims (faster runs / stacked club land) last
-    # longer. Territories fade on the map as they approach expiry.
+    # Lifetime is NOT a pace multiplier any more. It used to be strength × 4
+    # days, and since strength was 0.6–2.0 straight off pace, a fast runner's
+    # land lived 8 days and a slow runner's 2.4 — pace decided how much you
+    # took, whether you could take it, AND how long you kept it. Now it is
+    # mostly effort and upkeep: a base, plus distance, plus how often you have
+    # come back to the same ground. Stored per territory as `expires_at`.
+    territory_life_days_base: float = 4.0
+    territory_life_days_max: float = 9.0
+    territory_life_km_per_day: float = 5.0   # +1 day per 5 km...
+    territory_life_distance_cap_days: float = 2.0   # ...up to +2
+    territory_life_reinforce_cap_days: float = 3.0  # +1 per reinforcement, up to +3
+    territory_life_pace_bonus_days: float = 0.5     # pace is worth half a day, no more
+    # LEGACY: the old strength multiplier. Nothing should read this any more —
+    # it is kept only so an old row without `expires_at` can still be aged.
     territory_life_days_per_strength: float = 4.0
 
+    # ---- claim strength ---------------------------------------------------
+    # A narrow band, deliberately. The old 0.6–2.0 meant a 2.0 attacker beat
+    # every solo defender alive and a 0.6 defender could hold nothing — pace
+    # was the whole PvP game. Now pace is worth ~1.4× at the extremes and
+    # REINFORCEMENT is how land actually gets strong.
+    strength_pace_min: float = 0.85
+    strength_pace_max: float = 1.20
+    strength_distance_min: float = 0.90
+    strength_distance_max: float = 1.15
+    strength_pace_weight: float = 0.70   # ...and 0.30 to distance
+    strength_min: float = 0.85
+    strength_max: float = 1.20
+    strength_ceiling: float = 2.0        # reinforcement can carry land this far
+
+    # ---- club defence -----------------------------------------------------
+    # Clubmates' overlapping land stacks on top of the owner's, but with
+    # FALLOFF. A flat sum meant every extra member added their full strength,
+    # so a large enough club produced ground no solo runner could ever take —
+    # club size stopped being an advantage and became immunity.
+    club_defence_w1: float = 1.00   # strongest clubmate, full weight
+    club_defence_w2: float = 0.50
+    club_defence_w3: float = 0.25
+    club_defence_rest: float = 0.10  # everyone else
+    # ...and a hard ceiling on the total (owner + club). Nothing on the map
+    # defends harder than this.
+    max_effective_defence: float = 2.5
+
+    # Attacker strength tops out at `strength_max` (1.20), so anything defended
+    # above that could never fall to a single claim however many people threw
+    # themselves at it. A bounced attack therefore CHIPS the defence: land is
+    # durable, not invulnerable, and a coordinated siege gets through in the
+    # end. Chip is a fraction of the attacker's own strength.
+    defence_chip_frac: float = 0.10
+    defence_chip_floor: float = 0.50     # chipping never drops land below this
+
+    # ---- hold credit ------------------------------------------------------
+    # Rank should measure keeping ground, not only taking it. The scheduled
+    # sweep credits territory that has survived this long since its last
+    # credit. Capped per sweep so someone holding sixty zones does not out-earn
+    # every contested outcome in the game by doing nothing.
+    hold_credit_hours: float = 48.0
+    hold_credit_max_per_sweep: int = 10
+
     # ---- XP (verified runs only) ------------------------------------------
-    xp_per_km: int = 10
-    xp_per_claim: int = 100          # flat base for placing any claim
+    # Running is the career; territory is the bonus on top. It used to be the
+    # other way round — 50 XP for a 5 km run against 500 for pressing Claim.
+    xp_per_km: int = 50
+    xp_per_claim: int = 50           # flat base for placing any claim
     xp_per_steal: int = 50           # flat base bonus when a claim takes rival land
     # Area-scaled XP: taking territory earns MORE the larger the ground taken.
-    # Areas are m²; a 2 km run's circle is ~0.3 km², a steal is usually smaller.
-    xp_per_km2_claimed: int = 200    # per km² of land the claim covers
-    xp_per_km2_stolen: int = 400     # per km² carved off rivals (worth more)
+    xp_per_km2_claimed: int = 100    # per km² of land the claim covers
+    xp_per_km2_stolen: int = 200     # per km² carved off rivals (worth more)
+    # Hard ceilings relative to what the RUN itself paid, so a 1 km jog with a
+    # surgical claim can never out-earn an honest 10 km.
+    xp_claim_max_frac_of_run: float = 0.75
+    xp_steal_max_frac_of_run: float = 1.0
     # Club XP: a member's earned XP also advances their club by this fraction,
     # so clubs progress collectively without double-counting the solo total.
     club_xp_share: float = 1.0
@@ -101,8 +258,83 @@ class Settings(BaseSettings):
     # ---- Energy (gates territory CLAIMS only — runs are always allowed) -----
     energy_base_max: int = 100          # cap at level 0 (grows +5 / 10 levels)
     energy_regen_seconds: int = 360     # 1 energy per 6 min → full in ~10h
-    energy_cost_claim: int = 25         # energy spent to place a claim
-    energy_per_run: int = 8             # energy granted for a verified finished run
+    # Cost depends on WHAT the claim does. One flat price made a quiet
+    # expansion cost the same as storming a defended border, which is both
+    # unfair and uninformative — the price is now part of how the move reads.
+    energy_cost_claim: int = 20         # baseline / fallback (also what old
+                                        # clients see in the energy meter)
+    energy_cost_claim_empty: int = 16       # nobody's ground
+    energy_cost_claim_reinforce: int = 12   # your own land, made stronger
+    energy_cost_claim_attack: int = 20      # a rival loses ground
+    energy_cost_claim_fortified: int = 24   # ...and their defence holds part of it
+    # The first claim each day is half price, so anyone who actually went for a
+    # run can reliably DO something with it. Deliberately a discount and not a
+    # free attack: the floor is participation, not free aggression.
+    energy_first_claim_discount: float = 0.5
+
+    # Earned energy scales with the run and is capped daily, so the meter can't
+    # be refilled by repeatedly stepping outside.
+    energy_run_base: int = 3            # ...plus 1 per km
+    energy_run_max: int = 15            # per run
+    energy_daily_run_cap: int = 30      # per day, from running
+
+    # ---- Coins -------------------------------------------------------------
+    # Flat 25-per-run made a 20 m walk the best coins-per-minute in the game.
+    coins_run_base: int = 10            # ...plus 8 per km
+    coins_run_per_km: int = 8
+    coins_run_max: int = 100            # per run
+    coins_daily_run_cap: int = 180      # per day, from running
+
+    # Days roll over at local midnight, not UTC — a UTC day boundary is 8am in
+    # Singapore, which would reset everyone's daily allowances mid-morning.
+    daily_reset_utc_offset_hours: float = 8.0
+
+    # ---- daily territorial limits -----------------------------------------
+    # Painting the map should take running, not repetition. After this many
+    # NEUTRAL expansions in a game day, open ground is closed — but attacking
+    # a rival, reinforcing your own land and supporting your club all stay
+    # open, and runs keep paying XP, coins and energy as normal.
+    max_neutral_claims_per_game_day: int = 3
+
+    # Temporary safety rails until opponent-relative rank scoring lands. Both
+    # exist because a flat per-claim reward is farmable by anyone willing to
+    # claim repeatedly, and neither is meant to bind on a normal day.
+    daily_claim_xp_cap: int = 500
+    daily_neutral_claim_rank_cap: int = 15
+
+    # ---- PASERBY (crossed paths) ------------------------------------------
+    # Two runs cross when a sample of one lands within `radius` metres of a
+    # sample of the other within `window` seconds. Both numbers are deliberately
+    # small: this is "you passed each other", not "you were in the same suburb".
+    # Nothing here is ever returned to a client — see app/paserby.py.
+    paserby_radius_m: float = 40.0
+    paserby_time_window_s: int = 180
+    # One encounter per pair per this many hours. Covers both MVP rules at once:
+    # a pair can produce one rewarded encounter a day, and a second crossing
+    # inside the window produces no row at all (so short repeated runs are
+    # worthless).
+    paserby_pair_cooldown_hours: int = 24
+    # How far back a finished run looks for company. Traces older than this are
+    # swept, so the location data this feature keeps is measured in days.
+    paserby_lookback_hours: int = 24
+    paserby_trace_retention_days: int = 2
+    # The route is sampled rather than stored point-for-point: one sample per
+    # interval is enough to catch a crossing at 40 m, and the cap stops a very
+    # long run writing thousands of rows.
+    paserby_trace_interval_s: float = 25.0
+    paserby_trace_max_points: int = 300
+    # A single run can only surface so many strangers, whatever it ran through.
+    paserby_max_encounters_per_run: int = 12
+    # The reveal shows this many characters; the rest are "+N more".
+    paserby_reveal_cast: int = 3
+    # A high five is a wave, not a payout: small XP, hard daily ceiling, and no
+    # coins, energy, territory or rank at all.
+    paserby_high_five_xp: int = 5
+    paserby_daily_social_xp_cap: int = 25
+    # Whether a new account participates before touching the setting. ON matches
+    # every other social surface in the app (feed, profile, rivals) and nothing
+    # here exposes location — flip to False for opt-in-only.
+    paserby_default_enabled: bool = True
 
     # ---- In-app purchases (PASER PRO + energy packs) ----------------------
     # MUST be true in production. With it off, /me/pass/purchase and
@@ -116,6 +348,37 @@ class Settings(BaseSettings):
     # the package name receipts are validated against.
     google_play_access_token: str = ""
     android_package: str = "com.pacerrun.app"
+
+    # ---- Account recovery (forgot password) -------------------------------
+    # A six digit code mailed to the account's VERIFIED address. Six digits is
+    # only safe because guessing is bounded three ways: the code dies after
+    # `recovery_code_ttl_minutes`, a single code accepts
+    # `recovery_max_attempts` wrong guesses before it is burnt, and requests
+    # are rate limited per IP by `rate_limit_recovery`.
+    recovery_code_ttl_minutes: int = 15
+    recovery_max_attempts: int = 5
+    # The ticket handed out once a code is verified. It is what authorises the
+    # actual password change, so it lives only long enough to type a password
+    # into a form.
+    recovery_ticket_ttl_minutes: int = 10
+    # Deliberately tighter than rate_limit_auth: these endpoints send mail to
+    # an address the caller names, so an unlimited one is a mail cannon.
+    rate_limit_recovery: str = "5/hour"
+
+    # Mail transport: "log" (development, writes to the log), "resend" (HTTPS
+    # API, needs resend_api_key) or "smtp". Anything else means recovery is
+    # unconfigured and its endpoints return 501. See app/mailer.py.
+    mail_backend: str = "log"
+    # A real, monitored address: the "your recovery email changed" warning asks
+    # the reader to reply to it, and that reply has to land somewhere.
+    mail_from: str = "PASER <recovery@paser.app>"
+    mail_timeout_s: float = 10.0
+    resend_api_key: str = ""
+    mail_smtp_host: str = ""
+    mail_smtp_port: int = 587
+    mail_smtp_user: str = ""
+    mail_smtp_password: str = ""
+    mail_smtp_ssl: bool = False
 
     # ---- Social sign-in (Google / Apple) ----------------------------------
     # Comma-separated allowed audiences (OAuth client ids for Google; bundle /

@@ -35,6 +35,47 @@ services:
         value: "true"
       - key: APPLE_SHARED_SECRET
         sync: false
+      # Gate for /admin/*. Unset, those endpoints return 404 and the
+      # maintenance surface simply does not exist — which is the safe default,
+      # but also means the season recompute cannot be triggered by hand.
+      - key: ADMIN_TOKEN
+        generateValue: true
+
+  # Expiry sweep + hold credit. Talks to the database directly (see sweep.py),
+  # so it needs no admin token and does not depend on the web service being up.
+  #
+  # This is NOT optional housekeeping: claims only sweep their own
+  # neighbourhood, and this job is the only thing that awards the hold
+  # milestone. Without it, expired land lingers everywhere nobody is running
+  # and rank stops rewarding keeping ground.
+  #
+  # Hourly, off the hour: nothing else is scheduled then, and the work is
+  # proportional to what has expired since the last pass rather than to the
+  # size of the table.
+  - type: cron
+    name: territory-run-sweep
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: singapore
+    schedule: "17 * * * *"
+    dockerCommand: python sweep.py
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: territory-run-db
+          property: connectionString
+      - key: ENV
+        value: production
+      # The sweep never signs anything, but config validation runs at import.
+      - key: JWT_SECRET
+        fromService:
+          name: territory-run-api
+          type: web
+          envVarKey: JWT_SECRET
+      - key: CORS_ORIGINS
+        value: "https://coderfong.github.io"
 
 databases:
   - name: territory-run-db

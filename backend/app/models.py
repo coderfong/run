@@ -45,8 +45,46 @@ class User(Base):
     oauth_provider = Column(Text, nullable=True)
     oauth_sub = Column(Text, nullable=True)
 
+    # Recovery address. Null for every account created before 0028 and for
+    # anyone who declines to give one — such an account works normally but
+    # cannot be recovered, and the app says so. Only a VERIFIED address
+    # (email_verified_at set) is ever sent a reset code.
+    email = Column(Text, nullable=True)
+    email_verified_at = Column(DateTime, nullable=True)
+
+    # Bumped by a password reset. Minted into every JWT as `tv` and checked on
+    # each authenticated request, so a reset ends every session that existed
+    # before it — including whoever's session prompted the reset.
+    token_version = Column(Integer, nullable=False, default=0, server_default="0")
+
     runs = relationship("Run", back_populates="user")
     territories = relationship("Territory", back_populates="user")
+
+
+class AuthCode(Base):
+    """A short-lived numeric code mailed to a recovery address.
+
+    Two purposes share the table: `verify_email` proves an address belongs to
+    the account before it can receive resets, and `password_reset` proves the
+    same thing in order to set a new password. A code is stored only as a hash,
+    counts its own failed attempts, and can be used once.
+    """
+
+    __tablename__ = "auth_codes"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    user_id = Column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    purpose = Column(Text, nullable=False)
+    # Where it was sent. A reset stays bound to this address, so changing the
+    # account's email cannot redirect a code that is already in flight.
+    dest = Column(Text, nullable=False)
+    code_hash = Column(Text, nullable=False)
+    attempts = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
 
 
 class Run(Base):
@@ -80,6 +118,26 @@ class Run(Base):
     verified = Column(Boolean, nullable=False, default=True, server_default="true")
     flag_reasons = Column(ARRAY(Text), nullable=True)
 
+    # What /end-run decided, frozen so a repeat call replays it rather than
+    # recomputing (and re-paying) — see migration 0023.
+    tier = Column(Text, nullable=True)
+    gate_reason = Column(Text, nullable=True)
+    reward_coins = Column(Integer, nullable=True)
+    reward_energy = Column(Integer, nullable=True)
+    reward_xp = Column(Integer, nullable=True)
+
+    # The slice of the day's territorial entitlement this run consumed, and
+    # the land it bought. Frozen at /end-run: a later run must never change
+    # what an earlier one was worth.
+    claim_distance_m = Column(Float, nullable=True)
+    claim_area_m2 = Column(Float, nullable=True)
+
+    # What the claim turned out to be, and the response it produced. The
+    # action is what the neutral-expansion limit counts; the result is what a
+    # retry gets back.
+    claim_action = Column(Text, nullable=True)
+    claim_result = Column(JSONB, nullable=True)
+
     user = relationship("User", back_populates="runs")
     territory = relationship("Territory", back_populates="run", uselist=False)
 
@@ -101,10 +159,19 @@ class Territory(Base):
     polygon = Column(Geometry(geometry_type="MULTIPOLYGON", srid=4326), nullable=False)
     area_m2 = Column(Float, nullable=False)
 
-    # Defense strength: pace-based at claim time; sums when the owner re-claims
-    # over their own land. Clubmates' overlapping territories stack on top at
+    # Defense strength: effort-based at claim time (a narrow 0.85-1.20 band —
+    # pace is a nudge, not the whole game); sums when the owner re-claims over
+    # their own land. Clubmates' overlapping territories stack on top at
     # attack-resolution time (never stored merged).
     strength = Column(Float, nullable=False, default=1.0, server_default="1")
+
+    # When this land decays. Computed at claim time from effort and upkeep and
+    # STORED — it used to be derived as strength x 4 days, which made a fast
+    # runner's territory live three times longer than a slow one's (0022).
+    expires_at = Column(DateTime, nullable=True, index=True)
+    # How many times the owner has re-run over this ground. Each one buys a
+    # day of life, up to a cap.
+    reinforcements = Column(Integer, nullable=False, default=0, server_default="0")
 
     # Mirrors the owning run's verified flag at claim time.
     verified = Column(Boolean, nullable=False, default=True, server_default="true")

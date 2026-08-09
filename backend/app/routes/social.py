@@ -8,14 +8,14 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, privacy, ranks, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
 from ..geospatial import geometry_to_rings
 from ..notifications import notify
 from ..ratelimit import limiter
-from ..security import current_user
+from ..security import current_user, require_admin
 
 router = APIRouter(tags=["social"])
 
@@ -31,7 +31,8 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
             """
             SELECT r.id::text, r.user_id::text, u.username, r.distance_m, r.duration_s, r.ended_at,
                    r.verified, COALESCE(t.area_m2, 0), (t.id IS NOT NULL),
-                   ST_AsText(r.path), ST_AsText(t.polygon), c.tag, c.color_key
+                   ST_AsText(r.path), ST_AsText(t.polygon), c.tag, c.color_key,
+                   COALESCE(r.visibility, 'public')
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -55,6 +56,19 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
             path = [(x, y) for x, y in line.coords]
         except Exception:
             path = []
+    # This endpoint used to hand the FULL raw trace of anyone's run to any
+    # authenticated caller — one request, no privileges, and you have their
+    # front door. The owner still sees their own route untouched; everyone else
+    # gets it trimmed at both ends, cleared of privacy zones, and withheld
+    # entirely while the publish delay is running.
+    path = privacy.path_for_viewer(
+        path,
+        owner_id=r[1],
+        viewer_id=user.id,
+        prefs=privacy.load(db, r[1]),
+        visibility=r[13],
+        ended_at=r[5],
+    )
     rings = geometry_to_rings(shapely_wkt.loads(r[10])) if r[10] else []
 
     splits = db.execute(
@@ -128,7 +142,8 @@ def add_run_comment(request: Request, response: Response, run_id: str, payload: 
     if owner_id != user.id:
         snippet = payload.body.strip()[:80]
         background.add_task(
-            notify, [owner_id], "kudos", "New comment on your run", f"{user.username}: {snippet}"
+            notify, [owner_id], "kudos", "New comment on your run",
+            f"{user.username}: {snippet}", None, str(user.id),
         )
     return schemas.RunCommentOut(
         id=row[0], user_id=user.id, username=user.username, is_you=True,
@@ -153,7 +168,10 @@ def toggle_kudos(request: Request, response: Response, run_id: str, background: 
         db.execute(text("INSERT INTO run_kudos (run_id, user_id) VALUES (:rid, :uid)"), {"rid": run_id, "uid": user.id})
         kudoed = True
         if run[0] != user.id:
-            background.add_task(notify, [run[0]], "kudos", "You got kudos", f"{user.username} gave kudos to your run.")
+            background.add_task(
+                notify, [run[0]], "kudos", "You got kudos",
+                f"{user.username} gave kudos to your run.", None, str(user.id),
+            )
     db.commit()
     count = db.execute(text("SELECT COUNT(*) FROM run_kudos WHERE run_id = :rid"), {"rid": run_id}).scalar()
     return {"kudoed": kudoed, "kudos_count": int(count or 0)}
@@ -179,12 +197,18 @@ def register_push_token(request: Request, response: Response, payload: schemas.P
 @router.get("/me/notif-prefs", response_model=schemas.NotifPrefs)
 def get_prefs(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     row = db.execute(
-        text("SELECT stolen, captured, clan_goal, kudos, season, recap FROM notif_prefs WHERE user_id = :u"),
+        text(
+            "SELECT stolen, captured, clan_goal, kudos, season, recap, pasers, paserby "
+            "FROM notif_prefs WHERE user_id = :u"
+        ),
         {"u": user.id},
     ).fetchone()
     if not row:
         return schemas.NotifPrefs()
-    return schemas.NotifPrefs(stolen=row[0], captured=row[1], clan_goal=row[2], kudos=row[3], season=row[4], recap=row[5])
+    return schemas.NotifPrefs(
+        stolen=row[0], captured=row[1], clan_goal=row[2], kudos=row[3], season=row[4],
+        recap=row[5], pasers=row[6], paserby=row[7],
+    )
 
 
 @router.put("/me/notif-prefs", response_model=schemas.NotifPrefs)
@@ -192,13 +216,19 @@ def set_prefs(payload: schemas.NotifPrefs, user: models.User = Depends(current_u
     db.execute(
         text(
             """
-            INSERT INTO notif_prefs (user_id, stolen, captured, clan_goal, kudos, season, recap)
-            VALUES (:u, :s, :cap, :g, :k, :se, :r)
-            ON CONFLICT (user_id) DO UPDATE SET stolen=:s, captured=:cap, clan_goal=:g, kudos=:k, season=:se, recap=:r
+            INSERT INTO notif_prefs
+                (user_id, stolen, captured, clan_goal, kudos, season, recap, pasers, paserby)
+            VALUES (:u, :s, :cap, :g, :k, :se, :r, :p, :pb)
+            ON CONFLICT (user_id) DO UPDATE SET stolen=:s, captured=:cap, clan_goal=:g, kudos=:k,
+                season=:se, recap=:r, pasers=:p, paserby=:pb
             """
         ),
+        # `pasers` was in the model and on the wire but was never written —
+        # muting paser requests silently did nothing. Both social categories
+        # are persisted here now.
         {"u": user.id, "s": payload.stolen, "cap": payload.captured, "g": payload.clan_goal,
-         "k": payload.kudos, "se": payload.season, "r": payload.recap},
+         "k": payload.kudos, "se": payload.season, "r": payload.recap,
+         "p": payload.pasers, "pb": payload.paserby},
     )
     db.commit()
     return payload
@@ -206,10 +236,21 @@ def set_prefs(payload: schemas.NotifPrefs, user: models.User = Depends(current_u
 
 @router.get("/me/notifications", response_model=schemas.NotificationsOut)
 def my_notifications(limit: int = 30, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    # The actor joins in so a row can lead with the face of whoever did it —
+    # the inbox of a game about people taking your land should show the people.
     rows = db.execute(
         text(
-            "SELECT id::text, category, title, body, read, created_at "
-            "FROM notifications WHERE user_id = :u ORDER BY created_at DESC LIMIT :l"
+            """
+            SELECT n.id::text, n.category, n.title, n.body, n.read, n.created_at,
+                   n.actor_id::text, a.username, a.avatar,
+                   COALESCE(a.rank_points, 0), a.rank_points_at, c.color_key
+            FROM notifications n
+            LEFT JOIN users a ON a.id = n.actor_id
+            LEFT JOIN clan_members cm ON cm.user_id = n.actor_id
+            LEFT JOIN clans c ON c.id = cm.clan_id
+            WHERE n.user_id = :u
+            ORDER BY n.created_at DESC LIMIT :l
+            """
         ),
         {"u": user.id, "l": max(1, min(int(limit), 100))},
     ).fetchall()
@@ -218,7 +259,14 @@ def my_notifications(limit: int = 30, user: models.User = Depends(current_user),
     ).scalar()
     return schemas.NotificationsOut(
         items=[
-            schemas.NotificationItem(id=r[0], category=r[1], title=r[2], body=r[3], read=bool(r[4]), created_at=r[5])
+            schemas.NotificationItem(
+                id=r[0], category=r[1], title=r[2], body=r[3], read=bool(r[4]), created_at=r[5],
+                actor_id=r[6],
+                actor_username=r[7],
+                actor_avatar=r[8],
+                actor_rank_key=ranks.key_for(r[9], r[10]),
+                actor_clan_color=schemas.ClanColor(**color_triple(r[11])) if r[11] else None,
+            )
             for r in rows
         ],
         unread=int(unread or 0),
@@ -232,10 +280,12 @@ def mark_notifications_read(user: models.User = Depends(current_user), db: Sessi
     return {"ok": True}
 
 
-@router.post("/admin/weekly-recap")
+@router.post("/admin/weekly-recap", dependencies=[Depends(require_admin)])
 def weekly_recap(background: BackgroundTasks, db: Session = Depends(get_db)):
-    """Cron (Monday): push each user last week's distance + claims. Lock down
-    before production."""
+    """Cron (Monday): push each user last week's distance + claims.
+
+    Gated on `X-Admin-Token` — an open endpoint that fans out a push
+    notification to every account is a spam button with a URL."""
     since = datetime.utcnow() - timedelta(days=7)
     rows = db.execute(
         text(

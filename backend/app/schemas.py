@@ -95,10 +95,14 @@ class RunResultOut(BaseModel):
     # kept so old clients degrade gracefully. Always False/None now.
     closed_loop: bool = False
     territory: Optional[TerritoryOut] = None
-    # Circle claim earned by this run: circumference = distance run. The
-    # client places it along the trail via /claim-territory.
+    # Land earned by this run — area is linear in distance. `claim_ring` is
+    # the exact territory the run will take, grown around the route, so the
+    # client can SHOW it before confirming; there is nothing to place any
+    # more. `claim_radius_m` is only the fallback disc and is kept for old
+    # clients that still draw a circle.
     claim_radius_m: float = 0.0
     claim_area_m2: float = 0.0
+    claim_ring: List[Tuple[float, float]] = []
     # Steal summary (populated at claim time).
     stolen_m2: float = 0.0
     stolen_from: Optional[str] = None
@@ -107,6 +111,85 @@ class RunResultOut(BaseModel):
     # XP awarded for this run (distance-based; 0 on flagged runs). Surfaced
     # on the result screen.
     xp_gained: int = 0
+    # What this activity qualified as — one of `unqualified_for_rewards`,
+    # `qualified_for_rewards_only`, `qualified_for_claim` or `shadow_flagged`.
+    # The client must not re-derive this from distance and duration: the rules
+    # live on the server and only the server knows all of them.
+    tier: str = "qualified_for_claim"
+    # A plain sentence for whichever bar was missed. Distinguishes "you earned
+    # nothing" from "you earned rewards but cannot take ground" — a result
+    # screen that silently pays nothing reads as a bug.
+    qualification_reason: Optional[str] = None
+    claim_eligible: bool = True
+    # "verified" | "pending". A neutral status the runner can be shown for a
+    # run whose public contribution is being withheld. It names no detector, no
+    # threshold and no evidence — a flag that explains itself is a tutorial for
+    # beating it — but it stops a silently-inert run reading as a broken server.
+    verification_state: str = "verified"
+    # Kept so older clients keep working; same value as
+    # `qualification_reason`.
+    gate_reason: Optional[str] = None
+    # What the run actually paid, after the daily caps. `*_capped` means the
+    # run earned more than the day had left, so the screen can say so rather
+    # than looking broken.
+    coins_gained: int = 0
+    energy_gained: int = 0
+    coins_capped: bool = False
+    energy_capped: bool = False
+    # True when this response is a replay of an already-finished run rather
+    # than a fresh calculation. Nothing was paid a second time.
+    replayed: bool = False
+
+    def model_post_init(self, __context) -> None:  # pydantic v2 hook
+        # One source of truth, two names on the wire.
+        if self.gate_reason is None:
+            object.__setattr__(self, "gate_reason", self.qualification_reason)
+
+
+class PrivacyZone(BaseModel):
+    """A circle the runner has drawn around somewhere they live or work.
+
+    Any part of a route inside one is never published. The radius is clamped
+    server-side: below ~100 m a circle round a house still says which house,
+    and above the cap it stops being privacy and starts being a way to blank
+    out a neighbourhood.
+    """
+
+    lat: float = Field(..., ge=-90.0, le=90.0)
+    lon: float = Field(..., ge=-180.0, le=180.0)
+    radius_m: float = 150.0
+    label: str = ""
+
+
+class PrivacyOut(BaseModel):
+    # Metres cut from BOTH ends of a route before anyone else sees it.
+    route_trim_m: float = 0.0
+    # Hours a finished route is withheld from others, so "who is running where
+    # right now" is not a query anyone can make.
+    publish_delay_h: float = 0.0
+    zones: List[PrivacyZone] = []
+    # The bounds the server will enforce, so the client builds its controls
+    # from these rather than hardcoding numbers that can drift.
+    min_zone_radius_m: float = 100.0
+    max_zone_radius_m: float = 1000.0
+    max_zones: int = 10
+    # True when age floors are in force. The values above are then MINIMUMS the
+    # account cannot go below, and the screen should say so rather than letting
+    # someone drag a control that quietly snaps back.
+    minor: bool = False
+
+
+class PrivacyIn(BaseModel):
+    """Every field optional — a PATCH-shaped PUT, so a client can change the
+    trim without having to resend the whole zone list."""
+
+    route_trim_m: Optional[float] = Field(None, ge=0.0, le=5000.0)
+    publish_delay_h: Optional[float] = Field(None, ge=0.0, le=168.0)
+    zones: Optional[List[PrivacyZone]] = None
+
+
+class RunVisibilityIn(BaseModel):
+    visibility: str
 
 
 class AvatarIn(BaseModel):
@@ -119,15 +202,144 @@ class RunDaysOut(BaseModel):
     days: List[str] = []
 
 
-class ClaimIn(BaseModel):
-    """Place the run's claim. (lat, lon) is the claim centre and must lie on
-    (within claim_snap_tolerance_m of) the run's recorded trail. `shape` is the
-    cosmetic claim shape (level-unlocked; server falls back to circle if the
-    runner hasn't unlocked it)."""
+class PlacementRival(BaseModel):
+    """A runner one candidate placement would land on."""
+
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    area_m2: float = 0.0
+    # True when their land out-defends this claim: the ground shows in the
+    # preview as contested, but it would be carved back out of the claim.
+    defended: bool = False
+
+
+class ClaimPlacement(BaseModel):
+    """One way the run's earned land could be deployed: a position along the
+    route, turned to a heading.
+
+    Every placement covers the SAME area — the choice is where it lands and
+    which way it faces, not how much. The breakdown below is what makes that
+    choice legible: empty ground taken, rival ground taken, and ground already
+    yours (which is reinforcement, not expansion).
+
+    `index` addresses this entry in the flat list; `placement` and `rotation`
+    are the two axes it sits on, and are what /claim-territory is sent."""
+
+    index: int
+    placement: int = 0
+    rotation: int = 0
+    # Centre of the covered stretch, as a fraction of the route. Only used for
+    # drawing the handle in the right place along the trail.
+    t: float
+    # How far the claim is turned from the route's own orientation. 0 is the
+    # shape exactly as it was run.
+    rotation_deg: float = 0.0
+    # Share of this candidate sitting on ground the runner actually covered
+    # (within `claim_route_attachment_buffer_m` of the trail). Heading 0 is
+    # always 1.0 — it IS the shape as run. Below
+    # `claim_min_route_attachment` the move is closed off: rotation is a
+    # tactical choice, not a licence to claim streets you never saw.
+    route_attachment: float = 1.0
+    ring: List[Tuple[float, float]] = []
+    # The ground this claim COVERS — the same for every placement, because the
+    # run earns one fixed amount of land.
+    area_m2: float = 0.0
+    # What would actually be held: `area_m2` minus the defended ground, which
+    # gets carved back out of the claim. Lower than `area_m2` only where a
+    # rival's defence beats this run's strength.
+    held_m2: float = 0.0
+    new_m2: float = 0.0        # nobody's ground
+    enemy_m2: float = 0.0      # rival ground this claim would take
+    defended_m2: float = 0.0   # rival ground that would hold
+    mine_m2: float = 0.0       # your own land, reinforced
+    ally_m2: float = 0.0       # clubmates' land — never stolen, stacks defence
+    rivals: List[PlacementRival] = []
+    # What this move IS — "empty", "reinforce", "attack" or "fortified" — and
+    # what it costs. Price follows the action: expanding into nobody's ground
+    # is cheap, storming a defended border is not.
+    action: str = "empty"
+    energy_cost: int = 0
+    # The full price story, so the client never re-derives it: what the action
+    # costs before discounts, what was taken off, and what the meter will read
+    # afterwards. `available` is false when a rule blocks this specific move
+    # (today's neutral expansions used up, not enough energy) and `reason`
+    # says which — in the same words the claim itself would refuse with.
+    base_energy_cost: int = 0
+    applied_discounts: List[str] = []
+    energy_before: int = 0
+    energy_after: int = 0
+    available: bool = True
+    unavailable_reason: Optional[str] = None
+    # What this move is expected to pay. Estimates: the server recomputes at
+    # claim time and the client must reconcile against the claim response,
+    # because a daily cap may have been consumed in between.
+    expected_xp: int = 0
+    expected_rank_points: int = 0
+
+
+class ClaimOptionsOut(BaseModel):
+    """The placement choice offered after a run.
+
+    `recommendations` are indices into `placements`, so the client can move the
+    preview to a good answer in one tap instead of asking the runner to study
+    the map. Any of them may be null when no placement serves that goal (no
+    rivals nearby → no steal to recommend)."""
+
     run_id: str
-    lat: float = Field(..., ge=-90.0, le=90.0)
-    lon: float = Field(..., ge=-180.0, le=180.0)
-    shape: str = "circle"
+    claim_area_m2: float = 0.0
+    # 1.0 when the run is too short to slide a placement along — the client
+    # hides the position control and just confirms the one shape.
+    window_frac: float = 1.0
+    # The grid `placements` is laid out on, position-major: entry (p, r) sits
+    # at index p * rotation_count + r. Either being 1 means that axis offers no
+    # choice and its control should be hidden.
+    placement_count: int = 1
+    rotation_count: int = 1
+    placements: List[ClaimPlacement] = []
+    default_index: int = 0
+    most_land_index: Optional[int] = None
+    biggest_steal_index: Optional[int] = None
+    best_defence_index: Optional[int] = None
+    # The meter, so the chooser can show the cost against the balance without
+    # a second request — and say "you need 6 more" instead of just refusing.
+    energy: int = 0
+    energy_max: int = 0
+    # The first claim of each day is half price. Worth saying out loud: it is
+    # the difference between "I can do something with this run" and not.
+    first_claim_of_day: bool = False
+    # Neutral expansions left in the game day. Attacks and reinforcement stay
+    # available at zero — the limit rations painting the map, not playing.
+    neutral_claims_remaining: int = 0
+    # The floor a candidate's `route_attachment` must clear to be claimable.
+    # Sent so the client can close those stops on its rotation rail by
+    # comparing numbers, rather than by hardcoding the threshold or by matching
+    # on the wording of a refusal message.
+    min_route_attachment: float = 0.0
+    # What the run qualified as, repeated here so a client that only fetches
+    # options still knows why it may not be able to claim.
+    tier: str = "qualified_for_claim"
+    qualification_reason: Optional[str] = None
+    claim_eligible: bool = True
+
+
+class ClaimIn(BaseModel):
+    """Place the run's claim.
+
+    The territory is GROWN around the route itself, so the shape is never sent
+    by the client. `placement` (where along the route) and `rotation` (which
+    way it faces) are indices into the axes /claim-options returned — the
+    server rebuilds those from the stored route and takes the shape they
+    address, so a claim can only ever be built from the run that earned it.
+    Omitted (old clients) → the middle placement, unturned.
+
+    (lat, lon) is only the fallback centre for a run whose trail can't carry a
+    shape at all; the server uses the route's own midpoint when they don't."""
+    run_id: str
+    placement: Optional[int] = Field(None, ge=0, le=63)
+    rotation: Optional[int] = Field(None, ge=0, le=63)
+    lat: Optional[float] = Field(None, ge=-90.0, le=90.0)
+    lon: Optional[float] = Field(None, ge=-180.0, le=180.0)
 
 
 class ClaimVictim(BaseModel):
@@ -141,6 +353,8 @@ class ClaimVictim(BaseModel):
     user_id: str
     username: str
     avatar: Optional[dict] = None
+    # Territorial rank — what the portrait's frame is drawn from.
+    rank_key: str = "wood"
     clan_color: Optional[ClanColor] = None
     area_m2: float = 0.0
     defended: bool = False
@@ -166,6 +380,13 @@ class ClaimOut(BaseModel):
     # Energy left after the claim's cost was deducted (claims are energy-gated).
     energy: int = 0
     energy_max: int = 0
+    # What the move turned out to be and what it actually cost — the client
+    # previewed these from /claim-options, and must reconcile against these
+    # rather than trusting its own preview.
+    action: str = "empty"
+    energy_cost: int = 0
+    # Neutral expansions left in the game day AFTER this claim.
+    neutral_claims_remaining: int = 0
 
 
 class LeaderboardEntry(BaseModel):
@@ -179,6 +400,31 @@ class LeaderboardEntry(BaseModel):
     rank_points: Optional[int] = None
     rank_key: Optional[str] = None
     rank_label: Optional[str] = None
+
+
+class SeasonLeaderboardEntry(BaseModel):
+    """One row on a season board.
+
+    Club and solo boards share the same metric fields so clients can switch
+    categories without maintaining two subtly different value models.  The
+    identity fields are populated for the selected scope.
+    """
+
+    user_id: Optional[str] = None
+    username: Optional[str] = None
+    clan_id: Optional[str] = None
+    name: Optional[str] = None
+    tag: Optional[str] = None
+    color: Optional[ClanColor] = None
+    badge_icon: Optional[str] = None
+    league: Optional[str] = None
+    member_count: int = 0
+    total_area_m2: float = 0.0
+    territory_count: int = 0
+    claim_count: int = 0
+    capture_count: int = 0
+    defense_count: int = 0
+    distance_m: float = 0.0
 
 
 class MapPolygonsOut(BaseModel):
@@ -206,10 +452,19 @@ class FeedItem(BaseModel):
     # The author's equipped cosmetics, so their character portrait renders on
     # the card (null → the client falls back to initials).
     avatar: Optional[dict] = None
+    # Their territorial rank — the portrait's frame is drawn from it. Ships
+    # with every avatar so a portrait is never shown without its border.
+    rank_key: str = "wood"
     # Simplified geometry for the card thumbnail: the claimed land (rings) and
     # the run trail (path). Both [lon, lat]; either may be empty.
     rings: List[List[Tuple[float, float]]] = []
     path: List[Tuple[float, float]] = []
+    # Who this run took land from, and how much in total. The card plays the
+    # steal out — the blast and their faces — so the moment lives in the feed
+    # and not only on the claimer's own result screen. Successful takes only;
+    # bounced attacks are the defender's story, not the feed's.
+    victims: List[ClaimVictim] = []
+    stolen_m2: float = 0.0
 
 
 class FeedOut(BaseModel):
@@ -247,6 +502,13 @@ class NotificationItem(BaseModel):
     body: str
     read: bool
     created_at: datetime
+    # Whoever caused this — their portrait is what the row leads with. Null on
+    # system notices (season, weekly recap) that nobody sent.
+    actor_id: Optional[str] = None
+    actor_username: Optional[str] = None
+    actor_avatar: Optional[dict] = None
+    actor_rank_key: str = "wood"
+    actor_clan_color: Optional[ClanColor] = None
 
 
 class NotificationsOut(BaseModel):
@@ -329,6 +591,102 @@ class NotifPrefs(BaseModel):
     season: bool = True
     recap: bool = True
     pasers: bool = True
+    paserby: bool = True
+
+
+# ---------------------------------------------------------------------------
+# PASERBY — crossed paths (migration 0024)
+# ---------------------------------------------------------------------------
+#
+# WHAT IS NOT IN THIS SECTION IS THE POINT. There is no latitude, no longitude,
+# no crossing time, no encounter timestamp, no run id and no distance on any of
+# these models — an encounter is a person, a character, and a broad phrase. See
+# app/paserby.py for the rules these shapes exist to keep.
+
+
+class PaserbyEncounter(BaseModel):
+    """One crossing, as the viewer sees it."""
+
+    id: str
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    level: int = 0
+    # Territorial rank — what the portrait's frame is drawn from.
+    rank_key: str = "wood"
+    clan_tag: Optional[str] = None
+    clan_name: Optional[str] = None
+    clan_color: Optional[ClanColor] = None
+    # The ONLY temporal field, and deliberately a phrase: "Earlier today",
+    # "Yesterday", "This week". Never a time, never a date.
+    when: str = "Recently"
+    times_crossed: int = 1
+    # Familiar faces — labels only (crossed_paths / familiar_face /
+    # running_regular / local_legend), derived from `times_crossed`.
+    familiarity: str = "crossed_paths"
+    familiarity_label: str = "Crossed Paths"
+    seen: bool = False
+    high_fived: bool = False          # the viewer has sent one
+    high_five_received: bool = False  # the other runner sent one
+
+
+class PaserbyEncountersOut(BaseModel):
+    encounters: List[PaserbyEncounter] = []
+    unseen: int = 0
+    total: int = 0
+    enabled: bool = True
+
+
+class PaserbyRevealOut(BaseModel):
+    """The post-run beat: up to `cast` characters, and how many are left over.
+
+    `more_at_crossroads` is what the "+4 more at the Crossroads" line reads
+    from, so the client never has to work it out from two counts.
+    """
+
+    encounters: List[PaserbyEncounter] = []
+    new_count: int = 0
+    more_at_crossroads: int = 0
+
+
+class PaserbySettingsIn(BaseModel):
+    enabled: bool
+
+
+class PaserbySummary(BaseModel):
+    """What the Home badge needs, in one small response."""
+
+    enabled: bool = True
+    unseen: int = 0
+    total: int = 0
+
+
+class PaserbySeenIn(BaseModel):
+    # Omitted / empty = mark everything seen.
+    ids: List[str] = []
+
+
+class HighFiveOut(BaseModel):
+    high_fived: bool = True
+    # Already sent — the button was pressed twice, and the second press pays
+    # nothing rather than erroring.
+    already: bool = False
+    xp_gained: int = 0
+    # True when the day's social XP ceiling swallowed the reward. The high five
+    # still landed.
+    capped: bool = False
+
+
+class BlockIn(BaseModel):
+    user_id: str
+
+
+class ReportIn(BaseModel):
+    user_id: str
+    reason: str = Field(..., min_length=2, max_length=64)
+    detail: Optional[str] = Field(None, max_length=500)
+    # Optional context so moderation knows which surface it came from.
+    encounter_id: Optional[str] = None
 
 
 # ---- pasers ---------------------------------------------------------------
@@ -349,6 +707,8 @@ class RunnerCard(BaseModel):
     user_id: str
     username: str
     avatar: Optional[dict] = None
+    # Territorial rank — what the portrait's frame is drawn from.
+    rank_key: str = "wood"
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
     level: int = 0
@@ -381,6 +741,8 @@ class RivalCard(BaseModel):
     user_id: str
     username: str
     avatar: Optional[dict] = None
+    # Territorial rank — what the portrait's frame is drawn from.
+    rank_key: str = "wood"
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
     level: int = 0
@@ -428,6 +790,8 @@ class RunnerProfile(BaseModel):
     user_id: str
     username: str
     avatar: Optional[dict] = None
+    # Territorial rank — what the portrait's frame is drawn from.
+    rank_key: str = "wood"
     clan_tag: Optional[str] = None
     clan_name: Optional[str] = None
     clan_color: Optional[ClanColor] = None

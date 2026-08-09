@@ -75,14 +75,25 @@ def map_polygons(
                    COALESCE((SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = t.clan_id), 1) AS defenders,
                    t.strength,
                    u.avatar,
-                   GREATEST(0, LEAST(1, 1 - EXTRACT(EPOCH FROM (now() - t.created_at))
-                       / (GREATEST(t.strength, 0.1) * :life_per * 86400))) AS freshness,
+                   -- How much of its life is left, for the fade-as-it-ages
+                   -- effect. Measured against the STORED expiry now (0022);
+                   -- the strength formula is only for rows predating it.
+                   GREATEST(0, LEAST(1,
+                       EXTRACT(EPOCH FROM (COALESCE(
+                           t.expires_at,
+                           t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
+                       ) - now()))
+                       / GREATEST(1, EXTRACT(EPOCH FROM (COALESCE(
+                           t.expires_at,
+                           t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
+                       ) - t.created_at)))
+                   )) AS freshness,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
             FROM territories t
             JOIN users u ON u.id = t.user_id
             LEFT JOIN clans c ON c.id = t.clan_id
             WHERE (t.verified OR t.user_id = :viewer_id)
-              AND now() < t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
+              AND now() < COALESCE(t.expires_at, t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400))
               {bbox_clause}
             ORDER BY t.area_m2 DESC
             LIMIT :limit

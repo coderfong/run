@@ -29,7 +29,7 @@ from ..clans_meta import (
 from ..config import settings
 from ..database import get_db
 from ..ratelimit import limiter
-from ..security import current_user, current_user_optional
+from ..security import current_user, current_user_optional, require_admin
 
 router = APIRouter(tags=["clans"])
 
@@ -228,7 +228,8 @@ def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool
     if season:
         area = db.execute(
             text("SELECT COALESCE(SUM(area_m2),0) FROM territories WHERE clan_id = :cid AND verified "
-                 "AND now() < created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400)"),
+                 "AND now() < COALESCE(expires_at, created_at + make_interval("
+                 "secs => GREATEST(strength,0.1) * :life_per * 86400))"),
             {"cid": clan_id, "life_per": settings.territory_life_days_per_strength},
         ).scalar()
         db.execute(
@@ -561,7 +562,7 @@ def request_join(request: Request, response: Response, clan_id: str,
     if not c:
         raise HTTPException(404, "club not found")
     if c[0] == "open":
-        raise HTTPException(400, "this club is open — join directly")
+        raise HTTPException(400, "this club is open, join directly")
     db.execute(
         text(
             """
@@ -578,7 +579,7 @@ def request_join(request: Request, response: Response, clan_id: str,
         {"cid": clan_id},
     ).fetchall()
     notify([o[0] for o in officers], "clan_goal", "Join request",
-           f"{user.username} wants to join {c[1]}.")
+           f"{user.username} wants to join {c[1]}.", actor_id=str(user.id))
     return {"ok": True, "status": "pending"}
 
 
@@ -629,7 +630,8 @@ def act_on_request(request: Request, response: Response, clan_id: str, req_id: s
     tag = db.execute(text("SELECT tag FROM clans WHERE id = :cid"), {"cid": clan_id}).scalar()
     notify([req[0]], "clan_goal",
            "Request approved" if action == "approve" else "Request declined",
-           f"Your request to join {tag} was {'approved — welcome in' if action == 'approve' else 'declined'}.")
+           f"Your request to join {tag} was {'approved, welcome in' if action == 'approve' else 'declined'}.",
+           actor_id=str(user.id))
     return {"ok": True}
 
 
@@ -706,11 +708,13 @@ def my_clan(user: models.User = Depends(current_user), db: Session = Depends(get
     return schemas.MyClan(clan_id=m[0], tag=c[0], role=m[1], color=_color(c[1]))
 
 
-@router.post("/admin/recompute-season")
+@router.post("/admin/recompute-season", dependencies=[Depends(require_admin)])
 def recompute_season(db: Session = Depends(get_db)):
     """Nightly job (cron): refresh every clan's current area for the live
-    season and re-assign leagues by size-normalized held area. Left open for
-    a scheduled trigger; lock down before production."""
+    season and re-assign leagues by size-normalized held area.
+
+    Gated on `X-Admin-Token` — this reassigns every club's league, so an open
+    endpoint let anyone reshuffle the season's standings on demand."""
     season = _current_season(db)
     if not season:
         return {"ok": False, "reason": "no season"}
@@ -722,7 +726,7 @@ def recompute_season(db: Session = Depends(get_db)):
             FROM clans c
             LEFT JOIN (SELECT clan_id, SUM(area_m2) area FROM territories
                        WHERE verified AND clan_id IS NOT NULL
-                         AND now() < created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400)
+                         AND now() < COALESCE(expires_at, created_at + make_interval(secs => GREATEST(strength,0.1) * :life_per * 86400))
                        GROUP BY clan_id) a
               ON a.clan_id = c.id
             ON CONFLICT (season_id, clan_id)

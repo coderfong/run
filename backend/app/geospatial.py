@@ -30,6 +30,7 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 from pyproj import Transformer
+from shapely import affinity
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import transform as shapely_transform
 from shapely.validation import make_valid
@@ -288,18 +289,80 @@ def detect_loop(cleaned: CleanedPath) -> Optional[LoopResult]:
 # ---------------------------------------------------------------------------
 
 
-def claim_radius_m(distance_m: float) -> float:
-    """Radius of the circle whose circumference equals the run distance,
-    capped so the claim area never exceeds max_polygon_area_m2."""
-    r = distance_m / (2.0 * math.pi)
-    r_cap = math.sqrt(settings.max_polygon_area_m2 / math.pi)
-    return min(r, r_cap)
+# Diminishing returns on distance, as (km_threshold, marginal_rate). Past 5 km
+# each further kilometre is worth less GROUND — not less anything else. A
+# marathon should out-earn a 5 km on XP, coins, club distance, leaderboards and
+# achievements; what it should not do is quietly erase a neighbourhood.
+_TERRITORIAL_CURVE = [(5.0, 1.0), (10.0, 0.65), (20.0, 0.30), (float("inf"), 0.10)]
+
+
+def territorial_distance_m(distance_m: float) -> float:
+    """Distance as the map values it, in metres.
+
+    A straight cap made the 13th kilometre worth literally nothing and every
+    serious runner hit the wall at the same place. This tapers instead, so
+    there is never a step where running further stops counting."""
+    km = max(0.0, distance_m) / 1000.0
+    eq = 0.0
+    lower = 0.0
+    for upper, rate in _TERRITORIAL_CURVE:
+        if km <= lower:
+            break
+        eq += (min(km, upper) - lower) * rate
+        lower = upper
+    return eq * 1000.0
 
 
 def claim_area_m2(distance_m: float) -> float:
-    """Area of the (possibly capped) claim circle for a run distance."""
-    r = claim_radius_m(distance_m)
-    return math.pi * r * r
+    """Land a run earns, capped at max_polygon_area_m2.
+
+    Linear in TERRITORIAL distance (see above): every such metre is worth
+    `claim_area_per_m` of ground. The original rule made the run distance the
+    CIRCUMFERENCE of the claim circle, so area went as d²/4π — doubling your
+    distance quadrupled your land, which is why long runs ran away with the
+    map. The linear rule that replaced it fixed the growth but kept a rate
+    (400 m²/m) that painted a ~400 m-wide swathe along every route."""
+    return min(
+        territorial_distance_m(distance_m) * settings.claim_area_per_m,
+        settings.max_polygon_area_m2,
+    )
+
+
+# Half the width of the corridor a route is credited with covering, for the
+# distinct-ground measure below. 10 m each side ≈ a road and its pavements.
+_UNIQUE_HALF_WIDTH_M = 10.0
+
+
+def route_unique_length_m(path_lonlat: List[Tuple[float, float]]) -> float:
+    """How much DISTINCT ground a route covered, as an equivalent length.
+
+    Distance alone says nothing about where you went: forty laps of a corridor,
+    a phone shaken on a desk and a GPS drifting under a roof all accumulate
+    metres without going anywhere. This buffers the route into a corridor and
+    measures its AREA, so ground covered twice is only counted once, then
+    converts back to a length. A there-and-back run is honest here — the outward
+    and return legs overlap, so it reads roughly half its distance, which is a
+    fair description of the ground it actually touched."""
+    if not path_lonlat or len(path_lonlat) < 2:
+        return 0.0
+    try:
+        metric, _ = project_metric(path_lonlat)
+        line = LineString(metric)
+        if line.length <= 0:
+            return 0.0
+        corridor = line.buffer(_UNIQUE_HALF_WIDTH_M, quad_segs=4)
+        # Subtract the round caps so a straight run measures its own length
+        # rather than length + one radius at each end.
+        return max(0.0, corridor.area / (2 * _UNIQUE_HALF_WIDTH_M) - _UNIQUE_HALF_WIDTH_M * 1.57)
+    except Exception:
+        # Never fail a run over a diversity check — fall back to trusting it.
+        return float("inf")
+
+
+def claim_radius_m(distance_m: float) -> float:
+    """Radius of the fallback claim circle — the disc holding the earned area.
+    Only used when a run has no usable route to grow the territory around."""
+    return math.sqrt(claim_area_m2(distance_m) / math.pi)
 
 
 def circle_polygon_wgs(lat: float, lon: float, radius_m: float) -> Polygon:
@@ -314,60 +377,409 @@ def circle_polygon_wgs(lat: float, lon: float, radius_m: float) -> Polygon:
 
 
 # ---------------------------------------------------------------------------
-# Claim shapes (cosmetic geometry — level-unlocked). Each shape is built as a
-# UNIT polygon in local meters centred at the origin, then uniformly scaled so
-# its area EQUALS the target circle area. Equal-area keeps gameplay balanced:
-# a star and a circle from the same run cover the same ground.
+# Route-grown territory
+#
+# The run does not stamp a fixed shape on the map — it GROWS one. Distance
+# decides how much land you earn (claim_area_m2); the route decides what that
+# land looks like. A straight run becomes a long capsule, an L becomes a bent
+# province, laps of one neighbourhood become a compact block.
+#
+# The pipeline, in local metric space:
+#
+#   1. simplify the path down to 4–12 anchors — the major turns, not the GPS
+#      wobble, so the silhouette is the broad shape of where you went
+#   2. connect the anchors into a hidden spine
+#   3. thicken the spine, then CLOSE it (dilate/erode) so neighbouring legs
+#      merge into one solid body instead of parallel ribbons, then OPEN it
+#      (erode/dilate) so nothing narrow survives
+#   4. fill any interior hole — a lap round the block takes the block, not a
+#      donut around it
+#   5. bisect the thickness until the region holds exactly the earned area
+#
+# Nothing here is ever thinner than claim_min_width_m. When a route is too
+# spread out to hold its earned area at that minimum thickness, the SPINE is
+# shrunk toward its own centre instead of the territory being thinned — the
+# shape stays recognisable and just covers less ground.
 # ---------------------------------------------------------------------------
 
-def _regular_ngon(n: int) -> Polygon:
-    pts = [(math.cos(2 * math.pi * i / n), math.sin(2 * math.pi * i / n)) for i in range(n)]
-    return Polygon(pts)
+_BUFFER_KW = dict(quad_segs=8, cap_style=1, join_style=1)  # round caps + joins
 
 
-def _star(points: int, inner_ratio: float) -> Polygon:
-    pts = []
-    for i in range(points * 2):
-        r = 1.0 if i % 2 == 0 else inner_ratio
-        a = math.pi * i / points - math.pi / 2  # point up
-        pts.append((r * math.cos(a), r * math.sin(a)))
-    return Polygon(pts)
+def _largest_polygon(geom) -> Optional[Polygon]:
+    """The dominant piece of a possibly-multi geometry, holes filled."""
+    if geom.is_empty:
+        return None
+    if geom.geom_type == "MultiPolygon":
+        geom = max(geom.geoms, key=lambda g: g.area)
+    if geom.geom_type != "Polygon":
+        return None
+    # Holes filled: running a lap around a park claims the park, not a ring
+    # of pavement around it.
+    return Polygon(geom.exterior)
 
 
-def _heart() -> Polygon:
-    pts = []
-    for i in range(72):
-        t = 2 * math.pi * i / 72
-        x = 16 * math.sin(t) ** 3
-        y = 13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t)
-        pts.append((x, y))
-    return Polygon(pts)
+def _route_anchors(coords: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """Reduce a metric path to `claim_anchor_min`..`claim_anchor_max` anchors.
+
+    Douglas-Peucker with the tolerance bisected until the vertex count lands
+    in the window; a path with too few turns to hit the minimum (a dead
+    straight run) is resampled at even arc-length instead, so the spine always
+    has enough points to bend."""
+    lo_n, hi_n = settings.claim_anchor_min, settings.claim_anchor_max
+    line = LineString(coords)
+    best = list(line.coords)
+
+    if len(best) > hi_n:
+        lo, hi = 0.0, max(line.length, 1.0)
+        for _ in range(32):
+            mid = (lo + hi) / 2
+            trial = list(line.simplify(mid, preserve_topology=False).coords)
+            if len(trial) > hi_n:
+                lo = mid
+            else:
+                best, hi = trial, mid
+                if len(trial) >= lo_n:
+                    break
+
+    if len(best) < lo_n:
+        # Evenly spaced samples along the ORIGINAL line, not the simplified
+        # one — otherwise a straight run collapses to its two endpoints.
+        step = line.length / (lo_n - 1)
+        best = [line.interpolate(i * step).coords[0] for i in range(lo_n)]
+
+    # Drop consecutive duplicates; a zero-length spine buffers to nothing.
+    out: List[Tuple[float, float]] = []
+    for p in best:
+        if not out or math.dist(out[-1], p) > 0.5:
+            out.append(p)
+    return out
 
 
-def _unit_shape(shape: str) -> Optional[Polygon]:
-    if shape == "hexagon":
-        return _regular_ngon(6)
-    if shape == "gem":
-        return _regular_ngon(8)
-    if shape == "star":
-        return _star(5, 0.5)
-    if shape == "heart":
-        return _heart()
-    return None  # circle / unknown → caller uses the disc
+def _grow_region(spine: LineString, half_width: float) -> Optional[Polygon]:
+    """Thicken `spine` into one solid, smooth, hole-free territory."""
+    if half_width <= 0:
+        return None
+    region = spine.buffer(half_width, **_BUFFER_KW)
+    s = half_width * settings.claim_smooth_frac
+    if s > 0.5:
+        # closing: legs that run near each other fuse into one body
+        region = region.buffer(s, **_BUFFER_KW).buffer(-s, **_BUFFER_KW)
+        # opening: whatever is left thinner than the minimum is cut away
+        region = region.buffer(-s, **_BUFFER_KW).buffer(s, **_BUFFER_KW)
+    if not region.is_valid:
+        region = make_valid(region)
+    poly = _largest_polygon(region)
+    if poly is None or poly.area <= 0:
+        return None
+    # A province, not a grid: shed the vertices the buffering left behind.
+    smoothed = poly.simplify(max(1.0, half_width * 0.08), preserve_topology=True)
+    return smoothed if smoothed.is_valid and not smoothed.is_empty else poly
 
 
-def claim_shape_polygon_wgs(lat: float, lon: float, area_m2: float, shape: str = "circle") -> Polygon:
-    """A claim polygon of the given `shape` centred at (lat, lon) whose area
-    equals `area_m2`. Falls back to a circle for 'circle'/unknown shapes."""
-    unit = _unit_shape(shape or "circle")
-    if unit is None or unit.area <= 0:
-        return circle_polygon_wgs(lat, lon, math.sqrt(area_m2 / math.pi))
-    scale = math.sqrt(area_m2 / unit.area)
-    scaled = Polygon([(x * scale, y * scale) for x, y in unit.exterior.coords])
-    if not scaled.is_valid:
-        scaled = make_valid(scaled)
-    _to_m, to_wgs = _make_transformers(lat, lon)
-    return reproject_geometry_to_wgs84(scaled, to_wgs)
+def _scale_spine(spine: LineString, factor: float) -> LineString:
+    cx, cy = spine.centroid.coords[0]
+    return LineString([(cx + (x - cx) * factor, cy + (y - cy) * factor) for x, y in spine.coords])
+
+
+def _spine_extent(spine: LineString) -> float:
+    """How far the route reaches end to end — the longest gap between any two
+    anchors. Deliberately NOT the route's length: ten laps of one block are
+    6 km of running inside a 500 m box, and that box is what the territory has
+    to fit, not the 6 km."""
+    pts = list(spine.coords)
+    return max(
+        (math.dist(a, b) for i, a in enumerate(pts) for b in pts[i + 1:]),
+        default=0.0,
+    )
+
+
+def _bisect(fn, lo: float, hi: float, target: float, steps: int = 14) -> float:
+    """Smallest x in [lo, hi] with fn(x) >= target, for monotonic fn.
+
+    14 steps splits the width search (roughly 70 m..700 m) to under 5 cm, which
+    is four orders of magnitude finer than anything a claim boundary means.
+    Each step re-grows the whole region — six buffer operations — so the count
+    is the single biggest lever on how long a claim takes to build."""
+    for _ in range(steps):
+        mid = (lo + hi) / 2
+        if fn(mid) < target:
+            lo = mid
+        else:
+            hi = mid
+    return hi
+
+
+def _slice_by_arc(
+    coords: List[Tuple[float, float]], start_frac: float, end_frac: float
+) -> List[Tuple[float, float]]:
+    """The stretch of a metric path between two fractions of its own length.
+
+    Cuts mid-segment at both ends rather than snapping to the nearest vertex,
+    so sliding the window moves the territory smoothly instead of jumping from
+    GPS point to GPS point."""
+    line = LineString(coords)
+    total = line.length
+    if total <= 0:
+        return list(coords)
+    a = max(0.0, min(1.0, start_frac)) * total
+    b = max(0.0, min(1.0, end_frac)) * total
+    if b - a < 1.0:
+        return list(coords)
+
+    out = [line.interpolate(a).coords[0]]
+    pts = list(line.coords)
+    cum = 0.0
+    for i in range(1, len(pts)):
+        cum += math.dist(pts[i - 1], pts[i])
+        if a < cum < b:
+            out.append(pts[i])
+    out.append(line.interpolate(b).coords[0])
+
+    # A window that lands between two vertices can pick up duplicates at the
+    # cut; a zero-length spine buffers to nothing.
+    deduped: List[Tuple[float, float]] = []
+    for p in out:
+        if not deduped or math.dist(deduped[-1], p) > 0.5:
+            deduped.append(p)
+    return deduped if len(deduped) >= 2 else list(coords)
+
+
+def claim_window_frac(path_lonlat: List[Tuple[float, float]]) -> float:
+    """How much of the route one placement covers, as a fraction of its length.
+
+    1.0 means the run is too short to slide anything along: the only available
+    placement is the whole route, exactly as before placement existed."""
+    if not path_lonlat or len(path_lonlat) < 2:
+        return 1.0
+    try:
+        metric, _ = project_metric(path_lonlat)
+        length = LineString(metric).length
+    except Exception:
+        return 1.0
+    if length <= 0:
+        return 1.0
+    w = max(0.05, min(1.0, settings.claim_window_frac))
+    # A short run's window would be a stub — widen it back out, up to the
+    # whole route, and the placement choice quietly disappears.
+    return min(1.0, max(w, settings.claim_window_min_m / length))
+
+
+def claim_placement_offsets(count: int, window: float) -> List[float]:
+    """Window CENTRES, as fractions of the route, first to last.
+
+    Deterministic and index-addressable: the client picks an index and the
+    server rebuilds the same list, so a placement is never sent as geometry
+    and can never be forged into someone else's neighbourhood."""
+    half = window / 2.0
+    lo, hi = half, 1.0 - half
+    if count <= 1 or hi - lo <= 1e-9:
+        return [0.5]
+    step = (hi - lo) / (count - 1)
+    return [lo + step * i for i in range(count)]
+
+
+def claim_rotation_offsets(count: Optional[int] = None, span: Optional[float] = None) -> List[float]:
+    """Headings a claim can be turned to, in degrees, starting at 0 = as run.
+
+    A span below 360 is centred on 0, so the run's own orientation stays the
+    middle option and turning it is a deviation from the route rather than a
+    free choice of direction."""
+    n = max(1, count if count is not None else settings.claim_rotation_count)
+    arc = span if span is not None else settings.claim_rotation_span_deg
+    if n <= 1 or arc <= 0:
+        return [0.0]
+    if arc >= 360.0:
+        # A full turn: the last step would land back on the first.
+        return [round(i * 360.0 / n, 3) for i in range(n)]
+    step = arc / (n - 1)
+    return [round(-arc / 2 + step * i, 3) for i in range(n)]
+
+
+def metric_frame(path_lonlat: List[Tuple[float, float]]):
+    """A (to_metric, to_wgs84) pair centred on a route, to be REUSED.
+
+    Building a pyproj Transformer costs ~100 ms — more than every shapely
+    operation it is then used for. Anything that projects the same
+    neighbourhood repeatedly (the placement grid does it dozens of times)
+    must build the frame once and pass it down, or the transformers alone
+    become the whole response time."""
+    if not path_lonlat:
+        raise ValueError("metric_frame: empty input")
+    lon0 = sum(p[0] for p in path_lonlat) / len(path_lonlat)
+    lat0 = sum(p[1] for p in path_lonlat) / len(path_lonlat)
+    return _make_transformers(lat0, lon0)
+
+
+def rotate_claim_polygon_wgs(poly: Polygon, degrees: float, frame=None) -> Polygon:
+    """Turn a claim about its own centre by `degrees` (anticlockwise).
+
+    The pivot is the claim's centroid, which sits on the route — so however far
+    it is turned, the territory still covers ground the runner stood on. Done
+    in a local metric projection: rotating raw lon/lat would shear the shape
+    everywhere except the equator.
+
+    `frame` is a `metric_frame` to project through. Any frame near the claim
+    will do — an AEQD centred a few km away is still true to well under a
+    metre at this scale — so callers turning many shapes should build one and
+    hand it in rather than paying for a transformer per rotation."""
+    if not degrees or degrees % 360 == 0:
+        return poly
+    to_m, to_wgs = frame if frame is not None else _make_transformers(
+        poly.centroid.y, poly.centroid.x
+    )
+    metric = shapely_transform(lambda x, y, z=None: to_m.transform(x, y), poly)
+    turned = affinity.rotate(metric, degrees, origin="centroid")
+    return reproject_geometry_to_wgs84(turned, to_wgs)
+
+
+def route_corridor(path_lonlat: List[Tuple[float, float]], frame, buffer_m: Optional[float] = None):
+    """The ground within `buffer_m` of the route, in the frame's metric space.
+
+    Built ONCE and reused across the whole candidate grid — it is a buffer over
+    the full trail, which is far too expensive to redo per candidate.
+    """
+    if not path_lonlat or len(path_lonlat) < 2:
+        return None
+    to_m, _to_wgs = frame
+    r = settings.claim_route_attachment_buffer_m if buffer_m is None else buffer_m
+    try:
+        metric = [to_m.transform(lon, lat) for lon, lat in path_lonlat]
+        line = LineString(metric)
+        if line.length <= 0:
+            return None
+        return line.buffer(r, quad_segs=8)
+    except Exception:
+        return None
+
+
+def route_attachment(poly_wgs: Polygon, corridor, frame) -> float:
+    """How much of a candidate claim lies on ground the runner actually covered.
+
+    Returns the share of the claim's area inside the route corridor, 0..1.
+
+    This is what keeps rotation honest. Turning a claim about its centroid is a
+    genuine tactical move — the pivot sits on the route, so a modest turn still
+    covers ground that was run — but at a full 360° a long claim can swing onto
+    streets the runner never saw. Candidates below
+    `settings.claim_min_route_attachment` are closed off rather than offered.
+
+    A geometry pathology returns 1.0, not 0.0: the fallback must never be to
+    silently refuse a claim the runner has already earned.
+    """
+    if corridor is None or corridor.is_empty:
+        return 1.0
+    to_m, _to_wgs = frame
+    try:
+        metric = shapely_transform(lambda x, y, z=None: to_m.transform(x, y), poly_wgs)
+        if metric.is_empty or metric.area <= 0:
+            return 0.0
+        return max(0.0, min(1.0, metric.intersection(corridor).area / metric.area))
+    except Exception:
+        return 1.0
+
+
+def claim_placements(
+    path_lonlat: List[Tuple[float, float]], area_m2: float, count: Optional[int] = None
+) -> List[Tuple[float, Polygon]]:
+    """Every territory this run could deploy its earned land onto.
+
+    The run earns a fixed `area_m2` whichever placement is chosen — the choice
+    is WHERE it lands, not how much. Returns [(centre_fraction, polygon)] in
+    route order; an empty list means the route can't carry a shape at all and
+    the caller should fall back to the circle claim."""
+    if not path_lonlat or len(path_lonlat) < 2 or area_m2 <= 0:
+        return []
+    n = max(1, count if count is not None else settings.claim_placement_count)
+    window = claim_window_frac(path_lonlat)
+    if window >= 1.0:
+        poly = route_claim_polygon_wgs(path_lonlat, area_m2)
+        return [(0.5, poly)] if poly is not None else []
+
+    half = window / 2.0
+    out: List[Tuple[float, Polygon]] = []
+    for t in claim_placement_offsets(n, window):
+        poly = route_claim_polygon_wgs(path_lonlat, area_m2, window=(t - half, t + half))
+        if poly is not None:
+            out.append((t, poly))
+    if not out:
+        # Every window failed but the route itself might still work — better a
+        # single placement than no claim at all.
+        poly = route_claim_polygon_wgs(path_lonlat, area_m2)
+        if poly is not None:
+            out.append((0.5, poly))
+    return out
+
+
+def route_claim_polygon_wgs(
+    path_lonlat: List[Tuple[float, float]],
+    area_m2: float,
+    window: Optional[Tuple[float, float]] = None,
+) -> Optional[Polygon]:
+    """Grow `area_m2` of territory around a run's route, in WGS84.
+
+    `window` restricts the growth to a stretch of the route, given as (start,
+    end) fractions of its length — the same earned area packed onto part of the
+    run instead of all of it. None grows around the whole route.
+
+    Returns None when the route can't carry a shape (too few points, degenerate
+    geometry) — the caller falls back to the circle claim."""
+    if not path_lonlat or len(path_lonlat) < 2 or area_m2 <= 0:
+        return None
+    try:
+        metric, to_wgs = project_metric(path_lonlat)
+        if window is not None:
+            metric = _slice_by_arc(metric, window[0], window[1])
+            if len(metric) < 2:
+                return None
+        anchors = _route_anchors(metric)
+        if len(anchors) < 2:
+            return None
+        spine = LineString(anchors)
+        if spine.length <= 0:
+            return None
+
+        # Compactness pressure. Without it the area cap turns a marathon into a
+        # 36 km pinstripe: legal (nothing is under the minimum width) and still
+        # a coloured line drawn across the city. Reining the SPAN in first
+        # forces the same land into a fat capsule with the same silhouette.
+        max_extent = math.sqrt(settings.claim_max_aspect * area_m2)
+        extent = _spine_extent(spine)
+        if extent > max_extent > 0:
+            spine = _scale_spine(spine, max_extent / extent)
+
+        min_half = settings.claim_min_width_m / 2.0
+
+        thin = _grow_region(spine, min_half)
+        if thin is None:
+            return None
+
+        if thin.area > area_m2:
+            # Too much route for the land earned: keep the silhouette, shrink
+            # it, rather than letting the claim thin out into a ribbon.
+            def area_at_scale(f: float) -> float:
+                g = _grow_region(_scale_spine(spine, max(f, 1e-3)), min_half)
+                return g.area if g else 0.0
+
+            f = _bisect(area_at_scale, 0.0, 1.0, area_m2)
+            region = _grow_region(_scale_spine(spine, max(f, 1e-3)), min_half)
+        else:
+            # A disc of this radius already holds the target, so it bounds the
+            # search from above whatever the route looks like.
+            hi = math.sqrt(area_m2 / math.pi)
+            if hi <= min_half:
+                region = thin
+            else:
+                w = _bisect(lambda x: (lambda g: g.area if g else 0.0)(_grow_region(spine, x)),
+                            min_half, hi, area_m2)
+                region = _grow_region(spine, w)
+
+        if region is None or region.area <= 0:
+            return None
+        return reproject_geometry_to_wgs84(region, to_wgs)
+    except Exception:
+        # Any geometry pathology falls back to the circle rather than failing
+        # a claim the runner already paid energy for.
+        return None
 
 
 # ---------------------------------------------------------------------------

@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, ranks, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -30,7 +30,8 @@ DEFAULT_LIMIT = 25
 # Territory expires; a rivalry compares LIVE holdings, so the same decay
 # window the rest of the app uses has to be applied here too.
 _LIVE = (
-    "now() < t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)"
+    "now() < COALESCE(t.expires_at, t.created_at + make_interval("
+    "secs => GREATEST(t.strength, 0.1) * :life_per * 86400))"
 )
 
 # Every event in the ledger, relabelled from :uid's point of view.
@@ -98,7 +99,8 @@ def _cards(db: Session, uid, limit: int, other_id: str | None = None):
             SELECT a.other_id::text, u.username, u.avatar, c.tag, c.color_key, u.xp,
                    a.you_took, a.they_took, a.you_took_n, a.they_took_n, a.you_held_n,
                    l.mine, l.defended, l.area_m2, l.lat, l.lon, l.created_at,
-                   COALESCE(land.area, 0)
+                   COALESCE(land.area, 0),
+                   COALESCE(u.rank_points, 0), u.rank_points_at
             FROM agg a
             JOIN users u ON u.id = a.other_id
             JOIN last l ON l.other_id = a.other_id
@@ -133,6 +135,7 @@ def _cards(db: Session, uid, limit: int, other_id: str | None = None):
                 avatar=r[2],
                 clan_tag=r[3],
                 clan_color=_clan_color(r[4]),
+                rank_key=ranks.key_for(r[18], r[19]),
                 level=_level(r[5]),
                 you_took_m2=you_took,
                 they_took_m2=they_took,
