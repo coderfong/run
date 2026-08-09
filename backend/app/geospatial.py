@@ -564,6 +564,26 @@ def claim_window_frac(path_lonlat: List[Tuple[float, float]]) -> float:
     return min(1.0, max(w, settings.claim_window_min_m / length))
 
 
+def claim_placement_samples(count: Optional[int] = None) -> List[float]:
+    """Positions along the route to SAMPLE, as fractions, start to finish.
+
+    Placement is continuous — the runner drags the shape anywhere along the
+    route — so this is not a list of choices. It is where the server looks when
+    it has to survey the whole route at once: the first breakdown shown before
+    anything has been dragged, and the "most land / biggest steal / best
+    defence" recommendations.
+
+    The full [0, 1] range is offered, ends included. Under the window model the
+    ends had to be held back because a window there had no route to grow
+    around; a rigid stamp has no such problem, it simply overhangs the start or
+    the finish, which is a legitimate place to want your land.
+    """
+    n = max(1, count if count is not None else settings.claim_placement_count)
+    if n == 1:
+        return [0.5]
+    return [i / (n - 1) for i in range(n)]
+
+
 def claim_placement_offsets(count: int, window: float) -> List[float]:
     """Window CENTRES, as fractions of the route, first to last.
 
@@ -710,6 +730,68 @@ def claim_placements(
     return out
 
 
+def grow_claim_region_metric(
+    metric: List[Tuple[float, float]], area_m2: float
+) -> Optional[Polygon]:
+    """The run's silhouette at exactly `area_m2`, in the metric space it was
+    handed. Returns None when the coords can't carry a shape.
+
+    Split out of `route_claim_polygon_wgs` so the shape can be grown ONCE and
+    then moved around as a rigid body (see `ClaimStamp`). Growing is the
+    expensive half — a bisection over buffer operations — and it is also the
+    half that must not be repeated, because re-growing on a different stretch
+    of route produces a DIFFERENT silhouette. The runner is placing one shape,
+    not choosing between a dozen.
+    """
+    if len(metric) < 2 or area_m2 <= 0:
+        return None
+    anchors = _route_anchors(metric)
+    if len(anchors) < 2:
+        return None
+    spine = LineString(anchors)
+    if spine.length <= 0:
+        return None
+
+    # Compactness pressure. Without it the area cap turns a marathon into a
+    # 36 km pinstripe: legal (nothing is under the minimum width) and still
+    # a coloured line drawn across the city. Reining the SPAN in first
+    # forces the same land into a fat capsule with the same silhouette.
+    max_extent = math.sqrt(settings.claim_max_aspect * area_m2)
+    extent = _spine_extent(spine)
+    if extent > max_extent > 0:
+        spine = _scale_spine(spine, max_extent / extent)
+
+    min_half = settings.claim_min_width_m / 2.0
+
+    thin = _grow_region(spine, min_half)
+    if thin is None:
+        return None
+
+    if thin.area > area_m2:
+        # Too much route for the land earned: keep the silhouette, shrink
+        # it, rather than letting the claim thin out into a ribbon.
+        def area_at_scale(f: float) -> float:
+            g = _grow_region(_scale_spine(spine, max(f, 1e-3)), min_half)
+            return g.area if g else 0.0
+
+        f = _bisect(area_at_scale, 0.0, 1.0, area_m2)
+        region = _grow_region(_scale_spine(spine, max(f, 1e-3)), min_half)
+    else:
+        # A disc of this radius already holds the target, so it bounds the
+        # search from above whatever the route looks like.
+        hi = math.sqrt(area_m2 / math.pi)
+        if hi <= min_half:
+            region = thin
+        else:
+            w = _bisect(lambda x: (lambda g: g.area if g else 0.0)(_grow_region(spine, x)),
+                        min_half, hi, area_m2)
+            region = _grow_region(spine, w)
+
+    if region is None or region.area <= 0:
+        return None
+    return region
+
+
 def route_claim_polygon_wgs(
     path_lonlat: List[Tuple[float, float]],
     area_m2: float,
@@ -718,8 +800,10 @@ def route_claim_polygon_wgs(
     """Grow `area_m2` of territory around a run's route, in WGS84.
 
     `window` restricts the growth to a stretch of the route, given as (start,
-    end) fractions of its length — the same earned area packed onto part of the
-    run instead of all of it. None grows around the whole route.
+    end) fractions of its length. It is a legacy path: placement no longer
+    re-grows the shape (see `ClaimStamp`), and the only caller left passes
+    None, which grows around the whole route. Kept because it is also the
+    single-shot fallback used when a stamp cannot be built at all.
 
     Returns None when the route can't carry a shape (too few points, degenerate
     geometry) — the caller falls back to the circle claim."""
@@ -731,55 +815,184 @@ def route_claim_polygon_wgs(
             metric = _slice_by_arc(metric, window[0], window[1])
             if len(metric) < 2:
                 return None
-        anchors = _route_anchors(metric)
-        if len(anchors) < 2:
-            return None
-        spine = LineString(anchors)
-        if spine.length <= 0:
-            return None
-
-        # Compactness pressure. Without it the area cap turns a marathon into a
-        # 36 km pinstripe: legal (nothing is under the minimum width) and still
-        # a coloured line drawn across the city. Reining the SPAN in first
-        # forces the same land into a fat capsule with the same silhouette.
-        max_extent = math.sqrt(settings.claim_max_aspect * area_m2)
-        extent = _spine_extent(spine)
-        if extent > max_extent > 0:
-            spine = _scale_spine(spine, max_extent / extent)
-
-        min_half = settings.claim_min_width_m / 2.0
-
-        thin = _grow_region(spine, min_half)
-        if thin is None:
-            return None
-
-        if thin.area > area_m2:
-            # Too much route for the land earned: keep the silhouette, shrink
-            # it, rather than letting the claim thin out into a ribbon.
-            def area_at_scale(f: float) -> float:
-                g = _grow_region(_scale_spine(spine, max(f, 1e-3)), min_half)
-                return g.area if g else 0.0
-
-            f = _bisect(area_at_scale, 0.0, 1.0, area_m2)
-            region = _grow_region(_scale_spine(spine, max(f, 1e-3)), min_half)
-        else:
-            # A disc of this radius already holds the target, so it bounds the
-            # search from above whatever the route looks like.
-            hi = math.sqrt(area_m2 / math.pi)
-            if hi <= min_half:
-                region = thin
-            else:
-                w = _bisect(lambda x: (lambda g: g.area if g else 0.0)(_grow_region(spine, x)),
-                            min_half, hi, area_m2)
-                region = _grow_region(spine, w)
-
-        if region is None or region.area <= 0:
+        region = grow_claim_region_metric(metric, area_m2)
+        if region is None:
             return None
         return reproject_geometry_to_wgs84(region, to_wgs)
     except Exception:
         # Any geometry pathology falls back to the circle rather than failing
         # a claim the runner already paid energy for.
         return None
+
+
+# ---------------------------------------------------------------------------
+# The claim stamp
+# ---------------------------------------------------------------------------
+#
+# A run claims ONE shape: the silhouette of the whole route at the earned area.
+# Placing it is a RIGID MOVE of that one shape — slide its centre anywhere
+# along the route, turn it to any heading — and nothing about the move changes
+# what the shape is.
+#
+# This replaces the window model, where each position re-grew the territory
+# around a 55% stretch of the route. That was wrong in the way that matters:
+# the thing being positioned kept becoming a different thing as it moved, so
+# there was no "your run, as territory" to aim — only a menu of nine unrelated
+# blobs. Growing once and moving it rigidly is both what the game means and,
+# incidentally, an order of magnitude cheaper: one bisection over buffers
+# instead of one per position.
+#
+# Two properties fall out of the construction, and they are what make a
+# free 360° turn safe to offer:
+#
+#   * the centre always sits ON the route, because placement is defined as
+#     putting it there — so a claim is always anchored to ground the runner
+#     actually stood on, at any angle;
+#   * the area is fixed by the grow, and a rigid move cannot change it — so
+#     no position or heading can earn more land than another.
+#
+# The old `route_attachment` gate existed to stop a rotation swinging a claim
+# grown around one stretch onto streets that were never run. It is not needed
+# here and is not applied: turning a centre-anchored shape cannot walk it into
+# the next neighbourhood.
+
+
+@dataclass
+class ClaimStamp:
+    """One grown claim shape plus the route it can be moved along.
+
+    `base` is in metric space with its centroid at the ORIGIN, which is what
+    makes a turn a plain rotation about (0, 0) rather than an affine hunt for
+    the right pivot. `anchor` is where that centroid actually sits — the shape
+    AS RUN — and `t0` is the point on the route nearest to it.
+
+    Sliding is RELATIVE to the run, not absolute along the route: a placement
+    at `t` moves the shape by however far the route travels between `t0` and
+    `t`. That is the only definition under which "as run" is a pose the runner
+    can return to, and it is the only one that survives a loop. On a lap of a
+    block the grown territory is the filled block, so its centroid sits in the
+    middle of the loop with no route anywhere near it; putting that centroid
+    ON the route would shove the whole territory off to one side of the ground
+    it was grown from, and the shape would jump the moment the control was
+    touched.
+
+    Build it once per run and ask it for as many placements as you like: each
+    costs a rotation and a translation of an existing polygon, plus one
+    reprojection.
+    """
+
+    base: Polygon           # metric, centroid at (0, 0)
+    anchor: Tuple[float, float]   # metric, where that centroid sits as run
+    line: LineString        # metric route
+    t0: float               # route fraction nearest `anchor` — the resting pose
+    to_metric: Transformer
+    to_wgs: Transformer
+
+    @property
+    def frame(self) -> Tuple[Transformer, Transformer]:
+        """The (to_metric, to_wgs) pair, for helpers that take a frame."""
+        return (self.to_metric, self.to_wgs)
+
+    @property
+    def area_m2(self) -> float:
+        return float(self.base.area)
+
+    def _route_point(self, t: float) -> Tuple[float, float]:
+        p = self.line.interpolate(clamp_t(t), normalized=True)
+        return (p.x, p.y)
+
+    def centre_metric(self, t: float) -> Tuple[float, float]:
+        """Where the claim's centre sits once slid to `t`."""
+        ax, ay = self.anchor
+        rx, ry = self._route_point(t)
+        ox, oy = self._route_point(self.t0)
+        return (ax + rx - ox, ay + ry - oy)
+
+    def metric_at(self, t: float, deg: float) -> Polygon:
+        """The placed shape, still in metric space."""
+        turned = affinity.rotate(self.base, normalise_rotation(deg), origin=(0.0, 0.0))
+        cx, cy = self.centre_metric(t)
+        return affinity.translate(turned, xoff=cx, yoff=cy)
+
+    def at(self, t: float, deg: float) -> Polygon:
+        """The placed shape in WGS84 — what actually gets claimed."""
+        return reproject_geometry_to_wgs84(self.metric_at(t, deg), self.to_wgs)
+
+    def centre_wgs(self, t: float) -> Tuple[float, float]:
+        """The centre as (lon, lat), for the camera and the reveal's origin."""
+        cx, cy = self.centre_metric(t)
+        return self.to_wgs.transform(cx, cy)
+
+
+def build_claim_stamp(
+    path_lonlat: List[Tuple[float, float]],
+    area_m2: float,
+    frame: Optional[Tuple[Transformer, Transformer]] = None,
+) -> Optional[ClaimStamp]:
+    """Grow this run's one claim shape and return it ready to be placed.
+
+    `frame` is an existing `metric_frame` to project through, so a caller that
+    already built one (the options grid does) does not pay for a second set of
+    transformers — they cost more than every shapely operation here put
+    together.
+
+    Returns None when the route can't carry a shape at all; the caller falls
+    back to `route_claim_polygon_wgs` and then to the circle claim.
+    """
+    if not path_lonlat or len(path_lonlat) < 2 or area_m2 <= 0:
+        return None
+    try:
+        to_m, to_wgs = frame if frame is not None else metric_frame(path_lonlat)
+        metric = [to_m.transform(lon, lat) for lon, lat in path_lonlat]
+        line = LineString(metric)
+        if line.length <= 0:
+            return None
+        region = grow_claim_region_metric(metric, area_m2)
+        if region is None:
+            return None
+        # Centre it on the origin ONCE, so every placement is a plain rotate
+        # about (0, 0) followed by a translate. Rotating about "centroid" at
+        # placement time would work too, but it recomputes the centroid on
+        # every candidate and leaves the pivot implicit.
+        c = region.centroid
+        base = affinity.translate(region, xoff=-c.x, yoff=-c.y)
+        # Where along the route the shape is at rest. `project` is arc length
+        # to the nearest point on the line, which for a loop lands on whichever
+        # pass of the lap runs closest to the middle — any of them is the same
+        # place on the ground, so the choice does not matter.
+        t0 = line.project(c, normalized=True) if line.length > 0 else 0.5
+        return ClaimStamp(
+            base=base,
+            anchor=(c.x, c.y),
+            line=line,
+            t0=clamp_t(t0),
+            to_metric=to_m,
+            to_wgs=to_wgs,
+        )
+    except Exception:
+        return None
+
+
+def normalise_rotation(deg: Optional[float]) -> float:
+    """Any angle the client sends, folded into [0, 360)."""
+    try:
+        d = float(deg or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(d):
+        return 0.0
+    return d % 360.0
+
+
+def clamp_t(t: Optional[float], default: float = 0.5) -> float:
+    """Any position the client sends, folded into [0, 1]."""
+    try:
+        v = float(default if t is None else t)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(v):
+        return default
+    return max(0.0, min(1.0, v))
 
 
 # ---------------------------------------------------------------------------

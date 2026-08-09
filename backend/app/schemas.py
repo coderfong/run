@@ -281,15 +281,40 @@ class ClaimPlacement(BaseModel):
 class ClaimOptionsOut(BaseModel):
     """The placement choice offered after a run.
 
-    `recommendations` are indices into `placements`, so the client can move the
-    preview to a good answer in one tap instead of asking the runner to study
-    the map. Any of them may be null when no placement serves that goal (no
-    rivals nearby → no steal to recommend)."""
+    The run grows ONE shape — `base_ring`, the silhouette of the whole route at
+    the earned area — and the runner moves it rigidly: its centre slides along
+    `route`, and it turns to any angle about that centre. Both axes are
+    CONTINUOUS, so `placements` below is not the set of choices; it is a coarse
+    sample of them, there to seed the first breakdown and to back the
+    one-tap recommendations. Anything between samples is drawn by the client
+    (transform `base_ring` about `base_centre`) and priced by /claim-preview.
+
+    `recommendations` are indices into `placements`. Any of them may be null
+    when no sample serves that goal (no rivals nearby → no steal to
+    recommend)."""
 
     run_id: str
     claim_area_m2: float = 0.0
-    # 1.0 when the run is too short to slide a placement along — the client
-    # hides the position control and just confirms the one shape.
+    # The one shape this run claims, as it sits unturned with its centre at
+    # the middle of the route, and the centre it turns about. The client
+    # rotates the ring about this point and translates it along `route`; the
+    # server does exactly the same thing from `t` and `rotation_deg`, so the
+    # preview and the claim are the same polygon.
+    base_ring: List[Tuple[float, float]] = []
+    base_centre: Optional[Tuple[float, float]] = None
+    # Where along `route` the shape sits AT REST — the pose that is the run
+    # exactly as it was run. Sliding is measured from here, not from 0.5, so
+    # the runner can always put the claim back where they earned it. For a lap
+    # this is nowhere near the middle: the territory is the filled block and
+    # its centre is off the trail entirely.
+    base_t: float = 0.5
+    # The route `t` addresses, cleaned and simplified — NOT the raw GPS path
+    # the client recorded. Sent because t must mean the same thing on both
+    # sides: interpolating along a different polyline would put the client's
+    # preview somewhere the claim does not land.
+    route: List[Tuple[float, float]] = []
+    # Superseded by the continuous model; always 1.0. Kept so an older client
+    # that reads it to decide whether to show the position control still does.
     window_frac: float = 1.0
     # The grid `placements` is laid out on, position-major: entry (p, r) sits
     # at index p * rotation_count + r. Either being 1 means that axis offers no
@@ -323,23 +348,60 @@ class ClaimOptionsOut(BaseModel):
     claim_eligible: bool = True
 
 
+class ClaimPose(BaseModel):
+    """Where the run's one claim shape is put: a point on the route and an
+    angle. Both continuous — the runner drags and turns freely, so there is no
+    grid to index into.
+
+    This is safe to take from the client precisely because it is not geometry.
+    The SHAPE is grown server-side from the stored route and can only be moved
+    rigidly, `t` is clamped to the route's own length, and the shape's centre
+    is placed ON the route at `t` — so no pair of numbers here can describe a
+    claim anywhere but along the run that earned it, at the size it earned.
+    """
+
+    # Position along the route, 0 = start, 1 = finish. The claim's CENTRE goes
+    # here; the shape itself naturally overhangs at the extremes.
+    t: float = Field(0.5, ge=0.0, le=1.0)
+    # Heading, degrees anticlockwise from the shape as it was run. Any angle:
+    # a full turn about a centre that is on the route is still on the route.
+    rotation_deg: float = Field(0.0, ge=-360.0, le=360.0)
+
+
 class ClaimIn(BaseModel):
     """Place the run's claim.
 
     The territory is GROWN around the route itself, so the shape is never sent
-    by the client. `placement` (where along the route) and `rotation` (which
-    way it faces) are indices into the axes /claim-options returned — the
-    server rebuilds those from the stored route and takes the shape they
-    address, so a claim can only ever be built from the run that earned it.
-    Omitted (old clients) → the middle placement, unturned.
+    by the client — only its POSE. `t` (where along the route its centre sits)
+    and `rotation_deg` (which way it faces) are continuous; the server rebuilds
+    the shape from the stored route and moves it rigidly to that pose, so a
+    claim can only ever be built from the run that earned it.
+
+    `placement` and `rotation` are the superseded grid indices. They are still
+    accepted so a client built against the old grid keeps working: when `t` is
+    absent they are converted back to a pose. New clients send the pose and
+    leave these null.
 
     (lat, lon) is only the fallback centre for a run whose trail can't carry a
     shape at all; the server uses the route's own midpoint when they don't."""
     run_id: str
+    t: Optional[float] = Field(None, ge=0.0, le=1.0)
+    rotation_deg: Optional[float] = Field(None, ge=-360.0, le=360.0)
     placement: Optional[int] = Field(None, ge=0, le=63)
     rotation: Optional[int] = Field(None, ge=0, le=63)
     lat: Optional[float] = Field(None, ge=-90.0, le=90.0)
     lon: Optional[float] = Field(None, ge=-180.0, le=180.0)
+
+
+class ClaimPreviewIn(ClaimPose):
+    """Ask what a pose would take, without taking it.
+
+    The chooser needs this because the pose is continuous: there is no
+    precomputed cell to read the breakdown out of once the runner has dragged
+    the claim somewhere between two of them. The client transforms the ring
+    locally for the picture and asks this for the numbers, debounced."""
+
+    run_id: str
 
 
 class ClaimVictim(BaseModel):

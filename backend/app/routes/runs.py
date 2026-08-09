@@ -18,6 +18,7 @@ traces.
 import math
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
+from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from geoalchemy2.shape import from_shape
@@ -39,17 +40,16 @@ from .progression import sync_level_rewards
 from ..config import settings
 from ..database import get_db
 from ..geospatial import (
+    build_claim_stamp,
     circle_polygon_wgs,
     claim_area_m2,
-    claim_placements,
+    claim_placement_samples,
     claim_radius_m,
     claim_rotation_offsets,
-    claim_window_frac,
+    clamp_t,
     clean_path,
     metric_frame,
-    rotate_claim_polygon_wgs,
-    route_attachment,
-    route_corridor,
+    normalise_rotation,
     route_unique_length_m,
     detect_loop,
     geometry_to_rings,
@@ -187,8 +187,9 @@ def _end_run_replay(db: Session, run) -> schemas.RunResultOut:
     if eligible and area > 0:
         route = _run_route(db, run)
         if route:
-            half = claim_window_frac(route) / 2.0
-            preview = route_claim_polygon_wgs(route, area, window=(0.5 - half, 0.5 + half))
+            # The run's one shape, sitting where it was run. Same polygon
+            # /claim-options calls `base_ring` — see the note at /end-run.
+            preview = route_claim_polygon_wgs(route, area)
             if preview is not None:
                 claim_ring = polygon_to_lonlat_ring(preview)
     return schemas.RunResultOut(
@@ -299,15 +300,14 @@ def end_run(
     radius = claim_radius_m(run.distance_m) if eligible else 0.0
     claim_ring = []
     if eligible:
-        # The MIDDLE placement, not the whole route: since the earned land is
-        # deployed onto a window of the run, that window is what the result
-        # screen must show. Built directly rather than via `claim_placements`
-        # so /end-run still grows exactly one polygon — the full list of
-        # candidates is /claim-options' job, once the runner asks to aim.
-        half = claim_window_frac(cleaned.wgs_coords) / 2.0
-        preview = route_claim_polygon_wgs(
-            cleaned.wgs_coords, area, window=(0.5 - half, 0.5 + half)
-        )
+        # The run's territory, in the shape of the whole run and sitting
+        # exactly where it was run. This is the claim at its resting pose
+        # (t = 0.5, unturned), so the result screen can draw the real ground
+        # immediately and the placement controls only ever MOVE what is
+        # already on screen. Grown here rather than via the options grid so
+        # /end-run still builds exactly one polygon — surveying the route is
+        # /claim-options' job, once the runner asks to aim.
+        preview = route_claim_polygon_wgs(cleaned.wgs_coords, area)
         if preview is not None:
             claim_ring = polygon_to_lonlat_ring(preview)
 
@@ -590,81 +590,55 @@ def _chip_defence(db: Session, territory_id, attacker_strength: float) -> None:
     )
 
 
-def _claim_grid(route, area: float):
-    """Every shape this run could claim: each position along the route, turned
-    to each available heading.
+def _claim_grid(route, area: float, stamp=None):
+    """A coarse SAMPLE of the poses this run could claim: positions along the
+    route, each turned to a spread of headings.
 
-    Rotation is applied to the ALREADY-GROWN polygon rather than re-growing the
-    territory at an angle — growing is the expensive half (a bisection over
-    buffer operations) and a rotation cannot change the area, so turning nine
-    shapes eight ways costs nine grows, not seventy-two.
+    This is no longer the set of choices. Position and heading are continuous
+    now — the runner drags the shape along the route and turns it to any angle,
+    and anything between two samples is priced by /claim-preview. What the grid
+    is still for is the two things a continuous control cannot do for itself:
+    seed the first breakdown before the runner has touched anything, and back
+    the one-tap "most land / biggest steal / best defence" recommendations,
+    which need somebody to have looked at the whole space.
 
-    Returns [(placement_index, rotation_index, degrees, t, polygon, attachment)]
-    laid out position-major, which is the order the API indexes into.
+    One shape, moved rigidly. Growing the territory is the expensive half (a
+    bisection over buffer operations); a rigid move cannot change its area or
+    its silhouette, so sampling nine positions at eight headings costs ONE
+    grow rather than seventy-two.
 
-    `attachment` is the share of the candidate sitting on ground the runner
-    actually covered (geospatial.route_attachment). The grid stays rectangular
-    — the client's two rails index straight into it — but a candidate that has
-    swung off the trail is marked unavailable by the caller and can never be
-    claimed."""
-    placed = claim_placements(route, area)
-    if not placed:
+    Returns [(placement_index, rotation_index, degrees, t, polygon)] laid out
+    position-major, which is the order the API indexes into.
+    """
+    stamp = stamp if stamp is not None else _run_stamp(route, area)
+    if stamp is None:
         return []
     angles = claim_rotation_offsets()
-    # One projection for the whole grid. Building a transformer costs more than
-    # every rotation put together, so this is the difference between a snappy
-    # response and a ten-second one.
-    frame = metric_frame(route)
-    # ...and one corridor, for the same reason: it is a buffer over the entire
-    # trail, so rebuilding it per candidate would dominate the response.
-    corridor = route_corridor(route, frame)
-    grid = []
-    for pi, (t, poly) in enumerate(placed):
-        for ri, deg in enumerate(angles):
-            turned = rotate_claim_polygon_wgs(poly, deg, frame)
-            # Heading 0 is the shape as it was RUN — it cannot be detached from
-            # the route it was grown around, so it is never measured against it.
-            attach = 1.0 if ri == 0 else route_attachment(turned, corridor, frame)
-            grid.append((pi, ri, deg, t, turned, attach))
-    return grid
+    positions = claim_placement_samples()
+    return [
+        (pi, ri, deg, t, stamp.at(t, deg))
+        for pi, t in enumerate(positions)
+        for ri, deg in enumerate(angles)
+    ]
 
 
-def _is_attached(entry) -> bool:
-    """Is this candidate on ground the runner covered?"""
-    return entry[5] >= settings.claim_min_route_attachment
-
-
-def _attached_at(grid, placement: int, rotation: int):
-    """The chosen candidate, or the nearest heading at that position that is
-    still on the route.
-
-    Indices arrive off the wire, so this never fails: a detached or made-up
-    heading falls back to the closest attached one, preferring the shape as it
-    was run. The worst a forged index can do is claim their own route straight.
-    """
-    chosen = _grid_pick(grid, placement, rotation)
-    if chosen is None or _is_attached(chosen):
-        return chosen
-    same_place = [g for g in grid if g[0] == chosen[0] and _is_attached(g)]
-    if not same_place:
-        return _grid_pick(grid, chosen[0], 0)
-    # Closest heading to the one they asked for, then closest to the route's own.
-    want = chosen[2]
-    return min(
-        same_place,
-        key=lambda g: (
-            min(abs(g[2] - want), 360 - abs(g[2] - want)),
-            min(abs(g[2]), 360 - abs(g[2])),
-        ),
-    )
+def _run_stamp(route, area: float):
+    """This run's one claim shape, ready to be placed. None when the route
+    can't carry a shape at all — the caller falls back to the circle."""
+    if not route or area <= 0:
+        return None
+    try:
+        return build_claim_stamp(route, area, metric_frame(route))
+    except Exception:
+        return None
 
 
 def _grid_pick(grid, placement, rotation):
-    """The shape at (placement, rotation), or the middle position unturned.
+    """The sample at (placement, rotation), or the middle position unturned.
 
-    Indices come off the wire, so anything out of range falls back rather than
-    failing a claim the runner already ran for — the worst a made-up index can
-    do is claim a different part of their own run."""
+    Only reached by a client still speaking the old grid indices; anything out
+    of range falls back rather than failing a claim the runner already ran for.
+    """
     if not grid:
         return None
     placements = max(g[0] for g in grid) + 1
@@ -672,6 +646,27 @@ def _grid_pick(grid, placement, rotation):
     p = placement if placement is not None and 0 <= placement < placements else placements // 2
     r = rotation if rotation is not None and 0 <= rotation < rotations else 0
     return grid[p * rotations + r]
+
+
+def _pose_from_payload(payload):
+    """The (t, degrees) this claim is being placed at.
+
+    New clients send the pose directly. A client built against the superseded
+    grid sends two indices instead, and those are converted here rather than
+    anywhere else, so the rest of the claim path only ever deals in a pose.
+    """
+    if payload.t is not None or payload.rotation_deg is not None:
+        return clamp_t(payload.t), normalise_rotation(payload.rotation_deg)
+    if payload.placement is None and payload.rotation is None:
+        # Nothing chosen at all: the middle of the route, exactly as run.
+        return 0.5, 0.0
+    positions = claim_placement_samples()
+    angles = claim_rotation_offsets()
+    p = payload.placement if payload.placement is not None else len(positions) // 2
+    r = payload.rotation if payload.rotation is not None else 0
+    t = positions[p] if 0 <= p < len(positions) else 0.5
+    deg = angles[r] if 0 <= r < len(angles) else 0.0
+    return clamp_t(t), normalise_rotation(deg)
 
 
 def _placement_breakdown(db: Session, user, polys, strength: float):
@@ -836,7 +831,37 @@ def _territory_revision(db: Session, route) -> str:
     return f"{row[0]}:{row[1]}:{round(float(row[2] or 0), 3)}:{economy.ECONOMY_VERSION}"
 
 
-def _cached_cells(db: Session, user, run, route, area: float, strength: float):
+# The grown shape itself, kept apart from the sampled grid above.
+#
+# Two caches rather than one because they expire on different things. The grid
+# is a statement about the neighbourhood and goes stale when the land around
+# the run changes hands; the stamp is a statement about the RUN — its route and
+# the area /end-run froze — and neither of those can change while the run is
+# unclaimed. So the stamp survives every territory revision, which is what
+# makes /claim-preview cheap: a preview is then one rigid move and two PostGIS
+# passes, with no bisection over buffers in the middle of a drag.
+_STAMP_CACHE: "OrderedDict[str, tuple]" = OrderedDict()
+
+
+def _cached_stamp(run, route, area: float):
+    """This run's claim shape, grown at most once per process."""
+    limit = settings.claim_options_cache_size
+    key = str(run.id)
+    if limit > 0:
+        hit = _STAMP_CACHE.get(key)
+        if hit and hit[0] == area:
+            _STAMP_CACHE.move_to_end(key)
+            return hit[1]
+    stamp = _run_stamp(route, area)
+    if limit > 0:
+        _STAMP_CACHE[key] = (area, stamp)
+        _STAMP_CACHE.move_to_end(key)
+        while len(_STAMP_CACHE) > limit:
+            _STAMP_CACHE.popitem(last=False)
+    return stamp
+
+
+def _cached_cells(db: Session, user, run, route, area: float, strength: float, stamp=None):
     """(cells, breakdowns) for this run, rebuilt only when the map has moved.
 
     Cells are plain dicts holding the ROUNDED ring, not shapely polygons: the
@@ -852,7 +877,7 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float):
             _OPTIONS_CACHE.move_to_end(key)
             return hit[1], hit[2]
 
-    grid = _claim_grid(route, area)
+    grid = _claim_grid(route, area, stamp)
     breakdowns = _placement_breakdown(db, user, [g[4] for g in grid], strength) if grid else []
     cells = [
         {
@@ -863,9 +888,8 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float):
             # Trimmed to ~0.1 m: the grid is dozens of rings and full float
             # precision would be most of the response, for detail no map draws.
             "ring": [(round(x, 6), round(y, 6)) for x, y in polygon_to_lonlat_ring(poly)],
-            "attachment": round(attach, 4),
         }
-        for pi, ri, deg, t, poly, attach in grid
+        for pi, ri, deg, t, poly in grid
     ]
     if limit > 0:
         _OPTIONS_CACHE[key] = (revision, cells, breakdowns)
@@ -873,6 +897,67 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float):
         while len(_OPTIONS_CACHE) > limit:
             _OPTIONS_CACHE.popitem(last=False)
     return cells, breakdowns
+
+
+def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlacement]):
+    """Fill in the action, the price and the expected reward for each entry.
+
+    Shared by /claim-options and /claim-preview so a dragged pose is described
+    in exactly the same terms as a sampled one — the chooser must not change
+    its story about what a move costs just because the runner moved it a metre.
+
+    Everything here is re-read per request rather than cached with the
+    geometry: energy, the day's allowances and the first-claim discount all
+    move for reasons that have nothing to do with this run, and a stale energy
+    meter is worse than a slow one.
+    """
+    first_of_day = economy.claims_today(db, user.id) == 0
+    est = energy_mod.status(db, user.id)
+    neutral_left = economy.neutral_claims_remaining(db, user.id)
+    xp_left = economy.claim_xp_allowance(db, user.id)
+    rank_left = economy.neutral_rank_allowance(db, user.id)
+    run_xp = round((run.distance_m / 1000.0) * settings.xp_per_km)
+
+    for p in placements:
+        p.action = economy.claim_action(p.area_m2, p.enemy_m2, p.defended_m2, p.mine_m2)
+        p.base_energy_cost = economy.claim_cost(p.action, first_of_day=False)
+        p.energy_cost = economy.claim_cost(p.action, first_of_day)
+        p.applied_discounts = ["first_claim_of_day"] if first_of_day else []
+        p.energy_before = est["energy"]
+        p.energy_after = max(0, est["energy"] - p.energy_cost)
+
+        # Same arithmetic the claim will do, against the same allowances.
+        xp = settings.xp_per_claim + round((p.area_m2 / 1e6) * settings.xp_per_km2_claimed)
+        xp = min(xp, round(run_xp * settings.xp_claim_max_frac_of_run))
+        if p.enemy_m2 > 0:
+            steal = settings.xp_per_steal + round((p.enemy_m2 / 1e6) * settings.xp_per_km2_stolen)
+            xp += min(steal, round(run_xp * settings.xp_steal_max_frac_of_run))
+        p.expected_xp = max(0, min(xp, xp_left))
+        p.expected_rank_points = (
+            min(ranks.POINTS_CLAIM, rank_left)
+            if p.action == economy.ACTION_EMPTY
+            else ranks.POINTS_CLAIM
+        ) + (ranks.POINTS_STEAL if p.enemy_m2 > PLACEMENT_MIN_M2 else 0)
+
+        # Why this particular move is closed, in the words the claim endpoint
+        # would refuse with — so the button explains itself before it is
+        # pressed rather than after.
+        #
+        # There is no longer an off-route reason to give. Under the window
+        # model a turn could swing a claim grown around one stretch of road
+        # onto streets that were never run, and headings past that point had to
+        # be closed. A rigid stamp slides with the route and turns about its
+        # own centre, so every pose is on the run by construction and the whole
+        # 360 is open.
+        if p.action == economy.ACTION_EMPTY and neutral_left <= 0:
+            p.available = False
+            p.unavailable_reason = economy.REASON_NEUTRAL_LIMIT
+        elif est["energy"] < p.energy_cost:
+            short = p.energy_cost - est["energy"]
+            p.available = False
+            p.unavailable_reason = f"You need {short} more Energy for this attack."
+
+    return est, first_of_day, neutral_left
 
 
 @router.get("/runs/{run_id}/claim-options", response_model=schemas.ClaimOptionsOut)
@@ -914,8 +999,9 @@ def claim_options(
 
     route = _run_route(db, run)
     strength = claim_strength(run.distance_m, run.duration_s)
+    stamp = _cached_stamp(run, route, area)
     # Geometry only — the pricing below is re-read every time. See _cached_cells.
-    cells, breakdowns = _cached_cells(db, user, run, route, area, strength)
+    cells, breakdowns = _cached_cells(db, user, run, route, area, strength, stamp)
     if not cells:
         # No usable route: the circle fallback is the only placement there is.
         return schemas.ClaimOptionsOut(run_id=str(run.id), claim_area_m2=area)
@@ -929,7 +1015,6 @@ def claim_options(
                 rotation=cell["rotation"],
                 t=cell["t"],
                 rotation_deg=cell["rotation_deg"],
-                route_attachment=cell["attachment"],
                 ring=cell["ring"],
                 # What the claim covers (identical everywhere — the run earns
                 # one amount of land) versus what survives the carve.
@@ -953,50 +1038,7 @@ def claim_options(
     # of how a placement reads — "storming that border costs 24, expanding
     # east costs 16" is a decision; one flat 25 was a toll. Everything here is
     # computed server-side so the client displays rather than derives.
-    first_of_day = economy.claims_today(db, user.id) == 0
-    est = energy_mod.status(db, user.id)
-    neutral_left = economy.neutral_claims_remaining(db, user.id)
-    xp_left = economy.claim_xp_allowance(db, user.id)
-    rank_left = economy.neutral_rank_allowance(db, user.id)
-    run_xp = round((run.distance_m / 1000.0) * settings.xp_per_km)
-    for p in out:
-        p.action = economy.claim_action(p.area_m2, p.enemy_m2, p.defended_m2, p.mine_m2)
-        p.base_energy_cost = economy.claim_cost(p.action, first_of_day=False)
-        p.energy_cost = economy.claim_cost(p.action, first_of_day)
-        p.applied_discounts = ["first_claim_of_day"] if first_of_day else []
-        p.energy_before = est["energy"]
-        p.energy_after = max(0, est["energy"] - p.energy_cost)
-
-        # Same arithmetic the claim will do, against the same allowances.
-        xp = settings.xp_per_claim + round((p.area_m2 / 1e6) * settings.xp_per_km2_claimed)
-        xp = min(xp, round(run_xp * settings.xp_claim_max_frac_of_run))
-        if p.enemy_m2 > 0:
-            steal = settings.xp_per_steal + round((p.enemy_m2 / 1e6) * settings.xp_per_km2_stolen)
-            xp += min(steal, round(run_xp * settings.xp_steal_max_frac_of_run))
-        p.expected_xp = max(0, min(xp, xp_left))
-        p.expected_rank_points = (
-            min(ranks.POINTS_CLAIM, rank_left)
-            if p.action == economy.ACTION_EMPTY
-            else ranks.POINTS_CLAIM
-        ) + (ranks.POINTS_STEAL if p.enemy_m2 > PLACEMENT_MIN_M2 else 0)
-
-        # Why this particular move is closed, in the words the claim endpoint
-        # would refuse with — so the button explains itself before it is
-        # pressed rather than after.
-        if p.rotation != 0 and p.route_attachment < settings.claim_min_route_attachment:
-            # Turned so far it is mostly on streets this run never touched.
-            # Checked FIRST: it is a property of the shape itself, and saying
-            # "you need 6 more Energy" for a claim that could never be placed
-            # would send the runner off to buy energy for nothing.
-            p.available = False
-            p.unavailable_reason = economy.REASON_OFF_ROUTE
-        elif p.action == economy.ACTION_EMPTY and neutral_left <= 0:
-            p.available = False
-            p.unavailable_reason = economy.REASON_NEUTRAL_LIMIT
-        elif est["energy"] < p.energy_cost:
-            short = p.energy_cost - est["energy"]
-            p.available = False
-            p.unavailable_reason = f"You need {short} more Energy for this attack."
+    est, first_of_day, neutral_left = _price_placements(db, user, run, out)
 
     n_place = cells[-1]["placement"] + 1
     n_rot = cells[-1]["rotation"] + 1
@@ -1024,10 +1066,29 @@ def claim_options(
     # they cannot afford, or an expansion the day has no room for, is worse
     # than recommending nothing.
     most_land = best(lambda p: (p.new_m2 + p.enemy_m2) if p.available else 0.0)
+    # The shape itself, at rest and unturned, plus the pivot it turns about and
+    # the route it slides along. This is what makes the control continuous: the
+    # client transforms these three locally at gesture speed and only asks the
+    # server for the NUMBERS, so dragging never waits on a round trip.
+    base_ring = []
+    base_centre = None
+    base_route = []
+    if stamp is not None:
+        base_ring = [
+            (round(x, 6), round(y, 6))
+            for x, y in polygon_to_lonlat_ring(stamp.at(stamp.t0, 0.0))
+        ]
+        cx, cy = stamp.centre_wgs(stamp.t0)
+        base_centre = (round(cx, 6), round(cy, 6))
+        base_route = [(round(x, 6), round(y, 6)) for x, y in route]
+
     return schemas.ClaimOptionsOut(
         run_id=str(run.id),
         claim_area_m2=area,
-        window_frac=claim_window_frac(route),
+        base_ring=base_ring,
+        base_centre=base_centre,
+        base_t=round(stamp.t0, 4) if stamp is not None else 0.5,
+        route=base_route,
         placement_count=n_place,
         rotation_count=n_rot,
         placements=out,
@@ -1045,11 +1106,81 @@ def claim_options(
         energy_max=est["energy_max"],
         first_claim_of_day=first_of_day,
         neutral_claims_remaining=neutral_left,
-        min_route_attachment=settings.claim_min_route_attachment,
+        # No heading is closed any more — a rigid stamp turns about its own
+        # centre and slides with the route, so every pose is on the run by
+        # construction. Sent as 0 rather than dropped so an older client's
+        # "is this stop open" comparison passes for every stop instead of
+        # silently greying out most of the rail.
+        min_route_attachment=0.0,
         tier=run.tier or economy.CLAIMABLE,
         qualification_reason=run.gate_reason,
         claim_eligible=True,
     )
+
+
+@router.post("/runs/{run_id}/claim-preview", response_model=schemas.ClaimPlacement)
+def claim_preview(
+    run_id: str,
+    payload: schemas.ClaimPreviewIn,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """What an arbitrary pose would take, without taking it.
+
+    Placement is continuous, so /claim-options can only ever SAMPLE the space;
+    once the runner drags the claim between two samples there is no cell to
+    read the breakdown out of. This prices the exact pose instead.
+
+    It is deliberately geometry-light: the shape was grown when the options
+    were built and is held in `_STAMP_CACHE`, so a preview is one rigid move
+    plus the same two PostGIS passes every sampled cell paid for. The client
+    calls it debounced — while the finger is still moving, the last answer is
+    shown dimmed rather than a spinner, because the picture on the map is
+    already correct and only the numbers are behind.
+    """
+    run = db.get(models.Run, run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(404, "run not found")
+    if run.ended_at is None:
+        raise HTTPException(409, "run not finished yet")
+    if run.claimed_at is not None:
+        raise HTTPException(409, economy.REASON_ALREADY_CLAIMED)
+
+    area = float(run.claim_area_m2 or 0.0)
+    if area <= 0:
+        raise HTTPException(422, run.gate_reason or economy.REASON_MIN_CLAIM_DISTANCE)
+
+    route = _run_route(db, run)
+    stamp = _cached_stamp(run, route, area)
+    if stamp is None:
+        raise HTTPException(422, "run has no usable route to claim from")
+
+    t = clamp_t(payload.t)
+    deg = normalise_rotation(payload.rotation_deg)
+    poly = stamp.at(t, deg)
+    b = _placement_breakdown(
+        db, user, [poly], claim_strength(run.distance_m, run.duration_s)
+    )[0]
+
+    out = schemas.ClaimPlacement(
+        index=-1,  # not a member of the sampled grid
+        t=round(t, 4),
+        rotation_deg=round(deg, 2),
+        ring=[(round(x, 6), round(y, 6)) for x, y in polygon_to_lonlat_ring(poly)],
+        area_m2=b["area_m2"],
+        held_m2=b["new_m2"] + b["enemy_m2"] + b["mine_m2"] + b["ally_m2"],
+        new_m2=b["new_m2"],
+        enemy_m2=b["enemy_m2"],
+        defended_m2=b["defended_m2"],
+        mine_m2=b["mine_m2"],
+        ally_m2=b["ally_m2"],
+        rivals=[
+            schemas.PlacementRival(**r)
+            for r in sorted(b["rivals"].values(), key=lambda r: (r["defended"], -r["area_m2"]))
+        ],
+    )
+    _price_placements(db, user, run, [out])
+    return out
 
 
 @router.post("/claim-territory", response_model=schemas.ClaimOut)
@@ -1063,10 +1194,12 @@ def claim_territory(
     db: Session = Depends(get_db),
 ):
     """Place the run's claim. The distance decides how much land is earned and
-    the ROUTE decides its shape; `placement` decides WHERE along that route the
-    land lands — an index into the list /claim-options returned, rebuilt here
-    from the stored path so the shape is always the server's. One claim per
-    run, ever."""
+    the ROUTE decides its shape; the POSE (`t` along the route, `rotation_deg`
+    about the shape's own centre) decides where that shape ends up. The shape
+    is rebuilt here from the stored path and moved rigidly, so it is always the
+    server's — a pose is two numbers and cannot describe a claim anywhere but
+    along the run that earned it, at the size it earned. One claim per run,
+    ever."""
     run = db.get(models.Run, payload.run_id)
     if run is None or run.user_id != user.id:
         raise HTTPException(404, "run not found")
@@ -1145,16 +1278,15 @@ def claim_territory(
     if area <= 0:
         raise HTTPException(422, economy.REASON_MIN_CLAIM_DISTANCE)
 
-    # Deploy the earned land onto the chosen stretch of the route, turned the
-    # chosen way. The grid is rebuilt here rather than trusted from the client:
-    # two indices are all that travel, so the shape is always the server's.
-    # `_attached_at`, not `_grid_pick`: a heading turned so far that the claim
-    # would land on streets this run never touched is snapped back to the
-    # nearest one that is still on the trail. The chooser already greys those
-    # candidates out, but the enforcement has to be here — indices arrive off
-    # the wire and a client is free to send one the UI would not offer.
-    chosen = _attached_at(_claim_grid(route, area), payload.placement, payload.rotation)
-    claim_poly = chosen[4] if chosen else None
+    # Deploy the earned land at the chosen pose. The SHAPE is grown here from
+    # the stored route rather than trusted from the client — only two numbers
+    # travel — and moving it rigidly cannot change its area or walk it off the
+    # run, so both are safe to clamp and use rather than validate against a
+    # whitelist of poses. `clamp_t`/`normalise_rotation` fold anything that
+    # arrives, including nonsense, into the legal range.
+    t_pose, deg_pose = _pose_from_payload(payload)
+    stamp = _cached_stamp(run, route, area)
+    claim_poly = stamp.at(t_pose, deg_pose) if stamp is not None else None
 
     # Price the move the runner actually chose, from the SERVER's reading of
     # what it does — a client that says "this is only a quiet expansion" must
@@ -1220,6 +1352,7 @@ def claim_territory(
     # cached grids invalidate on their own: this claim moves the count,
     # timestamp and strength sum that `_territory_revision` fingerprints.
     _OPTIONS_CACHE.pop(str(run.id), None)
+    _STAMP_CACHE.pop(str(run.id), None)
     # What the move turned out to be — this is what the neutral-expansion
     # limit counts, and it is written only now, so a claim that failed
     # anywhere above never consumed the allowance.
