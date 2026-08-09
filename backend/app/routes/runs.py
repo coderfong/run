@@ -17,7 +17,7 @@ traces.
 
 import math
 from collections import OrderedDict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from geoalchemy2.shape import from_shape
@@ -75,6 +75,13 @@ def start_run(
     db: Session = Depends(get_db),
 ):
     started = payload.started_at or datetime.utcnow()
+    # Run timestamps are naive UTC: the column carries no timezone and every
+    # duration in this file is measured against `datetime.utcnow()`. An ISO
+    # string ending in Z is the ordinary way for a client to write a time, and
+    # it parses AWARE — which lands in a column with nowhere to keep the offset
+    # and makes the next `utcnow() - started_at` raise. Normalise at the door.
+    if started.tzinfo is not None:
+        started = started.astimezone(timezone.utc).replace(tzinfo=None)
     run = models.Run(user_id=user.id, started_at=started)
     db.add(run)
     db.commit()
