@@ -43,11 +43,17 @@ def _allowlist() -> set[str]:
 
 
 def is_dev_account(user) -> bool:
-    """True only for accounts explicitly named in the environment."""
+    """True only for accounts explicitly named in the environment.
+
+    Id, username or email — whichever the person setting the variable happens
+    to know. All three are exact matches after lowercasing: a prefix match
+    would mean naming one account could quietly name another, which is the one
+    mistake this function must not make.
+    """
     allowed = _allowlist()
     if not allowed or user is None:
         return False
-    return (
-        str(getattr(user, "id", "")).lower() in allowed
-        or str(getattr(user, "username", "") or "").lower() in allowed
+    return any(
+        str(getattr(user, field, "") or "").lower() in allowed
+        for field in ("id", "username", "email")
     )
