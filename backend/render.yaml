@@ -40,6 +40,14 @@ services:
       # but also means the season recompute cannot be triggered by hand.
       - key: ADMIN_TOKEN
         generateValue: true
+      # Who may use the in-app run simulator: comma-separated user ids or
+      # usernames, and empty means nobody. See app/devtools.py. It ships dark
+      # on purpose — the harness submits runs the server cannot tell from real
+      # ones, so this is the line between a testing tool in one tester's build
+      # and free territory in everybody's. `sync: false` keeps the list out of
+      # git and makes turning it off a dashboard edit rather than a release.
+      - key: DEV_RUN_ACCOUNTS
+        sync: false
 
   # Expiry sweep + hold credit. Talks to the database directly (see sweep.py),
   # so it needs no admin token and does not depend on the web service being up.

@@ -57,6 +57,7 @@ from ..geospatial import (
     route_claim_polygon_wgs,
 )
 from ..clans_meta import color_triple
+from ..devtools import is_dev_account
 from ..progression import level_from_xp, xp_for_level
 from ..ratelimit import limiter
 from ..security import current_user, require_admin
@@ -74,14 +75,22 @@ def start_run(
     user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    started = payload.started_at or datetime.utcnow()
-    # Run timestamps are naive UTC: the column carries no timezone and every
-    # duration in this file is measured against `datetime.utcnow()`. An ISO
-    # string ending in Z is the ordinary way for a client to write a time, and
-    # it parses AWARE — which lands in a column with nowhere to keep the offset
-    # and makes the next `utcnow() - started_at` raise. Normalise at the door.
-    if started.tzinfo is not None:
-        started = started.astimezone(timezone.utc).replace(tzinfo=None)
+    # A backdated start is the run simulator's, and only the run simulator's.
+    # Duration is measured from THIS row, so honouring it for anybody would let
+    # a caller declare a two-second submission to be a forty-minute run and
+    # clear the claim bar without moving. It is dropped silently rather than
+    # refused: the server clocking its own start is the documented behaviour,
+    # and a 403 would only tell a prober that the field does something.
+    started = datetime.utcnow()
+    if payload.started_at is not None and is_dev_account(user):
+        started = payload.started_at
+        # Run timestamps are naive UTC: the column carries no timezone and
+        # every duration in this file is measured against `datetime.utcnow()`.
+        # An ISO string ending in Z is the ordinary way for a client to write a
+        # time and it parses AWARE, which lands in a column with nowhere to
+        # keep the offset and makes the next subtraction raise.
+        if started.tzinfo is not None:
+            started = started.astimezone(timezone.utc).replace(tzinfo=None)
     run = models.Run(user_id=user.id, started_at=started)
     db.add(run)
     db.commit()

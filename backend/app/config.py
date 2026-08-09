@@ -131,6 +131,14 @@ class Settings(BaseSettings):
     cheat_clean_spacing_cv: float = 0.05    # near-zero spacing variance = spoof-ish
     cheat_clean_accuracy_var: float = 0.01  # near-zero accuracy variance = spoof-ish
 
+    # ---- development harness ---------------------------------------------
+    # Comma-separated user ids or usernames allowed to use the in-app run
+    # simulator (see app/devtools.py). EMPTY BY DEFAULT, and it must stay that
+    # way in the file: the harness submits runs the server cannot tell from
+    # real ones, so this is the difference between a testing tool and a cheat
+    # button in everybody's build.
+    dev_run_accounts: str = ""
+
     # ---- rate limiting ---------------------------------------------------
     rate_limit_auth: str = "10/minute"
     rate_limit_submit_path: str = "60/minute"

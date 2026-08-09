@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from .. import mailer, models, recovery
 from ..config import settings
+from ..devtools import is_dev_account
 from ..database import get_db
 from ..ratelimit import limiter
 from ..security import (
@@ -132,6 +133,11 @@ def _user_dict(user: models.User) -> dict:
         "username": user.username,
         "email": user.email,
         "email_verified": user.email_verified_at is not None,
+        # Whether this account may use the in-app development harness. Server
+        # decided (see app/devtools.py) rather than compiled in, so the run
+        # simulator is present in every build and reaches nobody who has not
+        # been named in the environment. False for everyone by default.
+        "dev_tools": is_dev_account(user),
     }
 
 
