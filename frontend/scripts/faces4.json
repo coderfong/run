@@ -1,0 +1,205 @@
+{
+ "layout": {
+  "w": 0.3806,
+  "top": 0.1182
+ },
+ "glasses_cy": 0.1549,
+ "faces": [
+  {
+   "idx": 1,
+   "stem": "faceN1",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_32 AM (1).png",
+   "w": 512,
+   "h": 467
+  },
+  {
+   "idx": 2,
+   "stem": "faceN2",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_33 AM (2).png",
+   "w": 512,
+   "h": 496
+  },
+  {
+   "idx": 3,
+   "stem": "faceN3",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_33 AM (3).png",
+   "w": 512,
+   "h": 479
+  },
+  {
+   "idx": 4,
+   "stem": "faceN4",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_33 AM (4).png",
+   "w": 512,
+   "h": 439
+  },
+  {
+   "idx": 5,
+   "stem": "faceN5",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_33 AM (5).png",
+   "w": 512,
+   "h": 447
+  },
+  {
+   "idx": 6,
+   "stem": "faceN6",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_33 AM (7).png",
+   "w": 512,
+   "h": 470
+  },
+  {
+   "idx": 7,
+   "stem": "faceN7",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_34 AM (10).png",
+   "w": 507,
+   "h": 512
+  },
+  {
+   "idx": 8,
+   "stem": "faceN8",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_34 AM (9).png",
+   "w": 512,
+   "h": 488
+  },
+  {
+   "idx": 9,
+   "stem": "faceN9",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_39 AM (1).png",
+   "w": 512,
+   "h": 494
+  },
+  {
+   "idx": 10,
+   "stem": "faceN10",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_40 AM (5).png",
+   "w": 512,
+   "h": 493
+  },
+  {
+   "idx": 11,
+   "stem": "faceN11",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_40 AM (6).png",
+   "w": 512,
+   "h": 508
+  },
+  {
+   "idx": 12,
+   "stem": "faceN12",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_41 AM (10).png",
+   "w": 512,
+   "h": 480
+  },
+  {
+   "idx": 13,
+   "stem": "faceN13",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 169,
+   "h": 203
+  },
+  {
+   "idx": 14,
+   "stem": "faceN14",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 168,
+   "h": 201
+  },
+  {
+   "idx": 15,
+   "stem": "faceN15",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 181,
+   "h": 201
+  },
+  {
+   "idx": 16,
+   "stem": "faceN16",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 168,
+   "h": 230
+  },
+  {
+   "idx": 17,
+   "stem": "faceN17",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 158,
+   "h": 186
+  },
+  {
+   "idx": 18,
+   "stem": "faceN18",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 168,
+   "h": 205
+  },
+  {
+   "idx": 19,
+   "stem": "faceN19",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 169,
+   "h": 208
+  },
+  {
+   "idx": 20,
+   "stem": "faceN20",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 169,
+   "h": 158
+  },
+  {
+   "idx": 21,
+   "stem": "faceN21",
+   "src": "ChatGPT Image Aug 1, 2026, 01_10_55 AM.png cell",
+   "w": 165,
+   "h": 224
+  },
+  {
+   "idx": 22,
+   "stem": "faceN22",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_02 AM.png cell",
+   "w": 173,
+   "h": 201
+  },
+  {
+   "idx": 23,
+   "stem": "faceN23",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_02 AM.png cell",
+   "w": 174,
+   "h": 206
+  },
+  {
+   "idx": 24,
+   "stem": "faceN24",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_02 AM.png cell",
+   "w": 173,
+   "h": 206
+  },
+  {
+   "idx": 25,
+   "stem": "faceN25",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_02 AM.png cell",
+   "w": 145,
+   "h": 206
+  },
+  {
+   "idx": 26,
+   "stem": "faceN26",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_02 AM.png cell",
+   "w": 170,
+   "h": 232
+  },
+  {
+   "idx": 27,
+   "stem": "faceN27",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_02 AM.png cell",
+   "w": 162,
+   "h": 212
+  },
+  {
+   "idx": 28,
+   "stem": "faceN28",
+   "src": "ChatGPT Image Aug 1, 2026, 01_11_02 AM.png cell",
+   "w": 167,
+   "h": 208
+  }
+ ]
+}

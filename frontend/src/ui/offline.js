@@ -28,7 +28,7 @@ export function OfflineBanner() {
   return (
     <View style={[styles.banner, { paddingTop: insets.top + 4 }]} pointerEvents="none">
       <Text style={styles.text}>
-        You're offline — runs keep recording, we'll sync when you're back.
+        You're offline. Runs keep recording, and we'll sync when you're back.
       </Text>
     </View>
   );

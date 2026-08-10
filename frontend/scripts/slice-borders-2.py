@@ -121,14 +121,26 @@ for suffix, keys in PAIRS:
         carved, hole = carve_hole(band)
         im = square(carved, 1024)
         im.save(os.path.join(OUT, f"{key}.png"), optimize=True)
+        # Measure the opening by ray-casting from the centre and taking the
+        # MEDIAN first-hit radius. The bounding box of the carved hole —
+        # min(box_w, box_h) — was the original measure and it understates
+        # every ornate tier: the mythic wreath's flame intrudes from the top
+        # and the gold pendant from the bottom, which shortens the box and so
+        # shrinks the portrait, leaving a dark gap inside the frame. The
+        # median shrugs off both an inward ornament and a gap in the band.
+        # Keep this in step with scripts/remeasure-border-holes.py.
         a = np.asarray(im)
-        holes, hn = ndimage.label(a[..., 3] == 0)
-        cid = holes[512, 512]
-        if cid == 0:
-            ratio = 0.78
-        else:
-            hy, hx = np.where(holes == cid)
-            ratio = min(hx.max() - hx.min(), hy.max() - hy.min()) / 1024
+        opaque = a[..., 3] > 40
+        radii = []
+        for ang in np.linspace(0, 2 * np.pi, 1440, endpoint=False):
+            dy, dx = np.sin(ang), np.cos(ang)
+            r = 0.0
+            while r < 512:
+                if opaque[int(512 + dy * r), int(512 + dx * r)]:
+                    break
+                r += 0.5
+            radii.append(r)
+        ratio = float(np.median(radii)) * 2.0 / 1024
         ratios[key] = round(float(ratio), 4)
         flag = "" if ratio >= 0.78 else "   <-- still thick"
         print(f"  {key:11s} hole {ratio:.3f}{flag}")

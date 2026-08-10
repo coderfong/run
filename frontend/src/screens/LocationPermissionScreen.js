@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { brand, colors, radius, space, type, withAlpha } from '../theme';
 import { PressableScale } from '../ui/motion';
+import GameAnimation from '../components/GameAnimation';
 
 const BULLETS = [
   { icon: Timer, text: "GPS stays on only while you're running." },
@@ -67,6 +68,7 @@ function Radar({ color = brand.purple }) {
           <LocateFixed size={22} color="#fff" strokeWidth={2} />
         </View>
       </View>
+      <GameAnimation name="locationPulse" size={168} loop style={styles.locationFx} />
     </View>
   );
 }
@@ -109,7 +111,7 @@ export default function LocationPermissionScreen({ onDone }) {
         {denied ? (
           <Text style={styles.body}>
             PASER can't record a run without it. Turn on location for PASER in
-            Settings — we only track during an active run.
+            Settings. We only track during an active run.
           </Text>
         ) : (
           <View style={styles.bullets}>
@@ -181,6 +183,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.gutter,
   },
   radar: { width: 220, height: 220, alignItems: 'center', justifyContent: 'center' },
+  locationFx: { position: 'absolute', left: 26, top: 26 },
   radarCore: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center' },
   radarDot: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center' },
 

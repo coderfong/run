@@ -1,11 +1,16 @@
 // Notifications inbox (the bell). Marks everything read on open.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { api } from '../api/client';
+import { useQuery } from '../hooks/useQuery';
 import { brand, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Skeleton, EmptyState } from '../components/ui';
 import AppIcon from '../components/AppIcon';
+import PortraitBorder from '../components/PortraitBorder';
+import { CharacterBust } from '../components/character/CharacterRig';
+import { shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
 
 // category → generated sticker icon (assets/icons/*).
 const CATEGORY_ICON = {
@@ -15,7 +20,39 @@ const CATEGORY_ICON = {
   kudos: 'like',
   season: 'trophy',
   recap: 'bell',
+  pasers: 'invite',
+  paserby: 'route',
 };
+
+// The face of whoever did it, when there is one. A steal, a kudos, a paser
+// request — these are people, and a row of identical category stickers made
+// the inbox read like a system log. The category icon rides along as a small
+// badge so you can still tell WHAT happened at a glance, and system notices
+// (season, recap) fall back to the sticker on its own.
+function Actor({ item, styles }) {
+  const iconName = CATEGORY_ICON[item.category] || 'bell';
+  if (!item.actor_avatar) {
+    return (
+      <View style={styles.icon}>
+        <AppIcon name={iconName} size={22} faded={item.read} />
+      </View>
+    );
+  }
+  return (
+    <View style={styles.actor}>
+      <PortraitBorder borderKey={item.actor_rank_key || 'wood'} size={40}>
+        <CharacterBust
+          equipped={item.actor_avatar}
+          size={40}
+          bg={item.actor_clan_color?.fill}
+        />
+      </PortraitBorder>
+      <View style={styles.actorBadge}>
+        <AppIcon name={iconName} size={14} />
+      </View>
+    </View>
+  );
+}
 
 function timeAgo(iso) {
   const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -29,21 +66,29 @@ export default function NotificationsScreen() {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
-  const [items, setItems] = useState(null);
+  const reduce = useReduceMotion();
+  // Shares the 'notifications' key with Home's bell, so opening the inbox from
+  // a Home that already knows the unread count renders the list immediately.
+  const { data, loading, setData } = useQuery('notifications', api.notifications, {
+    fallback: { unread: 0, items: [] },
+  });
+  const items = data?.items || [];
 
+  // Marking read is a side effect of arriving, not of loading — it has to wait
+  // until a response actually says something is unread.
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.notifications();
-        setItems(data.items || []);
-        if (data.unread > 0) api.markNotificationsRead().catch(() => {});
-      } catch {
-        setItems([]);
-      }
-    })();
-  }, []);
+    if (!data?.unread) return;
+    api.markNotificationsRead().catch(() => {});
+    // Reflect it locally so the rows lose their unread tint and Home's badge
+    // is already clear when you go back, without another round trip.
+    setData((prev) => ({
+      ...prev,
+      unread: 0,
+      items: (prev?.items || []).map((n) => ({ ...n, read: true })),
+    }));
+  }, [data?.unread, setData]);
 
-  if (!items) {
+  if (loading) {
     return (
       <Screen>
         {Array.from({ length: 5 }).map((_, i) => (
@@ -71,19 +116,23 @@ export default function NotificationsScreen() {
         data={items}
         keyExtractor={(n) => n.id}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl, paddingTop: space.md }}
-        renderItem={({ item }) => {
-          const iconName = CATEGORY_ICON[item.category] || 'bell';
+        renderItem={({ item, index }) => {
           return (
-            <View style={[styles.row, !item.read && styles.unread]}>
-              <View style={styles.icon}>
-                <AppIcon name={iconName} size={22} faded={item.read} />
-              </View>
+            <Animated.View
+              entering={
+                reduce || !shouldStagger(index)
+                  ? undefined
+                  : FadeInDown.delay(staggerDelay(index)).duration(260)
+              }
+              style={[styles.row, !item.read && styles.unread]}
+            >
+              <Actor item={item} styles={styles} />
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{item.title}</Text>
                 <Text style={[type.bodySm, { color: colors.textMuted, marginTop: 2 }]}>{item.body}</Text>
                 <Text style={[type.caption, { marginTop: 4 }]}>{timeAgo(item.created_at)}</Text>
               </View>
-            </View>
+            </Animated.View>
           );
         }}
       />
@@ -102,6 +151,22 @@ const makeStyles = (colors) =>
       marginBottom: space.sm,
     },
     unread: { backgroundColor: colors.cardAlt },
+    // The portrait needs room for the badge hanging off its corner, so it is
+    // sized past the frame rather than clipped to it.
+    actor: { width: 40, height: 40 },
+    actorBadge: {
+      position: 'absolute',
+      right: -5,
+      bottom: -3,
+      width: 21,
+      height: 21,
+      borderRadius: 11,
+      backgroundColor: colors.bg,
+      borderWidth: 1.5,
+      borderColor: colors.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     icon: {
       width: 38,
       height: 38,

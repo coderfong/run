@@ -15,6 +15,7 @@ import { useAccent } from '../hooks/useAccent';
 import { useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
+import { territoryRings } from '../components/claim/geometry';
 import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer, UserMarker } from '../components/GameMap';
 
 // Area-weighted centroid (shoelace) of a territory's largest ring — where the
@@ -49,9 +50,7 @@ function toFeatures(territories, userId) {
   for (const t of territories) {
     const c = t.clan_color || NEUTRAL;
     const mine = t.user_id === userId;
-    const rings = t.rings?.length ? t.rings : [t.polygon];
-    rings.forEach((ring, ri) => {
-      if (!ring || ring.length < 3) return;
+    territoryRings(t).forEach((ring, ri) => {
       const coords = ring.map(([lon, lat]) => [lon, lat]);
       if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
         coords.push(coords[0]);
@@ -82,6 +81,9 @@ function toFeatures(territories, userId) {
 // early-returned and the newly revealed strip, which was never fetched, drew
 // empty. Land "disappearing" while panning was that.)
 const VIEW_PAD = 0.6; // fetch 60% beyond each edge so small pans are pre-loaded
+// Portraits help up close but cover territory silhouettes when the camera
+// pulls back. Below this zoom, only a small player-location dot remains.
+const PORTRAIT_MIN_ZOOM = 13.25;
 
 function padBbox(b, f = VIEW_PAD) {
   const dLon = (b.maxLon - b.minLon) * f;
@@ -248,7 +250,7 @@ export default function GlobalMapScreen({ route }) {
     const focus = mine.length ? mine : list;
     const pts = [];
     focus.forEach((t) =>
-      (t.rings?.length ? t.rings : [t.polygon]).forEach((ring) =>
+      territoryRings(t).forEach((ring) =>
         ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
       )
     );
@@ -262,7 +264,7 @@ export default function GlobalMapScreen({ route }) {
   // avatars come from the API; the viewer's own uses the freshest local
   // loadout. Capped + shown only when zoomed in enough to avoid clutter/perf.
   const landPortraits = useMemo(() => {
-    if ((zoom || 0) < 11.5) return [];
+    if ((zoom || 0) < PORTRAIT_MIN_ZOOM) return [];
     return (list || [])
       .map((t) => ({
         id: t.id,
@@ -276,6 +278,7 @@ export default function GlobalMapScreen({ route }) {
       .sort((a, b) => b.area - a.area)
       .slice(0, 40);
   }, [list, user.id, equipped, zoom]);
+  const showPortraits = (zoom || 0) >= PORTRAIT_MIN_ZOOM;
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
@@ -294,7 +297,7 @@ export default function GlobalMapScreen({ route }) {
     const pts = [];
     for (const t of rows) {
       if ((t.clan_tag || 'Solo') !== key) continue;
-      (t.rings?.length ? t.rings : [t.polygon]).forEach((ring) =>
+      territoryRings(t).forEach((ring) =>
         ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
       );
     }
@@ -334,10 +337,14 @@ export default function GlobalMapScreen({ route }) {
             <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={colors.card} />
           </UserMarker>
         ))}
-        {/* the player's location — their character portrait, not a dot */}
+        {/* Keep location visible when pulled back without covering the land. */}
         {myLoc && (
           <UserMarker point={myLoc}>
-            <CharacterBust equipped={equipped} size={44} ring="#ffffff" bg={colors.card} />
+            {showPortraits ? (
+              <CharacterBust equipped={equipped} size={44} ring="#ffffff" bg={colors.card} />
+            ) : (
+              <View style={[styles.locationDot, { backgroundColor: accent }]} />
+            )}
           </UserMarker>
         )}
       </GameMap>
@@ -353,12 +360,13 @@ export default function GlobalMapScreen({ route }) {
           <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.roundBtn}
+          style={styles.mapIconBtn}
           onPress={() => setLegendOpen(true)}
           accessibilityRole="button"
           accessibilityLabel="Show clubs in view"
+          hitSlop={8}
         >
-          <AppIcon name="layers" size={24} />
+          <AppIcon name="layers" size={32} />
         </TouchableOpacity>
       </View>
 
@@ -376,8 +384,9 @@ export default function GlobalMapScreen({ route }) {
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel="Center map on my location"
+        hitSlop={8}
       >
-        <AppIcon name="locate" size={24} />
+        <AppIcon name="locate" size={32} />
       </TouchableOpacity>
 
       {/* tapped-territory card */}
@@ -406,7 +415,7 @@ export default function GlobalMapScreen({ route }) {
             size="sm"
             onPress={() => {
               const pts = [];
-              (selected.rings?.length ? selected.rings : [selected.polygon]).forEach((ring) =>
+              territoryRings(selected).forEach((ring) =>
                 ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
               );
               if (pts.length) mapRef.current?.fitToPoints(pts, 70);
@@ -451,6 +460,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     ...shadow.raised,
   },
+  mapIconBtn: {
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   noticePill: {
     position: 'absolute',
@@ -467,14 +482,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: space.gutter,
     bottom: 96,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.card,
+    width: 56,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadow.raised,
   },
+
+  locationDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, borderColor: '#fff' },
 
   card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

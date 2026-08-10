@@ -11,8 +11,8 @@ HAIR_LIFT = -0.05
 MARGIN_X = 130
 
 LAYOUT = {
-    "face": dict(w=0.34, cy=0.1813),
-    "glasses": dict(w=0.42, cy=0.166),
+    "face": dict(w=0.3806, top=0.1182),
+    "glasses": dict(w=0.42, cy=0.1549),
     "hair": dict(w=0.92, top=-0.025),
     "headwear": dict(w=0.85, top=-0.07),
     "top": dict(w=0.9718, top=0.3169),

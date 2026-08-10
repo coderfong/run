@@ -1,0 +1,347 @@
+[
+ {
+  "stem": "hairS1",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.835,
+   "top": -0.0059,
+   "dx": 0.016
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Side sweep"
+ },
+ {
+  "stem": "hairS2",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.804,
+   "top": -0.0445
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Messy spikes"
+ },
+ {
+  "stem": "hairS3",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.835,
+   "top": 0.0195
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Curtain cut"
+ },
+ {
+  "stem": "hairS4",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.94,
+   "top": -0.0494,
+   "dx": 0.03
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Wind spikes"
+ },
+ {
+  "stem": "hairS5",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.908,
+   "top": -0.0269
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Tight afro"
+ },
+ {
+  "stem": "hairS6",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.937,
+   "top": -0.0254
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Round bob"
+ },
+ {
+  "stem": "hairS7",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.882,
+   "top": -0.0392,
+   "dx": 0.03
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Side pony"
+ },
+ {
+  "stem": "hairS8",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.838,
+   "top": 0.0106
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Twin buns"
+ },
+ {
+  "stem": "hairS9",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.833,
+   "top": -0.0414,
+   "dx": 0.0071
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Blunt bangs"
+ },
+ {
+  "stem": "hairS10",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_01 PM.png",
+  "layout": {
+   "w": 0.89,
+   "top": 0.0325
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Long locs"
+ },
+ {
+  "stem": "hairS11",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.676,
+   "top": 0.0239
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Slick cap"
+ },
+ {
+  "stem": "hairS12",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.658,
+   "top": 0.0043
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Pomp sweep"
+ },
+ {
+  "stem": "hairS13",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.799,
+   "top": -0.0595
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Bowl cut"
+ },
+ {
+  "stem": "hairS14",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.858,
+   "top": -0.055,
+   "dx": 0.017
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Shaggy crop"
+ },
+ {
+  "stem": "hairS15",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.704,
+   "top": -0.0345
+  },
+  "hole": true,
+  "tall": false,
+  "label": "Crest"
+ },
+ {
+  "stem": "hairS16",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.827,
+   "top": -0.0464,
+   "dx": 0.0119
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Soft part"
+ },
+ {
+  "stem": "hairS17",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.724,
+   "top": -0.0218,
+   "dx": 0.0124
+  },
+  "hole": false,
+  "tall": true,
+  "label": "Side braid"
+ },
+ {
+  "stem": "hairS18",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.834,
+   "top": 0.0106
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Bear buns"
+ },
+ {
+  "stem": "hairS19",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.86,
+   "top": -0.0367,
+   "dx": -0.0199
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Layered bob"
+ },
+ {
+  "stem": "hairS20",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_11 PM.png",
+  "layout": {
+   "w": 0.954,
+   "top": 0.0325,
+   "dx": 0.0165
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Ringlets"
+ },
+ {
+  "stem": "hairS21",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.755,
+   "top": -0.0068,
+   "dx": 0.0184
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Straight fringe"
+ },
+ {
+  "stem": "hairS22",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.843,
+   "top": -0.0084
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Tousled crop"
+ },
+ {
+  "stem": "hairS23",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.932,
+   "top": -0.0415,
+   "dx": 0.0128
+  },
+  "hole": false,
+  "tall": true,
+  "label": "Long waves"
+ },
+ {
+  "stem": "hairS24",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.967,
+   "top": -0.0487
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Shag"
+ },
+ {
+  "stem": "hairS25",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.722,
+   "top": -0.1219
+  },
+  "hole": false,
+  "tall": true,
+  "label": "Curly updo"
+ },
+ {
+  "stem": "hairS26",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.695,
+   "top": 0.0106
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Pigtails"
+ },
+ {
+  "stem": "hairS27",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.854,
+   "top": -0.0487,
+   "dx": 0.0078
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Bob fringe"
+ },
+ {
+  "stem": "hairS28",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.838,
+   "top": -0.0128,
+   "dx": 0.01
+  },
+  "hole": false,
+  "tall": true,
+  "label": "Long sweep"
+ },
+ {
+  "stem": "hairS29",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.844,
+   "top": -0.0423,
+   "dx": 0.0094
+  },
+  "hole": false,
+  "tall": false,
+  "label": "Feathered"
+ },
+ {
+  "stem": "hairS30",
+  "sheet": "ChatGPT Image Aug 3, 2026, 09_19_20 PM.png",
+  "layout": {
+   "w": 0.854,
+   "top": 0.0325,
+   "dx": 0.0094
+  },
+  "hole": false,
+  "tall": true,
+  "label": "Braided tails"
+ }
+]

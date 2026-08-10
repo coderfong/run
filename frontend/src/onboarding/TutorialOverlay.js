@@ -47,7 +47,7 @@ const CARDS = [
     artKey: 'energy',
     icon: Zap,
     aspect: 4 / 3,
-    title: () => 'Energy powers your claims — runs refill it',
+    title: () => 'Energy powers your claims, and runs refill it',
     cta: 'Next',
   },
   {

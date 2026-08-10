@@ -5,7 +5,7 @@
 // real receipt check first (backend/app/routes/progression.py).
 
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Check } from 'lucide-react-native';
 
@@ -18,13 +18,16 @@ import { art } from '../../config/onboardingArt';
 import { ComicPanel } from '../ui';
 import { toon, toonType } from '../toon';
 
+// Three words each, near enough. The art is the pitch on this step; the detail
+// (what exactly lands on which tier) lives on the pass itself and in the buy
+// sheet, and repeating it here just buried the picture under a wall of text.
 const PERKS = [
-  'A second reward on every level — forever',
-  'Rarer lootboxes on every box tier',
-  'Bonus energy, so you claim more often',
+  'Double rewards, every level',
+  'Rarer lootboxes',
+  'More energy to claim with',
 ];
 
-export default function ProStep({ onContinue, bottomInset = 0 }) {
+export default function ProStep({ onContinue }) {
   const { equipped } = useAvatar();
   const [sheet, setSheet] = useState(false);
 
@@ -37,17 +40,22 @@ export default function ProStep({ onContinue, bottomInset = 0 }) {
         end={{ x: 0.5, y: 1 }}
       />
 
-      <View style={styles.body}>
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+      >
         <OutlinedText style={[toonType.hero, styles.wordmark]} outline={toon.ink} width={3}>
           PASER PRO
         </OutlinedText>
         <Text style={[toonType.body, styles.kicker]}>
-          Everything you earn, twice over — one payment, no subscription.
+          One payment. No subscription.
         </Text>
 
         <ComicPanel
           source={art('proHero')}
-          bg="#2A1B06"
+          // The art's own edge value, so the panel never flashes a colour the
+          // picture does not land on.
+          bg="#181316"
           aspect={4 / 3}
           style={styles.panel}
           fallback={
@@ -67,12 +75,14 @@ export default function ProStep({ onContinue, bottomInset = 0 }) {
             </View>
           ))}
         </View>
-      </View>
 
-      <View style={[styles.footer, { paddingBottom: bottomInset + space.lg }]}>
-        <ToonButton title="Unlock PASER PRO" variant="gold" onPress={() => setSheet(true)} />
-        <ToonGhostButton title="Maybe later" onPress={onContinue} />
-      </View>
+        {/* Both actions sit under the perks they answer, not pinned to the
+            bottom edge of the screen. */}
+        <View style={styles.actions}>
+          <ToonButton title="Unlock PASER PRO" variant="gold" onPress={() => setSheet(true)} />
+          <ToonGhostButton title="Maybe later" onPress={onContinue} />
+        </View>
+      </ScrollView>
 
       <BuyPassSheet visible={sheet} onClose={() => setSheet(false)} onPurchased={onContinue} />
     </View>
@@ -80,8 +90,18 @@ export default function ProStep({ onContinue, bottomInset = 0 }) {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, justifyContent: 'space-between' },
-  body: { paddingHorizontal: space.gutter, paddingTop: space.lg },
+  fill: { flex: 1 },
+  // flexGrow + centred content: the step sits in the middle of whatever room
+  // it has, and scrolls instead of clipping when it doesn't have enough. The
+  // Continue button lives INSIDE this column now, which is exactly the height
+  // a small phone did not have spare.
+  body: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: space.gutter,
+    paddingVertical: space.lg,
+  },
+  actions: { marginTop: space.xl },
   wordmark: { color: '#F5C451' },
   kicker: { color: 'rgba(255,255,255,0.72)', marginTop: space.sm },
   panel: { marginTop: space.lg },
@@ -101,5 +121,4 @@ const styles = StyleSheet.create({
   },
   perkText: { color: '#fff', flex: 1, textAlign: 'left' },
 
-  footer: { paddingHorizontal: space.gutter },
 });

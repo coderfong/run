@@ -17,6 +17,9 @@ import { brand, space, toon, toonType, useTheme, useThemedType } from '../theme'
 import { Confetti, haptic } from '../ui/motion';
 import { OutlinedText, ProgressTrack, ToonButton, ToonGhostButton } from './ui';
 import CharacterRig, { CharacterBust } from './character/CharacterRig';
+import PortraitBorder from './PortraitBorder';
+import TerritoryStealBanner from './TerritoryStealBanner';
+import GameAnimation, { AnimationStack } from './GameAnimation';
 import { fmtArea } from './RivalCard';
 
 function headline(claim) {
@@ -46,6 +49,7 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
   const taken = victims.filter((v) => !v.defended);
   const held = victims.filter((v) => v.defended);
   const area = claim.territory?.area_m2 || 0;
+  const stolenArea = taken.reduce((sum, v) => sum + (v.area_m2 || 0), 0);
   const xpPct = claim.next_level_xp ? Math.min(1, (claim.xp || 0) / claim.next_level_xp) : 0;
 
   return (
@@ -76,6 +80,17 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
             {`+${fmtArea(area)}`}
           </OutlinedText>
 
+          {/* the steal itself, played out: bomb, blast, their heads thrown
+              out of it and landing back in a row pulling a sad face */}
+          {visible && taken.length > 0 && (
+            <TerritoryStealBanner
+              trigger={claim.territory?.id || claim.run_id || 'steal'}
+              victims={taken}
+              amount={fmtArea(stolenArea)}
+              style={styles.stealBanner}
+            />
+          )}
+
           {/* the faces — the whole point of the rebuild */}
           {taken.length > 0 && (
             <View style={styles.block}>
@@ -90,19 +105,21 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
               </OutlinedText>
               {taken.map((v) => (
                 <View key={v.user_id} style={styles.row}>
-                  <CharacterBust
-                    equipped={v.avatar}
-                    size={38}
-                    ring={v.clan_color?.stroke}
-                    bg={colors.cardAlt}
-                  />
+                  <PortraitBorder borderKey={v.rank_key || 'wood'} size={38}>
+                    <CharacterBust
+                      equipped={v.avatar}
+                      size={38}
+                      ring={v.clan_color?.stroke}
+                      bg={colors.cardAlt}
+                    />
+                  </PortraitBorder>
                   <View style={{ flex: 1 }}>
                     <Text style={[type.bodyBold, { color: colors.text }]} numberOfLines={1}>
                       {v.username}
                     </Text>
                     {v.reclaimed ? (
                       <Text style={[type.caption, { color: brand.pink }]}>
-                        took your land before — evened up
+                        took your land before, evened up
                       </Text>
                     ) : null}
                   </View>
@@ -131,6 +148,23 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
           {/* XP + level */}
           {claim.xp_gained > 0 && (
             <View style={styles.block}>
+              {claim.leveled_up ? (
+                <View style={styles.levelFxRow} pointerEvents="none">
+                  <AnimationStack
+                    names={['confettiBurst', 'levelUpBronze']}
+                    size={150}
+                    trigger={`${visible}:${claim.level}`}
+                    visible={visible}
+                  />
+                  <GameAnimation
+                    name="trophyPodium"
+                    size={104}
+                    trigger={`${visible}:${claim.level}`}
+                    visible={visible}
+                    style={styles.levelTrophy}
+                  />
+                </View>
+              ) : null}
               <OutlinedText
                 style={[toonType.headline, { color: '#fff' }]}
                 outline={toon.ink}
@@ -147,7 +181,17 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
                   {`LEVEL ${claim.level} REACHED`}
                 </OutlinedText>
               ) : null}
-              <ProgressTrack value={xpPct} height={16} style={{ marginTop: space.md }} />
+              {/* Fills from empty: this panel exists to show you what the claim
+                  paid, and the bar running up to where the XP landed is the
+                  payoff. The delay lets the "+N XP" above land first. */}
+              <ProgressTrack
+                value={xpPct}
+                height={16}
+                animateOnMount
+                delay={340}
+                durationMs={760}
+                style={{ marginTop: space.md }}
+              />
               <Text style={[type.caption, { textAlign: 'center', marginTop: 6 }]}>
                 {`Level ${claim.level} · ${(claim.xp || 0).toLocaleString()} / ${(claim.next_level_xp || 0).toLocaleString()} XP`}
               </Text>
@@ -173,7 +217,11 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: space.gutter, alignItems: 'stretch' },
   stage: { alignItems: 'center', marginVertical: space.lg },
+  // The banner throws heads outside its own bounds, so it never clips.
+  stealBanner: { marginTop: space.md, overflow: 'visible' },
   block: { marginTop: space.xl },
+  levelFxRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: -8 },
+  levelTrophy: { marginLeft: -34 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -8,7 +8,8 @@
 // ink read.
 
 import React from 'react';
-import { Image, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { Image } from '../../ui/image';
 
 import { radius, space, useTheme, useThemedType } from '../../theme';
 import Button from './Button';

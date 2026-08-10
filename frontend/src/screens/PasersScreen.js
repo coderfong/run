@@ -6,7 +6,7 @@
 // Every mutation returns the other runner's fresh `state`, so rows re-render
 // from the response instead of us guessing the next state client-side.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -19,12 +19,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MessageCircle, Search, Share2 } from 'lucide-react-native';
 
 import { api } from '../api/client';
-import { brand, radius, space, toonRadius, toonSurface, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { useQuery } from '../hooks/useQuery';
+import { radius, space, toonRadius, toonSurface, useTheme, useThemedType, useThemedStyles } from '../theme';
 import {
   Screen,
   Card,
@@ -39,11 +39,13 @@ import {
   ToonRowGroup,
 } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
-import { PressableScale } from '../ui/motion';
+import PortraitBorder from '../components/PortraitBorder';
+import { PressableScale, Reveal, staggerDelay } from '../ui/motion';
 import AppIcon from '../components/AppIcon';
 import { art } from '../config/onboardingArt';
 import { useAuth } from '../auth/AuthContext';
 import { toast } from '../ui/toast';
+import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
 
 const MIN_QUERY = 2;
 
@@ -80,9 +82,9 @@ function RunnerRow({ runner, onOpen, onAdd, onRespond, onRemove, busy }) {
       <Row between>
         <PressableScale style={{ flex: 1 }} onPress={() => onOpen(runner)} accessibilityRole="button" accessibilityLabel={`${runner.username}'s profile`}>
           <Row gap={12} style={{ flex: 1 }}>
-            <View style={[styles.bust, { backgroundColor: colors.cardAlt }]}>
+            <PortraitBorder borderKey={runner.rank_key || 'wood'} size={40}>
               <CharacterBust equipped={runner.avatar} size={40} bg={colors.cardAlt} />
-            </View>
+            </PortraitBorder>
             <View style={{ flex: 1 }}>
               <Row gap={6}>
                 <Text style={type.bodyBold} numberOfLines={1}>{runner.username}</Text>
@@ -104,7 +106,7 @@ function RunnerRow({ runner, onOpen, onAdd, onRespond, onRemove, busy }) {
 // which isn't a dependency yet.)
 function InviteRows({ username }) {
   const { colors } = useTheme();
-  const message = `Add me on PASER — my username is @${username}. Run, claim ground, keep it.`;
+  const message = `Add me on PASER. My username is @${username}. Run, claim ground, keep it.`;
 
   // iOS only answers canOpenURL for schemes declared in
   // LSApplicationQueriesSchemes (app.json) — and that list can't cover
@@ -146,26 +148,41 @@ export default function PasersScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
 
-  const [data, setData] = useState(null);        // { pasers, incoming, outgoing }
+  // { pasers, incoming, outgoing } — shares the 'pasers' key with the badge on
+  // the profile, so arriving from You draws the list at once.
+  const { data, loading, refresh: load } = useQuery('pasers', api.pasers, {
+    fallback: { pasers: [], incoming: [], outgoing: [] },
+  });
   const [q, setQ] = useState('');
   const [results, setResults] = useState(null);
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [pulling, setPulling] = useState(false);
 
-  const load = useCallback(async () => {
-    try { setData(await api.pasers()); } catch { setData({ pasers: [], incoming: [], outgoing: [] }); }
-    finally { setRefreshing(false); }
-  }, []);
+  // Portraits warm up behind rows that are already on screen.
+  useEffect(() => {
+    if (data) preloadRunnerAssets([data.pasers, data.incoming, data.outgoing]);
+  }, [data]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const onRefresh = async () => {
+    setPulling(true);
+    try {
+      await load();
+    } finally {
+      setPulling(false);
+    }
+  };
 
   const runSearch = async (term) => {
     setQ(term);
     const t = term.trim();
     if (t.length < MIN_QUERY) { setResults(null); return; }
     setSearching(true);
-    try { setResults(await api.searchPasers(t)); }
+    try {
+      const nextResults = await api.searchPasers(t);
+      preloadRunnerAssets(nextResults);
+      setResults(nextResults);
+    }
     catch { setResults([]); }
     finally { setSearching(false); }
   };
@@ -228,7 +245,7 @@ export default function PasersScreen({ navigation }) {
           a tap here too. */}
       <TouchableOpacity
         onPress={() => Share.share({
-          message: `Add me on PASER — my username is @${user?.username || 'me'}. `
+          message: `Add me on PASER. My username is @${user?.username || 'me'}. `
             + 'Run, claim ground, keep it.',
         }).catch(() => {})}
         accessibilityRole="button"
@@ -242,19 +259,35 @@ export default function PasersScreen({ navigation }) {
 
   const header = (
     <ToonHeader
+      panel
       eyebrow="DON'T RUN ALONE"
       title="ADD PASERS"
-      leftArt={art('getStartedLeft')}
-      rightArt={art('getStartedRight')}
-      solid={brand.teal}
+      // Home's hero-card format, same as Rivals and Season standings: two
+      // runners high-fiving mid-stride, cut out on the right of a flat green
+      // panel with black copy on the left.
+      art={art('panelPasers')}
+      // Home-card type: uppercase `type.display` over a small `type.labelSm`
+      // eyebrow. The panel supplies the ink colour, so no override here.
+      titleStyle={type.display}
+      eyebrowStyle={type.labelSm}
+      // Same line-under-the-title as Rivals and Season standings. The panel
+      // text column is sized to its copy now, so a header with only a title
+      // leaves the cut-out stranded halfway across a flat panel.
+      subtitle="Find runners by username, then hold the city together."
+      solid={PANEL_GREEN}
       top={insets.top}
-      onBack={() => navigation.goBack()}
+      // These screens are reachable straight from another tab, where there
+      // may be nothing beneath them to pop back to — fall through to the
+      // profile rather than leaving a back button that does nothing.
+      onBack={() =>
+        (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('YouMain'))
+      }
     >
       {search}
     </ToonHeader>
   );
 
-  if (!data) {
+  if (loading) {
     return (
       <Screen gutter={false} edges={[]}>
         {header}
@@ -272,7 +305,7 @@ export default function PasersScreen({ navigation }) {
       <ScrollView
         contentContainerStyle={{ paddingBottom: space.xxl }}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={colors.textMuted} />}
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={colors.textMuted} />}
       >
         {header}
 
@@ -282,12 +315,14 @@ export default function PasersScreen({ navigation }) {
             <EmptyState
               icon={<AppIcon name="invite" size={44} />}
               title="No runners found"
-              body={`Nobody's username starts with "${q.trim()}". Usernames are exact — ask them for theirs.`}
+              body={`Nobody's username starts with "${q.trim()}". Usernames are exact, so ask them for theirs.`}
               style={{ paddingTop: space.xl }}
             />
           ) : (
-            results.map((r) => (
-              <RunnerRow key={r.user_id} runner={r} busy={busyId === r.user_id} {...rowProps} />
+            results.map((r, i) => (
+              <Reveal key={r.user_id} delay={staggerDelay(i)}>
+                <RunnerRow runner={r} busy={busyId === r.user_id} {...rowProps} />
+              </Reveal>
             ))
           )
         ) : (
@@ -299,8 +334,10 @@ export default function PasersScreen({ navigation }) {
                   action={`${incoming.length}`}
                   style={{ marginTop: space.md, marginBottom: space.md }}
                 />
-                {incoming.map((r) => (
-                  <RunnerRow key={r.user_id} runner={r} busy={busyId === r.user_id} {...rowProps} />
+                {incoming.map((r, i) => (
+                  <Reveal key={r.user_id} delay={staggerDelay(i)}>
+                    <RunnerRow runner={r} busy={busyId === r.user_id} {...rowProps} />
+                  </Reveal>
                 ))}
               </>
             )}
@@ -318,8 +355,10 @@ export default function PasersScreen({ navigation }) {
                 style={{ paddingTop: space.lg }}
               />
             ) : (
-              pasers.map((r) => (
-                <RunnerRow key={r.user_id} runner={r} busy={busyId === r.user_id} {...rowProps} />
+              pasers.map((r, i) => (
+                <Reveal key={r.user_id} delay={staggerDelay(i)}>
+                  <RunnerRow runner={r} busy={busyId === r.user_id} {...rowProps} />
+                </Reveal>
               ))
             )}
 
@@ -336,6 +375,12 @@ export default function PasersScreen({ navigation }) {
   );
 }
 
+// The green baked into header-pasers.png, lightened until it clears 4.5:1
+// against the panel's ink copy — the same floor the season boards use. It stays
+// a property of the artwork rather than a brand token, so it moves when the art
+// does.
+const PANEL_GREEN = '#1DB58C';
+
 const makeStyles = (colors, scheme) => StyleSheet.create({
   search: {
     flexDirection: 'row',
@@ -348,5 +393,4 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
     marginTop: space.md,
     ...toonSurface(colors, scheme).outline,
   },
-  bust: { width: 40, height: 40, borderRadius: 20, overflow: 'hidden' },
 });

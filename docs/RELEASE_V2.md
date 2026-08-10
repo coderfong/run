@@ -66,6 +66,26 @@ XP was also set to 250000 (level 50); reset it if you want a realistic account.
 The Render Postgres password was shared in chat during this work. Rotate it in
 the Render dashboard ("New default credential").
 
+### 5. Configure the mailer, or account recovery stays off — **YOU**
+Password reset (added 2026-08-09, see `docs/ACCOUNT_RECOVERY.md`) is fully
+implemented but inert until a mail transport is set on Render. With
+`MAIL_BACKEND` unset or left at `log`, `POST /auth/forgot` returns 501 and the
+app tells runners that reset is not available — which is honest, but it means
+every password account is still one forgotten password away from being lost.
+
+```
+MAIL_BACKEND=resend
+MAIL_FROM=PASER <recovery@yourdomain>       # an address you actually read
+RESEND_API_KEY=<resend.com → API keys, after verifying the sender domain>
+```
+
+SMTP works too (`MAIL_SMTP_HOST` and friends) if you would rather not add a
+provider. Migration `0028` ships with it and is additive.
+
+> Verify after deploy: `POST /auth/forgot` for an account with a confirmed
+> address must answer `{"sent": true}` and the mail must arrive. Existing
+> accounts have no address until their owners add one from the profile.
+
 ## Verified — no action needed
 
 | Area | State |

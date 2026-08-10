@@ -25,4 +25,7 @@ export {
   ProgressTrack,
   SlotDots,
   GetStartedCard,
+  // The copy colour on a `panel` ToonHeader — pages styling their own controls
+  // inside one (the season board chips) need it to match.
+  PANEL_INK,
 } from './toon';

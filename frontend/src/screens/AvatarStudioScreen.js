@@ -6,46 +6,93 @@
 //     nothing renders this with `standalone` today — the branch is kept as a
 //     working fallback.
 //
-// Layout: rig preview (tap = wave) + randomize · slot chips · item grid with
-// locked states (unlock condition shown on locked cells) · color swatches
-// for colorable slots (hair/glasses/tops/bottoms). Items are real PNG art
-// (assets/character); a swatch picks the palette INDEX, which selects that
-// item's pre-rendered color variant. Skin stays the art's own tone.
+// Layout: rig preview (tap = wave) on the roadside scene + randomize · slot
+// chips · item grid with locked states (unlock condition shown on locked
+// cells) · color swatches for colorable slots (hair/glasses/tops/bottoms).
+// Items are real PNG art (assets/character); a swatch picks the palette INDEX,
+// which selects that item's pre-rendered color variant. Skin stays the art's
+// own tone.
+//
+// Themed, not dark-only: the preview stands on SceneBackdrop, which is the
+// cream daytime kerb under a light theme. Chips and item cells read off the
+// active palette so they don't stay dark-on-cream there.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Check, Lock } from 'lucide-react-native';
+import {
+  Check,
+  Crown,
+  Footprints,
+  Glasses,
+  Layers,
+  Lock,
+  Scissors,
+  Shirt,
+  Smile,
+  Sparkles,
+} from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
-import { colors, radius, space, type } from '../theme';
+import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Button, Screen } from '../components/ui';
+import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
 import { PressableScale, Reveal, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { useAvatar } from '../state/avatar';
 import { useClan } from '../state/clan';
-import CharacterRig, { PartThumb } from '../components/character/CharacterRig';
-import { ITEMS, SLOTS, unlockLabel } from '../config/cosmetics';
+import CharacterRig, { BODY_RATIO, PartThumb } from '../components/character/CharacterRig';
+import {
+  ITEMS,
+  SLOTS,
+  itemPreviewSources,
+  itemVariantSources,
+  unlockLabel,
+} from '../config/cosmetics';
+import { preloadImages } from '../utils/imagePreload';
 
-function SlotChips({ active, onChange }) {
+// Rig preview size, shared with the stage so the backdrop can be sized to it.
+const RIG_SIZE = 68;
+const RIG_HEADROOM = 0.14; // matches HEADROOM in CharacterRig
+
+const SLOT_ICONS = {
+  face: Smile,
+  hair: Scissors,
+  headwear: Crown,
+  glasses: Glasses,
+  top: Shirt,
+  bottom: Layers,
+  footwear: Footprints,
+  accessory: Sparkles,
+};
+
+function SlotChips({ active, onChange, onWarm }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.gutter }}
+      contentContainerStyle={styles.chipRail}
       style={{ flexGrow: 0 }}
     >
       {SLOTS.map((s) => {
         const on = s.key === active;
+        const Icon = SLOT_ICONS[s.key];
         return (
           <PressableScale
             key={s.key}
+            onPressIn={() => onWarm?.(s.key)}
             onPress={() => onChange(s.key)}
             accessibilityRole="button"
             accessibilityState={{ selected: on }}
             accessibilityLabel={s.label}
-            style={[styles.chip, on && { backgroundColor: colors.card, borderColor: colors.text }]}
+            style={[styles.chip, on && styles.chipActive]}
           >
-            <Text style={[type.bodySmBold, { color: on ? colors.text : colors.textMuted }]}>
+            <View style={[styles.chipIcon, on && styles.chipIconActive]}>
+              <Icon size={17} strokeWidth={2.3} color={on ? colors.text : colors.textMuted} />
+            </View>
+            <Text style={[type.bodySmBold, styles.chipLabel, on && styles.chipLabelActive]}>
               {s.label}
             </Text>
           </PressableScale>
@@ -58,27 +105,28 @@ function SlotChips({ active, onChange }) {
 // Color swatches — `value` is the selected palette INDEX (variants are
 // pre-rendered per index, so the index is what gets stored/persisted).
 function Swatches({ palette, value, onPick }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.swatchRow}>
       {palette.map((hex, i) => {
         const on = i === value;
         const light = hex === '#F4F4F5' || hex === '#E8D06B' || hex === '#EAB308';
         return (
-          <Reveal key={hex} from="none" delay={i * 22}>
-            <PressableScale
-              onPress={() => onPick(i)}
-              accessibilityRole="button"
-              accessibilityLabel={`Color ${i + 1}`}
-              accessibilityState={{ selected: on }}
-              style={[
-                styles.swatch,
-                { backgroundColor: hex },
-                on && { borderColor: colors.text, borderWidth: 2.5 },
-              ]}
-            >
-              {on ? <Check size={14} color={light ? '#26272B' : '#fff'} strokeWidth={3} /> : null}
-            </PressableScale>
-          </Reveal>
+          <PressableScale
+            key={hex}
+            onPress={() => onPick(i)}
+            accessibilityRole="button"
+            accessibilityLabel={`Color ${i + 1}`}
+            accessibilityState={{ selected: on }}
+            style={[
+              styles.swatch,
+              { backgroundColor: hex },
+              on && { borderColor: colors.text, borderWidth: 2.5 },
+            ]}
+          >
+            {on ? <Check size={14} color={light ? '#26272B' : '#fff'} strokeWidth={3} /> : null}
+          </PressableScale>
         );
       })}
     </View>
@@ -86,40 +134,39 @@ function Swatches({ palette, value, onPick }) {
 }
 
 function ItemGrid({ slot, equipped, isUnlocked, onEquip, clanColor }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const items = ITEMS[slot.key] || [];
   return (
     <View style={styles.grid}>
-      {items.map((item, i) => {
+      {items.map((item) => {
         const selected = equipped[slot.key] === item.id;
         const unlocked = isUnlocked(item);
         return (
-          <Reveal key={item.id} delay={Math.min(i, 12) * 30} style={styles.cellWrap}>
-          <PressableScale
-            onPress={() => onEquip(item, unlocked)}
-            accessibilityRole="button"
-            accessibilityLabel={unlocked ? `Equip ${item.label}` : `${item.label}, locked: ${unlockLabel(item)}`}
-            accessibilityState={{ selected }}
-            style={[
-              styles.cell,
-              selected && { borderColor: colors.text, borderWidth: 2 },
-            ]}
-          >
-            <View style={{ opacity: unlocked ? 1 : 0.28 }}>
-              <PartThumb slot={slot.key} item={item} equipped={equipped} size={56} clanColor={clanColor} />
-            </View>
-            <Text style={[type.caption, { marginTop: 4, color: unlocked ? colors.text : colors.textDim }]} numberOfLines={1}>
-              {item.label}
-            </Text>
-            {!unlocked && (
-              <View style={styles.lockWrap}>
-                <Lock size={14} color={colors.textMuted} />
-                <Text style={[styles.lockLabel]} numberOfLines={2}>
-                  {unlockLabel(item)}
-                </Text>
+          <View key={item.id} style={styles.cellWrap}>
+            <PressableScale
+              onPress={() => onEquip(item, unlocked)}
+              accessibilityRole="button"
+              accessibilityLabel={unlocked ? `Equip ${item.label}` : `${item.label}, locked: ${unlockLabel(item)}`}
+              accessibilityState={{ selected }}
+              style={[
+                styles.cell,
+                selected && { borderColor: colors.text, borderWidth: 2 },
+              ]}
+            >
+              {/* Art only — no name or unlock caption. The lock icon still marks
+                  locked items, and tapping one toasts how to earn it, so the
+                  text is available on demand instead of under every tile. */}
+              <View style={{ opacity: unlocked ? 1 : 0.28 }}>
+                <PartThumb slot={slot.key} item={item} size={56} clanColor={clanColor} contrastHair />
               </View>
-            )}
-          </PressableScale>
-          </Reveal>
+              {!unlocked && (
+                <View style={styles.lockWrap}>
+                  <Lock size={14} color={colors.textMuted} />
+                </View>
+              )}
+            </PressableScale>
+          </View>
         );
       })}
     </View>
@@ -127,13 +174,46 @@ function ItemGrid({ slot, equipped, isUnlocked, onEquip, clanColor }) {
 }
 
 export default function AvatarStudioScreen({ standalone = false, onDone }) {
+  const { scheme } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { equipped, setPart, randomize, save, isUnlocked } = useAvatar();
   const { color } = useClan();
+  // The scene has to sit BEHIND the whole runner, not as a band under their
+  // feet, so the stage asks for a box at least as tall as the rig draws:
+  // body (size x BODY_RATIO) plus the headroom the rig reserves above it for
+  // tall hair, plus the stage's own padding. `cover` crops whichever scene is
+  // showing to that box, so light and dark stay the same height here too.
+  const sceneMinH = RIG_SIZE * BODY_RATIO * (1 + RIG_HEADROOM) + space.md * 2;
+  const { height: sceneH } = useSceneBackdrop({ minHeight: sceneMinH });
   const rigRef = useRef(null);
   const [slotKey, setSlotKey] = useState('hair');
   const [saving, setSaving] = useState(false);
 
   const slot = useMemo(() => SLOTS.find((s) => s.key === slotKey), [slotKey]);
+
+  // Only the recolourable items carry `art` (ten pre-rendered variants). Most
+  // of the catalogue is authored multicolour art that a swatch cannot touch,
+  // so the colour row follows the WORN item, not the slot — otherwise picking
+  // a striped tee leaves ten swatches on screen that do nothing at all.
+  const colorable = useMemo(
+    () => !!(ITEMS[slotKey] || []).find((item) => item.id === equipped[slotKey])?.art,
+    [slotKey, equipped]
+  );
+
+  const warmSlot = useCallback(
+    (key) => preloadImages(itemPreviewSources(
+      key,
+      key === 'hair' ? { hairColor: scheme === 'dark' ? 4 : 0 } : null
+    )),
+    [scheme]
+  );
+
+  useEffect(() => {
+    warmSlot(slotKey);
+    const selected = (ITEMS[slotKey] || []).find((item) => item.id === equipped[slotKey]);
+    preloadImages(itemVariantSources(selected));
+  }, [equipped, slotKey, warmSlot]);
 
   const equip = (item, unlocked) => {
     if (!unlocked) {
@@ -143,7 +223,11 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
     }
     haptic.light();
     setPart({ [slot.key]: item.id });
-    rigRef.current?.play('thumbs');
+    // No rig.play() here. The runner reacts when the new art LANDS
+    // (`animateSwaps`, see CharacterRig), which for anything not already in the
+    // image cache is a beat after the tap — firing a second animation on the
+    // tap itself just put a stutter in front of it. A colour swatch gets the
+    // same reaction for free, which it never used to have.
   };
 
   const pickColor = (idx) => {
@@ -178,30 +262,39 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
         </View>
       )}
 
-      {/* preview */}
-      <View style={styles.stage}>
-        <Reveal>
-          <PressableScale
-            onPress={() => { haptic.light(); rigRef.current?.play('wave'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Your character — tap to wave"
-          >
-            <CharacterRig ref={rigRef} equipped={equipped} size={68} animate clanColor={color?.stroke} />
-          </PressableScale>
-        </Reveal>
+      {/* preview — the runner stands at the foot of the scene */}
+      <View style={[styles.stage, { minHeight: sceneH }]}>
+        {/* Bottom-anchored: the runner stands at the foot of this box, so the
+            crop has to come off the sky rather than off the pavement. */}
+        <SceneBackdrop minHeight={sceneMinH} anchor="bottom" />
+        {/* The runner is the subject, so they stand in the CENTRE of the scene.
+            The dice used to sit in the same flex row, which pushed the
+            character off-centre by half the button — on a scene composed around
+            a middle it read as a mistake. It floats on the right edge now and
+            takes no part in the layout. */}
+        <View style={styles.runnerRow}>
+          <Reveal>
+            <PressableScale
+              onPress={() => { haptic.light(); rigRef.current?.play('wave'); }}
+              accessibilityRole="button"
+              accessibilityLabel="Your character, tap to wave"
+            >
+              <CharacterRig ref={rigRef} equipped={equipped} size={RIG_SIZE} animate animateSwaps clanColor={color?.stroke} />
+            </PressableScale>
+          </Reveal>
+        </View>
         <PressableScale
           onPress={doRandom}
           style={styles.diceBtn}
           accessibilityRole="button"
           accessibilityLabel="Randomize character"
         >
-          <AppIcon name="randomize" size={22} />
+          <AppIcon name="randomize" size={32} />
         </PressableScale>
-        <Text style={[type.caption, styles.hint]}>Tap your runner to say hi</Text>
       </View>
 
       {/* slot chips */}
-      <SlotChips active={slotKey} onChange={setSlotKey} />
+      <SlotChips active={slotKey} onChange={setSlotKey} onWarm={warmSlot} />
 
       {/* items + colors */}
       <ScrollView
@@ -209,7 +302,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xl }}
         showsVerticalScrollIndicator={false}
       >
-        {slot.palette && (
+        {slot.palette && colorable && (
           <>
             <Text style={[type.labelSm, { marginBottom: space.sm }]}>Color</Text>
             <Swatches palette={slot.palette} value={equipped[slot.colorKey] ?? 0} onPick={pickColor} />
@@ -234,29 +327,58 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
   );
 }
 
-const styles = StyleSheet.create({
-  stage: { alignItems: 'center', paddingVertical: space.md },
-  hint: { marginTop: 2, color: colors.textDim },
+const makeStyles = (colors) => StyleSheet.create({
+  // flex-end so the rig's feet land on the road at the bottom of the scene
+  // instead of floating in the sky above it.
+  stage: { alignItems: 'center', justifyContent: 'flex-end', paddingVertical: space.md },
+  // Full width so the runner is centred on the SCENE, not on whatever the row
+  // happens to contain.
+  runnerRow: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'flex-end' },
+  // Floated, so adding or removing it can never shift the character again.
   diceBtn: {
     position: 'absolute',
-    right: space.gutter,
-    top: space.md,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.card,
+    right: space.sm,
+    bottom: space.xl,
+    width: 52,
+    height: 52,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 
+  chipRail: {
+    gap: space.sm,
+    paddingHorizontal: space.gutter,
+    paddingVertical: space.md,
+  },
   chip: {
-    paddingHorizontal: space.md,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
+    width: 72,
+    minHeight: 66,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: space.xs,
+    borderRadius: radius.card,
     backgroundColor: colors.bgElevated,
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: colors.border,
   },
+  chipActive: { backgroundColor: colors.text, borderColor: colors.text },
+  chipIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardAlt,
+  },
+  chipIconActive: { backgroundColor: colors.bg },
+  chipLabel: { color: colors.textMuted, fontSize: 12 },
+  chipLabelActive: { color: colors.bg },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   cellWrap: { width: '31%' },
@@ -272,7 +394,6 @@ const styles = StyleSheet.create({
     minHeight: 96,
   },
   lockWrap: { alignItems: 'center', marginTop: 2, gap: 1 },
-  lockLabel: { ...type.caption, fontSize: 9.5, lineHeight: 12, color: colors.textDim, textAlign: 'center' },
 
   swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   swatch: {
@@ -282,6 +403,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: colors.border,
   },
 });

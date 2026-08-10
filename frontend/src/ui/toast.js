@@ -1,9 +1,19 @@
 // Tiny global toast. One subscriber (rendered at the root) listens for
 // `toast.show(message, opts)` calls and animates a banner.
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, space, type } from '../theme';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
+import { radius, space, type, useTheme } from '../theme';
+import { useReduceMotion } from './motion';
+
+const IN_MS = 240;
+const OUT_MS = 200;
 
 let listener = null;
 
@@ -22,7 +32,13 @@ export const toast = {
 
 export function ToastHost() {
   const [current, setCurrent] = useState(null);
-  const opacity = useRef(new Animated.Value(0)).current;
+  // The LIVE palette. This used to take the static `colors` export, which is
+  // the dark palette whatever the scheme is — so on light mode an info toast
+  // painted a near-black bubble with near-black text on it. Same bug the
+  // Skeleton had, same fix.
+  const { colors: themed } = useTheme();
+  const reduced = useReduceMotion();
+  const progress = useSharedValue(0);
 
   useEffect(() => {
     listener = (msg) => setCurrent(msg);
@@ -32,38 +48,49 @@ export function ToastHost() {
   }, []);
 
   useEffect(() => {
-    if (!current) return;
-    Animated.timing(opacity, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-    const t = setTimeout(() => {
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }).start(() => setCurrent(null));
+    if (!current) return undefined;
+    // Snap to the start first: the host returns null between toasts but never
+    // unmounts, so the shared value is still sitting at 1 from the last one.
+    progress.value = 0;
+    if (reduced) {
+      progress.value = 1;
+    } else {
+      // A little overshoot on the way in — it drops in and settles.
+      progress.value = withTiming(1, { duration: IN_MS, easing: Easing.out(Easing.back(1.4)) });
+    }
+    const outAt = setTimeout(() => {
+      progress.value = reduced
+        ? 0
+        : withTiming(0, { duration: OUT_MS, easing: Easing.in(Easing.quad) });
     }, current.durationMs);
-    return () => clearTimeout(t);
-  }, [current, opacity]);
+    const clearAt = setTimeout(
+      () => setCurrent(null),
+      current.durationMs + (reduced ? 0 : OUT_MS)
+    );
+    return () => {
+      clearTimeout(outAt);
+      clearTimeout(clearAt);
+    };
+  }, [current, reduced, progress]);
+
+  const animated = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: [{ translateY: (1 - progress.value) * -16 }],
+  }));
 
   if (!current) return null;
   const bg =
     current.type === 'error'
-      ? colors.danger
+      ? themed.danger
       : current.type === 'success'
-      ? colors.ok
-      : colors.cardAlt;
+      ? themed.ok
+      : themed.cardAlt;
   const fg =
     current.type === 'success' || current.type === 'error'
       ? '#fff'
-      : colors.text;
+      : themed.text;
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={[styles.host, { opacity }]}
-    >
+    <Animated.View pointerEvents="none" style={[styles.host, animated]}>
       <View style={[styles.bubble, { backgroundColor: bg }]}>
         <Text style={[styles.text, { color: fg }]} numberOfLines={3}>
           {current.message}

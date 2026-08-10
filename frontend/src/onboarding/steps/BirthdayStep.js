@@ -3,7 +3,7 @@
 // never shown to other runners.
 
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Cake } from 'lucide-react-native';
 
 import { space } from '../../theme';
@@ -11,7 +11,7 @@ import { ToonButton } from '../../components/ui';
 import { art } from '../../config/onboardingArt';
 import { MIN_AGE } from '../../state/profile';
 import { DateWheel } from '../pickers';
-import { StepHeadline, StepThumb } from '../ui';
+import { StepArt, StepHeadline } from '../ui';
 import { toon, toonRadius, toonType } from '../toon';
 
 const MONTHS = [
@@ -40,11 +40,13 @@ export default function BirthdayStep({ value, onChange, onContinue, bottomInset 
 
   return (
     <View style={styles.fill}>
-      <View style={styles.body}>
-        <StepThumb
-          source={art('thumbBirthday')}
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+      >
+        <StepArt
+          source={art('cutBirthday')}
           fallback={<Cake size={54} color="#fff" strokeWidth={2.5} />}
-          bg="#E2497A"
         />
         <StepHeadline title="When's your birthday?" style={{ marginTop: space.lg }} />
 
@@ -57,13 +59,21 @@ export default function BirthdayStep({ value, onChange, onContinue, bottomInset 
         <Text style={[toonType.body, styles.note]}>
           {tooYoung
             ? `You need to be ${MIN_AGE} or older to use PASER.`
-            : 'Only used to check your age — never shown to other runners.'}
+            : 'Only used to check your age. Never shown to other runners.'}
         </Text>
-      </View>
+
+        {/* Continue sits with the step, under the date it confirms. The wheel
+            stays docked below because it is the INPUT — a spinner you have to
+            reach is a thumb-height control, not a read. */}
+        <ToonButton
+          title="Continue"
+          onPress={onContinue}
+          disabled={tooYoung}
+          style={{ marginTop: space.xl }}
+        />
+      </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: bottomInset + space.md }]}>
-        <ToonButton title="Continue" onPress={onContinue} disabled={tooYoung} />
-        <View style={{ height: space.md }} />
         <DateWheel value={value} onChange={onChange} />
       </View>
     </View>
@@ -71,8 +81,17 @@ export default function BirthdayStep({ value, onChange, onContinue, bottomInset 
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, justifyContent: 'space-between' },
-  body: { paddingTop: space.xl, paddingHorizontal: space.gutter },
+  fill: { flex: 1 },
+  // flexGrow + centred content: the step sits in the middle of whatever room
+  // it has, and scrolls instead of clipping when it doesn't have enough. The
+  // Continue button lives INSIDE this column now, which is exactly the height
+  // a small phone did not have spare.
+  body: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: space.lg,
+    paddingHorizontal: space.gutter,
+  },
   chip: {
     marginTop: space.xl,
     height: 58,

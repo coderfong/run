@@ -1,8 +1,8 @@
-// Custom bottom tab bar — a floating outlined pill (game-style), 64pt of bar
-// plus safe area. Four real tabs with a raised circular Record button injected
-// in the middle. The active tab gets a filled pill behind it; the sticker
-// icons are full-colour art, so state is shown with the pill + opacity, never
-// a colour swap.
+// Custom bottom tab bar — a floating outlined pill (game-style) sized by its
+// content, plus safe area. Four real tabs with a circular Record button in the
+// middle, sitting IN the row rather than breaking out above it. The active tab
+// gets a filled pill behind it; the sticker icons are full-colour art, so
+// state is shown with the pill + opacity, never a colour swap.
 
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -18,13 +18,14 @@ import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { useAccent } from '../hooks/useAccent';
 import { useRecording } from '../state/recording';
 import AppIcon from '../components/AppIcon';
+import { preloadScreenImages } from '../config/screenAssets';
 
 const INACTIVE = '#9ca3af';
 // route name → generated sticker-icon key (assets/icons/*).
 const ICON_KEY = { Home: 'tab-home', Map: 'tab-map', Club: 'tab-club', You: 'tab-you' };
 const LABELS = { Home: 'Home', Map: 'Map', Club: 'Club', You: 'You' };
 
-function TabItem({ route, isFocused, accent, onPress }) {
+function TabItem({ route, isFocused, accent, onPress, onWarm }) {
   const { colors } = useTheme();
   const key = ICON_KEY[route.name] || 'tab-home';
   const color = isFocused ? accent : INACTIVE;
@@ -35,19 +36,20 @@ function TabItem({ route, isFocused, accent, onPress }) {
     <View style={styles.slot}>
       <PressableScale
         style={[styles.item, isFocused && { backgroundColor: colors.cardAlt }]}
+        onPressIn={onWarm}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityState={{ selected: isFocused }}
         accessibilityLabel={LABELS[route.name]}
       >
-        <AppIcon name={key} size={isFocused ? 30 : 26} faded={!isFocused} />
+        <AppIcon name={key} size={isFocused ? 38 : 34} faded={!isFocused} />
         <Text style={[styles.label, { color }]}>{LABELS[route.name]}</Text>
       </PressableScale>
     </View>
   );
 }
 
-function RecordButton({ accent, onPress }) {
+function RecordButton({ accent, onPress, onWarm }) {
   const { colors } = useTheme();
   const { isRecording } = useRecording();
   const reduce = useReduceMotion();
@@ -68,6 +70,7 @@ function RecordButton({ accent, onPress }) {
       <PressableScale
         style={styles.record}
         scaleTo={0.94}
+        onPressIn={onWarm}
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={isRecording ? 'Recording in progress' : 'Start a run'}
@@ -106,6 +109,7 @@ export default function TabBar({ state, navigation }) {
         route={route}
         isFocused={isFocused}
         accent={accent}
+        onWarm={() => preloadScreenImages(route.name)}
         onPress={() => go(route, isFocused)}
       />
     );
@@ -122,7 +126,11 @@ export default function TabBar({ state, navigation }) {
         ]}
       >
         {left.map(item)}
-        <RecordButton accent={accent} onPress={() => { haptic.light(); navigation.navigate('Record'); }} />
+        <RecordButton
+          accent={accent}
+          onWarm={() => preloadScreenImages('Record')}
+          onPress={() => { haptic.light(); navigation.navigate('Record'); }}
+        />
         {right.map(item)}
       </View>
     </View>
@@ -152,7 +160,6 @@ const styles = StyleSheet.create({
   record: {
     width: 60,
     height: 60,
-    marginTop: -26, // raised above the bar
     alignItems: 'center',
     justifyContent: 'center',
   },

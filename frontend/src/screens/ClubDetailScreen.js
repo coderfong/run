@@ -2,43 +2,43 @@
 // season leaderboard. Shows stats, the leader, the full roster, and a single
 // join / request action. Joining is NOT automatic on tap (that lives here).
 
-import React, { useCallback, useState } from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { Shield } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
+import { invalidate } from '../api/cache';
+import { useQuery } from '../hooks/useQuery';
 import { useClan } from '../state/clan';
-import { colors, radius, space, type, withAlpha } from '../theme';
+import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClanBadge from '../components/ClanBadge';
 import { toast } from '../ui/toast';
+import { Bar, Reveal, staggerDelay } from '../ui/motion';
 
 const km2 = (m) => (m / 1e6).toFixed(2);
 const km = (m) => (m / 1000).toFixed(1);
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
 
 export default function ClubDetailScreen({ route, navigation }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { clanId } = route.params;
   const { clan: myClan, refresh } = useClan();
-  const [clan, setClan] = useState(null);
+  // Cached per club, so the roster is already drawn when you tap back into a
+  // club you were just looking at from the directory or the standings.
+  const { data: clan, loading, error } = useQuery(
+    clanId ? `clan:${clanId}` : null,
+    () => api.getClan(clanId)
+  );
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      setClan(await api.getClan(clanId));
-    } catch {
-      setClan(false);
-    }
-  }, [clanId]);
-
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  if (clan === false) {
+  if (loading && error) {
     return <Screen center><Text style={type.body}>This club no longer exists.</Text></Screen>;
   }
-  if (!clan) {
+  if (loading) {
     return (
       <Screen>
         <Skeleton width="100%" height={140} style={{ borderRadius: radius.card, marginTop: space.md }} />
@@ -67,6 +67,9 @@ export default function ClubDetailScreen({ route, navigation }) {
     try {
       if (isOpen) {
         await api.joinClan(clanId);
+        // The roster and member count just changed — drop every cached club
+        // view so the club tab and this page don't show the pre-join numbers.
+        invalidate('clan:');
         await refresh();
         toast.success(`Joined ${clan.tag}`);
         navigation.goBack();
@@ -105,7 +108,7 @@ export default function ClubDetailScreen({ route, navigation }) {
       {/* stats */}
       <Row between style={{ marginTop: space.lg }}>
         <StatValue size="md" label="Land" value={km2(clan.season_area_m2)} unit="km²" color={accent} />
-        <StatValue size="md" label="Season" value={clan.season_rank ? `#${clan.season_rank}` : '—'} />
+        <StatValue size="md" label="Season" value={clan.season_rank ? `#${clan.season_rank}` : '·'} />
         <StatValue size="md" label="Members" value={String(clan.member_count)} />
       </Row>
 
@@ -115,9 +118,11 @@ export default function ClubDetailScreen({ route, navigation }) {
           <Text style={type.bodyBold}>Club level {clubLevel}</Text>
           <Text style={type.caption}>{clubXp.toLocaleString()} XP</Text>
         </Row>
-        <View style={styles.xpTrack}>
-          <View style={[styles.xpFill, { width: `${clubPct}%`, backgroundColor: accent }]} />
-        </View>
+        <Bar
+          pct={clubPct / 100}
+          trackStyle={styles.xpTrack}
+          fillStyle={[styles.xpFill, { backgroundColor: accent }]}
+        />
         <Text style={[type.caption, { marginTop: 6 }]}>
           {xpIntoLevel.toLocaleString()} / {xpForLevel.toLocaleString()} to level {clubLevel + 1}
         </Text>
@@ -145,13 +150,15 @@ export default function ClubDetailScreen({ route, navigation }) {
       <SectionHeader title={`Members · ${clan.member_count}`} style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card padded={false}>
         {clan.members.map((m, i) => (
-          <View key={m.user_id} style={[styles.memberRow, i > 0 && styles.divider]}>
-            <Row gap={8} style={{ flex: 1 }}>
-              <Text style={type.bodyBold}>{m.username}</Text>
-              {m.role !== 'member' ? <Pill label={m.role} color={accent} /> : null}
-            </Row>
-            <Text style={type.caption}>{km(m.week_distance_m)} km</Text>
-          </View>
+          <Reveal key={m.user_id} delay={staggerDelay(i)}>
+            <View style={[styles.memberRow, i > 0 && styles.divider]}>
+              <Row gap={8} style={{ flex: 1 }}>
+                <Text style={type.bodyBold}>{m.username}</Text>
+                {m.role !== 'member' ? <Pill label={m.role} color={accent} /> : null}
+              </Row>
+              <Text style={type.caption}>{km(m.week_distance_m)} km</Text>
+            </View>
+          </Reveal>
         ))}
       </Card>
 
@@ -179,7 +186,7 @@ export default function ClubDetailScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl },
   badgeChip: { width: 56, height: 56, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden', marginTop: space.sm },

@@ -3,9 +3,10 @@
 // the stores require 13+), and the one-time flags that drive the intro flow
 // and the in-app tutorial.
 //
-// Stored locally per user (AsyncStorage). Nothing here is server-side yet:
-// `users` has no name/birthday columns, so a migration + PATCH /me is the
-// follow-up if this ever needs to be shared between devices.
+// Stored locally per user (AsyncStorage). The BIRTHDAY is the exception: it is
+// mirrored to the server, because the server is what decides how much of a
+// route gets published and it cannot protect a young account it does not know
+// is young (see backend/app/privacy.py). Nothing else here leaves the phone.
 
 import React, {
   createContext,
@@ -17,6 +18,7 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
 const keyFor = (user) =>
@@ -28,8 +30,17 @@ const EMPTY = {
   firstName: '',
   lastName: '',
   birthday: null, // 'YYYY-MM-DD'
+  // 'man' | 'woman' | 'nonbinary' | 'unspecified' — see onboarding/steps/
+  // GenderStep.js. Optional everywhere: accounts created before this step
+  // exists simply carry ''.
+  gender: '',
   introDone: false,
   tutorialPending: false,
+  // The Crossroads explainer. Unlike `tutorialPending` this one defaults false
+  // for EVERY account, new or old: the plaza is a screen you can arrive at
+  // years in, and nobody who has not read it once should be left guessing at
+  // it. Set the first time the screen is dismissed.
+  crossroadsIntroSeen: false,
 };
 
 const ProfileContext = createContext({
@@ -39,6 +50,7 @@ const ProfileContext = createContext({
   saveProfile: async () => {},
   completeIntro: async () => {},
   completeTutorial: async () => {},
+  completeCrossroadsIntro: async () => {},
 });
 
 export function ProfileProvider({ children }) {
@@ -76,6 +88,14 @@ export function ProfileProvider({ children }) {
       try {
         await AsyncStorage.setItem(keyFor(user), JSON.stringify(next));
       } catch {}
+      // Age is the one thing the SERVER has to know: it sets the floor on how
+      // much of a young runner's route may ever be published, and it cannot
+      // apply a floor for an age it was never told. Best-effort — a failure
+      // here must not block onboarding, and the protective defaults apply to
+      // everyone regardless.
+      if (patch.birthday) {
+        api.setBirthday(patch.birthday).catch(() => {});
+      }
       return next;
     },
     [user?.username]
@@ -88,6 +108,10 @@ export function ProfileProvider({ children }) {
     [write]
   );
   const completeTutorial = useCallback(() => write({ tutorialPending: false }), [write]);
+  const completeCrossroadsIntro = useCallback(
+    () => write({ crossroadsIntroSeen: true }),
+    [write]
+  );
 
   const displayName = profile.firstName || user?.username || '';
 
@@ -99,8 +123,17 @@ export function ProfileProvider({ children }) {
       saveProfile: write,
       completeIntro,
       completeTutorial,
+      completeCrossroadsIntro,
     }),
-    [profile, displayName, loading, write, completeIntro, completeTutorial]
+    [
+      profile,
+      displayName,
+      loading,
+      write,
+      completeIntro,
+      completeTutorial,
+      completeCrossroadsIntro,
+    ]
   );
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;

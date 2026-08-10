@@ -4,12 +4,22 @@
 // Both are presentational — state lives in the step that renders them.
 
 import React, { useEffect, useMemo, useRef } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Check, Lock } from 'lucide-react-native';
 
 import { space } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
 import { toon, toonRadius, toonType } from './toon';
+
+// Grid geometry. The thumbnail used to be drawn at a hard-coded 64pt inside a
+// cell that is ~108pt wide on a modern phone, so half of every tile was empty
+// margin and the art read as a stamp in the corner of an empty box. The cell
+// width is derived here and handed to `renderThumb`, so the art is drawn at
+// the size it is actually given.
+const GRID_COLS = 3;
+const GRID_PAD = space.lg;
+const GRID_GAP = space.sm;
 
 // ---------------------------------------------------------------------------
 // PickerSheet — the bottom sheet that docks under the character stage:
@@ -29,6 +39,14 @@ export function PickerSheet({
   footer,
   maxHeight,
 }) {
+  const { width } = useWindowDimensions();
+  const cellSize = Math.floor(
+    (width - GRID_PAD * 2 - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS
+  );
+  // The art gets the whole cell bar a hairline of breathing room, so a wide
+  // brim or a long coat fills the tile instead of floating in it.
+  const thumbSize = Math.round(cellSize - space.md);
+
   return (
     <View style={[styles.sheet, maxHeight ? { maxHeight } : null]}>
       <View style={styles.sheetHeader}>
@@ -71,9 +89,11 @@ export function PickerSheet({
               accessibilityRole="button"
               accessibilityLabel={item.label}
               accessibilityState={{ selected: on }}
-              style={[styles.cell, on && styles.cellOn]}
+              style={[styles.cell, { width: cellSize, height: cellSize }, on && styles.cellOn]}
             >
-              <View style={{ opacity: unlocked ? 1 : 0.3 }}>{renderThumb(item)}</View>
+              <View style={{ opacity: unlocked ? 1 : 0.3 }}>
+                {renderThumb(item, thumbSize)}
+              </View>
               {!unlocked ? (
                 <View style={styles.lock}>
                   <Lock size={12} color="rgba(255,255,255,0.8)" />
@@ -84,7 +104,18 @@ export function PickerSheet({
         })}
       </ScrollView>
 
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+      {footer ? (
+        <View style={styles.footer}>
+          {/* Rides above the footer's own edge so the grid reads as "there is
+              more below" instead of a row sliced in half by the CTA. */}
+          <LinearGradient
+            pointerEvents="none"
+            colors={['rgba(42,43,53,0)', toon.sheet]}
+            style={styles.gridFade}
+          />
+          {footer}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -222,16 +253,18 @@ const styles = StyleSheet.create({
   },
   swatchOn: { borderColor: '#fff', borderWidth: 3 },
 
+  gridFade: { position: 'absolute', left: 0, right: 0, top: -30, height: 30 },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: space.sm,
-    padding: space.lg,
+    gap: GRID_GAP,
+    padding: GRID_PAD,
+    // The last row used to end flush with the sheet's edge and get sliced by
+    // the footer sitting on top of it.
+    paddingBottom: GRID_PAD + space.lg,
     justifyContent: 'flex-start',
   },
   cell: {
-    width: '31.5%',
-    aspectRatio: 1,
     borderRadius: toonRadius.cell,
     backgroundColor: toon.cell,
     borderWidth: 2.5,
@@ -243,7 +276,12 @@ const styles = StyleSheet.create({
   cellOn: { borderColor: '#fff' },
   lock: { position: 'absolute', top: 6, right: 6 },
 
-  footer: { paddingHorizontal: space.gutter, paddingTop: space.sm },
+  footer: {
+    paddingHorizontal: space.gutter,
+    paddingTop: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.10)',
+  },
 
   wheel: { flexDirection: 'row', height: ITEM_H * 5, paddingHorizontal: space.gutter },
   wheelBand: {

@@ -1,16 +1,18 @@
 // Theme switch — System / Light / Dark. Reads and writes the persisted
-// preference from ThemeProvider. Drop into Profile/Settings once the app-wide
-// light-mode sweep is complete (until then, only converted screens respond).
+// preference from ThemeProvider.
 //
 //   import ThemeToggle from '../components/ThemeToggle';
 //   ...
 //   <ThemeToggle />
+//
+// This was its own copy of Segmented's markup, which is how the two drifted
+// apart — the copy kept the static (dark) type scale and had to be re-spaced
+// by hand. It now IS a Segmented, so spacing and theming stay in one place.
 
 import React from 'react';
-import { Text, View } from 'react-native';
 
-import { radius, type, useTheme } from '../theme';
-import { PressableScale } from '../ui/motion';
+import { useTheme } from '../theme';
+import Segmented from './ui/Segmented';
 
 const OPTIONS = [
   { key: 'system', label: 'System' },
@@ -19,43 +21,14 @@ const OPTIONS = [
 ];
 
 export default function ThemeToggle({ style }) {
-  const { colors, preference, setPreference } = useTheme();
+  const { preference, setPreference } = useTheme();
   return (
-    <View
-      style={[
-        {
-          flexDirection: 'row',
-          backgroundColor: colors.bgElevated,
-          borderRadius: radius.pill,
-          padding: 3,
-          gap: 4,
-        },
-        style,
-      ]}
-    >
-      {OPTIONS.map((opt) => {
-        const active = opt.key === preference;
-        return (
-          <PressableScale
-            key={opt.key}
-            style={{
-              flex: 1,
-              paddingVertical: 8,
-              borderRadius: radius.pill,
-              alignItems: 'center',
-              backgroundColor: active ? colors.card : 'transparent',
-            }}
-            onPress={() => setPreference(opt.key)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={`${opt.label} theme`}
-          >
-            <Text style={[type.bodySmBold, { color: active ? colors.text : colors.textMuted }]}>
-              {opt.label}
-            </Text>
-          </PressableScale>
-        );
-      })}
-    </View>
+    <Segmented
+      options={OPTIONS}
+      value={preference}
+      onChange={setPreference}
+      labelSuffix="theme"
+      style={style}
+    />
   );
 }

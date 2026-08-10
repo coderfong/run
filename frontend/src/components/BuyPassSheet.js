@@ -20,8 +20,8 @@ const GOLD = '#eab308';
 
 const PERKS = [
   ['lootbox', 'Rarer lootboxes on every box tier'],
-  ['energy', '+25–50 energy on every other tier'],
-  ['award', 'Yours forever — the ladder never resets'],
+  ['energy', '+25 to 50 energy on every other tier'],
+  ['award', 'Yours forever. The ladder never resets'],
 ];
 
 async function storePurchase(/* productId */) {
@@ -56,7 +56,7 @@ export default function BuyPassSheet({ visible, onClose, onPurchased }) {
     <Sheet visible={visible} onClose={onClose}>
       <Text style={[type.heading, { marginBottom: 4 }]}>Premium pass</Text>
       <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
-        Unlock the gold track — a second reward on every level you've earned and every level to come.
+        Unlock the gold track. A second reward on every level you've earned and every level to come.
       </Text>
       {PERKS.map(([icon, label]) => (
         <Row key={icon} gap={12} style={[styles.perk, { backgroundColor: colors.card }]}>
@@ -72,7 +72,7 @@ export default function BuyPassSheet({ visible, onClose, onPurchased }) {
         style={{ marginTop: space.sm }}
       />
       <View style={{ alignItems: 'center', marginTop: space.sm }}>
-        <Text style={[type.caption, { color: colors.textDim }]}>One-time purchase. No subscription.</Text>
+        <Text style={[type.caption, { color: colors.textDim }]}>A single purchase. No subscription.</Text>
       </View>
     </Sheet>
   );

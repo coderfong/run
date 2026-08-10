@@ -2,7 +2,7 @@
   "expo": {
     "name": "PASER",
     "slug": "pacer",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "scheme": "pacer",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
@@ -24,6 +24,8 @@
         "NSMotionUsageDescription": "Motion data verifies your runs are on foot.",
         "NSHealthShareUsageDescription": "PASER does not read your health data.",
         "NSHealthUpdateUsageDescription": "PASER can save your finished runs to Apple Health when you turn on Health sync.",
+        "NSPhotoLibraryAddUsageDescription": "PASER saves your run card to your photos when you share a run.",
+        "NSPhotoLibraryUsageDescription": "Sharing a run can save its card to your photos. PASER never browses your library.",
         "UIBackgroundModes": [
           "location"
         ]
@@ -62,13 +64,27 @@
       "expo-web-browser",
       "expo-apple-authentication",
       "@sentry/react-native",
-      "@rnmapbox/maps"
+      "@rnmapbox/maps",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PASER lets you put one of your own photos behind your run stats when you share a run."
+        }
+      ],
+      [
+        "react-native-share",
+        {
+          "ios": ["instagram", "instagram-stories"],
+          "android": ["com.instagram.android"]
+        }
+      ]
     ],
     "extra": {
       "apiBase": "https://run-mdlv.onrender.com",
       "mapboxPublicToken": "",
       "mapStyleLight": "",
       "mapStyleDark": "",
+      "facebookAppId": "",
       "eas": {
         "projectId": "2ebf801e-4026-49f3-8748-ead66db2156e"
       }

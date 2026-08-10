@@ -1,30 +1,32 @@
 // RewardArt — draws a pass reward as ITSELF.
 //
 // The rule: a tier never shows a stand-in. A wood border shows the wood
-// border, a hexagon claim shows the real hexagon ring the claim engine
-// stamps, a Crown shows the crown art off the character sheet. The only
+// border, a Crown shows the crown art off the character sheet. The only
 // glyphs left are for rewards that genuinely have no object yet (FX, which
 // has no art in the repo).
+//
+// Every kind draws to the SAME box, edge to edge. They used to be scaled
+// individually (a chest at 0.86, an energy bolt at 0.62), which is why a
+// ladder of them read as a jumble of big and small tiles.
 //
 // Rewards arrive from /me/progression as { kind, key, label }:
 //   cosmetic   key = "<slot>:<id>"  → the real item art from the catalogue
 //   border     key = tier key       → the real PortraitBorder ring
-//   shape      key = shape key      → the real claim polygon
-//   lootbox    key = rarity         → per-rarity crate art
+//   lootbox    key = rarity         → the gift box
 //   energy     key = "+25"          → the energy sticker
 //   energy_cap key = "+5"           → the energy sticker, capped
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Polygon } from 'react-native-svg';
 import { Gift } from 'lucide-react-native';
 
 import { toonType, useTheme } from '../theme';
-import AppIcon, { ICONS } from './AppIcon';
+import { useReduceMotion } from '../ui/motion';
+import AppIcon from './AppIcon';
+import GameAnimation from './GameAnimation';
 import PortraitBorder from './PortraitBorder';
 import { PartThumb } from './character/CharacterRig';
 import { getItem } from '../config/cosmetics';
-import { unitShape } from '../config/claimShapes';
 
 // Rarity → the ring/tint a tile uses. Also what the lootbox art is keyed on.
 export const RARITY_COLOR = {
@@ -40,31 +42,9 @@ function parseItemKey(key) {
   return slot && id ? { slot, id } : null;
 }
 
-// The real claim polygon, normalised into the tile's box.
-function ShapeIcon({ shape, size, color }) {
-  const pts = unitShape(shape) || [];
-  if (!pts.length) return null;
-  const xs = pts.map((p) => p[0]);
-  const ys = pts.map((p) => p[1]);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const w = Math.max(1e-6, Math.max(...xs) - minX);
-  const h = Math.max(1e-6, Math.max(...ys) - minY);
-  const s = Math.max(w, h);
-  const pad = size * 0.12;
-  const box = size - pad * 2;
-  const d = pts
-    .map(([x, y]) => `${pad + ((x - minX) / s) * box},${pad + ((y - minY) / s) * box}`)
-    .join(' ');
-  return (
-    <Svg width={size} height={size}>
-      <Polygon points={d} fill={`${color}33`} stroke={color} strokeWidth={2.5} strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
-export default function RewardArt({ reward, size = 56, equipped, accent = '#ec4899' }) {
+export default function RewardArt({ reward, size = 56, equipped, accent = '#ec4899', animated = false }) {
   const { colors } = useTheme();
+  const reduced = useReduceMotion();
   if (!reward) return null;
   const { kind, key } = reward;
 
@@ -74,7 +54,7 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
     if (item) {
       return (
         <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-          <PartThumb slot={ref.slot} item={item} equipped={equipped} size={size} />
+          <PartThumb slot={ref.slot} item={item} size={size} />
         </View>
       );
     }
@@ -95,24 +75,24 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
     );
   }
 
-  if (kind === 'shape') return <ShapeIcon shape={key} size={size} color={accent} />;
-
   if (kind === 'lootbox') {
-    const tint = RARITY_COLOR[key] || RARITY_COLOR.common;
-    // Real per-rarity crate art when it exists; the generic box + tint ring is
-    // the fallback so an unknown rarity still renders something sensible.
-    const rarityIcon = ICONS[`lootbox-${key}`] ? `lootbox-${key}` : null;
+    // ONE chest for every rarity — the animated gift box, drawn at full tile
+    // size and NOTHING else. It used to sit inside a rarity-coloured ring;
+    // that ring read as a box drawn around a box, and it shrank the art to
+    // make room for itself. Rarity lives in the reveal and the label now.
+    //
+    // `animated` is off by default because the pass mounts twenty of these at
+    // once in a plain ScrollView. The screen turns it on for the tiles worth
+    // looking at; the rest hold frame one, which is a complete, readable box.
     return (
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        {!rarityIcon && (
-          <View
-            style={[
-              styles.boxGlow,
-              { width: size, height: size, borderRadius: size * 0.3, backgroundColor: `${tint}22`, borderColor: tint },
-            ]}
-          />
-        )}
-        <AppIcon name={rarityIcon || 'lootbox'} size={size * (rarityIcon ? 0.94 : 0.72)} />
+        <GameAnimation
+          name="giftBox"
+          size={size}
+          loop={animated && !reduced}
+          // Reduce Motion must not remove the chest — it IS the reward.
+          still={!animated || reduced}
+        />
       </View>
     );
   }
@@ -120,7 +100,7 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
   if (kind === 'energy' || kind === 'energy_cap') {
     return (
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        <AppIcon name="energy" size={size * 0.62} />
+        <AppIcon name="energy" size={size * 0.86} />
         <Text style={[toonType.label, styles.energyText, { color: colors.text }]}>{key}</Text>
       </View>
     );
@@ -133,6 +113,5 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
 
 const styles = StyleSheet.create({
   borderCore: { position: 'absolute' },
-  boxGlow: { position: 'absolute', borderWidth: 2 },
-  energyText: { position: 'absolute', bottom: -2, fontSize: 11 },
+  energyText: { position: 'absolute', bottom: -2, fontSize: 12 },
 });

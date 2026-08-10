@@ -76,7 +76,7 @@ function GoogleButton() {
       return;
     }
     signInWithProvider('google', idToken)
-      .catch((e) => toast.error(e.message || 'Google sign-in failed'))
+      .catch((e) => toast.error(e.message || 'Could not sign in with Google'))
       .finally(() => setBusy(false));
   }, [response, signInWithProvider]);
 
@@ -92,7 +92,7 @@ function GoogleButton() {
         setBusy(true);
         promptAsync().catch((e) => {
           setBusy(false);
-          toast.error(e.message || 'Google sign-in failed');
+          toast.error(e.message || 'Could not sign in with Google');
         });
       }}
     />
@@ -133,7 +133,7 @@ export default function SocialAuthButtons() {
       await signInWithProvider('apple', cred.identityToken, { name });
     } catch (e) {
       if (e?.code === 'ERR_REQUEST_CANCELED') return; // user backed out — not an error
-      toast.error(e.message || 'Apple sign-in failed');
+      toast.error(e.message || 'Could not sign in with Apple');
     } finally {
       setBusy(false);
     }
@@ -168,7 +168,7 @@ export default function SocialAuthButtons() {
             glyphStyle={styles.gGlyph}
             fg="#1f1f1f"
             label="Continue with Google"
-            onPress={() => toast.error('Google sign-in isn’t configured yet.')}
+            onPress={() => toast.error('Signing in with Google is not set up yet.')}
           />
         )}
       </View>

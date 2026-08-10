@@ -4,11 +4,11 @@
 // with a paser action instead of settings. `state` comes from the server so the
 // button is always right, even if the relationship changed on another device.
 
-import React, { useCallback, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 
 import { api } from '../api/client';
+import { useQuery } from '../hooks/useQuery';
 import { radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Card, Row, Button, Pill, StatValue, SectionHeader, Skeleton, EmptyState } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
@@ -16,6 +16,7 @@ import PortraitBorder from '../components/PortraitBorder';
 import { PressableScale, Reveal } from '../ui/motion';
 import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
+import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
 
 const km = (m) => (m / 1000).toFixed(1);
 const km2 = (m2) => (m2 / 1e6).toFixed(2);
@@ -26,19 +27,23 @@ export default function RunnerProfileScreen({ navigation, route }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
-  const [p, setP] = useState(null);
+  // Cached per runner, so tapping back into someone you just looked at draws
+  // their profile at once. The key changes with the runner, and useQuery
+  // re-seeds on a key change — the previous runner's stats never linger.
+  const { data: p, loading, error, refresh: load } = useQuery(
+    userId ? `runner:${userId}` : null,
+    () => api.runnerProfile(userId)
+  );
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    try { setP(await api.runnerProfile(userId)); } catch { setP(false); }
-  }, [userId]);
-
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => {
+    if (p) preloadRunnerAssets([p]);
+  }, [p]);
 
   // Keep the header title honest even before the fetch lands.
-  useFocusEffect(useCallback(() => {
+  useEffect(() => {
     navigation.setOptions({ title: p?.username || username || 'Runner' });
-  }, [navigation, p?.username, username]));
+  }, [navigation, p?.username, username]);
 
   const act = async (fn, msg) => {
     setBusy(true);
@@ -53,7 +58,7 @@ export default function RunnerProfileScreen({ navigation, route }) {
     }
   };
 
-  if (p === false) {
+  if (loading && error) {
     return (
       <Screen center>
         <EmptyState
@@ -64,7 +69,7 @@ export default function RunnerProfileScreen({ navigation, route }) {
       </Screen>
     );
   }
-  if (!p) {
+  if (loading) {
     return (
       <Screen>
         <Skeleton width="100%" height={220} style={{ borderRadius: radius.card, marginTop: space.md }} />
@@ -138,8 +143,10 @@ export default function RunnerProfileScreen({ navigation, route }) {
   return (
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
       <Reveal style={styles.header}>
-        <PortraitBorder level={p.level} size={104}>
-          <CharacterBust equipped={p.avatar} size={96} ring={accent} />
+        {/* Border comes from RANK (territorial standing), not level — same
+            rule as your own profile. The bust fills the frame's opening. */}
+        <PortraitBorder borderKey={p.rank_key || 'wood'} size={104}>
+          <CharacterBust equipped={p.avatar} size={104} ring={accent} />
         </PortraitBorder>
         <Text style={[type.title, { marginTop: space.md }]}>{p.username}</Text>
         <Row gap={8} style={{ marginTop: space.sm }}>

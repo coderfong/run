@@ -19,6 +19,14 @@ import re
 
 FE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(FE, "src", "config", "cosmetics.js")
+# cosmetics.js holds only part of the wardrobe: ITEMS.top/bottom/footwear are
+# then push()ed full of the arrays in outfitItems.js. Reading the first file
+# alone meant every outfit piece — all the bottoms and every pair of shoes —
+# was equippable but could never be bought, because the server had no price
+# for it.
+OUTFITS = os.path.join(FE, "src", "config", "outfitItems.js")
+PUSHED = {"OUTFIT_TOPS": "top", "OUTFIT_SUITS": "top",
+          "OUTFIT_BOTTOMS": "bottom", "FOOTWEAR": "footwear"}
 OUT = os.path.abspath(os.path.join(FE, "..", "backend", "app", "shop_catalog.py"))
 
 # Coins by rarity. Tuned against the earn rate in coins.py (25/run, 100/level):
@@ -42,6 +50,20 @@ for m in re.finditer(r"\n  (\w+): \[([\s\S]*?)\n  \],", src):
         rarity = (re.search(r"rarity: '(\w+)'", line) or [None, "common"])[1]
         label = (re.search(r"label: '([^']*)'", line) or [None, iid])[1]
         items.append((slot, iid, rarity, label))
+
+osrc = open(OUTFITS, encoding="utf-8").read()
+for arr, slot in PUSHED.items():
+    start = osrc.find(f"export const {arr} = [")
+    end = osrc.find("\n];", start)
+    if start < 0 or end < 0:
+        raise SystemExit(f"{arr} not found in outfitItems.js")
+    for line in osrc[start:end].splitlines():
+        mid = re.search(r"id: '([^']+)'", line)
+        if not mid or mid.group(1) == "none" or "premiumOnly" in line:
+            continue
+        rarity = (re.search(r"rarity: '(\w+)'", line) or [None, "common"])[1]
+        label = (re.search(r"label: '([^']*)'", line) or [None, mid.group(1)])[1]
+        items.append((slot, mid.group(1), rarity, label))
 
 by_slot = {}
 for slot, iid, rarity, label in items:

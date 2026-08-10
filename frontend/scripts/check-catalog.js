@@ -8,6 +8,7 @@ const path = require('path');
 const files = [
   'src/config/cosmetics.js',
   'src/config/cosmeticsArt.js',
+  'src/config/outfitItems.js',
   'src/components/character/CharacterRig.js',
 ];
 for (const f of files) {
@@ -17,7 +18,7 @@ console.log('parse ok:', files.length, 'files');
 
 let miss = 0;
 let total = 0;
-for (const f of files.slice(0, 2)) {
+for (const f of files.slice(0, 3)) {
   const src = fs.readFileSync(f, 'utf8');
   const re = /require\('([^']+)'\)/g;
   let m;
@@ -50,6 +51,32 @@ while ((s = slotRe.exec(src))) {
     known.add(`${slot}:${id}`);
   }
   console.log(`  ${slot}: ${ids.length} items`);
+}
+// cosmetics.js only holds part of the wardrobe: ITEMS.top/bottom/footwear are
+// then push()ed full of the arrays in outfitItems.js. Reading only the literal
+// blocks above left ~two thirds of the tops and ALL of the bottoms and shoes
+// invisible here, so a pass tier naming one of them reported as unresolved
+// even though the app resolves it fine.
+const outfitSrc = fs.readFileSync('src/config/outfitItems.js', 'utf8');
+const PUSHED = { OUTFIT_TOPS: 'top', OUTFIT_SUITS: 'top', OUTFIT_BOTTOMS: 'bottom', FOOTWEAR: 'footwear' };
+for (const [arr, slot] of Object.entries(PUSHED)) {
+  const start = outfitSrc.indexOf(`export const ${arr} = [`);
+  const end = start < 0 ? -1 : outfitSrc.indexOf('\n];', start);
+  const block = start < 0 || end < 0 ? null : [null, outfitSrc.slice(start, end)];
+  if (!block) {
+    console.log(`MISSING array: ${arr} in outfitItems.js`);
+    dupes++;
+    continue;
+  }
+  const ids = [...block[1].matchAll(/id: '([^']+)'/g)].map((x) => x[1]);
+  for (const id of ids) {
+    if (known.has(`${slot}:${id}`)) {
+      console.log(`DUPLICATE id in ${slot}: ${id}`);
+      dupes++;
+    }
+    known.add(`${slot}:${id}`);
+  }
+  console.log(`  ${slot} +${ids.length} from ${arr}`);
 }
 console.log(`${dupes} duplicate ids`);
 

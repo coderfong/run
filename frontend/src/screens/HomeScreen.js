@@ -1,26 +1,30 @@
-// Home — PACER header (wordmark + bell), the season banner card over the
-// Marina Bay art, then [Feed | Leaderboard].
+// Home — PACER header, season carousel and shortcuts form the scrollable
+// header above run cards. Pulling back to the top reveals them again.
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Image, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image } from '../ui/image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
+import { useQuery } from '../hooks/useQuery';
 import { brand, radius, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { useReduceMotion, PressableScale } from '../ui/motion';
-import { Segmented, EmptyState, OutlinedText, Skeleton } from '../components/ui';
+import { EmptyState, OutlinedText, Skeleton } from '../components/ui';
 import FeedCard from '../components/FeedCard';
-import LeaderboardView from '../components/LeaderboardView';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
-import RivalCard from '../components/RivalCard';
 import SideRail from '../components/SideRail';
-import { art } from '../config/onboardingArt';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
+import {
+  preloadScreenImages,
+  preloadScreenImagesAfterInteractions,
+} from '../config/screenAssets';
+import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
 
 // Season window (matches the seeded Season 1; Phase-next: read from the API).
 const SEASON_NO = '01';
@@ -34,22 +38,20 @@ function countdown() {
   return `ENDS IN ${d}D ${String(h).padStart(2, '0')}H`;
 }
 
-// The same clock, short enough for a rail tile ("6d 15h").
-function seasonShort() {
-  const ms = Math.max(0, SEASON_END - Date.now());
-  const d = Math.floor(ms / 86400000);
-  const h = Math.floor((ms % 86400000) / 3600000);
-  return d > 0 ? `${d}d ${h}h` : `${h}h`;
-}
-
 // A hero card: a SOLID flat brand-color panel (no photo, no dark scrim). The
 // illustration sits on the right and melts into the panel via a same-color
 // horizontal fade — so text lives on clean color, never fighting an image.
-function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, onPress }) {
+function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, onPress, onPressIn }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   return (
-    <PressableScale style={{ width }} onPress={onPress} accessibilityRole="button" accessibilityLabel={title}>
+    <PressableScale
+      style={{ width }}
+      onPressIn={onPressIn}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+    >
       <View style={[styles.hero, { backgroundColor: bg }]}>
         <View style={styles.heroText}>
           <View>
@@ -82,6 +84,7 @@ function HeroCarousel({ navigation }) {
   const { width } = useWindowDimensions();
   const cardW = width - space.gutter * 2;
   const [page, setPage] = useState(0);
+  const warmSeason = () => preloadScreenImages('Season');
 
   const onEnd = (e) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / cardW);
@@ -105,6 +108,7 @@ function HeroCarousel({ navigation }) {
           title="STANDINGS"
           sub={countdown()}
           cta="View season"
+          onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season')}
         />
         <HeroCard
@@ -116,6 +120,7 @@ function HeroCarousel({ navigation }) {
           title="CLUBS"
           sub="Who holds the most land"
           cta="View clubs"
+          onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season', { mode: 'clans' })}
         />
         <HeroCard
@@ -126,6 +131,7 @@ function HeroCarousel({ navigation }) {
           title="SOLO"
           sub="Climb without a club"
           cta="View solo"
+          onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season', { mode: 'solo' })}
         />
       </ScrollView>
@@ -138,224 +144,225 @@ function HeroCarousel({ navigation }) {
   );
 }
 
-// A rivalry that moved recently outranks everything else on Home — it's the
-// one thing here with a name attached and a verb to answer it with. Only
-// shown while the beat is fresh; a two-week-old steal is history, not a hook.
-const RIVAL_ALERT_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
-
-function RivalAlert({ navigation, onShown }) {
-  const { equipped } = useAvatar();
-  const [rival, setRival] = useState(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-      api
-        .rivals(5)
-        .then((d) => {
-          if (!alive) return;
-          const fresh = (d.rivals || []).find((r) => {
-            const e = r.last_event;
-            if (!e) return false;
-            const at = new Date(e.at.endsWith('Z') ? e.at : `${e.at}Z`).getTime();
-            return Date.now() - at < RIVAL_ALERT_MAX_AGE_MS;
-          });
-          setRival(fresh || null);
-          onShown?.(!!fresh);
-        })
-        .catch(() => {});
-      return () => { alive = false; };
-    }, [onShown])
-  );
-
-  if (!rival) return null;
-  return (
-    <RivalCard
-      rival={rival}
-      myAvatar={equipped}
-      compact
-      style={{ marginBottom: space.md }}
-      onPress={() => navigation.navigate('You', { screen: 'Rivals' })}
-      onTakeBack={() => navigation.navigate('Record')}
-      onViewLand={
-        rival.last_event?.lat != null
-          ? () =>
-              navigation.navigate('Map', {
-                screen: 'MapMain',
-                params: { focus: { lat: rival.last_event.lat, lon: rival.last_event.lon } },
-              })
-          : undefined
-      }
-    />
-  );
-}
-
-function FeedList({ navigation }) {
+function FeedList({ navigation, header }) {
   const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const accent = useAccent();
   const reduce = useReduceMotion();
-  const [items, setItems] = useState(null);
-  const [cursor, setCursor] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
+  // The first page comes from the cache, so coming back to Home shows the feed
+  // you were just looking at instead of four skeletons and a round trip. Later
+  // pages are deliberately NOT cached: they're append-only scroll state, and
+  // restoring page 5 of a feed you scrolled yesterday is not what you want.
+  const { data, loading, refresh } = useQuery('feed', api.feed, {
+    fallback: { items: [] },
+  });
+  const [more, setMore] = useState([]);
   const [loadingMore, setLoadingMore] = useState(false);
+  // Only a PULL drives the spinner. `refreshing` from the query is also true
+  // during the silent focus revalidation, and showing the wheel for that would
+  // just be the old "always loading" look wearing a different hat.
+  const [pulling, setPulling] = useState(false);
+  const moreCursor = useRef(null);
 
-  const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    try {
-      const data = await api.feed();
-      setItems(data.items || []);
-      setCursor(data.next_cursor || null);
-    } catch {
-      setItems((prev) => prev || []);
-    } finally {
-      if (isRefresh) setRefreshing(false);
-    }
-  }, []);
+  const items = useMemo(() => [...(data?.items || []), ...more], [data, more]);
+  const cursor = more.length ? moreCursor.current : data?.next_cursor || null;
+
+  // Warm the avatar layers, but never wait on them: a feed row is text and
+  // numbers plus a portrait, and holding all four rows behind ~36 image decodes
+  // is what made the skeletons sit there for seconds.
+  useEffect(() => {
+    if (items.length) preloadRunnerAssets(items);
+  }, [items]);
 
   const loadMore = async () => {
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const data = await api.feed(cursor);
-      setItems((prev) => [...(prev || []), ...(data.items || [])]);
-      setCursor(data.next_cursor || null);
+      const page = await api.feed(cursor);
+      setMore((prev) => [...prev, ...(page.items || [])]);
+      moreCursor.current = page.next_cursor || null;
     } catch {
     } finally {
       setLoadingMore(false);
     }
   };
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Pull-to-refresh restarts paging — the extra pages hang off the OLD first
+  // page, and appending them under a fresh one would duplicate rows.
+  const onRefresh = async () => {
+    setPulling(true);
+    setMore([]);
+    moreCursor.current = null;
+    try {
+      await refresh();
+    } finally {
+      setPulling(false);
+    }
+  };
 
-  if (!items) {
-    return (
-      <View style={{ paddingHorizontal: space.gutter, paddingTop: space.md }}>
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} width="100%" height={110} style={{ borderRadius: 16, marginBottom: space.md }} />
-        ))}
-      </View>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <EmptyState
-        art={require('../../assets/art/empty-runs.png')}
-        title="Your feed is quiet"
-        body="Start a run — the feed fills as you and your city claim land."
-        actionLabel="Start run"
-        onAction={() => navigation.navigate('Record')}
-        accent={accent}
-      />
-    );
-  }
+  const rows = loading ? Array.from({ length: 4 }, (_, i) => ({ id: `skeleton-${i}` })) : items;
+  // Exactly one card detonates on its own: the most recent run that actually
+  // took land off somebody. Every other steal on the page sits settled until
+  // it is tapped — twenty bombs going off down a scroll is not a payoff.
+  const autoStealId = (loading ? null : rows.find((r) => r.victims?.length))?.id ?? null;
 
   return (
     <FlatList
       style={{ backgroundColor: colors.bg }}
-      contentContainerStyle={{ paddingHorizontal: space.gutter, paddingTop: space.md, paddingBottom: space.xxl }}
-      data={items}
+      contentContainerStyle={{ paddingBottom: space.xxl, flexGrow: 1 }}
+      data={rows}
       keyExtractor={(it) => it.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={accent} colors={[accent]} />}
-      onEndReached={loadMore}
+      ListHeaderComponent={header}
+      ListEmptyComponent={
+        <View style={{ paddingHorizontal: space.gutter }}>
+          <EmptyState
+            art={require('../../assets/art/empty-runs.png')}
+            title="Your feed is quiet"
+            body="Start a run. The feed fills as you and your city claim land."
+            actionLabel="Start run"
+            onAction={() => navigation.navigate('Record')}
+            accent={accent}
+          />
+        </View>
+      }
+      refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={accent} colors={[accent]} />}
+      onEndReached={loading ? undefined : loadMore}
       onEndReachedThreshold={0.5}
       renderItem={({ item, index }) => (
-        <Animated.View entering={reduce ? undefined : FadeInDown.delay(Math.min(index, 12) * 30).duration(240)}>
-          <FeedCard item={item} navigation={navigation} />
-        </Animated.View>
+        <View style={styles.feedRow}>
+          {loading ? (
+            <Skeleton width="100%" height={110} style={{ borderRadius: 16, marginBottom: space.md }} />
+          ) : (
+            <Animated.View entering={reduce ? undefined : FadeInDown.delay(Math.min(index, 12) * 30).duration(240)}>
+              <FeedCard
+                item={item}
+                navigation={navigation}
+                autoPlaySteal={item.id === autoStealId}
+              />
+            </Animated.View>
+          )}
+        </View>
       )}
     />
   );
 }
 
 export default function HomeScreen({ navigation }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  // The wordmark is a sticker: a fill with a hard outline around it. In light
+  // mode the old fixed white fill left only the black outline to carry the
+  // letters against a near-white page, so the word all but vanished. The
+  // sticker flips instead — ink letters, white outline.
+  const wordmarkOutline = scheme === 'light' ? '#ffffff' : toon.ink;
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState('feed');
-  const [unread, setUnread] = useState(0);
-  const [energy, setEnergy] = useState(null);
+  const { refreshRank } = useAvatar();
   const [shopOpen, setShopOpen] = useState(false);
 
-  const loadEnergy = useCallback(() => {
-    api.energyStatus().then(setEnergy).catch(() => {});
-  }, []);
+  // Both of these used to arrive a round trip after the header drew, so the
+  // energy meter and the bell's unread dot popped in a beat late on every
+  // visit. Seeded from cache, they are simply there.
+  const { data: energy, refresh: reloadEnergy } = useQuery('me:energy', api.energyStatus);
+  const { data: notifs, setData: setNotifs } = useQuery('notifications', api.notifications, {
+    fallback: { unread: 0, items: [] },
+  });
+  const unread = notifs?.unread || 0;
+
+  useEffect(
+    () => preloadScreenImagesAfterInteractions([
+      'Season',
+      'Progression',
+      'Shop',
+      'Record',
+      'Rivals',
+      'Crossroads',
+      'Notifications',
+      'Leaderboard',
+      'SharedIcons',
+    ]),
+    []
+  );
 
   useFocusEffect(
     useCallback(() => {
-      api.notifications().then((d) => setUnread(d.unread || 0)).catch(() => {});
-      loadEnergy();
-    }, [loadEnergy])
+      // Energy and notifications refresh themselves on focus (useQuery). What
+      // is left here is the avatar tier: portrait frames all over the app draw
+      // it from the avatar context, and it is only fetched at sign-in. Rank
+      // moves mid-session, so Home — the screen you always come back to — is
+      // where it gets refreshed. (This used to live in the rivalry card that
+      // sat here; the card moved to the Rivals page, the refresh must not.)
+      refreshRank?.();
+    }, [refreshRank])
+  );
+
+  const feedHeader = (
+    <View style={styles.feedHeader}>
+      <View style={styles.header}>
+        <OutlinedText style={styles.wordmark} outline={wordmarkOutline} width={2.5} align="left">
+          {brand.name}
+        </OutlinedText>
+        <View style={styles.headerRight}>
+          {energy && (
+            <EnergyMeter
+              compact
+              status={energy}
+              onPress={() => setShopOpen(true)}
+              style={styles.headerEnergy}
+            />
+          )}
+          <PressableScale
+            style={styles.bell}
+            onPress={() => {
+              // Clear the dot in the cache too, so coming back to Home doesn't
+              // briefly show a badge for notifications already read.
+              setNotifs((prev) => ({ ...(prev || {}), unread: 0 }));
+              navigation.navigate('Notifications');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Notifications"
+          >
+            <AppIcon name="bell" size={24} />
+            {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
+          </PressableScale>
+        </View>
+      </View>
+
+      <HeroCarousel navigation={navigation} />
+
+      {/* These shortcuts replace the redundant Feed/Leaderboard switch and
+          scroll away with the season card instead of covering run cards. */}
+      <SideRail
+        inline
+        navigation={navigation}
+        onOpenShop={() => navigation.navigate('Shop')}
+        style={styles.shortcutRow}
+      />
+    </View>
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <View style={{ paddingHorizontal: space.gutter, paddingTop: space.sm }}>
-        {/* header: wordmark + energy + bell */}
-        <View style={styles.header}>
-          <OutlinedText style={styles.wordmark} outline={toon.ink} width={2.5} align="left">
-            {brand.name}
-          </OutlinedText>
-          <View style={styles.headerRight}>
-            {energy && (
-              <EnergyMeter
-                compact
-                status={energy}
-                onPress={() => setShopOpen(true)}
-                style={styles.headerEnergy}
-              />
-            )}
-            <PressableScale
-              style={styles.bell}
-              onPress={() => { setUnread(0); navigation.navigate('Notifications'); }}
-              accessibilityRole="button"
-              accessibilityLabel="Notifications"
-            >
-              <AppIcon name="bell" size={24} />
-              {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
-            </PressableScale>
-          </View>
-        </View>
-
-        {/* A live rivalry beats the onboarding checklist for attention — and
-            the two never really overlap anyway (you can't have rivals before
-            your first claim). */}
-        <RivalAlert navigation={navigation} />
-        <HeroCarousel navigation={navigation} />
-        <Segmented
-          options={[{ key: 'feed', label: 'Feed' }, { key: 'leaderboard', label: 'Leaderboard' }]}
-          value={tab}
-          onChange={setTab}
-          style={{ marginTop: space.lg, marginBottom: space.xs }}
-        />
-      </View>
-      {tab === 'feed' ? <FeedList navigation={navigation} /> : <LeaderboardView />}
-
-      {/* floating shortcuts to where the economy lives — pass, boxes, shop,
-          season. Absolute so it never steals width from the feed.
-          The rail's Shop tile is the COSMETICS shop; energy top-ups stay on
-          the energy meter itself (here, the result screen and profile). */}
-      <SideRail
-        navigation={navigation}
-        seasonLabel={seasonShort()}
-        onOpenShop={() => navigation.navigate('Shop')}
-        style={{ top: insets.top + 96 }}
-      />
-      <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={loadEnergy} />
+      <FeedList navigation={navigation} header={feedHeader} />
+      <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
     </View>
   );
 }
 
-const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
+  feedHeader: { paddingHorizontal: space.gutter, paddingTop: space.sm },
+  feedRow: { paddingHorizontal: space.gutter },
+  shortcutRow: { marginTop: space.lg, marginBottom: space.md },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    // A minimum gap, not just space-between: the energy meter grows to fill
+    // whatever is left, so on a full bar it ran right up against the wordmark.
+    gap: space.md,
     marginBottom: space.md,
   },
-  wordmark: { ...type.title, color: '#ffffff' },
+  // Paired with the outline flip in HomeScreen: ink on light, white on dark.
+  wordmark: { ...type.title, color: scheme === 'light' ? toon.ink : '#ffffff' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 },
   headerEnergy: { flexShrink: 1 },
   bell: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },

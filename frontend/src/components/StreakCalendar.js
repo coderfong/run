@@ -7,6 +7,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ChevronLeft, ChevronRight } from 'lucide-react-native';
 
 import { radius, space, useTheme, useThemedType } from '../theme';
+import GameLottie from './GameLottie';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
@@ -83,6 +84,9 @@ export default function StreakCalendar({ runDays = [], accent }) {
                   isToday && { borderWidth: 1.5, borderColor: ran ? '#fff' : ac },
                 ]}
               >
+                {ran && isToday ? (
+                  <GameLottie name="streakStamp" size={52} trigger={cellIso} style={styles.streakFx} />
+                ) : null}
                 <Text
                   style={[
                     type.caption,
@@ -124,4 +128,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  streakFx: { position: 'absolute' },
 });

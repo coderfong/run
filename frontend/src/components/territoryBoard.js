@@ -112,24 +112,22 @@ function bboxOf(rings) {
   return { minLon, minLat, maxLon, maxLat };
 }
 
-// Estimate how much of a claim circle (centre + radius m) overlaps each RIVAL
-// territory (anyone but the claimer). Returns rivals sorted by area taken,
-// each with owner name/avatar/colour so the placement UI can show exactly who
-// and how much you're taking. Display-only — the server is authoritative.
+// Estimate how much of a claim POLYGON overlaps each RIVAL territory (anyone
+// but the claimer). Returns rivals sorted by area taken, each with owner
+// name/avatar/colour so the confirm screen can show exactly who and how much
+// you're taking. Display-only — the server is authoritative.
 //
-// Method: a fixed grid of samples inside the circle (deterministic, no
-// flicker), point-tested against nearby rivals only (bbox pre-filter), so it
-// stays cheap as the slider drags. `grid`≈24 → ~450 in-circle samples.
-export function estimateClaims(territories, center, radiusM, { userId, grid = 24 } = {}) {
-  if (!center || !radiusM) return { rivals: [], sampleArea: 0 };
+// The claim used to be a disc, so this sampled a disc. It is now the territory
+// grown around the run's own route, which can be any shape, so the samples are
+// a grid over the ring's bbox kept to the points that fall inside the ring.
+// Deterministic (no flicker), bbox pre-filtered against rivals, ~600 samples.
+export function estimateClaimsInRing(territories, ring, { userId, grid = 34 } = {}) {
+  const empty = { rivals: [], sampleArea: 0 };
+  if (!ring || ring.length < 3) return empty;
+  const bb = bboxOf([ring]);
+  const midLat = (bb.minLat + bb.maxLat) / 2;
   const mPerLat = 110540;
-  const mPerLon = 111320 * Math.cos((center.latitude * Math.PI) / 180);
-  const dLat = radiusM / mPerLat;
-  const dLon = radiusM / mPerLon;
-  const circleBbox = {
-    minLon: center.longitude - dLon, maxLon: center.longitude + dLon,
-    minLat: center.latitude - dLat, maxLat: center.latitude + dLat,
-  };
+  const mPerLon = 111320 * Math.cos((midLat * Math.PI) / 180);
 
   // Nearby rivals only: skip own land and anything whose bbox can't touch us.
   const rivals = [];
@@ -137,40 +135,39 @@ export function estimateClaims(territories, center, radiusM, { userId, grid = 24
     if (t.user_id === userId) continue;
     const rings = ringsOf(t).filter((r) => r && r.length >= 3);
     if (!rings.length) continue;
-    const bb = bboxOf(rings);
-    if (bb.maxLon < circleBbox.minLon || bb.minLon > circleBbox.maxLon ||
-        bb.maxLat < circleBbox.minLat || bb.minLat > circleBbox.maxLat) continue;
+    const tb = bboxOf(rings);
+    if (tb.maxLon < bb.minLon || tb.minLon > bb.maxLon ||
+        tb.maxLat < bb.minLat || tb.minLat > bb.maxLat) continue;
     const col = t.clan_color || NEUTRAL;
     rivals.push({
       id: t.id, username: t.username, avatar: t.avatar,
       clanTag: t.clan_tag || null, ring: col.stroke, rings, hits: 0,
     });
   }
-  if (!rivals.length) return { rivals: [], sampleArea: 0 };
+  if (!rivals.length) return empty;
 
-  // Deterministic grid over the circle bbox; keep points inside the disc.
-  const circleAreaM2 = Math.PI * radiusM * radiusM;
-  let inCircle = 0;
-  const step = 1 / grid;
   const samples = [];
   for (let i = 0; i <= grid; i++) {
     for (let j = 0; j <= grid; j++) {
-      const fx = -1 + 2 * i * step; // -1..1
-      const fy = -1 + 2 * j * step;
-      if (fx * fx + fy * fy > 1) continue; // outside the disc
-      inCircle++;
-      samples.push([center.longitude + fx * dLon, center.latitude + fy * dLat]);
+      const lon = bb.minLon + ((bb.maxLon - bb.minLon) * i) / grid;
+      const lat = bb.minLat + ((bb.maxLat - bb.minLat) * j) / grid;
+      if (pointInRing(lon, lat, ring)) samples.push([lon, lat]);
     }
   }
-  if (!inCircle) return { rivals: [], sampleArea: 0 };
-  const perSample = circleAreaM2 / inCircle;
+  if (!samples.length) return empty;
+
+  // Cell area in m², so the estimate is in the same units the server reports.
+  const cellM2 =
+    (((bb.maxLon - bb.minLon) * mPerLon) / grid) *
+    (((bb.maxLat - bb.minLat) * mPerLat) / grid);
+  const claimAreaM2 = samples.length * cellM2;
 
   for (const [lon, lat] of samples) {
     for (const r of rivals) {
       // inside if the sample lands in an odd number of the plot's rings
       // (exterior rings dominate; holes are rare for these small claims).
       let inside = false;
-      for (const ring of r.rings) if (pointInRing(lon, lat, ring)) inside = !inside;
+      for (const rr of r.rings) if (pointInRing(lon, lat, rr)) inside = !inside;
       if (inside) r.hits++;
     }
   }
@@ -179,10 +176,10 @@ export function estimateClaims(territories, center, radiusM, { userId, grid = 24
     rivals: rivals
       .map((r) => ({
         id: r.id, username: r.username, avatar: r.avatar,
-        clanTag: r.clanTag, ring: r.ring, area: r.hits * perSample,
+        clanTag: r.clanTag, ring: r.ring, area: r.hits * cellM2,
       }))
       .filter((r) => r.area >= 1)
       .sort((a, b) => b.area - a.area),
-    sampleArea: circleAreaM2,
+    sampleArea: claimAreaM2,
   };
 }

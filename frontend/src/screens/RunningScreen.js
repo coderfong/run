@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import GameMap, {
   MapPoint,
@@ -7,6 +7,7 @@ import GameMap, {
   UserMarker,
 } from '../components/GameMap';
 import { CharacterBust } from '../components/character/CharacterRig';
+import DevRunSimulator from '../components/DevRunSimulator';
 import { useAvatar } from '../state/avatar';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
@@ -23,22 +24,29 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { api } from '../api/client';
+import { invalidateAfterRun } from '../api/cache';
 import { useAuth } from '../auth/AuthContext';
+import { claimGateReason, entitledAreaM2, RUN_TIER, runTier } from '../config/economy';
 import {
   drainBackgroundPoints,
   startBackgroundTrack,
   stopBackgroundTrack,
 } from '../run/backgroundTrack';
+import { buildSimulatedRun, FALLBACK_ORIGIN } from '../run/simulatedRun';
 import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
 import { useSettings } from '../state/settings';
 import { writeWorkout } from '../health';
 import { darkColors, radius, runTuning as T, space, type } from '../theme';
-import { haptic, PressableScale } from '../ui/motion';
+import { haptic, PressableScale, Pulse } from '../ui/motion';
 import { toast } from '../ui/toast';
+import GameLottie from '../components/GameLottie';
+import { RunEventOverlay, RunStartOverlay } from '../components/run/RunGameplayFx';
 
 // In-progress run persisted here so an OS kill / crash can't lose a run.
 const ACTIVE_RUN_KEY = 'tr.activeRun';
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Night-run surface tokens.
 const D = {
@@ -75,12 +83,6 @@ function totalDistanceMeters(points) {
   let total = 0;
   for (let i = 1; i < points.length; i++) total += distanceMeters(points[i - 1], points[i]);
   return total;
-}
-
-// Circle-claim model: the distance run becomes the CIRCUMFERENCE of the
-// claim circle, so area = d²/4π. Placement happens on the Result screen.
-function claimAreaM2(distanceM) {
-  return (distanceM * distanceM) / (4 * Math.PI);
 }
 
 // Per-point sensor metadata rides along for server-side validation:
@@ -149,6 +151,24 @@ function pointToSegmentMeters(a, b, p) {
   t = Math.max(0, Math.min(1, t));
   const cx = ax + t * dx, cy = ay + t * dy;
   return Math.hypot(px - cx, py - cy);
+}
+
+// Ray casting against a [lon,lat] ring. Used only to announce the moment a
+// live runner crosses into somebody else's ground; Mapbox remains responsible
+// for drawing the actual territory.
+function pointInRing(point, ring) {
+  if (!point || !ring?.length) return false;
+  const x = point.longitude;
+  const y = point.latitude;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersects = ((yi > y) !== (yj > y)) &&
+      (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
 }
 
 // -----------------------------------------------------------------------
@@ -262,10 +282,38 @@ export default function RunningScreen({ navigation }) {
   const [elapsedMs, setElapsedMs] = useState(0);
   const [accuracyM, setAccuracyM] = useState(null);
   const [permDenied, setPermDenied] = useState(false);
+  // Dev harness only (see simulateRun / DevRunSimulator); false in every build
+  // a player can install.
+  const [simulating, setSimulating] = useState(false);
+  // Claim-qualified metres already banked in today's game day. Territory comes
+  // off a CUMULATIVE daily curve, so a second run of the day earns the tapered
+  // slice rather than a fresh untapered first kilometre — and this readout has
+  // to say so, or the result screen will look like it took something away.
+  // Arrives on /submit-path; 0 until the first one lands, and while offline.
+  const [dailyClaimDistanceM, setDailyClaimDistanceM] = useState(0);
   // Pause freezes the clock + GPS; lock swallows touches until long-press.
   const [paused, setPaused] = useState(false);
   const [locked, setLocked] = useState(false);
   const pausedAtRef = useRef(null);
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const [startCountdown, setStartCountdown] = useState(null);
+
+  // Small event queue: a kilometre and claim qualification can land on the
+  // same GPS fix, and neither payoff should erase the other.
+  const [runFxQueue, setRunFxQueue] = useState([]);
+  const runFxTokenRef = useRef(0);
+  const lastKmRef = useRef(0);
+  const lastTierRef = useRef(RUN_TIER.UNQUALIFIED);
+  const currentRivalRef = useRef(null);
+  const rivalTerritoriesRef = useRef([]);
+  const enqueueRunFx = useCallback((event) => {
+    const token = ++runFxTokenRef.current;
+    setRunFxQueue((queue) => [...queue.slice(0, 2), { ...event, token }]);
+  }, []);
+  const dismissRunFx = useCallback(() => {
+    setRunFxQueue((queue) => queue.slice(1));
+  }, []);
 
   // Mirrors isRunning for listeners that outlive renders.
   const isRunningRef = useRef(false);
@@ -345,6 +393,7 @@ export default function RunningScreen({ navigation }) {
       .then((data) => {
         const feats = [];
         const portraits = [];
+        const rivalTerritories = [];
         (data.territories || []).forEach((t) => {
           // Show ALL claimed land around the runner, including their own
           // (their earlier claims), so the board matches the global map.
@@ -352,6 +401,7 @@ export default function RunningScreen({ navigation }) {
           const col = t.clan_color || NEUTRAL;
           const fill = mine ? accent : col.stroke;
           const rings = t.rings?.length ? t.rings : [t.polygon];
+          if (!mine) rivalTerritories.push({ id: t.id, rings: rings.filter((ring) => ring?.length >= 3) });
           rings.forEach((ring, ri) => {
             if (!ring || ring.length < 3) return;
             const coords = ring.map(([lon, lat]) => [lon, lat]);
@@ -371,9 +421,20 @@ export default function RunningScreen({ navigation }) {
         });
         setBoard({ type: 'FeatureCollection', features: feats });
         setBoardPortraits(portraits.sort((a, b) => b.area - a.area).slice(0, 24));
+        rivalTerritoriesRef.current = rivalTerritories;
       })
       .catch(() => {});
   }, [currentLocation, user.id, accent, equipped]);
+
+  useEffect(() => {
+    if (!isRunning || !currentLocation) return;
+    const hit = rivalTerritoriesRef.current.find((territory) =>
+      territory.rings.some((ring) => pointInRing(currentLocation, ring))
+    );
+    const nextId = hit?.id || null;
+    if (nextId && nextId !== currentRivalRef.current) enqueueRunFx({ kind: 'rivalEntry' });
+    currentRivalRef.current = nextId;
+  }, [currentLocation, enqueueRunFx, isRunning]);
 
   async function startPedometer() {
     stepCountRef.current = 0;
@@ -403,7 +464,7 @@ export default function RunningScreen({ navigation }) {
     haptic.light();
     Alert.alert(
       'Vehicle detected',
-      "Recording paused — PASER only logs runs on foot. Hit play when you're back on your feet."
+      "Recording paused. PASER only logs runs on foot, so hit play when you're back on your feet."
     );
   }
 
@@ -469,7 +530,7 @@ export default function RunningScreen({ navigation }) {
       [
         { text: 'Resume run', onPress: () => resumeRun(saved) },
         {
-          text: 'Submit as-is',
+          text: 'Submit anyway',
           onPress: () => commitRun({ id: saved.runId }, saved.path),
         },
         { text: 'Discard', style: 'destructive', onPress: clearActiveRun },
@@ -484,9 +545,13 @@ export default function RunningScreen({ navigation }) {
     recentSpeedsRef.current = [];
     gpsModeRef.current = 'high';
 
+    const resumedDistance = totalDistanceMeters(saved.path);
+    const resumedElapsed = Date.now() - startedAtRef.current;
+    lastKmRef.current = Math.floor(resumedDistance / 1000);
+    lastTierRef.current = runTier(resumedDistance, resumedElapsed / 1000);
     setPath(saved.path);
-    setDistance(totalDistanceMeters(saved.path));
-    setElapsedMs(Date.now() - startedAtRef.current);
+    setDistance(resumedDistance);
+    setElapsedMs(resumedElapsed);
     setIsRunning(true);
     isRunningRef.current = true;
     setRecording(true);
@@ -524,9 +589,21 @@ export default function RunningScreen({ navigation }) {
   }
 
   async function startRun() {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
     try {
       haptic.light();
+      setStartCountdown(3);
+      await wait(520);
+      setStartCountdown(2);
+      await wait(520);
+      setStartCountdown(1);
+      await wait(520);
+
       const createdRun = await api.startRun();
+      setStartCountdown('GO');
+      haptic.success();
       // API returns { run_id, started_at }; older builds returned { id }.
       runRef.current = { id: createdRun.run_id || createdRun.id };
       pathRef.current = [];
@@ -544,6 +621,10 @@ export default function RunningScreen({ navigation }) {
       recentSpeedsRef.current = [];
       gpsModeRef.current = 'high';
       pendingModeRef.current = { mode: null, count: 0 };
+      lastKmRef.current = 0;
+      lastTierRef.current = RUN_TIER.UNQUALIFIED;
+      currentRivalRef.current = null;
+      setRunFxQueue([]);
 
       tickRef.current = setInterval(() => {
         setElapsedMs(Date.now() - startedAtRef.current);
@@ -555,6 +636,10 @@ export default function RunningScreen({ navigation }) {
       startVehicleWatch();
     } catch (err) {
       toast.error(err.message || 'Could not start run');
+    } finally {
+      setTimeout(() => setStartCountdown(null), 620);
+      setStarting(false);
+      startingRef.current = false;
     }
   }
 
@@ -640,6 +725,10 @@ export default function RunningScreen({ navigation }) {
         location.coords.speed != null && location.coords.speed >= 0
           ? location.coords.speed
           : null,
+      // Kept client-side only (the API points carry no altitude): the result
+      // screen turns the series into elevation gain. Runs recorded before this
+      // simply have no elevation, and the metric hides itself.
+      altitude: location.coords.altitude ?? null,
     };
     setCurrentLocation(nextPoint);
     setAccuracyM(location.coords.accuracy ?? null);
@@ -693,7 +782,13 @@ export default function RunningScreen({ navigation }) {
 
     if (runRef.current && newPath.length % 5 === 0) {
       try {
-        await api.submitPath(runRef.current.id, toApiPoints(newPath));
+        const res = await api.submitPath(runRef.current.id, toApiPoints(newPath));
+        // The server's reading of the day so far. Anchoring the local
+        // entitlement curve to this is what keeps the live "claim zone" honest
+        // across several runs in one day, without asking for it every second.
+        if (typeof res?.daily_claim_distance_m === 'number') {
+          setDailyClaimDistanceM(res.daily_claim_distance_m);
+        }
       } catch (err) {
         // non-fatal — GPS keeps recording; /end-run reconciles the full path
       }
@@ -774,33 +869,125 @@ export default function RunningScreen({ navigation }) {
 
   // The recorded path stays in memory whatever the network does — a failed
   // /end-run is retryable, never fatal to the run data.
-  async function commitRun(run, finalPath) {
+  async function commitRun(
+    run,
+    finalPath,
+    { steps = null, simulated = false, devScenario = 'open' } = {}
+  ) {
     try {
       // Steps are sent whenever a pedometer exists — INCLUDING zero, which is
       // exactly the signature of covering distance in a vehicle.
       const result = await api.endRun(
         run.id,
         toApiPoints(finalPath),
-        pedometerOkRef.current ? stepCountRef.current : null
+        steps ?? (pedometerOkRef.current ? stepCountRef.current : null)
       );
+      if (simulated && devScenario === 'steal') {
+        try {
+          await api.devSeedRivalForRun(result.run_id);
+        } catch (error) {
+          // The run is already safely stored. Keep the result reachable and
+          // say only that its optional board setup failed.
+          toast.error(error.message || 'Could not place the dev rival');
+        }
+      }
       clearActiveRun();
+      // The feed, your stats and the boards all just changed. Drop them so the
+      // tabs you come back to fetch fresh numbers instead of serving the
+      // pre-run cache for the length of their staleness window.
+      invalidateAfterRun();
       // Optional, write-only health sync (no-op unless enabled + module present).
-      writeWorkout({
-        startMs: startedAtRef.current || Date.now(),
-        endMs: Date.now(),
-        distanceM: totalDistanceMeters(finalPath),
-      }).catch(() => {});
+      // A simulated run is skipped: the dev harness may write to the server,
+      // which is its whole purpose, but it has no business putting a workout
+      // nobody did into the phone's health record.
+      if (!simulated) {
+        writeWorkout({
+          startMs: startedAtRef.current || Date.now(),
+          endMs: Date.now(),
+          distanceM: totalDistanceMeters(finalPath),
+        }).catch(() => {});
+      }
       navigation.navigate('Result', { result, run: result, path: finalPath });
     } catch (err) {
       Alert.alert(
         "Couldn't save your run",
         `${err.message || 'Network error'}. Your route is still on this phone.`,
         [
-          { text: 'Retry', onPress: () => commitRun(run, finalPath) },
+          {
+            text: 'Retry',
+            onPress: () => commitRun(run, finalPath, { steps, simulated, devScenario }),
+          },
           { text: 'Later', style: 'cancel' },
         ]
       );
     }
+  }
+
+  // DEV ONLY — see components/DevRunSimulator. Builds a trace, opens a run
+  // backdated to when that trace started, and commits it down the ordinary
+  // path, so what lands on the result screen is the server's real answer.
+  async function simulateRun(preset, devScenario = 'open') {
+    if (simulating || isRunning) return;
+    setSimulating(true);
+    try {
+      haptic.light();
+      const sim = buildSimulatedRun({
+        origin: currentLocation || pathRef.current[0] || FALLBACK_ORIGIN,
+        distanceM: preset.distanceM,
+        paceSPerKm: preset.paceSPerKm,
+        // A fresh shape each time — the same loop twice would claim the same
+        // ground twice and the second one would look like it did nothing.
+        seed: Math.floor(Math.random() * 1e9),
+      });
+      // The duration comes off the RUN ROW, not the trace: a run started and
+      // ended in the same second is a two-second activity whatever its points
+      // say, and would be gated as too short before anything else ran.
+      const created = await api.startRun(sim.startedAtMs);
+      const run = { id: created.run_id || created.id };
+      runRef.current = run;
+      pathRef.current = sim.points;
+      startedAtRef.current = sim.startedAtMs;
+      setPath(sim.points);
+      setDistance(totalDistanceMeters(sim.points));
+      await commitRun(run, sim.points, {
+        steps: sim.stepCount,
+        simulated: true,
+        devScenario,
+      });
+    } catch (err) {
+      toast.error(err.message || 'Could not simulate a run');
+    } finally {
+      setSimulating(false);
+    }
+  }
+
+  function simulateRivalTake() {
+    if (simulating || isRunning) return;
+    Alert.alert(
+      'Let the dev rival take your land?',
+      'This changes real development data: your largest live territory will be attacked and the loss will appear in your rivalry and notifications.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Take my land',
+          style: 'destructive',
+          onPress: async () => {
+            setSimulating(true);
+            try {
+              const result = await api.devRivalTakesMine();
+              invalidateAfterRun();
+              toast.success(
+                `${result.rival_username} took ${Math.round(result.taken_m2 || 0).toLocaleString()} m². Open Map, Rivals, or Notifications to inspect it.`
+              );
+            } catch (error) {
+              toast.error(error.message || 'Could not run the rival capture scenario');
+            } finally {
+              setSimulating(false);
+            }
+          },
+        },
+      ]
+    );
   }
 
   const paceText =
@@ -811,10 +998,37 @@ export default function RunningScreen({ navigation }) {
           const s = Math.round((minPerKm - m) * 60);
           return `${m}:${String(s).padStart(2, '0')} /km`;
         })()
-      : '—';
+      : '·';
 
-  // The circular claim zone this distance has earned so far.
-  const claimArea = claimAreaM2(distance);
+  // The land this run has earned so far, off the SAME function the server
+  // settles with (src/config/economy.js). This used to be a local
+  // `(d * d) / (4 * Math.PI)` — the retired circle model — which at 5 km
+  // promised 1.99 km² against the 0.375 km² actually granted.
+  const elapsedS = elapsedMs / 1000;
+  const claimArea = entitledAreaM2(dailyClaimDistanceM, distance);
+  // Distance and duration only: distinct-ground needs the buffered-corridor
+  // area, which is the server's to measure. So this is optimistic by design —
+  // it says what is still MISSING, never that a run is definitely eligible.
+  const claimBlocker = claimGateReason(distance, elapsedS);
+  const currentTier = runTier(distance, elapsedS);
+  const earningNothing = currentTier === RUN_TIER.UNQUALIFIED;
+
+  useEffect(() => {
+    if (!isRunning) return;
+    const completedKm = Math.floor(distance / 1000);
+    if (completedKm > lastKmRef.current) {
+      lastKmRef.current = completedKm;
+      enqueueRunFx({ kind: 'kilometre', value: completedKm });
+    }
+  }, [distance, enqueueRunFx, isRunning]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    if (currentTier === RUN_TIER.CLAIMABLE && lastTierRef.current !== RUN_TIER.CLAIMABLE) {
+      enqueueRunFx({ kind: 'claimReady' });
+    }
+    lastTierRef.current = currentTier;
+  }, [currentTier, enqueueRunFx, isRunning]);
   // Rough energy estimate: ~1.036 kcal per kg per km at a 70 kg default.
   const caloriesKcal = 1.036 * T.defaultWeightKg * (distance / 1000);
 
@@ -824,7 +1038,7 @@ export default function RunningScreen({ navigation }) {
       <View style={[styles.container, styles.deniedWrap]}>
         <Text style={styles.deniedTitle}>Location is off</Text>
         <Text style={styles.deniedBody}>
-          PASER records your route only during an active run — without
+          PASER records your route only during an active run. Without
           location there's nothing to trace. Enable it in Settings and come
           back.
         </Text>
@@ -842,7 +1056,7 @@ export default function RunningScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="Check permission again"
         >
-          <Text style={styles.deniedBackText}>I've enabled it — check again</Text>
+          <Text style={styles.deniedBackText}>I've enabled it, check again</Text>
         </PressableScale>
       </View>
     );
@@ -869,10 +1083,19 @@ export default function RunningScreen({ navigation }) {
 
         {path.length > 0 && <MapPoint id="start" point={path[0]} color={accent} />}
 
-        {/* the runner is their character portrait, not a dot */}
+        {/* The runner is their character portrait, not a dot. It breathes, so
+            that among a screenful of other people's portraits the live one is
+            obviously the one that is you. Slow and shallow on purpose — this
+            sits on screen for the length of a run. Holds still under Reduce
+            Motion, like everything else in ui/motion. */}
         {currentLocation && (
           <UserMarker point={currentLocation}>
-            <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg="rgba(21,24,29,0.9)" />
+            <View style={styles.liveMarker}>
+              {isRunning ? <GameLottie name="routeHead" size={62} style={styles.routeHeadFx} /> : null}
+              <Pulse min={1} max={1.06} durationMs={1400}>
+                <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg="rgba(21,24,29,0.9)" />
+              </Pulse>
+            </View>
           </UserMarker>
         )}
       </GameMap>
@@ -915,25 +1138,46 @@ export default function RunningScreen({ navigation }) {
           </View>
           <View style={styles.sideStats}>
             <Metric label="Pace" value={paceText} accent={D.text} />
-            <Metric label="Claim zone" value={formatArea(claimArea)} accent={accent} />
+            {/* "Land earned", not "claim zone": it is the ground this run has
+                banked, and it stays greyed until the run is worth any. */}
+            <Metric
+              label="Land earned"
+              value={earningNothing ? '·' : formatArea(claimArea)}
+              accent={earningNothing ? D.dim : accent}
+            />
             <Metric label="Calories" value={`${Math.round(caloriesKcal)} kcal`} accent={D.text} />
           </View>
         </View>
 
-        {/* the claim explainer, quietly */}
+        {/* What the run still needs, or what it will do. The old line described
+            the retired circle model ("your distance becomes a circle"), which
+            has not been how a claim works since territory started being grown
+            around the route. */}
         <Text style={styles.openPathLine}>
-          Your distance becomes a circle — place it anywhere on your route after you finish.
+          {claimBlocker
+            ? claimBlocker
+            : 'Your route grows into territory. After your run, choose where along it to secure the ground.'}
         </Text>
 
         {!isRunning ? (
-          <PressableScale
-            style={[styles.primaryBtn, { backgroundColor: accent }]}
-            onPress={startRun}
-            accessibilityRole="button"
-            accessibilityLabel="Start run"
-          >
-            <Text style={styles.primaryBtnText}>Start run</Text>
-          </PressableScale>
+          <>
+            <PressableScale
+              style={[styles.primaryBtn, { backgroundColor: accent, opacity: starting ? 0.72 : 1 }]}
+              onPress={startRun}
+              disabled={starting}
+              accessibilityRole="button"
+              accessibilityLabel="Start run"
+            >
+              <Text style={styles.primaryBtnText}>{starting ? 'Get ready…' : 'Start run'}</Text>
+            </PressableScale>
+            {/* Renders nothing unless the SERVER says this account may have
+                it (dev_tools on /me), or we're on a dev build. */}
+            <DevRunSimulator
+              onSimulate={simulateRun}
+              onRivalTake={simulateRivalTake}
+              busy={simulating}
+            />
+          </>
         ) : (
           <View style={styles.controlsRow}>
             <PressableScale
@@ -960,6 +1204,12 @@ export default function RunningScreen({ navigation }) {
           </View>
         )}
       </View>
+
+      <RunEventOverlay
+        event={runFxQueue[0]}
+        onDone={dismissRunFx}
+      />
+      <RunStartOverlay value={startCountdown} trigger={runFxTokenRef.current} />
 
       {/* lock overlay: swallow touches until a long-press unlock */}
       {locked && (
@@ -994,6 +1244,8 @@ function Metric({ label, value, accent }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: D.bg },
   map: { flex: 1 },
+  liveMarker: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center' },
+  routeHeadFx: { position: 'absolute' },
 
   topBar: {
     position: 'absolute',

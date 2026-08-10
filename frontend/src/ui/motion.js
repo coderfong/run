@@ -2,12 +2,13 @@
 // through here so Reduce Motion is respected in exactly one place.
 
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Dimensions, Pressable, TextInput, View } from 'react-native';
+import { AccessibilityInfo, Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
   FadeInUp,
+  runOnJS,
   useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
@@ -16,10 +17,27 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { brand, colors, radius } from '../theme';
+import { brand, radius, useTheme } from '../theme';
+import { STAGGER_CAP, STAGGER_MS } from '../theme/motion';
 
 // Re-export haptics from the theme module so both import paths work.
 export { haptic } from '../theme/haptics';
+
+// ---------------------------------------------------------------------------
+// staggerDelay — the one place list entrances get their timing. Capped so a
+// hundred-row leaderboard doesn't take three seconds to finish arriving.
+// ---------------------------------------------------------------------------
+
+export function staggerDelay(index, base = 0) {
+  return base + Math.min(index, STAGGER_CAP) * STAGGER_MS;
+}
+
+// Rows past the cap are the ones you only ever meet by scrolling, and a row
+// fading in under your thumb reads as lag rather than as polish. Virtualized
+// lists use this to animate the first screenful and render the rest flat.
+export function shouldStagger(index) {
+  return index < STAGGER_CAP;
+}
 
 // ---------------------------------------------------------------------------
 // Reduce Motion
@@ -118,7 +136,7 @@ export function Confetti({ count = 26 }) {
   const pieces = useMemo(
     () =>
       Array.from({ length: count }, (_, i) => ({
-        key: i,
+        id: i,
         delay: Math.random() * 350,
         startX: Math.random() * width,
         color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
@@ -130,8 +148,10 @@ export function Confetti({ count = 26 }) {
   if (reduced) return null;
   return (
     <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
-      {pieces.map((p) => (
-        <ConfettiPiece {...p} />
+      {/* `key` is passed explicitly, not spread: React 19 no longer lifts a
+          `key` out of a spread, so this list used to render unkeyed. */}
+      {pieces.map(({ id, ...p }) => (
+        <ConfettiPiece key={id} {...p} />
       ))}
     </View>
   );
@@ -165,7 +185,16 @@ export function MascotLoader({ source, size = 132 }) {
 // PressableScale — the standard button press affordance (scale 0.97).
 // ---------------------------------------------------------------------------
 
-export function PressableScale({ children, style, onPress, disabled, scaleTo = 0.97, ...rest }) {
+export function PressableScale({
+  children,
+  style,
+  onPress,
+  onPressIn,
+  onPressOut,
+  disabled,
+  scaleTo = 0.97,
+  ...rest
+}) {
   const reduced = useReduceMotion();
   const scale = useSharedValue(1);
 
@@ -177,11 +206,13 @@ export function PressableScale({ children, style, onPress, disabled, scaleTo = 0
 
   return (
     <Pressable
-      onPressIn={() => {
+      onPressIn={(event) => {
         if (!reduced) scale.value = withSpring(scaleTo, { damping: 20, stiffness: 300 });
+        onPressIn?.(event);
       }}
-      onPressOut={() => {
+      onPressOut={(event) => {
         if (!reduced) scale.value = withSpring(1, { damping: 20, stiffness: 300 });
+        onPressOut?.(event);
       }}
       onPress={onPress}
       disabled={disabled}
@@ -189,6 +220,154 @@ export function PressableScale({ children, style, onPress, disabled, scaleTo = 0
     >
       <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>
     </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bar — a progress track whose fill EASES to its new value instead of jumping.
+// Energy draining on a claim and XP landing after a run are the two moments
+// where the game pays you back, and a bar that snaps throws that away.
+//
+// The fill is animated in pixels off a measured track rather than as a
+// percentage string: percentage widths interpolate fine, but scaling a rounded
+// fill distorts its corners at low values and a measured width keeps the cap
+// perfectly round at 3% and at 97%.
+//
+// `animateOnMount` fills from empty on first paint — right for a screen you
+// arrive at to see what you earned, wrong for a HUD chip that is simply always
+// on screen (that one should only move when the number moves).
+//
+// KEEP BORDERS OFF `trackStyle`. The measured layout width is the BORDER box,
+// so an outlined track makes every fill run long by twice the border. Put the
+// border (and the radius and overflow) on a wrapper and pass the Bar
+// `StyleSheet.absoluteFill` as its track — see ProgressTrack in components/ui/
+// toon.js. That is also how to stack two fills in one track (ClubScreen's
+// GoalBar): a plain outer track, two absoluteFill Bars inside it.
+// ---------------------------------------------------------------------------
+
+export function Bar({
+  pct,
+  trackStyle,
+  fillStyle,
+  durationMs = 520,
+  delay = 0,
+  animateOnMount = false,
+  children,
+}) {
+  const reduced = useReduceMotion();
+  const [trackW, setTrackW] = useState(0);
+  const target = Math.max(0, Math.min(1, Number(pct) || 0));
+  const progress = useSharedValue(animateOnMount && !reduced ? 0 : target);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    const first = !mounted.current;
+    mounted.current = true;
+    if (reduced || (first && !animateOnMount)) {
+      progress.value = target;
+      return;
+    }
+    progress.value = withDelay(
+      first ? delay : 0,
+      withTiming(target, { duration: durationMs, easing: Easing.out(Easing.cubic) })
+    );
+  }, [target, reduced, durationMs, delay, animateOnMount, progress]);
+
+  const fill = useAnimatedStyle(() => ({ width: trackW * progress.value }));
+
+  return (
+    <View
+      style={trackStyle}
+      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+      pointerEvents="none"
+    >
+      {/* `children` is for fills that are painted rather than coloured — a
+          gradient, say. It rides inside the animated box, so it stretches with
+          the fill instead of being clipped to a static width. */}
+      <Animated.View style={[fillStyle, fill]}>{children}</Animated.View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SteppedBar — a fill that runs through SEVERAL passes of the same track.
+//
+// `Bar` eases to one value, which is everything a meter needs. A level bar is
+// not a meter: XP that carries you past a threshold has to fill the track,
+// empty it, and keep going, and the number above it has to tick over in the gap
+// — one continuous move that happens to cross a boundary, not a jump to a
+// percentage. Splitting it into steps is what makes the level-up watchable
+// instead of implied.
+//
+// `steps` is [{ from, to, ms }] in track fractions; it must be memoised, since
+// a new array restarts the run. `onStep(i)` fires as each one begins — that is
+// where the caller re-labels the level. Reduce Motion lands on the last step's
+// value with no movement at all.
+//
+// The border-box trap on `Bar` applies here for the same reason: keep the
+// outline on a wrapper and pass `StyleSheet.absoluteFill` as the track.
+// ---------------------------------------------------------------------------
+
+export function SteppedBar({
+  steps,
+  delay = 0,
+  trackStyle,
+  fillStyle,
+  onStep,
+  // Optional shared value to drive alongside the fill, so a caller can hang its
+  // own animated text off the same progress without a second timing.
+  progress,
+  children,
+}) {
+  const reduced = useReduceMotion();
+  const [trackW, setTrackW] = useState(0);
+  const internal = useSharedValue(0);
+  const p = progress || internal;
+  // Held in a ref so re-labelling on a step can't itself restart the run.
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
+
+  useEffect(() => {
+    if (!steps?.length) return undefined;
+    const last = steps[steps.length - 1];
+    if (reduced) {
+      p.value = last.to;
+      onStepRef.current?.(steps.length - 1);
+      return undefined;
+    }
+    let cancelled = false;
+    const advance = (i) => {
+      if (cancelled || i >= steps.length) return;
+      const s = steps[i];
+      onStepRef.current?.(i);
+      // Intermediate passes run flat: easing out of every one of them would
+      // make a two-level gain read as two separate fills.
+      const easing = i === steps.length - 1 ? Easing.out(Easing.cubic) : Easing.linear;
+      p.value = s.from;
+      p.value = withDelay(
+        i === 0 ? delay : 0,
+        withTiming(s.to, { duration: s.ms, easing }, (finished) => {
+          'worklet';
+          if (finished) runOnJS(advance)(i + 1);
+        })
+      );
+    };
+    advance(0);
+    return () => {
+      cancelled = true;
+    };
+  }, [steps, reduced, delay, p]);
+
+  const fill = useAnimatedStyle(() => ({ width: trackW * p.value }));
+
+  return (
+    <View
+      style={trackStyle}
+      onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
+      pointerEvents="none"
+    >
+      <Animated.View style={[fillStyle, fill]}>{children}</Animated.View>
+    </View>
   );
 }
 
@@ -214,34 +393,69 @@ function defaultFormat(n) {
   return out;
 }
 
-export function CountUpText({ value, durationMs = 1100, format = defaultFormat, style, ...rest }) {
+export function CountUpText({
+  value,
+  // Where the count STARTS. Omitted, it behaves as it always has: from zero on
+  // mount, and onward from wherever it sits when the value changes. Given, each
+  // run is a fresh count from that number — a level bar's "XP into this level"
+  // restarts at the boundary rather than counting on from the level below.
+  from,
+  durationMs = 1100,
+  delay = 0,
+  format = defaultFormat,
+  style,
+  ...rest
+}) {
   const reduced = useReduceMotion();
-  const progress = useSharedValue(reduced ? value : 0);
+  const progress = useSharedValue(reduced ? value : from ?? 0);
 
   useEffect(() => {
     if (reduced) {
       progress.value = value;
     } else {
-      progress.value = withTiming(value, {
-        duration: durationMs,
-        easing: Easing.out(Easing.cubic),
-      });
+      if (from != null) progress.value = from;
+      progress.value = withDelay(
+        delay,
+        withTiming(value, {
+          duration: durationMs,
+          easing: Easing.out(Easing.cubic),
+        })
+      );
     }
-  }, [value, reduced, durationMs, progress]);
+  }, [value, from, delay, reduced, durationMs, progress]);
 
   const animatedProps = useAnimatedProps(() => ({
     text: format(progress.value),
     defaultValue: format(progress.value),
   }));
 
+  // A TextInput carries no intrinsic content width, so one dropped into a row
+  // either collapses or eats the row depending on what the parent does — which
+  // is why this was only ever safe on a full-width hero number. An invisible
+  // Text holding the FINAL value now reserves exactly the box the finished
+  // number needs and the animated input paints inside it, so this drops in
+  // anywhere a Text would go. The Text is also what screen readers get: the
+  // settled value, not a control mid-tick.
   return (
-    <AnimatedTextInput
-      editable={false}
-      underlineColorAndroid="transparent"
-      style={[{ padding: 0 }, style]}
-      animatedProps={animatedProps}
-      {...rest}
-    />
+    <View style={{ position: 'relative' }}>
+      <Text style={[style, { opacity: 0 }]} numberOfLines={1}>
+        {format(value)}
+      </Text>
+      <AnimatedTextInput
+        editable={false}
+        underlineColorAndroid="transparent"
+        pointerEvents="none"
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+        style={[
+          StyleSheet.absoluteFill,
+          { padding: 0, includeFontPadding: false, textAlignVertical: 'center' },
+          style,
+        ]}
+        animatedProps={animatedProps}
+        {...rest}
+      />
+    </View>
   );
 }
 
@@ -249,8 +463,37 @@ export function CountUpText({ value, durationMs = 1100, format = defaultFormat, 
 // Skeleton — pulsing placeholder block for loading lists/maps.
 // ---------------------------------------------------------------------------
 
+// A slow breath — "this is waiting for you", said without words. The pass
+// ladder uses it in place of a CLAIM label on every unclaimed tier: fifty
+// little pink pills reading CLAIM is a wall of text, one collectible gently
+// swelling is an invitation. Holds still under Reduce Motion.
+export function Pulse({ children, active = true, min = 1, max = 1.07, durationMs = 900, style }) {
+  const reduced = useReduceMotion();
+  const scale = useSharedValue(min);
+
+  useEffect(() => {
+    if (!active || reduced) {
+      scale.value = min;
+      return;
+    }
+    scale.value = withRepeat(
+      withTiming(max, { duration: durationMs, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true
+    );
+  }, [active, durationMs, max, min, reduced, scale]);
+
+  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return <Animated.View style={[style, animated]}>{children}</Animated.View>;
+}
+
 export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
   const reduced = useReduceMotion();
+  // Read the LIVE palette. This used to take the static `colors` export, which
+  // is the dark palette whatever the scheme is — so on light mode every loading
+  // placeholder painted as a near-black slab and the screen read as broken
+  // rather than as loading.
+  const { colors: themed } = useTheme();
   const opacity = useSharedValue(0.45);
 
   useEffect(() => {
@@ -274,7 +517,7 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
           width,
           height,
           borderRadius: radius.sm,
-          backgroundColor: dark ? 'rgba(255,255,255,0.08)' : colors.bgElevated,
+          backgroundColor: dark ? 'rgba(255,255,255,0.08)' : themed.bgElevated,
         },
         pulse,
         style,

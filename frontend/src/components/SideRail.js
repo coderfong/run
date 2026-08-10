@@ -1,43 +1,70 @@
-// SideRail — the floating shortcut column on Home (mobile-game convention):
-// pass, shop and season, each a framed tile with a live badge or countdown.
+// SideRail — pass, shop, rivals and crossroads as shortcut tiles. Home uses the
+// inline row; the original floating-column layout remains available.
 //
-// It exists because those three screens are where the game's economy lives
-// and none of them were reachable from Home. Everything it shows is a REAL
-// state — claimable tiers, season time left — never decoration.
+// It exists because those screens were not reachable from Home. Anything it
+// shows on a tile is a REAL state — claimable pass tiers, unseen crossed paths
+// — never decoration.
+//
+// EACH TILE IS A SOLID BLOCK OF ITS OWN COLOUR, ink-outlined, with the sticker
+// on top. The gradient used to paint a 3px frame around a card-coloured middle,
+// which read as four empty outlines in a row rather than four buttons.
+//
+// TILES ARE ART ONLY: no caption under them, matching the cosmetic and border
+// grids. The label is still passed for the accessibility name.
 //
 // Art is optional: each tile falls back to its sticker icon until the framed
 // art lands (docs/ONBOARDING_ASSETS.md §7).
+//
+// NO TILE CROSSES INTO ANOTHER TAB. Each one pushes onto the stack it was
+// tapped from (App.js registers Progression, Rivals and Crossroads on the Home
+// stack as well as the You stack), so back from any of them is the screen you
+// came from. They used to be navigate('You', { screen: …, initial: false }),
+// which walked you into the You tab: back went to the profile, and Home was
+// two taps away. Shop is the exception and always has been — it lives at the
+// ROOT, above the tabs, so it pops straight back to wherever it opened from.
 
 import React, { useCallback, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Image } from '../ui/image';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { api } from '../api/client';
-import { brand, space, toon, toonRadius, toonType, useTheme } from '../theme';
+import { useQuery } from '../hooks/useQuery';
+import { brand, space, toon, toonRadius } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
 import { art } from '../config/onboardingArt';
+import { badgeLabel } from '../config/paserby';
 import AppIcon from './AppIcon';
 
 const GOLD = ['#FFD98A', '#F0A93C', '#A8631A'];
 
-function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress }) {
-  const { colors } = useTheme();
+function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false }) {
   const src = art(artKey);
   return (
-    <View style={styles.slot}>
+    <View style={[styles.slot, inline && styles.inlineSlot]}>
       <PressableScale
         onPress={() => { haptic.light(); onPress?.(); }}
         accessibilityRole="button"
         accessibilityLabel={label ? `${label}${badge ? `, ${badge}` : ''}` : 'Open'}
-        style={styles.tileWrap}
+        style={[styles.tileWrap, inline && styles.inlineTileWrap]}
       >
-        <LinearGradient colors={tint} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={styles.tile}>
-          <View style={[styles.tileInner, { backgroundColor: colors.card }]}>
+        <LinearGradient
+          colors={tint}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={[styles.tile, inline && styles.inlineTile]}
+        >
+          {/* The gradient fills the WHOLE tile. It used to be a 3px ring around
+              a card-coloured middle, which read as an empty frame with a sticker
+              floating in it — four hollow outlines in a row. The art carries its
+              own ink outline, so it sits on a saturated fill without needing a
+              light plate behind it. */}
+          <View style={styles.tileInner}>
             {src ? (
               <Image source={src} style={styles.tileArt} resizeMode="contain" />
             ) : (
-              <AppIcon name={icon} size={30} />
+              <AppIcon name={icon} style={styles.tileIcon} />
             )}
           </View>
         </LinearGradient>
@@ -47,18 +74,18 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress }) {
           </View>
         ) : null}
       </PressableScale>
-      {label ? (
-        <Text style={[toonType.label, styles.label]} numberOfLines={1}>
-          {label}
-        </Text>
-      ) : null}
     </View>
   );
 }
 
-export default function SideRail({ navigation, seasonLabel, onOpenShop, style }) {
+export default function SideRail({ navigation, onOpenShop, style, inline = false }) {
   const [claimable, setClaimable] = useState(0);
-  const [boxes, setBoxes] = useState(0);
+  // PASERBY's entry point. Seeded from cache (useQuery) and refreshed on focus
+  // like everything else on the rail, so the "3 NEW" badge is there on the
+  // first frame after a run rather than a round trip later.
+  const { data: paserby } = useQuery('me:paserby', api.paserby, {
+    fallback: { enabled: true, unseen: 0, total: 0 },
+  });
 
   // The rail's whole job is to show what's WAITING, so it re-reads on focus.
   useFocusEffect(
@@ -76,7 +103,6 @@ export default function SideRail({ navigation, seasonLabel, onOpenShop, style })
             if (d.premium_active && !claimed.has(`${row.level}:premium`)) n += 1;
           }
           setClaimable(n);
-          setBoxes((d.pending_lootboxes || []).length);
         })
         .catch(() => {});
       return () => { alive = false; };
@@ -84,21 +110,14 @@ export default function SideRail({ navigation, seasonLabel, onOpenShop, style })
   );
 
   return (
-    <View style={[styles.rail, style]} pointerEvents="box-none">
+    <View style={[inline ? styles.inlineRail : styles.rail, style]} pointerEvents="box-none">
       <RailTile
         icon="award"
         artKey="railPass"
         label="Pass"
         badge={claimable ? String(claimable) : null}
-        onPress={() => navigation.navigate('You', { screen: 'Progression' })}
-      />
-      <RailTile
-        icon="lootbox"
-        artKey="railBoxes"
-        label="Boxes"
-        badge={boxes ? String(boxes) : null}
-        tint={['#F97CBB', brand.pink, '#B4256F']}
-        onPress={() => navigation.navigate('You', { screen: 'Progression' })}
+        onPress={() => navigation.navigate('Progression')}
+        inline={inline}
       />
       <RailTile
         icon="energy"
@@ -106,13 +125,32 @@ export default function SideRail({ navigation, seasonLabel, onOpenShop, style })
         label="Shop"
         tint={['#7FF0DE', brand.teal, '#128476']}
         onPress={onOpenShop}
+        inline={inline}
       />
+      {/* `railRivals` art doesn't exist yet, so this falls back to the steal
+          sticker — the same one RivalCard uses. */}
       <RailTile
-        icon="trophy"
-        artKey="railSeason"
-        label={seasonLabel}
+        icon="steal"
+        artKey="railRivals"
+        label="Rivals"
         tint={['#C4B5FD', brand.purple, '#5B21B6']}
-        onPress={() => navigation.navigate('Season')}
+        onPress={() => navigation.navigate('Rivals')}
+        inline={inline}
+      />
+      {/* Crossed paths. The badge is a REAL state — encounters this runner has
+          not looked at yet — never decoration, same rule as the pass tile.
+          PINK, not the amber the Crossroads header wears: once the tiles became
+          solid blocks of colour, an amber crossroads sat at one end of the rail
+          looking like the gold pass at the other. Pink is the fourth colour the
+          rail did not have, and it is in the plaza's own paths and blossom. */}
+      <RailTile
+        icon="route"
+        artKey="railCrossroads"
+        label="Crossroads"
+        badge={badgeLabel(paserby?.unseen)}
+        tint={['#FBA6CD', brand.pink, '#9D1458']}
+        onPress={() => navigation.navigate('Crossroads')}
+        inline={inline}
       />
     </View>
   );
@@ -120,24 +158,36 @@ export default function SideRail({ navigation, seasonLabel, onOpenShop, style })
 
 const styles = StyleSheet.create({
   rail: { position: 'absolute', right: space.sm, gap: space.md, alignItems: 'center' },
+  inlineRail: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
   slot: { alignItems: 'center', width: 62 },
+  inlineSlot: { flex: 1, width: 'auto' },
   tileWrap: { width: 56, height: 56 },
+  inlineTileWrap: { width: 64, height: 64 },
   tile: {
     width: 56,
     height: 56,
     borderRadius: toonRadius.cell,
     borderWidth: 2.5,
     borderColor: toon.ink,
-    padding: 3,
+    // Was 3, which is what drew the ring. With the fill going edge to edge the
+    // padding is only breathing room for the sticker inside it.
+    padding: 2,
   },
+  inlineTile: { width: 64, height: 64 },
   tileInner: {
     flex: 1,
-    borderRadius: toonRadius.cell - 5,
+    borderRadius: toonRadius.cell - 4,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  tileArt: { width: '100%', height: '100%' },
+  // Inset from the frame rather than filling it — the art reads as sitting in
+  // the tile instead of being cropped by its rounded corners.
+  tileArt: { width: '84%', height: '84%' },
+  // Fallback stickers fill the frame instead: unlike the rail art, they are
+  // trimmed to ~80% of their own canvas, so the extra 16% here only spends the
+  // sticker's baked-in margin and lands the drawing at tileArt's visual size.
+  tileIcon: { width: '100%', height: '100%' },
   badge: {
     position: 'absolute',
     top: -6,
@@ -153,5 +203,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-  label: { color: 'rgba(255,255,255,0.75)', fontSize: 10, marginTop: 3 },
 });

@@ -1,17 +1,20 @@
 // Run detail — route on the game board, splits, claim outcome, kudos,
 // comments. Reached from the feed and the You tab's recent runs.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Heart, Send } from 'lucide-react-native';
 
 import { api } from '../api/client';
+import { updateCached } from '../api/cache';
+import { useQuery } from '../hooks/useQuery';
 import { NEUTRAL } from '../state/clan';
-import { colors, radius, space, type, withAlpha } from '../theme';
+import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, StatValue, Skeleton } from '../components/ui';
 import { PressableScale, haptic } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
+import GameLottie from '../components/GameLottie';
 
 const km = (m) => (m / 1000).toFixed(2);
 
@@ -22,7 +25,7 @@ function paceStr(seconds) {
 }
 
 function fmtPace(distanceM, durationS) {
-  if (!distanceM || distanceM < 50 || !durationS) return '—';
+  if (!distanceM || distanceM < 50 || !durationS) return '·';
   return `${paceStr(durationS / (distanceM / 1000))} /km`;
 }
 
@@ -41,17 +44,26 @@ function timeAgo(iso) {
 }
 
 export default function RunDetailScreen({ route }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { runId } = route.params;
-  const [d, setD] = useState(null);
+  // Cached per run: reopening a run from the feed or your recent-runs list
+  // draws the route, splits and comments immediately rather than rebuilding
+  // the page from two skeletons.
+  const { data: d, loading, error, setData: setD } = useQuery(
+    `run:${runId}`,
+    () => api.runDetail(runId)
+  );
+  const { data: comments, setData: setComments } = useQuery(
+    `run:${runId}:comments`,
+    () => api.runComments(runId),
+    { fallback: [] }
+  );
   const [busy, setBusy] = useState(false);
-  const [comments, setComments] = useState(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-
-  useEffect(() => {
-    api.runDetail(runId).then(setD).catch(() => setD(false));
-    api.runComments(runId).then(setComments).catch(() => setComments([]));
-  }, [runId]);
+  const [kudosFx, setKudosFx] = useState(0);
 
   const sendComment = async () => {
     const body = draft.trim();
@@ -73,11 +85,19 @@ export default function RunDetailScreen({ route }) {
     if (busy || !d) return;
     setBusy(true);
     haptic.light();
+    if (!d.kudoed) setKudosFx((token) => token + 1);
     // optimistic
     setD((p) => ({ ...p, kudoed: !p.kudoed, kudos_count: p.kudos_count + (p.kudoed ? -1 : 1) }));
     try {
       const r = await api.toggleKudos(runId);
       setD((p) => ({ ...p, kudoed: r.kudoed, kudos_count: r.kudos_count }));
+      // Keep the feed row for this run in step — it's the same heart.
+      updateCached('feed', (feed) => ({
+        ...feed,
+        items: (feed.items || []).map((row) =>
+          (row.id === runId ? { ...row, kudoed: r.kudoed, kudos_count: r.kudos_count } : row)
+        ),
+      }));
     } catch (e) {
       toast.error(e.message || 'Could not send kudos');
     } finally {
@@ -85,8 +105,8 @@ export default function RunDetailScreen({ route }) {
     }
   };
 
-  if (d === false) return <Screen center><Text style={type.body}>Run not found.</Text></Screen>;
-  if (!d) {
+  if (loading && error) return <Screen center><Text style={type.body}>Run not found.</Text></Screen>;
+  if (loading) {
     return (
       <Screen>
         <Skeleton width="100%" height={220} style={{ borderRadius: 16, marginTop: space.md }} />
@@ -124,17 +144,20 @@ export default function RunDetailScreen({ route }) {
           <Text style={type.title}>{d.clan_tag ? `[${d.clan_tag}] ` : ''}{d.username}{d.is_you ? ' · you' : ''}</Text>
           <Text style={type.caption}>{new Date(d.created_at).toLocaleString()}</Text>
         </View>
-        <PressableScale onPress={kudos} style={styles.kudos} accessibilityRole="button" accessibilityLabel="Give kudos">
-          <Heart size={20} color={d.kudoed ? c.stroke : colors.textMuted} fill={d.kudoed ? c.stroke : 'transparent'} />
-          <Text style={[type.bodySmBold, { color: d.kudoed ? c.stroke : colors.textMuted }]}>{d.kudos_count}</Text>
-        </PressableScale>
+        <View style={styles.kudosSlot}>
+          {kudosFx > 0 ? <GameLottie name="kudos" size={96} trigger={kudosFx} style={styles.kudosFx} /> : null}
+          <PressableScale onPress={kudos} style={styles.kudos} accessibilityRole="button" accessibilityLabel="Give kudos">
+            <Heart size={20} color={d.kudoed ? c.stroke : colors.textMuted} fill={d.kudoed ? c.stroke : 'transparent'} />
+            <Text style={[type.bodySmBold, { color: d.kudoed ? c.stroke : colors.textMuted }]}>{d.kudos_count}</Text>
+          </PressableScale>
+        </View>
       </Row>
 
       <Row between style={{ marginTop: space.lg }}>
         <StatValue size="md" label="Distance" value={km(d.distance_m)} unit="km" />
         <StatValue size="md" label="Pace" value={fmtPace(d.distance_m, d.duration_s).split(' ')[0]} unit="/km" />
         <StatValue size="md" label="Time" value={fmtDuration(d.duration_s)} />
-        <StatValue size="md" label={d.closed_loop ? 'Claimed' : 'No claim'} value={d.closed_loop ? (d.area_m2 / 1e6).toFixed(d.area_m2 >= 1e5 ? 2 : 3) : '—'} unit={d.closed_loop ? 'km²' : ''} color={d.closed_loop ? c.stroke : colors.textDim} />
+        <StatValue size="md" label={d.closed_loop ? 'Claimed' : 'No claim'} value={d.closed_loop ? (d.area_m2 / 1e6).toFixed(d.area_m2 >= 1e5 ? 2 : 3) : '·'} unit={d.closed_loop ? 'km²' : ''} color={d.closed_loop ? c.stroke : colors.textDim} />
       </Row>
 
       {/* splits */}
@@ -158,7 +181,7 @@ export default function RunDetailScreen({ route }) {
         <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>
           Comments{comments?.length ? ` · ${comments.length}` : ''}
         </Text>
-        {!comments ? (
+        {comments === undefined ? (
           <Skeleton width="100%" height={16} />
         ) : comments.length === 0 ? (
           <Text style={[type.caption, { marginBottom: space.sm }]}>Be the first to say something.</Text>
@@ -201,10 +224,12 @@ export default function RunDetailScreen({ route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   map: { height: 240, borderRadius: radius.card, overflow: 'hidden', marginTop: space.md, backgroundColor: colors.bgElevated },
   mapPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   kudos: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, paddingVertical: space.sm },
+  kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  kudosFx: { position: 'absolute', zIndex: 4 },
   splitRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
   splitKm: { ...type.statSm, width: 52 },
   track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bgElevated, overflow: 'hidden' },

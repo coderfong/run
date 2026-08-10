@@ -7,6 +7,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api/client';
+import { fetchAndCache, getCached } from '../api/cache';
 import { useAuth } from '../auth/AuthContext';
 
 // Neutral slate for solo runners — never a saturated hue.
@@ -22,7 +23,13 @@ const ClanContext = createContext({
 
 export function ClanProvider({ children }) {
   const { signedIn } = useAuth();
-  const [clan, setClan] = useState(null);
+  // Seeded from cache: the clan colour IS the app's accent, so starting at
+  // null painted the tab bar, the Record button and every stat highlight
+  // neutral slate for one round trip on launch and then recoloured them.
+  const [clan, setClan] = useState(() => {
+    const cached = getCached('me:clan');
+    return cached?.clan_id ? cached : null;
+  });
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -32,10 +39,11 @@ export function ClanProvider({ children }) {
       return;
     }
     try {
-      const me = await api.myClan();
+      const me = await fetchAndCache('me:clan', api.myClan);
       setClan(me?.clan_id ? me : null);
     } catch {
-      setClan(null);
+      // Keep whatever we had (usually the cached clan) rather than dropping
+      // the whole app to the solo accent because one request timed out.
     } finally {
       setLoading(false);
     }

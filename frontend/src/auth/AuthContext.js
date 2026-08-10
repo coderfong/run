@@ -9,6 +9,7 @@ import React, {
 import * as SecureStore from 'expo-secure-store';
 
 import { api, setAuthToken } from '../api/client';
+import { clearCache, setCacheOwner } from '../api/cache';
 
 const TOKEN_KEY = 'tr.token';
 const USER_KEY = 'tr.user';
@@ -40,48 +41,102 @@ export function AuthProvider({ children }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
 
   // Restore on launch.
+  //
+  // The saved token is the source of truth for "signed in", so a returning
+  // user goes straight into the app on the cached identity and the /me check
+  // runs in the BACKGROUND. Launch used to block on that round trip, which put
+  // every cold start behind a server wake-up — and on a slow or absent network
+  // it held the loading mascot on screen for as long as the socket stayed open.
   useEffect(() => {
+    let alive = true;
+
+    // Silent refresh: if the 30-day token is inside the renewal window, swap
+    // it for a fresh one. Failure is non-fatal — the old token still works
+    // until it actually expires.
+    const maybeRefresh = async (savedToken) => {
+      const expMs = tokenExpiryMs(savedToken);
+      if (!expMs || expMs - Date.now() >= REFRESH_WINDOW_MS) return;
+      try {
+        const refreshed = await api.refresh();
+        if (!alive) return;
+        setAuthToken(refreshed.access_token);
+        setToken(refreshed.access_token);
+        await SecureStore.setItemAsync(TOKEN_KEY, refreshed.access_token);
+      } catch {}
+    };
+
+    // Confirm the session against the server. Only a 401/403 is a verdict on
+    // the token; offline, timeout and 5xx are not, and the local session
+    // stands. (Clearing on *any* failure — the previous behaviour — signed
+    // people out whenever they opened the app without a connection.)
+    const verify = async (savedToken) => {
+      try {
+        const me = await api.me({ timeoutMs: 10000 });
+        if (!alive) return;
+        setUser(me);
+        SecureStore.setItemAsync(USER_KEY, JSON.stringify(me)).catch(() => {});
+        await maybeRefresh(savedToken);
+      } catch (e) {
+        if (e?.status !== 401 && e?.status !== 403) return;
+        await clearStored();
+        clearCache();
+        if (!alive) return;
+        setAuthToken(null);
+        setToken(null);
+        setUser(null);
+      }
+    };
+
     (async () => {
       try {
         const [savedToken, savedUserJson] = await Promise.all([
           SecureStore.getItemAsync(TOKEN_KEY),
           SecureStore.getItemAsync(USER_KEY),
         ]);
-        if (savedToken) {
-          setAuthToken(savedToken);
-          setToken(savedToken);
-          if (savedUserJson) setUser(JSON.parse(savedUserJson));
-          // Verify the token is still valid against /me. If it's not,
-          // sign the user out cleanly so they see Login on next render.
-          try {
-            const me = await api.me();
-            setUser(me);
-            await SecureStore.setItemAsync(USER_KEY, JSON.stringify(me));
+        if (!savedToken || !alive) return;
 
-            // Silent refresh: if the 30-day token is inside the renewal
-            // window, swap it for a fresh one. Failure is non-fatal — the
-            // old token still works until it actually expires.
-            const expMs = tokenExpiryMs(savedToken);
-            if (expMs && expMs - Date.now() < REFRESH_WINDOW_MS) {
-              try {
-                const refreshed = await api.refresh();
-                setAuthToken(refreshed.access_token);
-                setToken(refreshed.access_token);
-                await SecureStore.setItemAsync(TOKEN_KEY, refreshed.access_token);
-              } catch {}
-            }
-          } catch {
-            await clearStored();
-            setAuthToken(null);
-            setToken(null);
-            setUser(null);
-          }
+        // Already past its own expiry — no point asking the server.
+        const expMs = tokenExpiryMs(savedToken);
+        if (expMs && expMs <= Date.now()) {
+          await clearStored();
+          return;
+        }
+
+        let cached = null;
+        try {
+          cached = savedUserJson ? JSON.parse(savedUserJson) : null;
+        } catch {}
+
+        setAuthToken(savedToken);
+        if (!alive) return;
+        setToken(savedToken);
+
+        if (cached) {
+          // Enough to render the whole app — verify behind it.
+          setUser(cached);
+          setLoading(false);
+          verify(savedToken);
+        } else {
+          // No cached identity: the per-user storage keys (avatar loadout,
+          // profile) would resolve to 'anon', so this one case still waits.
+          await verify(savedToken);
         }
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
+
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  // Cached responses belong to the account that fetched them. Naming the owner
+  // lets the cache drop itself wholesale when a different user signs in on the
+  // same device, so nobody ever sees the previous account's feed flash by.
+  useEffect(() => {
+    if (user) setCacheOwner(String(user.id ?? user.user_id ?? user.username));
+  }, [user?.id, user?.user_id, user?.username]);
 
   const persist = async (t, u) => {
     await Promise.all([
@@ -105,13 +160,33 @@ export function AuthProvider({ children }) {
     setUser(res.user);
   }, []);
 
-  const signUp = useCallback(async (username, password) => {
-    const res = await api.signup(username, password);
+  const signUp = useCallback(async (username, password, email) => {
+    const res = await api.signup(username, password, email);
     setAuthToken(res.access_token);
     await persist(res.access_token, res.user);
     setToken(res.access_token);
     setUser(res.user);
     setNeedsOnboarding(true); // new account → show the intro once
+  }, []);
+
+  // A finished password reset hands back a session exactly like a login, so it
+  // is adopted the same way. Not treated as a new account: this runner has
+  // been here all along and does not want the intro again.
+  const adoptSession = useCallback(async (res) => {
+    setAuthToken(res.access_token);
+    await persist(res.access_token, res.user);
+    setToken(res.access_token);
+    setUser(res.user);
+  }, []);
+
+  // Pull /me again after something changed the account off to the side (the
+  // recovery email, mostly), so the cached identity the app renders from does
+  // not keep saying the account has no way back in.
+  const refreshUser = useCallback(async () => {
+    const me = await api.me();
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(me));
+    setUser(me);
+    return me;
   }, []);
 
   // OAuth sign-in (Google / Apple). `idToken` is the provider's identity
@@ -132,6 +207,7 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     await clearStored();
+    clearCache();
     setAuthToken(null);
     setToken(null);
     setUser(null);
@@ -147,6 +223,7 @@ export function AuthProvider({ children }) {
   const deleteAccount = useCallback(async () => {
     await api.deleteMe();
     await clearStored();
+    clearCache();
     setAuthToken(null);
     setToken(null);
     setUser(null);
@@ -162,6 +239,8 @@ export function AuthProvider({ children }) {
       signIn,
       signUp,
       signInWithProvider,
+      adoptSession,
+      refreshUser,
       signOut,
       completeOnboarding,
       updateUsername,
@@ -175,6 +254,8 @@ export function AuthProvider({ children }) {
       signIn,
       signUp,
       signInWithProvider,
+      adoptSession,
+      refreshUser,
       signOut,
       completeOnboarding,
       updateUsername,

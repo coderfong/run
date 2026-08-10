@@ -8,9 +8,8 @@
 // The two steps CROSSFADE (both absolutely filled, fade in/out) instead of the
 // old hard swap. Honors Reduce Motion.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  Image,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -19,16 +18,19 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from '../ui/image';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthContext';
+import ForgotPassword from '../auth/ForgotPassword';
 import { brand, radius, space, type, useTheme } from '../theme';
 import { Screen, Button } from '../components/ui';
 import { Reveal, useReduceMotion } from '../ui/motion';
 import SocialAuthButtons from '../components/SocialAuthButtons';
+import { preloadScreenImagesAfterInteractions } from '../config/screenAssets';
 
 const AUTH_HERO = require('../../assets/art/auth-hero.png');
 
@@ -39,7 +41,7 @@ function usernameError(raw) {
   if (!u) return 'Enter a username.';
   if (u.length < 3) return 'At least 3 characters.';
   if (u.length > 32) return 'At most 32 characters.';
-  if (!USERNAME_RE.test(u)) return 'Only a–z, 0–9 and underscore.';
+  if (!USERNAME_RE.test(u)) return 'Letters, numbers and underscore only.';
   return null;
 }
 
@@ -49,6 +51,15 @@ function passwordError(pw, isSignup) {
   if (pw.length > 128) return 'At most 128 characters.';
   if (isSignup && (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)))
     return 'Needs at least one letter and one digit.';
+  return null;
+}
+
+// Optional, so blank is valid. Anything typed has to look like an address:
+// this is the only chance to catch a typo before the day it is needed.
+function emailError(raw) {
+  const e = (raw || '').trim();
+  if (!e) return null;
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) return 'That email does not look right.';
   return null;
 }
 
@@ -113,7 +124,7 @@ function Welcome({ onSignIn, onCreate }) {
 
 // --- step 2: the form ---------------------------------------------------------
 
-function AuthForm({ onBack }) {
+function AuthForm({ onBack, onForgot }) {
   const { signIn, signUp } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -122,6 +133,7 @@ function AuthForm({ onBack }) {
   const [mode, setMode] = useState('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [touched, setTouched] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -129,15 +141,17 @@ function AuthForm({ onBack }) {
   const isSignup = mode === 'signup';
   const uErr = touched ? usernameError(username) : null;
   const pErr = touched ? passwordError(password, isSignup) : null;
+  const eErr = touched ? emailError(email) : null;
 
   const onSubmit = async () => {
     setTouched(true);
     setApiError(null);
     if (usernameError(username) || passwordError(password, isSignup)) return;
+    if (isSignup && emailError(email)) return;
     const u = username.trim().toLowerCase();
     setBusy(true);
     try {
-      if (isSignup) await signUp(u, password);
+      if (isSignup) await signUp(u, password, email.trim().toLowerCase() || null);
       else await signIn(u, password);
     } catch (e) {
       setApiError(e.message || `Could not ${isSignup ? 'create the account' : 'sign in'}. Try again.`);
@@ -155,7 +169,7 @@ function AuthForm({ onBack }) {
           </Text>
           <Text style={[type.body, { color: colors.textMuted, marginBottom: space.xl, textAlign: 'center' }]}>
             {isSignup
-              ? 'Pick a username — your runs will claim land under it.'
+              ? 'Pick a username. Your runs will claim land under it.'
               : 'Sign in to keep claiming.'}
           </Text>
         </Reveal>
@@ -174,7 +188,7 @@ function AuthForm({ onBack }) {
             accessibilityLabel="Username"
           />
           {uErr ? <Text style={s.fieldError}>{uErr}</Text> : null}
-          {isSignup && !uErr ? <Text style={s.fieldHint}>3–32 characters: a–z, 0–9, underscore.</Text> : null}
+          {isSignup && !uErr ? <Text style={s.fieldHint}>3 to 32 characters: letters, numbers, underscore.</Text> : null}
         </Reveal>
 
         <Reveal delay={170}>
@@ -191,7 +205,51 @@ function AuthForm({ onBack }) {
             accessibilityLabel="Password"
           />
           {pErr ? <Text style={s.fieldError}>{pErr}</Text> : null}
+          {/* The one thing standing between a forgotten password and a lost
+              account. Offered on sign in only, because on the signup form the
+              field below is the version that helps. */}
+          {!isSignup ? (
+            <TouchableOpacity
+              onPress={onForgot}
+              style={{ marginTop: space.md, alignSelf: 'flex-start' }}
+              hitSlop={8}
+              accessibilityRole="button"
+            >
+              <Text style={[type.bodySm, { color: colors.textMuted, textDecorationLine: 'underline' }]}>
+                Forgot your password?
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </Reveal>
+
+        {/* Optional at signup and skippable, but it is the whole of account
+            recovery: an account with no confirmed address cannot be got back
+            if the password goes. Said plainly rather than buried in a hint. */}
+        {isSignup ? (
+          <Reveal delay={210}>
+            <Text style={s.label}>Email</Text>
+            <TextInput
+              style={[s.input, eErr && s.inputError]}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.textDim}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={(v) => { setEmail(v); setApiError(null); }}
+              maxLength={254}
+              accessibilityLabel="Email, optional, used to reset your password"
+            />
+            {eErr ? (
+              <Text style={s.fieldError}>{eErr}</Text>
+            ) : (
+              <Text style={s.fieldHint}>
+                Optional. It is the only way to reset your password later, and nobody else on PASER
+                can see it.
+              </Text>
+            )}
+          </Reveal>
+        ) : null}
 
         {apiError ? (
           <Reveal from="none">
@@ -239,8 +297,10 @@ function AuthForm({ onBack }) {
 // --- root: crossfades welcome <-> form ---------------------------------------
 
 export default function AuthScreen() {
-  const [step, setStep] = useState('welcome'); // 'welcome' | 'form'
+  const [step, setStep] = useState('welcome'); // 'welcome' | 'form' | 'forgot'
   const reduced = useReduceMotion();
+
+  useEffect(() => preloadScreenImagesAfterInteractions('Onboarding'), []);
 
   const enter = reduced ? undefined : FadeIn.duration(320);
   const exit = reduced ? undefined : FadeOut.duration(200);
@@ -251,9 +311,13 @@ export default function AuthScreen() {
         <Animated.View key="welcome" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
           <Welcome onSignIn={() => setStep('form')} onCreate={() => setStep('form')} />
         </Animated.View>
+      ) : step === 'forgot' ? (
+        <Animated.View key="forgot" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
+          <ForgotPassword onBack={() => setStep('form')} />
+        </Animated.View>
       ) : (
         <Animated.View key="form" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
-          <AuthForm onBack={() => setStep('welcome')} />
+          <AuthForm onBack={() => setStep('welcome')} onForgot={() => setStep('forgot')} />
         </Animated.View>
       )}
     </View>

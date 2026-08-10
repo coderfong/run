@@ -3,22 +3,41 @@
 // (if onPress given) opens the refill shop. Counts up locally between fetches
 // using the server's regen rate so the bar feels alive without polling.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { brand, radius, space, useTheme, useThemedType } from '../theme';
+import { Bar } from '../ui/motion';
 import AppIcon from './AppIcon';
+import GameLottie from './GameLottie';
 
 export default function EnergyMeter({ status, onPress, compact = false, style }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const [energy, setEnergy] = useState(status?.energy ?? 0);
+  const [fx, setFx] = useState(null);
+  const previousEnergy = useRef(null);
+  const fxToken = useRef(0);
 
   const max = status?.energy_max ?? 100;
   const regen = status?.regen_seconds ?? 360;
 
   // Re-sync when a fresh status arrives.
   useEffect(() => { setEnergy(status?.energy ?? 0); }, [status?.energy]);
+
+  useEffect(() => {
+    if (previousEnergy.current == null) {
+      previousEnergy.current = energy;
+      return;
+    }
+    if (energy !== previousEnergy.current) {
+      setFx({
+        name: energy > previousEnergy.current ? 'energyGain' : 'energySpend',
+        token: ++fxToken.current,
+      });
+      previousEnergy.current = energy;
+    }
+  }, [energy]);
 
   // Tick a local +1 every regen interval so the meter climbs between fetches.
   useEffect(() => {
@@ -41,10 +60,26 @@ export default function EnergyMeter({ status, onPress, compact = false, style })
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={`Energy ${energy} of ${max}`}
     >
-      <AppIcon name="energy" size={compact ? 16 : 20} />
-      <View style={[styles.track, { backgroundColor: colors.cardAlt }]}>
-        <View style={[styles.fill, { width: `${pct * 100}%`, backgroundColor: barColor }]} />
+      <View style={[styles.iconSlot, compact && styles.iconSlotCompact]}>
+        <AppIcon name="energy" size={compact ? 16 : 20} />
+        {fx ? (
+          <GameLottie
+            name={fx.name}
+            size={compact ? 48 : 58}
+            trigger={fx.token}
+            style={styles.energyFx}
+          />
+        ) : null}
       </View>
+      {/* Not animated on mount: this chip rides along in headers, and a bar
+          refilling itself every time you land on a screen is noise. It moves
+          when the energy moves — a claim taking a bite out of it, or the regen
+          tick above adding one back. */}
+      <Bar
+        pct={pct}
+        trackStyle={[styles.track, { backgroundColor: colors.cardAlt }]}
+        fillStyle={[styles.fill, { backgroundColor: barColor }]}
+      />
       <Text style={[type.bodySmBold, { color: colors.text, minWidth: 46, textAlign: 'right' }]}>
         {energy}/{max}
       </Text>
@@ -62,6 +97,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   compact: { paddingVertical: 6, paddingHorizontal: space.sm },
+  iconSlot: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  iconSlotCompact: { width: 16, height: 16 },
+  energyFx: { position: 'absolute' },
   track: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', minWidth: 60 },
   fill: { height: '100%', borderRadius: 4 },
 });

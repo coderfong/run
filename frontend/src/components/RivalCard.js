@@ -14,6 +14,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { brand, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
 import { ToonButton, ToonCard, ToonGhostButton, OutlinedText } from './ui';
 import { CharacterBust } from './character/CharacterRig';
+import PortraitBorder from './PortraitBorder';
+import { useAvatar } from '../state/avatar';
 
 // m² reads as noise past a point; km² reads as nothing below one.
 export function fmtArea(m2) {
@@ -78,14 +80,16 @@ function VersusBar({ mine, theirs }) {
   );
 }
 
-function Side({ label, avatar, area, times, align = 'left' }) {
+function Side({ label, avatar, rankKey, area, times, align = 'left' }) {
   const { colors } = useTheme();
   const type = useThemedType();
   return (
     <View style={[styles.side, align === 'right' && { flexDirection: 'row-reverse' }]}>
-      <View style={styles.bust}>
+      {/* No fixed clipping box around the bust — the frame is wider than the
+          portrait, and a 44px overflow:hidden wrapper sheared it off. */}
+      <PortraitBorder borderKey={rankKey || 'wood'} size={44}>
         <CharacterBust equipped={avatar} size={44} bg={colors.cardAlt} />
-      </View>
+      </PortraitBorder>
       <View style={{ flex: 1, alignItems: align === 'right' ? 'flex-end' : 'flex-start' }}>
         {/* toonType.sub centres by default — each side has to own its edge */}
         <Text
@@ -114,6 +118,10 @@ export default function RivalCard({
 }) {
   const { colors } = useTheme();
   const type = useThemedType();
+  // Read straight from the avatar context rather than adding a prop beside
+  // `myAvatar` — every caller already sources that from the same place, so a
+  // second prop is one more thing four call sites can forget to pass.
+  const { rankKey: myRankKey } = useAvatar();
   const behind = rival.net_m2 < 0;
   const line = headline(rival);
 
@@ -141,6 +149,7 @@ export default function RivalCard({
           <Side
             label="You"
             avatar={myAvatar}
+            rankKey={myRankKey}
             area={compact ? rival.your_land_m2 : rival.you_took_m2}
             times={compact ? 0 : rival.you_took_times}
           />
@@ -148,6 +157,7 @@ export default function RivalCard({
           <Side
             label={rival.username}
             avatar={rival.avatar}
+            rankKey={rival.rank_key}
             area={compact ? rival.their_land_m2 : rival.they_took_m2}
             times={compact ? 0 : rival.they_took_times}
             align="right"
@@ -183,7 +193,6 @@ const styles = StyleSheet.create({
 
   sides: { flexDirection: 'row', alignItems: 'center', marginTop: space.md, gap: space.sm },
   side: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  bust: { width: 44, height: 44, borderRadius: 22, overflow: 'hidden' },
   vs: { textTransform: 'uppercase', letterSpacing: 1 },
 
   bar: {

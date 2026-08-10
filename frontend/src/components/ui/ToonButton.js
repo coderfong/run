@@ -26,8 +26,12 @@ export default function ToonButton({
   icon = null,
   style,
   labelColor = '#FFFFFF',
+  // Escape hatch for buttons that have to wear a colour the app decides at
+  // runtime rather than one of the four brand variants — the claim CTA is
+  // painted in the runner's clan colour. Shape: { colors: [a, b, c], border }.
+  fill: fillOverride,
 }) {
-  const fill = ctaFills[variant] || ctaFills.primary;
+  const fill = fillOverride || ctaFills[variant] || ctaFills.primary;
   const height = size === 'sm' ? 48 : 60;
   const off = disabled || loading;
 

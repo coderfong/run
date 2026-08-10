@@ -32,7 +32,7 @@ export default class ErrorBoundary extends React.Component {
           <EmptyState
             icon={<TriangleAlert size={40} color={colors.warn} />}
             title="Something went wrong"
-            body="This screen hit a snag. Try again — your runs and territory are safe."
+            body="This screen hit a snag. Try again. Your runs and territory are safe."
             actionLabel="Try again"
             onAction={this.reset}
           />

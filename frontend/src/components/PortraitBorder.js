@@ -7,7 +7,8 @@
 // `level` (we derive the tier).
 
 import React from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
+import { Image } from '../ui/image';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { borderForLevel, borderByKey } from '../config/progression';
@@ -21,14 +22,22 @@ export default function PortraitBorder({ tier, level, borderKey, size = 72, widt
   const r = size / 2 - w / 2;
   const gid = `pb-${t.key}-${size}`;
 
-  // Real ring art when the tier has it. `hole` is the art's inner opening as a
-  // fraction of its square canvas (measured by scripts/slice-borders.py).
+  // Real ring art when the tier has it. `hole`/`cx`/`cy` describe the circle
+  // that covers the art's inner opening, as fractions of its square canvas
+  // (measured by scripts/measure-border-holes-3.py).
   //
-  // Two things matter here, and getting either wrong wrecks the layout:
-  //  1. HOLE_FLOOR caps how far the ring can scale up. Ornate tiers have a
-  //     small opening (mythic 0.487), and size/0.487 made a 104px portrait
-  //     wear a 213px wreath that swallowed the level text beside it.
-  //  2. The wrapper is sized to the RING, not the portrait, so the badge
+  // Three things matter here, and getting any of them wrong wrecks the badge:
+  //  1. The opening is NOT concentric with the canvas. Prismatic's crystal
+  //     crown and mythic's flame sit above the band, pushing the ring to the
+  //     bottom of its square (prismatic's opening centres at cy 0.576). Laying
+  //     the portrait out centred left a crescent of background showing along
+  //     the bottom of the frame — so the portrait is positioned on `cx`/`cy`,
+  //     not on the middle of the art.
+  //  2. `hole` covers the opening rather than fitting inside it, so the
+  //     portrait's rim reaches the band's inner edge at its widest point and
+  //     tucks under the frame everywhere else. The ring composites ON TOP, so
+  //     that overlap is invisible and the gap cannot come back.
+  //  3. The wrapper is sized to the RING, not the portrait, so the badge
   //     reserves its real footprint instead of silently overlapping whatever
   //     is above and below it.
   const artTier = BORDER_ART[t.key];
@@ -36,13 +45,17 @@ export default function PortraitBorder({ tier, level, borderKey, size = 72, widt
     // Exact fit first: at this ring size the opening is precisely `size`, so
     // the portrait fills it whatever the tier's frame thickness.
     const ringSize = size / artTier.hole;
-    // Then bound the footprint. Ornate tiers have a small opening (mythic
-    // 0.487 → a 213px wreath around a 104px bust) which swallowed the level
-    // text beside it. Scale the WHOLE badge — ring and portrait together — so
-    // the fit is preserved and only the footprint shrinks. Clamping ringSize
-    // alone would leave the bust poking over the frame's inner edge.
+    // Then bound the footprint. Ornate tiers have a small opening (onyx 0.62 →
+    // a 167px frame around a 104px bust) which crowded the level text beside
+    // it. Scale the WHOLE badge — ring and portrait together — so the fit is
+    // preserved and only the footprint shrinks. Clamping ringSize alone would
+    // leave the bust poking over the frame's inner edge.
     const outer = Math.min(ringSize, size * 1.5);
     const scale = outer / ringSize;
+    // Fall back to the canvas centre if the config predates the cx/cy pass —
+    // that is the old, slightly-off placement rather than a NaN layout.
+    const cx = artTier.cx ?? 0.5;
+    const cy = artTier.cy ?? 0.5;
     return (
       <View
         style={[
@@ -54,12 +67,25 @@ export default function PortraitBorder({ tier, level, borderKey, size = 72, widt
           style={{
             width: ringSize,
             height: ringSize,
-            alignItems: 'center',
-            justifyContent: 'center',
             transform: [{ scale }],
           }}
         >
-          {children}
+          {/* A `size` box seated on the opening's centre. Children smaller than
+              the opening (RewardArt shows the ring around a bare disc) stay
+              centred in it rather than pinned to its top-left. */}
+          <View
+            style={{
+              position: 'absolute',
+              left: cx * ringSize - size / 2,
+              top: cy * ringSize - size / 2,
+              width: size,
+              height: size,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {children}
+          </View>
           <Image
             source={artTier.src}
             style={{ position: 'absolute', width: ringSize, height: ringSize }}

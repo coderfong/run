@@ -1,12 +1,14 @@
 // Club tab. Clubless -> a directory (search, create, join-by-code). Member ->
 // the club hub (header, weekly goal, members, role-gated management).
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Image, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image } from '../ui/image';
 import { ArrowRight, MessageCircle, UserPlus } from 'lucide-react-native';
 
 import { api } from '../api/client';
+import { invalidate } from '../api/cache';
+import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
@@ -14,6 +16,8 @@ import { art } from '../config/onboardingArt';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, EmptyState } from '../components/ui';
 import ClanBadge from '../components/ClanBadge';
 import { toast } from '../ui/toast';
+import { Bar } from '../ui/motion';
+import GameLottie from '../components/GameLottie';
 
 const km = (m) => (m / 1000).toFixed(1);
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
@@ -28,25 +32,23 @@ function Directory({ navigation }) {
   const styles = useThemedStyles(makeStyles);
   const { refresh } = useClan();
   const [q, setQ] = useState('');
-  const [results, setResults] = useState(null);
   const [code, setCode] = useState('');
 
-  const search = useCallback(async (term) => {
-    try {
-      setResults(await api.searchClans(term));
-    } catch {
-      setResults([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    search('');
-  }, [search]);
+  // The directory's default listing (empty search) is cached, so the clubless
+  // Club tab has clubs in it the moment you open it. Typed searches go through
+  // the same cache keyed by term, so backspacing through a query re-shows each
+  // result set instead of re-querying it.
+  const { data: results, loading: searching } = useQuery(
+    `clans:search:${q.trim()}`,
+    () => api.searchClans(q.trim()),
+    { fallback: [] }
+  );
 
   const joinCode = async () => {
     if (!code.trim()) return;
     try {
       await api.joinByCode(code.trim());
+      invalidate('clan');
       await refresh();
       toast.success('Joined club');
     } catch (e) {
@@ -85,20 +87,20 @@ function Directory({ navigation }) {
       <TextInput
         style={styles.input}
         value={q}
-        onChangeText={(v) => { setQ(v); search(v); }}
+        onChangeText={setQ}
         placeholder="Search by name or tag"
         placeholderTextColor={colors.textDim}
         autoCapitalize="none"
       />
 
       <View style={{ marginTop: space.md }}>
-        {!results ? (
+        {searching ? (
           <Skeleton width="100%" height={64} style={{ borderRadius: 16 }} />
         ) : results.length === 0 ? (
           <EmptyState
             art={require('../../assets/art/empty-club.png')}
             title="No clubs yet"
-            body="Be the first — create a club and claim land together."
+            body="Be the first. Create a club and claim land together."
             style={{ paddingTop: space.lg }}
           />
         ) : (
@@ -137,27 +139,32 @@ function MemberHub({ clanId, navigation }) {
   const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
   const { refresh } = useClan();
-  const [clan, setClan] = useState(null);
-  const [requests, setRequests] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
+  // Shares the `clan:<id>` key with the public club profile, so opening one
+  // from the other costs nothing and the hub is drawn on the first frame.
+  const { data: clan, loading, refresh: load } = useQuery(
+    clanId ? `clan:${clanId}` : null,
+    () => api.getClan(clanId)
+  );
+  // Only leaders and officers can see the join queue, and `my_role` arrives
+  // with the club — so this query stays disabled until we know.
+  const canSeeRequests = clan?.my_role === 'leader' || clan?.my_role === 'officer';
+  const { data: requests, refresh: reloadRequests } = useQuery(
+    clanId ? `clan:${clanId}:requests` : null,
+    () => api.listJoinRequests(clanId),
+    { enabled: canSeeRequests, fallback: [] }
+  );
+  const [pulling, setPulling] = useState(false);
 
-  const load = useCallback(async () => {
+  const onRefresh = async () => {
+    setPulling(true);
     try {
-      const c = await api.getClan(clanId);
-      setClan(c);
-      if (c.my_role === 'leader' || c.my_role === 'officer') {
-        api.listJoinRequests(clanId).then(setRequests).catch(() => setRequests([]));
-      }
-    } catch {
-      setClan(null);
+      await Promise.all([load(), canSeeRequests ? reloadRequests() : null]);
     } finally {
-      setRefreshing(false);
+      setPulling(false);
     }
-  }, [clanId]);
+  };
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  if (!clan) {
+  if (loading) {
     return (
       <Screen>
         <Skeleton width="100%" height={120} style={{ borderRadius: 16, marginTop: space.md }} />
@@ -187,7 +194,14 @@ function MemberHub({ clanId, navigation }) {
       { text: 'Stay', style: 'cancel' },
       {
         text: 'Leave', style: 'destructive', onPress: async () => {
-          try { await api.leaveClan(); await refresh(); toast.success('Left club'); }
+          try {
+            await api.leaveClan();
+            // Every cached club view now shows you as a member; drop them all
+            // rather than let a stale roster greet you on the way back in.
+            invalidate('clan:');
+            await refresh();
+            toast.success('Left club');
+          }
           catch (e) { toast.error(e.message || 'Could not leave'); }
         },
       },
@@ -206,15 +220,17 @@ function MemberHub({ clanId, navigation }) {
   };
 
   const act = async (fn) => {
-    try { await fn(); await load(); await refresh(); }
-    catch (e) { toast.error(e.message || 'Action failed'); }
+    try {
+      await fn();
+      await Promise.all([load(), reloadRequests(), refresh()]);
+    } catch (e) { toast.error(e.message || 'Action failed'); }
   };
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={accent} />}
+      refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={accent} />}
     >
       {/* header — crew-standoff art sits behind the crest, faded so the
           club's own colour and text stay dominant */}
@@ -235,14 +251,22 @@ function MemberHub({ clanId, navigation }) {
         {clan.description ? <Text style={[type.caption, { textAlign: 'center', marginTop: 2 }]}>{clan.description}</Text> : null}
         <Row gap={8} style={{ marginTop: space.sm }}>
           {clan.league ? <Pill label={LEAGUE_LABEL[clan.league]} color={accent} /> : null}
-          <Pill label={`Season #${clan.season_rank ?? '—'}`} color={accent} variant="outline" />
+          <Pill label={clan.season_rank ? `Season #${clan.season_rank}` : 'Unranked'} color={accent} variant="outline" />
           <Pill label={`${clan.member_count} members`} color={colors.textMuted} />
         </Row>
       </View>
 
       {/* weekly goal (the chest) */}
       {goal && (
-        <Card style={{ marginTop: space.lg }}>
+        <Card style={{ marginTop: space.lg, position: 'relative' }}>
+          {goal.reached ? (
+            <GameLottie
+              name="clubComplete"
+              size={132}
+              trigger={`${goal.progress_distance_m}:${goal.progress_claims}`}
+              style={styles.clubCompleteFx}
+            />
+          ) : null}
           <SectionHeader title="Weekly goal" action={goal.reached ? '✓ reached' : undefined} />
           <Text style={[type.caption, { marginTop: 4, marginBottom: space.md }]}>
             Hit it together for a badge frame. Your share highlighted.
@@ -253,7 +277,7 @@ function MemberHub({ clanId, navigation }) {
       )}
 
       {/* pending join requests (officer+) */}
-      {canManage && requests.length > 0 && (
+      {canManage && (requests?.length || 0) > 0 && (
         <>
           <SectionHeader title="Join requests" style={{ marginTop: space.xl, marginBottom: space.md }} />
           <Card padded={false}>
@@ -321,12 +345,41 @@ function MemberHub({ clanId, navigation }) {
 function GoalBar({ label, pct, mine, accent }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
+  const previousPct = useRef(pct);
+  const [progressFx, setProgressFx] = useState(0);
+
+  useEffect(() => {
+    if (pct > previousPct.current) setProgressFx((token) => token + 1);
+    previousPct.current = pct;
+  }, [pct]);
+
   return (
     <View style={{ marginBottom: space.md }}>
       <Text style={[type.caption, { marginBottom: 6 }]}>{label}</Text>
-      <View style={styles.barTrack}>
-        <View style={[styles.barFill, { width: `${pct * 100}%`, backgroundColor: withAlpha(accent, 0.4) }]} />
-        <View style={[styles.barFill, styles.barMine, { width: `${Math.min(pct, mine || 0) * 100}%`, backgroundColor: accent }]} />
+      {/* Two fills in one track: the club's total in a wash of the accent, and
+          your own share solid on top. Both animate, so a goal moving forward
+          shows you which part of it was you. */}
+      <View style={styles.goalBarStage}>
+        <View style={styles.barTrack}>
+          <Bar
+            pct={pct}
+            trackStyle={StyleSheet.absoluteFill}
+            fillStyle={[styles.barFill, { backgroundColor: withAlpha(accent, 0.4) }]}
+          />
+          <Bar
+            pct={Math.min(pct, mine || 0)}
+            trackStyle={StyleSheet.absoluteFill}
+            fillStyle={[styles.barFill, styles.barMine, { backgroundColor: accent }]}
+          />
+        </View>
+        {progressFx > 0 ? (
+          <GameLottie
+            name="clubProgress"
+            size={54}
+            trigger={progressFx}
+            style={[styles.clubProgressFx, { left: `${Math.round(pct * 100)}%` }]}
+          />
+        ) : null}
       </View>
     </View>
   );
@@ -358,8 +411,11 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl, overflow: 'hidden' },
   headerArt: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.22 },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.bgElevated, overflow: 'hidden' },
+  goalBarStage: { position: 'relative', justifyContent: 'center' },
   barFill: { position: 'absolute', left: 0, top: 0, bottom: 0, borderRadius: 5 },
   barMine: {},
+  clubProgressFx: { position: 'absolute', marginLeft: -27 },
+  clubCompleteFx: { position: 'absolute', right: -18, top: -30, zIndex: 3 },
   memberRow: { paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56, justifyContent: 'center' },
   divider: { borderTopWidth: 1, borderTopColor: colors.border },
 

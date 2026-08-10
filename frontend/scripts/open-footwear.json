@@ -1,0 +1,28 @@
+{
+ "note": "Open footwear: where the lining is, so scripts/open-footwear-mouths.py can cut it out and let the wearer's own foot show through the mouth. Each `mouth` point sits inside one part of the lining, in fractions of the art's width and height, and is authored against the LEFT shoe (or the pair image for the four items that have no split art, flagged `pair`). Every other shoe in the catalogue is closed and has nothing to see inside it. `ink` raises that item's ink radius, for art where a black lining is joined to a black pattern beside it and only comes apart once the pattern is too small to survive. Re-seed by eye against scripts/open-footwear-qa.py.",
+ "items": {
+  "shoe314": { "pair": true, "mouth": [[0.3900, 0.2950], [0.6000, 0.2950]] },
+  "shoe332": { "pair": true, "mouth": [[0.1200, 0.5100], [0.4100, 0.3900], [0.9000, 0.4900], [0.5900, 0.3900]] },
+  "shoe382": { "pair": true, "mouth": [[0.3595, 0.3298], [0.6429, 0.3333]] },
+
+  "shoe333": { "mouth": [[0.6409, 0.2654]] },
+  "shoe334": { "mouth": [[0.6021, 0.2740]] },
+  "shoe335": { "mouth": [[0.2646, 0.6549], [0.6772, 0.4085]] },
+  "shoe338": { "mouth": [[0.5319, 0.7879], [0.7287, 0.1288], [0.6755, 0.5000], [0.5319, 0.6288]] },
+  "shoe341": { "mouth": [[0.6190, 0.1512]] },
+  "shoe345": { "mouth": [[0.6683, 0.2283]] },
+  "shoe348": { "mouth": [[0.8051, 0.2397]] },
+  "shoe350": { "mouth": [[0.6720, 0.1913]] },
+  "shoe351": { "mouth": [[0.6684, 0.3162], [0.6845, 0.5147], [0.2888, 0.7132]] },
+  "shoe354": { "ink": 10, "mouth": [[0.7800, 0.1200]] },
+  "shoe355": { "mouth": [[0.7320, 0.1399], [0.4897, 0.3916]] },
+  "shoe356": { "mouth": [[0.6480, 0.1173]] },
+  "shoe359": { "mouth": [[0.7749, 0.1277], [0.8901, 0.6312]] },
+  "shoe361": { "mouth": [[0.5753, 0.1397]] },
+  "shoe363": { "mouth": [[0.7181, 0.1139]] },
+  "shoe381": { "mouth": [[0.6183, 0.3971]] },
+  "shoe383": { "mouth": [[0.6237, 0.1139]] },
+  "shoe385": { "mouth": [[0.7053, 0.0802], [0.5632, 0.3889], [0.5421, 0.5123]] },
+  "shoe386": { "mouth": [[0.2595, 0.6316]] }
+ }
+}

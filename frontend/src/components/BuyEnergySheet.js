@@ -60,7 +60,7 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
         toast.error(e.message || 'Purchase failed'); setBusy(null); return;
       }
       const res = await api.purchaseEnergy(pack.id, receipt, Platform.OS);
-      toast.success(`Energy topped up — ${res.energy.energy}/${res.energy.energy_max}`);
+      toast.success(`Energy topped up to ${res.energy.energy}/${res.energy.energy_max}`);
       onPurchased?.();
       onClose?.();
     } catch (e) {
@@ -96,7 +96,7 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
       <Text style={[type.heading, { marginBottom: 4 }]}>Get more</Text>
       <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
         Energy powers territory claims and refills on its own over time. Coins
-        buy cosmetics in the shop — you also earn them every run and level.
+        buy cosmetics in the shop. You also earn them every run and level.
       </Text>
 
       <Text style={[type.bodySmBold, { color: colors.textMuted, marginBottom: space.sm }]}>

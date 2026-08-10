@@ -29,6 +29,11 @@ export default function OutlinedText({
   const shared = [style, { textAlign: align }];
   return (
     <View style={containerStyle}>
+      {/* width 0 means NO outline — skip the ring entirely rather than stacking
+          eight ink copies at zero offset behind the fill. Those still showed:
+          the fill's anti-aliased edges let the ink beneath bleed through as a
+          dark fringe, which reads as a drop shadow on the word. */}
+      {width > 0 ? (
       <View
         style={StyleSheet.absoluteFill}
         pointerEvents="none"
@@ -49,6 +54,7 @@ export default function OutlinedText({
           </Text>
         ))}
       </View>
+      ) : null}
       <Text numberOfLines={numberOfLines} style={shared} {...rest}>
         {children}
       </Text>

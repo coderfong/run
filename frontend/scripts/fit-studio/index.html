@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PASER Fit Studio</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f25; --line: #2b2f38; --ink: #e8eaee; --dim: #9aa1ad;
+    --accent: #4ade80; --warn: #fbbf24; --sel: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; height: 100vh; overflow: hidden; }
+  #app { display: grid; grid-template-columns: 300px 1fr 320px; height: 100vh; }
+  aside { background: var(--panel); overflow: hidden; display: flex; flex-direction: column; }
+  #left { border-right: 1px solid var(--line); }
+  #right { border-left: 1px solid var(--line); }
+  h1 { font-size: 13px; margin: 0; padding: 12px 14px; letter-spacing: .04em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); }
+  .pad { padding: 10px 14px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .tab { padding: 5px 9px; border-radius: 6px; background: #23272f; border: 1px solid transparent; cursor: pointer; font-size: 12px; }
+  .tab.on { background: var(--sel); color: #06202b; font-weight: 600; }
+  input[type=text], input[type=number], select { background: #23272f; border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 6px 8px; font: inherit; width: 100%; }
+  .filters { display: flex; gap: 10px; padding: 0 14px 10px; font-size: 12px; color: var(--dim); }
+  label.check { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+  #list { overflow-y: auto; flex: 1; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; border-left: 3px solid transparent; }
+  .row:hover { background: #23272f; }
+  .row.on { background: #26333c; border-left-color: var(--sel); }
+  .row img { width: 34px; height: 34px; object-fit: contain; background: #0e1013; border-radius: 4px; }
+  .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .id { color: var(--dim); font-size: 11px; }
+  .badge { font-size: 11px; }
+  main { display: flex; flex-direction: column; align-items: center; overflow: auto; padding: 16px; }
+  #stagewrap { position: relative; }
+  #stage { position: relative; background: #f3efe7; border-radius: 10px; touch-action: none; user-select: none; }
+  #stage.dark { background: #22262c; }
+  #stage img { position: absolute; image-rendering: auto; pointer-events: none; }
+  #ghost { position: absolute; outline: 1px dashed rgba(56,189,248,.6); opacity: .35; }
+  #ghost img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  #sel, [id^='sel-'] { position: absolute; outline: 2px solid var(--sel); cursor: move; }
+  .h { position: absolute; width: 12px; height: 12px; background: var(--sel); border-radius: 3px; }
+  .h.nw { left: -6px; top: -6px; cursor: nwse-resize; } .h.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+  .h.sw { left: -6px; bottom: -6px; cursor: nesw-resize; } .h.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+  .guide { position: absolute; pointer-events: none; }
+  .guide.hz { left: 0; right: 0; border-top: 1px dashed rgba(239,68,68,.5); }
+  .guide.vt { top: 0; bottom: 0; border-left: 1px dashed rgba(239,68,68,.4); }
+  .guide span { position: absolute; left: 2px; top: 1px; font-size: 9px; color: rgba(239,68,68,.85); }
+  .guide.headbox { border: 1px dashed rgba(59,130,246,.55); }
+  .fld { display: grid; grid-template-columns: 62px 1fr 78px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .fld span { color: var(--dim); font-size: 12px; }
+  .fld input[type=range] { width: 100%; }
+  button { background: #2a2f38; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; cursor: pointer; font: inherit; }
+  button:hover { background: #333945; }
+  button.primary { background: var(--accent); color: #06240f; border-color: transparent; font-weight: 600; }
+  button.danger { border-color: #7f2b2b; color: #ffb4b4; }
+  button.danger:hover { background: #4a1f1f; }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  #right .scroll { overflow-y: auto; flex: 1; }
+  kbd { background: #23272f; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+  .muted { color: var(--dim); }
+  .sw { display: inline-block; width: 16px; height: 16px; border-radius: 4px; margin: 2px; border: 1px solid #0006; cursor: pointer; }
+  .sw.on { outline: 2px solid var(--sel); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+  #collarEdit { position: fixed; inset: 0; background: rgba(8,10,13,.86); z-index: 50; display: flex; flex-direction: column; }
+  #ceBar { display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #ceBar .grow { flex: 1; }
+  /* `safe` so an overflowing pair can still be scrolled to: plain centring
+     pushes the first shoe off the left edge where nothing can reach it. */
+  #ceStage { flex: 1; overflow: auto; display: flex; gap: 18px; align-items: flex-start; justify-content: safe center; padding: 18px; }
+  #ceStage figure { margin: 0; text-align: center; }
+  #ceStage canvas { background: #f3efe7; border-radius: 8px; cursor: crosshair; touch-action: none; display: block; }
+  #ceStage figcaption { color: var(--dim); font-size: 11px; padding-top: 6px; }
+  #ceHint { padding: 8px 14px 12px; color: var(--dim); font-size: 12px; text-align: center; }
+  #askBox { position: fixed; inset: 0; background: rgba(8,10,13,.72); z-index: 60; display: flex; align-items: center; justify-content: center; }
+  #askCard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; max-width: 640px; max-height: 70vh; overflow: auto; box-shadow: 0 18px 60px #0009; }
+  #askText { white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
+  #askPick { margin-top: 12px; }
+  #status { padding: 8px 14px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12px; min-height: 34px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="left">
+    <h1>Catalogue</h1>
+    <div class="tabs" id="tabs"></div>
+    <div class="pad"><input type="text" id="search" placeholder="Search name or id" /></div>
+    <div class="filters">
+      <label class="check"><input type="checkbox" id="fEdited" /> edited</label>
+      <label class="check"><input type="checkbox" id="fSuspect" /> suspect</label>
+      <span id="count" class="muted"></span>
+    </div>
+    <div id="list"></div>
+  </aside>
+
+  <main>
+    <div id="stagewrap"><div id="stage"></div></div>
+  </main>
+
+  <aside id="right">
+    <h1>Fit</h1>
+    <div class="scroll">
+      <div class="pad">
+        <div id="who" style="margin-bottom:10px"><b>—</b></div>
+        <div class="fld"><span>width</span><input type="range" id="rw" min="0.2" max="1.6" step="0.001" /><input type="number" id="nw" step="0.005" /></div>
+        <div class="fld"><span id="anchorLabel">top</span><input type="range" id="rt" min="-0.3" max="1" step="0.001" /><input type="number" id="nt" step="0.002" /></div>
+        <div class="fld"><span>side</span><input type="range" id="rd" min="-0.4" max="0.4" step="0.001" /><input type="number" id="nd" step="0.002" /></div>
+        <div class="fld" id="rotRow" style="display:none"><span>angle</span><input type="range" id="rr" min="-45" max="45" step="0.5" /><input type="number" id="nr" step="0.5" /></div>
+        <!-- The far rim of the collar, drawn behind the body so the ankle
+             passes through the shoe. The cut line suits most shoes and not
+             all, so it can be looked at on its own and taken off. -->
+        <div class="row" id="collarRow" style="display:none">
+          <button id="collarPaint">Draw the cut…</button>
+          <button id="collarShow" class="ghost">show back piece</button>
+          <button id="collarDrop" class="ghost">Remove back piece</button>
+          <span id="collarOut" class="id"></span>
+        </div>
+        <div class="row" id="footRow" style="display:none">
+          <button id="footL" class="ghost">left shoe</button>
+          <button id="footR" class="ghost">right shoe</button>
+        </div>
+        <div class="btns" style="margin-top:10px">
+          <button id="bCentre">Centre</button>
+          <button id="bReset">Reset item</button>
+          <button id="bNext">Next item →</button>
+        </div>
+        <div class="btns" style="margin-top:10px; align-items:center">
+          <button class="danger" id="bDelete">Delete item</button>
+          <label class="check muted"><input type="checkbox" id="oDelArt" checked /> its art too</label>
+        </div>
+        <div id="delOut" class="muted" style="margin-top:6px; white-space:pre-wrap; font-size:11px"></div>
+      </div>
+      <hr />
+      <div class="pad">
+        <div style="margin-bottom:6px" class="muted">Colour variant</div>
+        <div id="swatches"></div>
+      </div>
+      <hr />
+      <div class="pad">
+        <label class="check"><input type="checkbox" id="oGuides" checked /> guide lines</label>
+        <label class="check"><input type="checkbox" id="oGhost" checked /> ghost of original</label>
+        <label class="check"><input type="checkbox" id="oSolo" /> dim other layers</label>
+        <label class="check"><input type="checkbox" id="oDark" /> dark stage</label>
+        <div class="fld" style="margin-top:8px"><span>zoom</span><input type="range" id="zoom" min="160" max="520" step="10" value="300" /><span id="zoomv" class="muted"></span></div>
+      </div>
+      <hr />
+      <div class="pad">
+        <div class="btns">
+          <button class="primary" id="bApply">Write into catalogue</button>
+          <button id="bCopy">Copy edits</button>
+          <button id="bDry">Preview diff</button>
+        </div>
+        <div id="applyOut" class="muted" style="margin-top:8px; white-space:pre-wrap; font-size:11px"></div>
+      </div>
+      <hr />
+      <div class="pad muted" style="font-size:12px">
+        Drag the art to move it. Drag a corner to resize.<br />
+        <kbd>←↑↓→</kbd> nudge (<kbd>shift</kbd> ×10) · <kbd>[</kbd> <kbd>]</kbd> size · <kbd>wheel</kbd> size<br />
+        <kbd>n</kbd> next item · <kbd>0</kbd> reset item
+      </div>
+    </div>
+    <div id="status">loading…</div>
+  </aside>
+</div>
+
+<!-- Painting the collar's back piece. The split puts a horizontal line through
+     every shoe, which is right for most of them and crude for the rest, so the
+     line can be corrected by hand: brushing moves pixels from the BACK piece to
+     the FRONT one, which is what "remove from the back piece" means. Nothing is
+     erased — a pixel is only ever on one side of the leg or the other. -->
+<!-- Asking in the page rather than through confirm()/prompt(). A browser that
+     has seen a few dialogs from one page offers to block the rest, and once
+     that is ticked every confirm() returns false without showing anything —
+     which makes Delete look broken when it is only being answered "no". -->
+<div id="askBox" style="display:none">
+  <div id="askCard">
+    <div id="askText"></div>
+    <select id="askPick" style="display:none"></select>
+    <div class="btns" style="justify-content:flex-end; margin-top:14px">
+      <button id="askNo">Cancel</button>
+      <button id="askYes" class="primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<div id="collarEdit" style="display:none">
+  <div id="ceBar">
+    <b>Collar back piece</b>
+    <span id="ceName" class="muted"></span>
+    <label class="check">brush <input type="range" id="ceBrush" min="2" max="40" step="1" value="12" /></label>
+    <label class="check">zoom <input type="range" id="ceZoom" min="2" max="14" step="1" value="6" /></label>
+    <button id="ceMode" class="ghost">painting: remove from back</button>
+    <button id="ceUndo">Undo</button>
+    <button id="ceReset" class="ghost">Revert</button>
+    <span class="grow"></span>
+    <span id="ceOut" class="muted"></span>
+    <button id="ceCancel">Cancel</button>
+    <button id="ceSave" class="primary">Save</button>
+  </div>
+  <div id="ceStage"></div>
+  <div id="ceHint" class="muted">
+    The tinted part is the back piece — the rim that draws behind the leg. Paint
+    to take pixels out of it; hold <kbd>alt</kbd> (or the right button) to paint
+    them back in. <kbd>[</kbd> <kbd>]</kbd> brush · <kbd>ctrl</kbd>+<kbd>z</kbd>
+    undo · <kbd>esc</kbd> close
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// The studio mirrors CharacterRig's placement maths exactly — the constants
+// come from the component itself over /manifest.json, so a change there shows
+// up here without anything being retyped.
+// ---------------------------------------------------------------------------
+let M = null;              // manifest
+let OV = {};               // overrides: OV[slot][id] = { w, top|cy, dx }
+let equipped = {};
+let slot = 'top';
+let selId = null;
+let bodyW = 300;
+const sizes = new Map();   // src -> { w, h }
+// Bumped whenever art is rewritten under the studio's feet (removing a collar
+// back piece restores the whole shoe to the same filename), so the browser
+// fetches the new bytes instead of serving the old ones from its own cache.
+let artVer = 0;
+const artUrl = (src) => '/art/' + src + (artVer ? '?v=' + artVer : '');
+const els = new Map();     // layer key -> <img>
+
+const $ = (id) => document.getElementById(id);
+const stage = $('stage');
+const SLOT_ORDER = ['top', 'bottom', 'footwear', 'headwear', 'hair', 'glasses', 'accessory', 'face'];
+
+const bodyH = () => bodyW * M.rig.BODY_RATIO;
+const headroom = () => bodyH() * M.rig.HEADROOM;
+const items = (s) => (M.items[s] || []);
+const itemById = (s, id) => items(s).find((i) => i.id === id) || items(s)[0] || null;
+const colorIdx = (s) => equipped[M.colorKey[s]] ?? 0;
+
+function imgOf(s, item) {
+  if (!item) return null;
+  if (item.img) return item.img;
+  if (!item.art) return null;
+  return item.art[Math.max(0, Math.min(item.art.length - 1, colorIdx(s)))];
+}
+// What the RIG draws, which is not always what the picker shows: open footwear
+// that could not be split into two shoes is cut into a second image with its
+// lining punched out, so the leg shows through the mouth. The item list stays
+// on `img`, because a shoe with a see-through middle only reads on a leg.
+function wornImgOf(s, item) {
+  if (item && item.wornImg) return item.wornImg;
+  return imgOf(s, item);
+}
+function backImgOf(s, item) {
+  if (!item) return null;
+  if (item.backImg) return item.backImg;
+  if (!item.backArt) return null;
+  return item.backArt[Math.max(0, Math.min(item.backArt.length - 1, colorIdx(s)))];
+}
+
+// Base spec + the catalogue's own layout + anything dragged in this session.
+function baseSpec(s, item) { return M.rig.LAYOUT[(item && item.fit) || s] || null; }
+function savedSpec(s, item) { return { ...(baseSpec(s, item) || {}), ...(item.layout || {}) }; }
+function liveSpec(s, item) { return { ...savedSpec(s, item), ...((OV[s] || {})[item.id] || {}) }; }
+function edit(s, id) { return (OV[s] || {})[id] || null; }
+
+// The rig reads `cy` before `top`, so an item keeps whichever anchor its base
+// slot uses — a glasses fit is a centre line, a shirt fit is a top edge.
+function anchorKind(s, item) {
+  const spec = savedSpec(s, item);
+  return spec.cy != null ? 'cy' : 'top';
+}
+
+function frameOf(s, item, spec) {
+  // Measure the image the STAGE draws, not the one the list shows: only srcs
+  // that were laid out are in `sizes`, so asking for the picker's art on a
+  // cut-open shoe misses and collapses the box to nothing.
+  const src = wornImgOf(s, item);
+  const nat = sizes.get(src);
+  if (!nat) return null;
+  const BH = bodyH();
+  let w = spec.w * bodyW;
+  let h = w * (nat.h / nat.w);
+  if (spec.maxH != null && h > spec.maxH * BH) { h = spec.maxH * BH; w = h * (nat.w / nat.h); }
+  let top = spec.cy != null ? spec.cy * BH - h / 2 : spec.top * BH;
+  if (s === 'hair') top += M.rig.HAIR_LIFT * BH;
+  const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
+  return { w, h, left, top };
+}
+
+// Inverse of frameOf: a box the user dragged, back into catalogue numbers.
+function specFromFrame(s, item, box) {
+  const BH = bodyH();
+  const lift = s === 'hair' ? M.rig.HAIR_LIFT * BH : 0;
+  const out = { w: box.w / bodyW, dx: (box.left + box.w / 2 - bodyW / 2) / bodyW };
+  if (anchorKind(s, item) === 'cy') out.cy = (box.top + box.h / 2 - lift) / BH;
+  else out.top = (box.top - lift) / BH;
+  return out;
+}
+
+// --- per-shoe placement -----------------------------------------------------
+// Footwear that ships `feet` is TWO images with a placement each, so the two
+// shoes can be angled onto two feet that point outward. `selFoot` is which of
+// them the drag handlers are pointing at; null means the item is being treated
+// as one piece (which is still how every shoe without `feet` works).
+let selFoot = null;
+// Isolate the collar's back piece on the stage, so it can be judged before it
+// is taken off. View state only — nothing is written until Remove is pressed.
+let collarOnly = false;
+
+function hasFeet(item) { return !!(item && item.feet && item.footL && item.footR); }
+function footArt(item, side) { return side === 'l' ? item.footL : item.footR; }
+
+function footSpec(item, side) {
+  const over = ((OV.footwear || {})[item.id] || {}).feet || {};
+  return { ...(item.feet[side] || {}), ...(over[side] || {}) };
+}
+
+function footFrame(item, side, spec) {
+  const nat = sizes.get(footArt(item, side));
+  if (!nat) return null;
+  const w = spec.w * bodyW;
+  const h = w * (nat.h / nat.w);
+  return {
+    w, h,
+    left: bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW,
+    top: spec.top * bodyH(),
+    rot: spec.rot || 0,
+  };
+}
+
+function setFoot(id, side, patch) {
+  OV.footwear = OV.footwear || {};
+  const cur = OV.footwear[id] || {};
+  const feet = { ...(cur.feet || {}) };
+  feet[side] = { ...(feet[side] || {}), ...patch };
+  // Drop anything that matches the catalogue again, so an untouched shoe never
+  // shows up in the diff — same rule the flat keys follow below.
+  const base = (itemById('footwear', id).feet || {})[side] || {};
+  for (const k of Object.keys(feet[side])) {
+    if (base[k] != null && Math.abs(feet[side][k] - base[k]) < 1e-6) delete feet[side][k];
+  }
+  if (!Object.keys(feet[side]).length) delete feet[side];
+  const next = { ...cur, feet };
+  if (!Object.keys(next.feet).length) delete next.feet;
+  if (Object.keys(next).length) OV.footwear[id] = next; else delete OV.footwear[id];
+  save();
+  render();
+  renderList();
+}
+
+function setSpec(s, id, patch) {
+  OV[s] = OV[s] || {};
+  const item = itemById(s, id);
+  const saved = savedSpec(s, item);
+  const next = { ...(OV[s][id] || {}), ...patch };
+  // Only keep numbers that actually differ from the catalogue — an untouched
+  // item should never show up in the diff.
+  for (const k of Object.keys(next)) {
+    if (saved[k] != null && Math.abs(next[k] - saved[k]) < 1e-6) delete next[k];
+    else if (saved[k] == null && k === 'dx' && Math.abs(next[k]) < 1e-6) delete next[k];
+  }
+  if (Object.keys(next).length) OV[s][id] = next; else delete OV[s][id];
+  save();
+  render();
+  renderList();
+}
+
+// --- layer stack, in the rig's own draw order -------------------------------
+function layerStack() {
+  const it = {};
+  for (const { key } of M.slots) it[key] = itemById(key, equipped[key]);
+  const acc = it.accessory || {};
+  const accImg = imgOf('accessory', acc);
+  const hideHair = !!(it.headwear && (it.headwear.hideHair || (it.headwear.hidesBulky && it.hair && it.hair.bulky)));
+  const L = [];
+  const add = (key, s, item, src, opts) => { if (src) L.push({ key, slot: s, item, src, ...(opts || {}) }); };
+
+  add('accBack', 'accessory', acc, acc.z === 'back' ? accImg : null);
+  add('accBackHalf', 'accessory', acc, backImgOf('accessory', acc));
+  add('hatBack', 'headwear', it.headwear, backImgOf('headwear', it.headwear));
+  // Shoe collars are cut in two so the ankle can pass through them: the far rim
+  // goes behind the body, the rest in front. Same placement for both halves.
+  if (hasFeet(it.footwear)) {
+    for (const side of ['l', 'r']) {
+      const src = side === 'l' ? it.footwear.footLBack : it.footwear.footRBack;
+      if (src) L.push({ key: 'footBack' + side, slot: 'footwear', item: it.footwear, src, foot: side });
+    }
+  } else {
+    add('footBack', 'footwear', it.footwear, it.footwear && it.footwear.backImg);
+  }
+  L.push({ key: 'body', src: M.body, fixed: true });
+  // Shoes under the trouser hem: a hem falls ON the foot, so a shoe drawn over
+  // it cuts the trouser off in a straight line.
+  if (hasFeet(it.footwear)) {
+    for (const side of ['l', 'r']) {
+      L.push({ key: 'foot' + side, slot: 'footwear', item: it.footwear,
+               src: footArt(it.footwear, side), foot: side });
+    }
+  } else {
+    add('footwear', 'footwear', it.footwear, wornImgOf('footwear', it.footwear));
+  }
+  if (!(it.top && it.top.hidesBottom)) add('bottom', 'bottom', it.bottom, imgOf('bottom', it.bottom));
+  add('top', 'top', it.top, imgOf('top', it.top));
+  add('accFront', 'accessory', acc, acc.atNeck ? null : accImg);
+  L.push({ key: 'head', src: M.head, fixed: true });
+  add('accHead', 'accessory', acc, acc.atNeck ? accImg : null);
+  add('face', 'face', it.face, imgOf('face', it.face));
+  if (!hideHair) add('hair', 'hair', it.hair, imgOf('hair', it.hair));
+  add('glasses', 'glasses', it.glasses, imgOf('glasses', it.glasses));
+  add('headwear', 'headwear', it.headwear, imgOf('headwear', it.headwear));
+  return L;
+}
+
+function loadSize(src) {
+  if (sizes.has(src)) return Promise.resolve(sizes.get(src));
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = () => { sizes.set(src, { w: im.naturalWidth, h: im.naturalHeight }); resolve(sizes.get(src)); };
+    im.onerror = () => { sizes.set(src, { w: 1, h: 1 }); resolve(sizes.get(src)); };
+    im.src = artUrl(src);
+  });
+}
+
+let renderToken = 0;
+async function render() {
+  if (!M) return;
+  const token = ++renderToken;
+  const stack = layerStack();
+  await Promise.all(stack.map((l) => loadSize(l.src)));
+  if (token !== renderToken) return;
+
+  const BH = bodyH(), HR = headroom();
+  stage.style.width = bodyW + 'px';
+  stage.style.height = (BH + HR) + 'px';
+  stage.classList.toggle('dark', $('oDark').checked);
+
+  const keep = new Set();
+  for (const l of stack) {
+    keep.add(l.key);
+    let el = els.get(l.key);
+    if (!el) { el = new Image(); els.set(l.key, el); }
+    if (el.dataset.src !== l.src + artVer) { el.src = artUrl(l.src); el.dataset.src = l.src + artVer; }
+    let box;
+    if (l.fixed) box = { left: 0, top: 0, w: bodyW, h: BH };
+    else if (l.foot) box = footFrame(l.item, l.foot, footSpec(l.item, l.foot)) || { left: 0, top: 0, w: 0, h: 0 };
+    else box = frameOf(l.slot, l.item, liveSpec(l.slot, l.item)) || { left: 0, top: 0, w: 0, h: 0 };
+    el.style.left = box.left + 'px';
+    el.style.top = (box.top + HR) + 'px';
+    el.style.width = box.w + 'px';
+    el.style.height = box.h + 'px';
+    el.style.transform = box.rot ? 'rotate(' + box.rot + 'deg)' : '';
+    const isSel = !l.fixed && l.slot === slot && l.item && l.item.id === selId
+      && (!l.foot || !selFoot || l.foot === selFoot);
+    let op = ($('oSolo').checked && !isSel && !l.fixed) ? 0.18 : 1;
+    // Isolating the collar's back piece: fade everything the leg would hide it
+    // behind, so what is about to be removed is the only thing at full strength.
+    if (collarOnly) op = String(l.key).startsWith('footBack') ? 1 : 0.15;
+    el.style.opacity = op;
+    stage.appendChild(el);
+  }
+  for (const [key, el] of els) if (!keep.has(key)) { el.remove(); els.delete(key); }
+
+  drawGuides(HR, BH);
+  drawGhost(HR);
+  drawSelection(HR);
+  syncFields();
+}
+
+function drawGuides(HR, BH) {
+  document.querySelectorAll('.guide').forEach((g) => g.remove());
+  if (!$('oGuides').checked) return;
+  const line = (y, label) => {
+    const d = document.createElement('div');
+    d.className = 'guide hz';
+    d.style.top = (HR + (y / 640) * BH) + 'px';
+    d.innerHTML = '<span>' + label + '</span>';
+    stage.appendChild(d);
+  };
+  line(203, 'collar');
+  line(355, 'waist');
+  line(635, 'sole');
+  const v = document.createElement('div');
+  v.className = 'guide vt';
+  v.style.left = (bodyW / 2) + 'px';
+  stage.appendChild(v);
+  const head = M.rig.HEAD;
+  const hb = document.createElement('div');
+  hb.className = 'guide headbox';
+  hb.style.left = (bodyW / 2 - (head.w / 248) * bodyW / 2) + 'px';
+  hb.style.top = (HR + (head.top / 640) * BH) + 'px';
+  hb.style.width = ((head.w / 248) * bodyW) + 'px';
+  hb.style.height = ((head.h / 640) * BH) + 'px';
+  stage.appendChild(hb);
+}
+
+function drawGhost(HR) {
+  let g = $('ghost');
+  const item = itemById(slot, selId);
+  if (!$('oGhost').checked || !item || !edit(slot, item.id)) { if (g) g.remove(); return; }
+  const box = frameOf(slot, item, savedSpec(slot, item));
+  if (!box) { if (g) g.remove(); return; }
+  if (!g) {
+    g = document.createElement('div');
+    g.id = 'ghost';
+    g.innerHTML = '<img />';
+    stage.appendChild(g);
+  }
+  g.firstChild.src = artUrl(wornImgOf(slot, item));
+  g.style.left = box.left + 'px';
+  g.style.top = (box.top + HR) + 'px';
+  g.style.width = box.w + 'px';
+  g.style.height = box.h + 'px';
+  stage.appendChild(g);
+}
+
+function drawSelection(HR) {
+  const item = itemById(slot, selId);
+  // A split pair gets a box per shoe: the highlighted one is what the drag,
+  // wheel and arrow handlers act on, and clicking the other switches to it.
+  if (hasFeet(item)) {
+    if ($('sel')) $('sel').remove();
+    if (!selFoot) selFoot = 'l';
+    for (const side of ['l', 'r']) {
+      const id = 'sel-' + side;
+      let e = $(id);
+      const b = footFrame(item, side, footSpec(item, side));
+      if (!b) { if (e) e.remove(); continue; }
+      if (!e) {
+        e = document.createElement('div');
+        e.id = id;
+        e.dataset.foot = side;
+        for (const c of ['nw', 'ne', 'sw', 'se']) {
+          const h = document.createElement('div');
+          h.className = 'h ' + c;
+          h.dataset.corner = c;
+          h.dataset.foot = side;
+          e.appendChild(h);
+        }
+        e.addEventListener('pointerdown', onPointerDown);
+      }
+      e.style.left = b.left + 'px';
+      e.style.top = (b.top + HR) + 'px';
+      e.style.width = b.w + 'px';
+      e.style.height = b.h + 'px';
+      e.style.transform = b.rot ? 'rotate(' + b.rot + 'deg)' : '';
+      e.style.outlineStyle = side === selFoot ? 'solid' : 'dashed';
+      e.style.opacity = side === selFoot ? 1 : 0.5;
+      for (const h of e.children) h.style.display = side === selFoot ? '' : 'none';
+      stage.appendChild(e);
+    }
+    return;
+  }
+  for (const side of ['l', 'r']) if ($('sel-' + side)) $('sel-' + side).remove();
+  let s = $('sel');
+  const box = item ? frameOf(slot, item, liveSpec(slot, item)) : null;
+  if (!box) { if (s) s.remove(); return; }
+  if (!s) {
+    s = document.createElement('div');
+    s.id = 'sel';
+    for (const c of ['nw', 'ne', 'sw', 'se']) {
+      const h = document.createElement('div');
+      h.className = 'h ' + c;
+      h.dataset.corner = c;
+      s.appendChild(h);
+    }
+    s.addEventListener('pointerdown', onPointerDown);
+  }
+  s.style.left = box.left + 'px';
+  s.style.top = (box.top + HR) + 'px';
+  s.style.width = box.w + 'px';
+  s.style.height = box.h + 'px';
+  stage.appendChild(s);
+}
+
+// --- dragging ---------------------------------------------------------------
+let drag = null;
+function onPointerDown(e) {
+  const item = itemById(slot, selId);
+  if (!item) return;
+  const foot = e.target.dataset.foot || e.currentTarget.dataset.foot || null;
+  if (foot && foot !== selFoot) {
+    // First click on the other shoe just selects it — dragging the moment you
+    // reach for it would shove a shoe you were only pointing at.
+    selFoot = foot;
+    e.preventDefault();
+    render();
+    return;
+  }
+  const box = foot ? footFrame(item, foot, footSpec(item, foot))
+                   : frameOf(slot, item, liveSpec(slot, item));
+  if (!box) return;
+  e.preventDefault();
+  e.target.setPointerCapture(e.pointerId);
+  drag = { corner: e.target.dataset.corner || null, x: e.clientX, y: e.clientY,
+           box: { ...box }, item, foot };
+}
+
+// A foot's box straight back into its own numbers.
+function footFromBox(item, side, box) {
+  return {
+    w: box.w / bodyW,
+    dx: (box.left + box.w / 2 - bodyW / 2) / bodyW,
+    top: box.top / bodyH(),
+  };
+}
+window.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  const b = drag.box;
+  if (!drag.corner) {
+    const moved = { ...b, left: b.left + dx, top: b.top + dy };
+    if (drag.foot) setFoot(drag.item.id, drag.foot, footFromBox(drag.item, drag.foot, moved));
+    else setSpec(slot, drag.item.id, specFromFrame(slot, drag.item, moved));
+    return;
+  }
+  // Corners scale about the opposite corner, keeping the art's aspect: the
+  // rig derives height from width, so only the width is ever really changing.
+  const right = drag.corner.includes('e');
+  const bottom = drag.corner.includes('s');
+  let w = Math.max(8, right ? b.w + dx : b.w - dx);
+  const h = w * (b.h / b.w);
+  const left = right ? b.left : b.left + b.w - w;
+  const top = bottom ? b.top : b.top + b.h - h;
+  if (drag.foot) setFoot(drag.item.id, drag.foot, footFromBox(drag.item, drag.foot, { w, h, left, top }));
+  else setSpec(slot, drag.item.id, specFromFrame(slot, drag.item, { w, h, left, top }));
+});
+window.addEventListener('pointerup', () => { drag = null; });
+
+stage.addEventListener('wheel', (e) => {
+  const item = itemById(slot, selId);
+  if (!item) return;
+  e.preventDefault();
+  scaleBy(item, e.deltaY < 0 ? 1.01 : 1 / 1.01);
+}, { passive: false });
+
+// Scale about the art's own centre — a hat grows out of where it sits rather
+// than sliding off the head.
+function scaleBy(item, k) {
+  const foot = hasFeet(item) ? selFoot : null;
+  const box = foot ? footFrame(item, foot, footSpec(item, foot))
+                   : frameOf(slot, item, liveSpec(slot, item));
+  if (!box) return;
+  const cx = box.left + box.w / 2, cy = box.top + box.h / 2;
+  const w = box.w * k, h = box.h * k;
+  const next = { w, h, left: cx - w / 2, top: cy - h / 2 };
+  if (foot) setFoot(item.id, foot, footFromBox(item, foot, next));
+  else setSpec(slot, item.id, specFromFrame(slot, item, next));
+}
+
+// Rotation only means anything for a single shoe, so it is the one control
+// that stays hidden until one is selected.
+function rotateBy(item, deg) {
+  if (!hasFeet(item) || !selFoot) return;
+  const cur = footSpec(item, selFoot).rot || 0;
+  setFoot(item.id, selFoot, { rot: Math.max(-90, Math.min(90, Math.round((cur + deg) * 10) / 10)) });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  // The paint editor is modal: the stage's keys would be moving a shoe nobody
+  // can see behind it.
+  if (CE.open) {
+    const brush = $('ceBrush');
+    if (e.key === 'Escape') closeCollarEdit();
+    else if (e.key === '[') { brush.value = Number(brush.value) - 1; }
+    else if (e.key === ']') { brush.value = Number(brush.value) + 1; }
+    else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) $('ceUndo').click();
+    return;
+  }
+  const item = itemById(slot, selId);
+  if (!item) return;
+  const step = e.shiftKey ? 10 : 1;
+  const foot = hasFeet(item) ? selFoot : null;
+  const box = foot ? footFrame(item, foot, footSpec(item, foot))
+                   : frameOf(slot, item, liveSpec(slot, item));
+  const move = (dx, dy) => {
+    const next = { ...box, left: box.left + dx, top: box.top + dy };
+    if (foot) setFoot(item.id, foot, footFromBox(item, foot, next));
+    else setSpec(slot, item.id, specFromFrame(slot, item, next));
+  };
+  if (e.key === 'ArrowLeft') { move(-step, 0); e.preventDefault(); }
+  else if (e.key === 'ArrowRight') { move(step, 0); e.preventDefault(); }
+  else if (e.key === 'ArrowUp') { move(0, -step); e.preventDefault(); }
+  else if (e.key === 'ArrowDown') { move(0, step); e.preventDefault(); }
+  else if (e.key === '[') scaleBy(item, 1 / 1.01);
+  else if (e.key === ']') scaleBy(item, 1.01);
+  else if (e.key === ',') rotateBy(item, e.shiftKey ? -5 : -1);
+  else if (e.key === '.') rotateBy(item, e.shiftKey ? 5 : 1);
+  else if (e.key === 'f') { if (hasFeet(item)) { selFoot = selFoot === 'l' ? 'r' : 'l'; render(); } }
+  else if (e.key === 'n') nextItem();
+  else if (e.key === '0') resetItem();
+});
+
+// --- panels -----------------------------------------------------------------
+function syncFields() {
+  const item = itemById(slot, selId);
+  if (!item) return;
+  const spec = liveSpec(slot, item);
+  const kind = anchorKind(slot, item);
+  $('who').innerHTML = '<b>' + item.label + '</b> <span class="muted">' + slot + ':' + item.id +
+    (item.fit ? ' · fit ' + item.fit : '') + '</span><br /><span class="muted">' + item.source + '.js</span>';
+  $('anchorLabel').textContent = kind === 'cy' ? 'centre y' : 'top';
+  const set = (r, n, v) => { $(r).value = v; $(n).value = Math.round(v * 1e4) / 1e4; };
+  const feet = hasFeet(item);
+  $('footRow').style.display = feet ? '' : 'none';
+  $('rotRow').style.display = feet ? '' : 'none';
+  // The cut can be drawn on any shoe, including one that has never been cut —
+  // that is how a back piece is put back after it was taken off. Judging one
+  // and taking it off both need there to be one.
+  const hasBack = !!(item && (item.footLBack || item.footRBack || item.backImg));
+  $('collarRow').style.display = slot === 'footwear' ? '' : 'none';
+  $('collarShow').style.display = hasBack ? '' : 'none';
+  $('collarDrop').style.display = hasBack ? '' : 'none';
+  $('collarShow').classList.toggle('on', collarOnly);
+  if (feet) {
+    const fs = footSpec(item, selFoot || 'l');
+    set('rw', 'nw', fs.w);
+    set('rt', 'nt', fs.top);
+    set('rd', 'nd', fs.dx || 0);
+    set('rr', 'nr', fs.rot || 0);
+    $('anchorLabel').textContent = 'top';
+    $('footL').classList.toggle('on', selFoot !== 'r');
+    $('footR').classList.toggle('on', selFoot === 'r');
+    $('who').innerHTML += ' <span class="muted">· ' +
+      (selFoot === 'r' ? 'right' : 'left') + ' shoe (f swaps, , . rotate)</span>';
+  } else {
+    set('rw', 'nw', spec.w);
+    set('rt', 'nt', kind === 'cy' ? spec.cy : spec.top);
+    set('rd', 'nd', spec.dx || 0);
+  }
+  $('zoomv').textContent = bodyW + 'px';
+  const n = Object.values(OV).reduce((a, byId) => a + Object.keys(byId).length, 0);
+  $('count').textContent = n ? n + ' edited' : '';
+}
+
+function fieldChanged() {
+  const item = itemById(slot, selId);
+  if (!item) return;
+  if (hasFeet(item)) {
+    setFoot(item.id, selFoot || 'l', {
+      w: Number($('nw').value),
+      dx: Number($('nd').value),
+      top: Number($('nt').value),
+      rot: Number($('nr').value),
+    });
+    return;
+  }
+  const kind = anchorKind(slot, item);
+  const patch = { w: Number($('nw').value), dx: Number($('nd').value) };
+  patch[kind] = Number($('nt').value);
+  setSpec(slot, item.id, patch);
+}
+$('footL').addEventListener('click', () => { selFoot = 'l'; render(); });
+$('footR').addEventListener('click', () => { selFoot = 'r'; render(); });
+
+$('collarShow').addEventListener('click', () => { collarOnly = !collarOnly; render(); });
+$('collarDrop').addEventListener('click', async () => {
+  const item = itemById('footwear', selId);
+  if (!item) return;
+  $('collarOut').textContent = 'removing...';
+  const j = await (await fetch('/collar-remove', {
+    method: 'POST', body: JSON.stringify({ id: item.id }),
+  })).json();
+  if (!j.ok) { $('collarOut').textContent = '! ' + j.error; return; }
+  // The shoe is one layer again and its art on disk has changed, so the
+  // manifest and every cached natural size for it are both stale.
+  artVer += 1;
+  collarOnly = false;
+  await boot(true);
+  $('collarOut').textContent = `${j.stem} is one layer again`;
+});
+// --- painting the collar cut ------------------------------------------------
+// The split runs one horizontal line through every shoe. Where that line is
+// wrong the cut can be redrawn here instead: the whole shoe is blown up, the
+// back piece is tinted, and the brush moves pixels between the two pieces.
+//
+// What is edited is a MASK over the whole shoe, never the pieces themselves —
+// both are recomputed from it on save, so a pixel is always on exactly one side
+// of the leg and painting can never lose ink.
+const CE = { open: false, id: null, stem: null, pieces: [], add: false, undo: [] };
+const CE_TINT = [236, 72, 153];     // the back piece, so it can be told at a glance
+const CE_UNDO_MAX = 40;
+
+const loadImage = (src) => new Promise((res, rej) => {
+  const im = new Image();
+  im.onload = () => res(im);
+  im.onerror = () => rej(new Error('could not load ' + src));
+  im.src = src;
+});
+
+function pixelsOf(im) {
+  const c = document.createElement('canvas');
+  c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(im, 0, 0);
+  return x.getImageData(0, 0, c.width, c.height);
+}
+
+// The shoe as one image, whatever state it is in on disk. Normally that is just
+// the pre-split copy; if a shoe was cut without one ever being kept, the two
+// pieces put it back. Per pixel rather than by drawing one over the other, so a
+// soft edge that appears in both does not end up twice as opaque as it started.
+function wholeShoe(orig, back) {
+  const out = new Uint8ClampedArray(orig.data);
+  if (back) {
+    for (let i = 3; i < out.length; i += 4) {
+      if (back.data[i] > out[i]) {
+        out[i - 3] = back.data[i - 3]; out[i - 2] = back.data[i - 2];
+        out[i - 1] = back.data[i - 1]; out[i] = back.data[i];
+      }
+    }
+  }
+  return out;
+}
+
+async function openCollarEdit(item) {
+  const j = await (await fetch('/collar-art?id=' + encodeURIComponent(item.id))).json();
+  if (!j.ok) { $('collarOut').textContent = '! ' + j.error; return; }
+  const bust = artVer ? '?v=' + artVer : '';
+  const pieces = [];
+  for (const p of j.pieces) {
+    const orig = pixelsOf(await loadImage(p.orig + bust));
+    const back = p.back ? pixelsOf(await loadImage(p.back + bust)) : null;
+    const mask = new Uint8Array(orig.width * orig.height);
+    if (back) for (let k = 0; k < mask.length; k++) mask[k] = back.data[k * 4 + 3] > 8 ? 1 : 0;
+    pieces.push({
+      ...p, w: orig.width, h: orig.height,
+      base: wholeShoe(orig, back), mask, was: mask.slice(),
+      canvas: null, off: null,
+    });
+  }
+  CE.open = true; CE.id = j.id; CE.stem = j.stem; CE.pieces = pieces;
+  CE.add = false; CE.undo = [];
+  $('ceName').textContent = item.label + ' · ' + j.stem;
+  $('ceOut').textContent = '';
+  $('ceMode').classList.remove('on');
+  $('ceMode').textContent = 'painting: remove from back';
+  $('collarEdit').style.display = '';
+  $('ceZoom').value = fitScale(pieces);
+  buildCanvases();
+}
+
+// Blown up as far as the window allows, in whole pixels — the point of the
+// editor is to see the individual pixels the cut runs between.
+function fitScale(pieces) {
+  const w = pieces.reduce((a, p) => a + p.w, 0) + pieces.length * 40;
+  const h = Math.max(...pieces.map((p) => p.h));
+  const tall = Math.floor((window.innerHeight - 200) / h);
+  const wide = Math.floor((window.innerWidth - 40) / w);
+  // Both shoes at once if they fit big enough to paint on; otherwise fill the
+  // height and let the stage scroll sideways, because a shoe too small to see
+  // is no use to anyone.
+  const scale = Math.min(tall, wide) >= 4 ? Math.min(tall, wide) : Math.min(tall, 8);
+  return Math.max(2, Math.min(14, scale));
+}
+
+function buildCanvases() {
+  const host = $('ceStage');
+  host.innerHTML = '';
+  const scale = Number($('ceZoom').value);
+  for (const p of CE.pieces) {
+    const fig = document.createElement('figure');
+    const c = document.createElement('canvas');
+    c.width = p.w * scale; c.height = p.h * scale;
+    const cap = document.createElement('figcaption');
+    cap.textContent = p.label + ' · ' + p.name + ' · ' + p.w + '×' + p.h + ' at ' + scale + '×';
+    fig.append(c, cap);
+    host.append(fig);
+    p.canvas = c;
+    p.off = document.createElement('canvas');
+    p.off.width = p.w; p.off.height = p.h;
+    bindBrush(p);
+    drawPiece(p);
+  }
+}
+
+// The whole shoe, with everything the leg will pass in front of tinted.
+function drawPiece(p) {
+  const view = new ImageData(p.w, p.h);
+  for (let k = 0, i = 0; k < p.mask.length; k++, i += 4) {
+    const a = p.base[i + 3];
+    if (p.mask[k] && a) {
+      view.data[i] = (p.base[i] + CE_TINT[0]) >> 1;
+      view.data[i + 1] = (p.base[i + 1] + CE_TINT[1]) >> 1;
+      view.data[i + 2] = (p.base[i + 2] + CE_TINT[2]) >> 1;
+    } else {
+      view.data[i] = p.base[i];
+      view.data[i + 1] = p.base[i + 1];
+      view.data[i + 2] = p.base[i + 2];
+    }
+    view.data[i + 3] = a;
+  }
+  p.off.getContext('2d').putImageData(view, 0, 0);
+  const x = p.canvas.getContext('2d');
+  x.clearRect(0, 0, p.canvas.width, p.canvas.height);
+  x.imageSmoothingEnabled = false;          // magnified, so show the actual pixels
+  x.drawImage(p.off, 0, 0, p.canvas.width, p.canvas.height);
+}
+
+function brushAt(p, cx, cy, add) {
+  const r = Number($('ceBrush').value) / 2;
+  const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(p.w - 1, Math.ceil(cx + r));
+  const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(p.h - 1, Math.ceil(cy + r));
+  let hit = false;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+      if (dx * dx + dy * dy > r * r) continue;
+      const k = y * p.w + x;
+      if (p.mask[k] !== (add ? 1 : 0)) { p.mask[k] = add ? 1 : 0; hit = true; }
+    }
+  }
+  return hit;
+}
+
+function bindBrush(p) {
+  let painting = false, last = null;
+  const at = (e) => {
+    const box = p.canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - box.left) * (p.w / box.width),
+      y: (e.clientY - box.top) * (p.h / box.height),
+    };
+  };
+  // A drag is sampled, so the gaps between samples are filled in rather than
+  // left as a row of dots.
+  const stroke = (to, add) => {
+    let hit = false;
+    if (last) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(to.x - last.x, to.y - last.y)));
+      for (let s = 1; s <= steps; s++) {
+        hit = brushAt(p, last.x + (to.x - last.x) * (s / steps),
+                         last.y + (to.y - last.y) * (s / steps), add) || hit;
+      }
+    } else hit = brushAt(p, to.x, to.y, add);
+    last = to;
+    if (hit) drawPiece(p);
+  };
+  p.canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    CE.undo.push({ piece: p, mask: p.mask.slice() });
+    if (CE.undo.length > CE_UNDO_MAX) CE.undo.shift();
+    painting = true; last = null;
+    p.canvas.setPointerCapture(e.pointerId);
+    stroke(at(e), CE.add !== (e.altKey || e.button === 2));
+  });
+  p.canvas.addEventListener('pointermove', (e) => {
+    if (!painting) return;
+    stroke(at(e), CE.add !== (e.altKey || e.buttons === 2));
+  });
+  const stop = () => { painting = false; last = null; };
+  p.canvas.addEventListener('pointerup', stop);
+  p.canvas.addEventListener('pointercancel', stop);
+  p.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+// The mask, split back into the two images the rig draws. The two overlap by a
+// pixel, or a pale seam shows along the join once the rig scales them: two
+// half-covered edges do not add up to one covered pixel. The overlap goes to
+// the BACK, which the leg hides. Giving it to the front instead puts the mask's
+// own edge back in the front piece, and on a collar that edge is the black
+// outline — a stray line lying across the ankle.
+function piecePngs(p) {
+  const front = new ImageData(p.w, p.h);
+  const back = new ImageData(p.w, p.h);
+  front.data.set(p.base); back.data.set(p.base);
+  let ink = 0;
+  for (let y = 0; y < p.h; y++) {
+    for (let x = 0; x < p.w; x++) {
+      const k = y * p.w + x;
+      let near = false;
+      for (let dy = -1; dy <= 1 && !near; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= p.w || ny >= p.h) continue;
+          if (p.mask[ny * p.w + nx]) { near = true; break; }
+        }
+      }
+      if (p.mask[k]) front.data[k * 4 + 3] = 0;
+      if (!near) back.data[k * 4 + 3] = 0;
+      if (back.data[k * 4 + 3] > 8) ink++;
+    }
+  }
+  const png = (data) => {
+    const c = document.createElement('canvas');
+    c.width = p.w; c.height = p.h;
+    c.getContext('2d').putImageData(data, 0, 0);
+    return c.toDataURL('image/png');
+  };
+  return { front: png(front), back: ink ? png(back) : null, ink };
+}
+
+function closeCollarEdit() {
+  CE.open = false; CE.pieces = []; CE.undo = [];
+  $('collarEdit').style.display = 'none';
+  $('ceStage').innerHTML = '';
+}
+
+$('collarPaint').addEventListener('click', async () => {
+  const item = itemById('footwear', selId);
+  if (!item) return;
+  $('collarOut').textContent = 'opening…';
+  try { await openCollarEdit(item); $('collarOut').textContent = ''; }
+  catch (err) { $('collarOut').textContent = '! ' + err.message; }
+});
+$('ceMode').addEventListener('click', () => {
+  CE.add = !CE.add;
+  $('ceMode').classList.toggle('on', CE.add);
+  $('ceMode').textContent = 'painting: ' + (CE.add ? 'add to back' : 'remove from back');
+});
+$('ceUndo').addEventListener('click', () => {
+  const step = CE.undo.pop();
+  if (!step) return;
+  step.piece.mask = step.mask;
+  drawPiece(step.piece);
+});
+$('ceReset').addEventListener('click', () => {
+  for (const p of CE.pieces) { CE.undo.push({ piece: p, mask: p.mask.slice() }); p.mask = p.was.slice(); drawPiece(p); }
+});
+$('ceZoom').addEventListener('input', () => { if (CE.open) buildCanvases(); });
+$('ceCancel').addEventListener('click', closeCollarEdit);
+$('ceSave').addEventListener('click', async () => {
+  $('ceOut').textContent = 'saving…';
+  const cut = CE.pieces.map((p) => ({ p, ...piecePngs(p) }));
+  const anyBack = cut.some((c) => c.ink);
+  if (!anyBack && !await ask('Nothing is left in the back piece. Save this as a shoe drawn in one layer?',
+      { yes: 'Save as one layer' })) {
+    $('ceOut').textContent = '';
+    return;
+  }
+  const j = await (await fetch('/collar-paint', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: CE.id,
+      pieces: cut.map((c) => ({ name: c.p.name, front: c.front, back: anyBack ? (c.back || blankPng(c.p)) : null })),
+    }),
+  })).json();
+  if (!j.ok) { $('ceOut').textContent = '! ' + j.error; return; }
+  closeCollarEdit();
+  // Same filenames, new bytes: the browser has to be told, and so does the
+  // manifest, since the catalogue may have gained or lost its back fields.
+  artVer += 1;
+  await boot(true);
+  $('collarOut').textContent = j.stem + ' recut' +
+    (j.catalogue === 'unchanged' ? '' : ' · catalogue ' + j.catalogue);
+});
+
+// A shoe wearing a back piece on one foot and nothing on the other would need
+// half a catalogue entry, so an emptied side is written as an empty image.
+function blankPng(p) {
+  const c = document.createElement('canvas');
+  c.width = p.w; c.height = p.h;
+  return c.toDataURL('image/png');
+}
+
+for (const [r, n] of [['rw', 'nw'], ['rt', 'nt'], ['rd', 'nd'], ['rr', 'nr']]) {
+  $(r).addEventListener('input', () => { $(n).value = $(r).value; fieldChanged(); });
+  $(n).addEventListener('change', () => { $(r).value = $(n).value; fieldChanged(); });
+}
+$('zoom').addEventListener('input', () => { bodyW = Number($('zoom').value); render(); });
+for (const id of ['oGuides', 'oGhost', 'oSolo', 'oDark']) $(id).addEventListener('change', render);
+
+function resetItem() {
+  const item = itemById(slot, selId);
+  if (!item || !OV[slot]) return;
+  delete OV[slot][item.id];
+  save(); render(); renderList();
+}
+$('bReset').addEventListener('click', resetItem);
+$('bCentre').addEventListener('click', () => {
+  const item = itemById(slot, selId);
+  if (item) setSpec(slot, item.id, { dx: 0 });
+});
+function nextItem() {
+  const list = visibleItems();
+  const i = list.findIndex((x) => x.id === selId);
+  const next = list[(i + 1) % list.length];
+  if (next) select(slot, next.id);
+}
+$('bNext').addEventListener('click', nextItem);
+
+// Deleting drops the item's line from the catalogue. Nothing is erased: the
+// line is logged to deleted-items.json and the art moves to deleted-art/, so
+// putting an item back is a copy and a paste.
+// Ask in the page. A native confirm() can be switched off by the browser after
+// a few dialogs, and a suppressed confirm answers "no" without ever appearing,
+// which reads as a button that has stopped working.
+function ask(text, { yes = 'OK', no = 'Cancel', choices = null, value = null } = {}) {
+  return new Promise((resolve) => {
+    $('askText').textContent = text;
+    const pick = $('askPick');
+    pick.style.display = choices ? '' : 'none';
+    if (choices) {
+      pick.innerHTML = '';
+      for (const c of choices) {
+        const o = document.createElement('option');
+        o.value = c.id; o.textContent = c.id + '  ' + c.label;
+        pick.append(o);
+      }
+      if (value) pick.value = value;
+    }
+    $('askYes').textContent = yes;
+    $('askNo').textContent = no;
+    $('askBox').style.display = 'flex';
+    const done = (answer) => {
+      $('askBox').style.display = 'none';
+      $('askYes').onclick = $('askNo').onclick = null;
+      window.removeEventListener('keydown', key, true);
+      resolve(answer);
+    };
+    const key = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); done(null); }
+      else if (e.key === 'Enter') { e.stopPropagation(); done(choices ? pick.value : true); }
+    };
+    $('askYes').onclick = () => done(choices ? pick.value : true);
+    $('askNo').onclick = () => done(null);
+    window.addEventListener('keydown', key, true);
+    (choices ? pick : $('askYes')).focus();
+  });
+}
+
+async function deleteSelected() {
+  const item = itemById(slot, selId);
+  if (!item) return;
+  const removeArt = $('oDelArt').checked;
+  const list = visibleItems();
+  const i = list.findIndex((x) => x.id === item.id);
+  const neighbour = list[i + 1] || list[i - 1] || items(slot).find((x) => x.id !== item.id);
+  if (!await ask('Delete ' + item.label + ' (' + slot + ':' + item.id + ') from ' + item.source + '.js?' +
+      (removeArt ? '\n\nIts art moves to scripts/fit-studio/deleted-art/.' : '\n\nIts art stays on disk.') +
+      '\nThe removed line is logged, so it can be put back.', { yes: 'Delete' })) return;
+
+  $('delOut').textContent = 'deleting…';
+  let newDefault = null;
+  const post = (force) => fetch('/delete', { method: 'POST', body: JSON.stringify({ slot, id: item.id, removeArt, force, newDefault }) }).then((r) => r.json());
+  let j = await post(false);
+  if (j.needsDefault) {
+    // This item is what a brand new runner wears, so the slot has to be handed
+    // to another item in the same breath or the default names nothing.
+    const heir = j.suggestions.find((s) => neighbour && s.id === neighbour.id) || j.suggestions[0];
+    if (!heir) { $('delOut').textContent = '! nothing left to make the default'; return; }
+    const picked = await ask(item.label + ' is the default ' + slot + ' — every new runner wears it.\n' +
+      'Which item takes over?', { yes: 'Hand it over', choices: j.suggestions, value: heir.id });
+    if (!picked) { $('delOut').textContent = 'cancelled'; return; }
+    newDefault = picked;
+    j = await post(false);
+  }
+  if (j.blocked) {
+    // Something else in the app names this id — a pass reward, a shop entry, a
+    // server grant. Deleting anyway leaves that reference dangling.
+    const where = j.refs.slice(0, 12).map((r) => '  ' + r.file + ':' + r.line + '  ' + r.text).join('\n');
+    if (!await ask(j.error + '\n\n' + where + (j.refs.length > 12 ? '\n  …' : '') +
+        '\n\nDelete anyway? Those references will need fixing by hand.',
+        { yes: 'Delete anyway' })) { $('delOut').textContent = 'cancelled'; return; }
+    j = await post(true);
+  }
+  if (!j.ok) { $('delOut').textContent = '! ' + j.error; return; }
+
+  if (OV[slot]) delete OV[slot][item.id];
+  save();
+  if (neighbour) { equipped[slot] = neighbour.id; selId = neighbour.id; }
+  await boot(true);
+  $('delOut').textContent = 'deleted ' + j.slot + ':' + j.id + ' from ' + j.file + ':' + j.line +
+    (j.artMoved.length ? '\n' + j.artMoved.length + ' art file(s) → deleted-art/' : '') +
+    (j.artKeptInUse.length ? '\n' + j.artKeptInUse.length + ' file(s) kept — shared with another item' : '') +
+    (j.artEntriesRemoved && j.artEntriesRemoved.length ? '\nART entries dropped: ' + j.artEntriesRemoved.join(', ') : '') +
+    (j.artEntriesPartial && j.artEntriesPartial.length ? '\n! part-missing ART: ' + j.artEntriesPartial.map((p) => p.key).join(', ') : '') +
+    (j.defaultMoved ? '\ndefault ' + j.defaultMoved.slot + ' is now ' + j.defaultMoved.label : '') +
+    (j.shopCatalog ? '\n' + j.shopCatalog : '');
+}
+$('bDelete').addEventListener('click', deleteSelected);
+
+// --- item list --------------------------------------------------------------
+// An item whose art is pushed a long way off centre is nearly always a bad cut
+// rather than a deliberate look, so those are worth surfacing first.
+const suspect = (s, item) => {
+  const spec = savedSpec(s, item);
+  return Math.abs(spec.dx || 0) >= 0.08;
+};
+
+function visibleItems() {
+  const q = $('search').value.trim().toLowerCase();
+  return items(slot).filter((it) => {
+    if (q && !((it.label || '').toLowerCase().includes(q) || it.id.toLowerCase().includes(q))) return false;
+    if ($('fEdited').checked && !edit(slot, it.id)) return false;
+    if ($('fSuspect').checked && !suspect(slot, it)) return false;
+    return true;
+  });
+}
+
+function renderList() {
+  const list = $('list');
+  list.innerHTML = '';
+  for (const it of visibleItems()) {
+    const src = imgOf(slot, it);
+    const row = document.createElement('div');
+    row.className = 'row' + (it.id === selId ? ' on' : '');
+    row.innerHTML =
+      (src ? '<img loading="lazy" src="/art/' + src + '" />' : '<img />') +
+      '<div class="nm">' + (it.label || it.id) + '<div class="id">' + it.id + '</div></div>' +
+      '<div class="badge">' + (edit(slot, it.id) ? '<span style="color:var(--accent)">●</span>' : '') +
+      (suspect(slot, it) ? ' <span style="color:var(--warn)">⚠</span>' : '') + '</div>';
+    row.addEventListener('click', () => select(slot, it.id));
+    list.appendChild(row);
+  }
+  syncFields();
+}
+
+function select(s, id) {
+  selFoot = null;
+  slot = s;
+  selId = id;
+  equipped[s] = id;
+  renderTabs();
+  renderList();
+  renderSwatches();
+  render();
+}
+
+function renderTabs() {
+  const tabs = $('tabs');
+  tabs.innerHTML = '';
+  const order = [...SLOT_ORDER.filter((k) => M.items[k]), ...M.slots.map((s) => s.key).filter((k) => !SLOT_ORDER.includes(k))];
+  for (const key of order) {
+    const b = document.createElement('div');
+    b.className = 'tab' + (key === slot ? ' on' : '');
+    b.textContent = (M.slots.find((s) => s.key === key) || {}).label || key;
+    b.addEventListener('click', () => {
+      slot = key;
+      selId = equipped[key] || (items(key)[0] || {}).id;
+      renderTabs(); renderList(); renderSwatches(); render();
+    });
+    tabs.appendChild(b);
+  }
+}
+
+function renderSwatches() {
+  const box = $('swatches');
+  box.innerHTML = '';
+  const key = M.colorKey[slot];
+  const item = itemById(slot, selId);
+  if (!key || !item || !item.art) { box.innerHTML = '<span class="muted">fixed colour art</span>'; return; }
+  const palette = slot === 'hair' ? M.palettes.hair : M.palettes.cloth;
+  palette.forEach((hex, i) => {
+    const s = document.createElement('span');
+    s.className = 'sw' + (i === colorIdx(slot) ? ' on' : '');
+    s.style.background = hex;
+    s.addEventListener('click', () => { equipped[key] = i; renderSwatches(); renderList(); render(); });
+    box.appendChild(s);
+  });
+}
+
+// --- persistence ------------------------------------------------------------
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const res = await fetch('/save', { method: 'POST', body: JSON.stringify(OV) });
+    const j = await res.json();
+    $('status').textContent = 'saved ' + new Date(j.at).toLocaleTimeString() + ' → fit-overrides.json';
+  }, 400);
+}
+
+$('bCopy').addEventListener('click', () => {
+  const lines = [];
+  for (const [s, byId] of Object.entries(OV)) {
+    for (const [id, patch] of Object.entries(byId)) {
+      const item = itemById(s, id);
+      const parts = Object.entries(patch).map(([k, v]) => k + ': ' + (Math.round(v * 1e4) / 1e4));
+      lines.push(s + ':' + id + '  (' + (item ? item.label : '?') + ')  layout: { ' + parts.join(', ') + ' }');
+    }
+  }
+  navigator.clipboard.writeText(lines.join('\n') || 'no edits');
+  $('status').textContent = 'copied ' + lines.length + ' edit(s) to the clipboard';
+});
+
+async function runApply(dryRun) {
+  $('applyOut').textContent = dryRun ? 'checking…' : 'writing…';
+  const res = await fetch('/apply', { method: 'POST', body: JSON.stringify({ dryRun }) });
+  const j = await res.json();
+  const lines = j.changes.map((c) => c.file + ':' + c.line + '  ' + c.slot + ':' + c.id + '  ' + JSON.stringify(c.layout));
+  $('applyOut').textContent =
+    (dryRun ? 'would change ' : 'wrote ') + j.changes.length + ' item(s)\n' + lines.join('\n') +
+    (j.errors.length ? '\n! ' + j.errors.join('\n! ') : '');
+  if (!dryRun && j.applied) { OV = {}; await boot(true); }
+}
+$('bApply').addEventListener('click', async () => {
+  if (await ask('Write these fits into the catalogue source? A .fitbak copy of each file is kept.',
+      { yes: 'Write' })) runApply(false);
+});
+$('bDry').addEventListener('click', () => runApply(true));
+
+for (const id of ['search', 'fEdited', 'fSuspect']) $(id).addEventListener('input', renderList);
+
+// --- boot -------------------------------------------------------------------
+async function boot(reload) {
+  M = await (await fetch('/manifest.json')).json();
+  if (!reload) {
+    OV = await (await fetch('/overrides.json')).json();
+    equipped = { ...M.defaultEquipped };
+    // A shirt reads best over legs and shoes, so start dressed rather than in
+    // whatever the default loadout leaves empty.
+    if (equipped.footwear === 'none' && items('footwear')[1]) equipped.footwear = items('footwear')[1].id;
+    selId = equipped[slot];
+  }
+  sizes.clear();
+  renderTabs(); renderList(); renderSwatches(); await render();
+  $('status').textContent = 'ready — ' + M.slots.map((s) => items(s.key).length).reduce((a, b) => a + b, 0) + ' items';
+}
+boot();
+</script>
+</body>
+</html>

@@ -6,7 +6,8 @@
 // here and it's usable app-wide via <AppIcon name="..." />.
 
 import React from 'react';
-import { Image } from 'react-native';
+import {  } from 'react-native';
+import { Image } from '../ui/image';
 
 export const ICONS = {
   // tab bar
@@ -28,8 +29,10 @@ export const ICONS = {
   claim: require('../../assets/icons/claim.png'),
   locate: require('../../assets/icons/locate.png'),
   lootbox: require('../../assets/icons/lootbox.png'),
-  // Per-rarity crates — same silhouette family, escalating material. Used by
-  // RewardArt for lootbox tiers; falls back to `lootbox` if a key is missing.
+  // Per-rarity crates — same silhouette family, escalating material. NOT drawn
+  // anywhere today: RewardArt switched every lootbox tier to the animated gift
+  // box, and rarity is carried by the ring behind it. Kept because the art is
+  // good and keyed correctly if a per-rarity chest is ever wanted again.
   'lootbox-common': require('../../assets/icons/lootbox-common.png'),
   'lootbox-rare': require('../../assets/icons/lootbox-rare.png'),
   'lootbox-epic': require('../../assets/icons/lootbox-epic.png'),
@@ -62,13 +65,21 @@ export function hasIcon(name) {
   return !!ICONS[name];
 }
 
-export default function AppIcon({ name, size = 24, style, faded = false }) {
+// How far down a `faded` icon is turned. Not zero: an inactive icon still has
+// to read as the same object as the active one.
+const FADED = 0.45;
+
+// `opacity` overrides `faded` outright, for the places that want a specific
+// step rather than the two-state default — a feed action, say, that is dimmed
+// for "not yet" but still has to look like a coloured sticker rather than a
+// ghost of one.
+export default function AppIcon({ name, size = 24, style, faded = false, opacity }) {
   const src = ICONS[name];
   if (!src) return null;
   return (
     <Image
       source={src}
-      style={[{ width: size, height: size, opacity: faded ? 0.45 : 1 }, style]}
+      style={[{ width: size, height: size, opacity: opacity ?? (faded ? FADED : 1) }, style]}
       resizeMode="contain"
       accessible={false}
     />

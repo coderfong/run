@@ -17,8 +17,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Send } from 'lucide-react-native';
 
 import { api } from '../api/client';
+import { getCached, setCached } from '../api/cache';
 import { useClan } from '../state/clan';
-import { colors, radius, space, type, withAlpha } from '../theme';
+import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Skeleton, EmptyState } from '../components/ui';
 import { PressableScale, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
@@ -29,11 +30,16 @@ function timeStr(iso) {
 }
 
 export default function ClubChatScreen({ route }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const clanId = route.params?.clanId;
   const { color } = useClan();
   const accent = color.stroke;
 
-  const [messages, setMessages] = useState(null);
+  // Seeded from cache so reopening the room shows the conversation you were
+  // just reading; the 4s poll below replaces it with the live thread.
+  const [messages, setMessages] = useState(() => getCached(`clan:${clanId}:messages`));
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const listRef = useRef(null);
@@ -43,6 +49,7 @@ export default function ClubChatScreen({ route }) {
     try {
       const items = await api.clanMessages(clanId);
       setMessages(items);
+      setCached(`clan:${clanId}:messages`, items);
     } catch {
       setMessages((prev) => prev || []);
     }
@@ -77,14 +84,14 @@ export default function ClubChatScreen({ route }) {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
       <Screen gutter={false} edges={[]} style={{ flex: 1 }}>
-        {!messages ? (
+        {messages === undefined ? (
           <View style={{ padding: space.gutter }}>
             <Skeleton width="60%" height={36} style={{ borderRadius: 16, marginBottom: space.sm }} />
             <Skeleton width="70%" height={36} style={{ borderRadius: 16, alignSelf: 'flex-end' }} />
           </View>
         ) : messages.length === 0 ? (
           <View style={{ flex: 1, justifyContent: 'center' }}>
-            <EmptyState title="Say hi" body="Kick off the club chat — plan the next run together." />
+            <EmptyState title="Say hi" body="Kick off the club chat. Plan the next run together." />
           </View>
         ) : (
           <FlatList
@@ -145,7 +152,7 @@ export default function ClubChatScreen({ route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   bubbleRow: { marginBottom: space.sm, alignItems: 'flex-start' },
   sender: { ...type.caption, color: colors.textMuted, marginBottom: 2, marginLeft: 4 },
   bubble: {

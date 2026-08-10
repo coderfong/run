@@ -1,0 +1,1992 @@
+[
+ {
+  "key": "b000",
+  "src": "ChatGPT Image Aug 8, 2026, 04_38_05 PM.png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Teal",
+  "ratio": 0.821,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b001",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_32 AM (1).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Red",
+  "ratio": 0.771,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b002",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_33 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Teal",
+  "ratio": 0.742,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b003",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_34 AM (3).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Olive",
+  "ratio": 0.827,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b004",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_36 AM (4).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Sand",
+  "ratio": 1.835,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b005",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_38 AM (5).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Olive",
+  "ratio": 1.722,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b006",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_39 AM (6).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Red",
+  "ratio": 2.084,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b007",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_41 AM (7).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Navy",
+  "ratio": 1.49,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b008",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_43 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Navy",
+  "ratio": 1.286,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b009",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_44 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Tan",
+  "ratio": 1.439,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b010",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_45 AM (10).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Olive",
+  "ratio": 1.429,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b011",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_52 AM (1).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Mint",
+  "ratio": 0.932,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b012",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_53 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Purple",
+  "ratio": 0.663,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b013",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_54 AM (3).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Charcoal",
+  "ratio": 0.925,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b014",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_56 AM (4).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Orange",
+  "ratio": 2.156,
+  "w": 282,
+  "h": 420
+ },
+ {
+  "key": "b015",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_57 AM (5).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Cream",
+  "ratio": 1.911,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b016",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_58 AM (6).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Sky",
+  "ratio": 0.724,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b017",
+  "src": "ChatGPT Image Aug 9, 2026, 01_32_59 AM (7).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "White",
+  "ratio": 0.856,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b018",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_01 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Olive",
+  "ratio": 1.247,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b019",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_02 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Blush",
+  "ratio": 2.053,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b020",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_05 AM (10).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Brown",
+  "ratio": 0.829,
+  "w": 292,
+  "h": 420
+ },
+ {
+  "key": "b021",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_07 AM (1).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 2.26,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b022",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_09 AM (2).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 1.75,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b023",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_10 AM (3).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Sand",
+  "ratio": 0.885,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b024",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_11 AM (4).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Red",
+  "ratio": 0.784,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b025",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_12 AM (5).png",
+  "slot": "bottom",
+  "family": "shorts",
+  "colour": "Blue",
+  "ratio": 1.165,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b026",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_14 AM (6).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Charcoal",
+  "ratio": 0.944,
+  "w": 294,
+  "h": 420
+ },
+ {
+  "key": "b027",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_16 AM (7).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Yellow",
+  "ratio": 1.68,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b028",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_18 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 2.278,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b029",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_19 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Maroon",
+  "ratio": 1.606,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b030",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_20 AM (10).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Green",
+  "ratio": 0.742,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b031",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_30 AM (1).png",
+  "slot": "bottom",
+  "family": "shorts",
+  "colour": "Sky",
+  "ratio": 1.02,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b032",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_32 AM (2).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Brown",
+  "ratio": 1.791,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b033",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_33 AM (3).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Yellow",
+  "ratio": 1.947,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b034",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_35 AM (4).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Charcoal",
+  "ratio": 0.849,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b035",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_36 AM (5).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Red",
+  "ratio": 0.798,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b036",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_39 AM (6).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "White",
+  "ratio": 2.071,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b037",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_41 AM (10).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Cream",
+  "ratio": 0.867,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b038",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_41 AM (7).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 2.023,
+  "w": 290,
+  "h": 420
+ },
+ {
+  "key": "b039",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_41 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Yellow",
+  "ratio": 1.555,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b040",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_41 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Navy",
+  "ratio": 1.968,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b041",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_42 AM (1).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 1.383,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b042",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_43 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Teal",
+  "ratio": 0.813,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b043",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_43 AM (3).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Sand",
+  "ratio": 2.049,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b044",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_43 AM (4).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 1.875,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b045",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_43 AM (5).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Maroon",
+  "ratio": 0.858,
+  "w": 294,
+  "h": 420
+ },
+ {
+  "key": "b046",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_44 AM (6).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Cream",
+  "ratio": 0.913,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b047",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_44 AM (7).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Orange",
+  "ratio": 0.714,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b048",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_45 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Cream",
+  "ratio": 1.793,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b049",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_45 AM (9).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Mint",
+  "ratio": 0.813,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b050",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_46 AM (10).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Brown",
+  "ratio": 1.963,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b051",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_54 AM (1).png",
+  "slot": "bottom",
+  "family": "shorts",
+  "colour": "Charcoal",
+  "ratio": 1.108,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b052",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_55 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Pink",
+  "ratio": 0.755,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b053",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_55 AM (3).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Navy",
+  "ratio": 1.009,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b054",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_55 AM (4).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Olive",
+  "ratio": 1.35,
+  "w": 280,
+  "h": 420
+ },
+ {
+  "key": "b055",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_55 AM (5).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Blush",
+  "ratio": 0.87,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b056",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_55 AM (6).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Maroon",
+  "ratio": 0.718,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b057",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_55 AM (7).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Purple",
+  "ratio": 1.456,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b058",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_56 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Sand",
+  "ratio": 1.668,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b059",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_56 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Lilac",
+  "ratio": 2.0,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b060",
+  "src": "ChatGPT Image Aug 9, 2026, 01_33_58 AM (10).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Orange",
+  "ratio": 0.889,
+  "w": 292,
+  "h": 420
+ },
+ {
+  "key": "b061",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_06 AM (1).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Charcoal",
+  "ratio": 0.998,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b062",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_07 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Mint",
+  "ratio": 0.893,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b063",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_08 AM (3).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Navy",
+  "ratio": 1.861,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b064",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_09 AM (4).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Yellow",
+  "ratio": 0.972,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b065",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_10 AM (5).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Maroon",
+  "ratio": 1.745,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b066",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_11 AM (6).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "White",
+  "ratio": 1.64,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b067",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_13 AM (7).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Olive",
+  "ratio": 0.874,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b068",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_14 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Sand",
+  "ratio": 2.048,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b069",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_16 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Olive",
+  "ratio": 1.798,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b070",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_17 AM (10).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Blush",
+  "ratio": 0.823,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b071",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_23 AM (1).png",
+  "slot": "bottom",
+  "family": "shorts",
+  "colour": "Charcoal",
+  "ratio": 0.991,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b072",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_24 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Mint",
+  "ratio": 0.853,
+  "w": 289,
+  "h": 420
+ },
+ {
+  "key": "b073",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_24 AM (3).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Navy",
+  "ratio": 1.447,
+  "w": 280,
+  "h": 420
+ },
+ {
+  "key": "b074",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_26 AM (4).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Yellow",
+  "ratio": 0.98,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b075",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_27 AM (5).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Blush",
+  "ratio": 2.41,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b076",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_28 AM (6).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 1.849,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b077",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_31 AM (7).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Blush",
+  "ratio": 0.764,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b078",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_32 AM (8).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Maroon",
+  "ratio": 1.89,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b079",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_33 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Mint",
+  "ratio": 1.859,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b080",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_34 AM (10).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Orange",
+  "ratio": 0.803,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b081",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_41 AM (1).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Navy",
+  "ratio": 1.933,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b082",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_42 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Coral",
+  "ratio": 0.817,
+  "w": 280,
+  "h": 420
+ },
+ {
+  "key": "b083",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_43 AM (3).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Blush",
+  "ratio": 0.774,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b084",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_44 AM (4).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Blue",
+  "ratio": 1.773,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b085",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_45 AM (5).png",
+  "slot": "bottom",
+  "family": "shorts",
+  "colour": "Yellow",
+  "ratio": 0.978,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b086",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_47 AM (6).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Tan",
+  "ratio": 1.575,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b087",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_51 AM (7).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Charcoal",
+  "ratio": 1.569,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b088",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_52 AM (8).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Mint",
+  "ratio": 0.81,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b089",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_53 AM (1).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Grey",
+  "ratio": 1.804,
+  "w": 282,
+  "h": 420
+ },
+ {
+  "key": "b090",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_54 AM (2).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Coral",
+  "ratio": 0.783,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b091",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_54 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Black",
+  "ratio": 1.371,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b092",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_55 AM (10).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Cream",
+  "ratio": 0.822,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b093",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_55 AM (3).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Blush",
+  "ratio": 0.916,
+  "w": 281,
+  "h": 420
+ },
+ {
+  "key": "b094",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_56 AM (4).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Teal",
+  "ratio": 2.065,
+  "w": 292,
+  "h": 420
+ },
+ {
+  "key": "b095",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_57 AM (5).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Charcoal",
+  "ratio": 0.908,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b096",
+  "src": "ChatGPT Image Aug 9, 2026, 01_34_58 AM (6).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Blush",
+  "ratio": 0.882,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b097",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_00 AM (7).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Sand",
+  "ratio": 1.59,
+  "w": 283,
+  "h": 420
+ },
+ {
+  "key": "b098",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_01 AM (8).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Red",
+  "ratio": 0.762,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b099",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_02 AM (9).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Brown",
+  "ratio": 1.524,
+  "w": 290,
+  "h": 420
+ },
+ {
+  "key": "b100",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_03 AM (10).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Navy",
+  "ratio": 1.863,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "f000",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_30 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Coral",
+  "ratio": 0.678,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f001",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_30 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Yellow",
+  "ratio": 0.666,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f002",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_30 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.67,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f003",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_30 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f004",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_31 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f005",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_31 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.667,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f006",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_32 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blue",
+  "ratio": 0.669,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f007",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_32 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Sky",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f008",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_32 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Sky",
+  "ratio": 0.686,
+  "w": 420,
+  "h": 288
+ },
+ {
+  "key": "f009",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_33 AM (10).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Navy",
+  "ratio": 0.666,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f010",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_41 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Yellow",
+  "ratio": 0.67,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f011",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_42 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Olive",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f012",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_42 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Sky",
+  "ratio": 0.679,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f013",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_42 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f014",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_42 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.67,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f015",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_43 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Navy",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f016",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_45 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Mint",
+  "ratio": 0.675,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f017",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_47 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Red",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f018",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_50 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.674,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f019",
+  "src": "ChatGPT Image Aug 9, 2026, 01_35_51 AM (10).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f020",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_30 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Lilac",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f021",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_32 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f022",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_33 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.667,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f023",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_34 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Orange",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f024",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_35 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Mint",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f025",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_36 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Purple",
+  "ratio": 0.678,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f026",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_38 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f027",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_40 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.667,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f028",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_42 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Mint",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f029",
+  "src": "ChatGPT Image Aug 9, 2026, 01_36_43 AM (10).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Pink",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f030",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_13 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.67,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f031",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_14 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.683,
+  "w": 420,
+  "h": 287
+ },
+ {
+  "key": "f032",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_15 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Tan",
+  "ratio": 0.681,
+  "w": 420,
+  "h": 286
+ },
+ {
+  "key": "f033",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_16 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.67,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f034",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_18 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.683,
+  "w": 420,
+  "h": 287
+ },
+ {
+  "key": "f035",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_20 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f036",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_20 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f037",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_21 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f038",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_21 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Yellow",
+  "ratio": 0.669,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f039",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_22 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Grey",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f040",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_22 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Yellow",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f041",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_24 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Coral",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f042",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_24 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Red",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f043",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_25 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Pink",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f044",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_26 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.67,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f045",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_27 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.68,
+  "w": 420,
+  "h": 286
+ },
+ {
+  "key": "f046",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_28 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Mint",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f047",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_29 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Coral",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f048",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_30 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f049",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_30 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f050",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_31 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Grey",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f051",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_32 AM (10).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Maroon",
+  "ratio": 0.686,
+  "w": 420,
+  "h": 288
+ },
+ {
+  "key": "f052",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_32 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Brown",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f053",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_34 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.678,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f054",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_35 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Lilac",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f055",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_37 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Yellow",
+  "ratio": 0.676,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f056",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_38 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f057",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_39 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Olive",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f058",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_39 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Sand",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f059",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_39 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Red",
+  "ratio": 0.666,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f060",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_40 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Navy",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f061",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_40 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Mint",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f062",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_40 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.667,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f063",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_42 AM (10).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Sky",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f064",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_42 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Maroon",
+  "ratio": 0.684,
+  "w": 420,
+  "h": 287
+ },
+ {
+  "key": "f065",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_42 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Lilac",
+  "ratio": 0.686,
+  "w": 420,
+  "h": 288
+ },
+ {
+  "key": "f066",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_44 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f067",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_45 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Yellow",
+  "ratio": 0.683,
+  "w": 420,
+  "h": 287
+ },
+ {
+  "key": "f068",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_49 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Olive",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "f069",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_49 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Coral",
+  "ratio": 0.667,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f070",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_52 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.679,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f071",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_52 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Sand",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f072",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_53 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Purple",
+  "ratio": 0.667,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f073",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_54 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Red",
+  "ratio": 0.669,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f074",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_55 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blue",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f075",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_56 AM (1).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.681,
+  "w": 420,
+  "h": 286
+ },
+ {
+  "key": "f076",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_57 AM (2).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Tan",
+  "ratio": 0.677,
+  "w": 420,
+  "h": 284
+ },
+ {
+  "key": "f077",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_57 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Brown",
+  "ratio": 0.667,
+  "w": 420,
+  "h": 280
+ },
+ {
+  "key": "f078",
+  "src": "ChatGPT Image Aug 9, 2026, 01_40_58 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.673,
+  "w": 420,
+  "h": 283
+ },
+ {
+  "key": "f079",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_00 AM (10).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Cream",
+  "ratio": 0.67,
+  "w": 420,
+  "h": 281
+ },
+ {
+  "key": "f080",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_00 AM (3).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.683,
+  "w": 420,
+  "h": 287
+ },
+ {
+  "key": "f081",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_01 AM (4).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blue",
+  "ratio": 0.679,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f082",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_02 AM (5).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Coral",
+  "ratio": 0.686,
+  "w": 420,
+  "h": 288
+ },
+ {
+  "key": "f083",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_04 AM (6).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Charcoal",
+  "ratio": 0.681,
+  "w": 420,
+  "h": 286
+ },
+ {
+  "key": "f084",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_05 AM (7).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Maroon",
+  "ratio": 0.68,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f085",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_06 AM (8).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Sky",
+  "ratio": 0.686,
+  "w": 420,
+  "h": 288
+ },
+ {
+  "key": "f086",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_08 AM (9).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Mint",
+  "ratio": 0.68,
+  "w": 420,
+  "h": 285
+ },
+ {
+  "key": "f087",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_09 AM (10).png",
+  "slot": "footwear",
+  "family": "shoes",
+  "colour": "Blush",
+  "ratio": 0.671,
+  "w": 420,
+  "h": 282
+ },
+ {
+  "key": "b101",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_12 AM (1).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Teal",
+  "ratio": 1.225,
+  "w": 292,
+  "h": 420
+ },
+ {
+  "key": "b102",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_13 AM (2).png",
+  "slot": "bottom",
+  "family": "shorts",
+  "colour": "Teal",
+  "ratio": 1.117,
+  "w": 292,
+  "h": 420
+ },
+ {
+  "key": "b103",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_14 AM (3).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Grey",
+  "ratio": 1.263,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b104",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_15 AM (4).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Sand",
+  "ratio": 1.291,
+  "w": 284,
+  "h": 420
+ },
+ {
+  "key": "b105",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_17 AM (5).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Teal",
+  "ratio": 1.49,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b106",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_19 AM (6).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Grey",
+  "ratio": 0.774,
+  "w": 291,
+  "h": 420
+ },
+ {
+  "key": "b107",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_20 AM (7).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Teal",
+  "ratio": 0.833,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b108",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_22 AM (8).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Teal",
+  "ratio": 0.86,
+  "w": 293,
+  "h": 420
+ },
+ {
+  "key": "b109",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_24 AM (9).png",
+  "slot": "bottom",
+  "family": "skirt",
+  "colour": "Charcoal",
+  "ratio": 0.88,
+  "w": 287,
+  "h": 420
+ },
+ {
+  "key": "b110",
+  "src": "ChatGPT Image Aug 9, 2026, 01_41_25 AM (10).png",
+  "slot": "bottom",
+  "family": "trousers",
+  "colour": "Teal",
+  "ratio": 1.248,
+  "w": 293,
+  "h": 420
+ }
+]

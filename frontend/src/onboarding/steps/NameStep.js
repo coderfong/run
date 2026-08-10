@@ -15,10 +15,10 @@ import { Hand } from 'lucide-react-native';
 import { fonts, space } from '../../theme';
 import { ToonButton } from '../../components/ui';
 import { art } from '../../config/onboardingArt';
-import { StepHeadline, StepThumb } from '../ui';
+import { StepArt, StepHeadline } from '../ui';
 import { toon, toonRadius } from '../toon';
 
-export default function NameStep({ value, onChange, onContinue, bottomInset = 0 }) {
+export default function NameStep({ value, onChange, onContinue }) {
   const lastRef = useRef(null);
   const ready = value.firstName.trim().length > 0;
 
@@ -33,8 +33,8 @@ export default function NameStep({ value, onChange, onContinue, bottomInset = 0 
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <StepThumb
-          source={art('thumbName')}
+        <StepArt
+          source={art('cutName')}
           fallback={<Hand size={54} color="#fff" strokeWidth={2.5} />}
         />
         <StepHeadline title="Howdy! What's your name?" style={{ marginTop: space.lg }} />
@@ -70,18 +70,33 @@ export default function NameStep({ value, onChange, onContinue, bottomInset = 0 
             accessibilityLabel="Last name (optional)"
           />
         </View>
-      </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: bottomInset + space.lg }]}>
-        <ToonButton title="Continue" onPress={onContinue} disabled={!ready} />
-      </View>
+        {/* Continue travels WITH the step, directly under the last field it
+            unlocks — it used to be pinned to the bottom edge of the screen,
+            marooned from the content it acts on with a hand's width of night
+            sky in between. */}
+        <ToonButton
+          title="Continue"
+          onPress={onContinue}
+          disabled={!ready}
+          style={styles.cta}
+        />
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  body: { paddingTop: space.xl, paddingHorizontal: space.gutter, paddingBottom: space.xl },
+  // `flexGrow` + `justifyContent` centres the step in whatever room is left
+  // above the keyboard, and still scrolls when there isn't enough.
+  body: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingVertical: space.xl,
+    paddingHorizontal: space.gutter,
+  },
+  cta: { marginTop: space.xl },
   fields: { gap: space.md, marginTop: space.xl },
   input: {
     height: 58,

@@ -5,7 +5,7 @@
 // Every step is the same component — `STEP_COPY` in ../steps.js supplies the
 // slot key and the copy, so adding a slot to the flow is a one-line change.
 
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { space } from '../../theme';
@@ -13,8 +13,15 @@ import { ToonButton } from '../../components/ui';
 import { toast } from '../../ui/toast';
 import { haptic, PressableScale } from '../../ui/motion';
 import CharacterRig, { PartThumb } from '../../components/character/CharacterRig';
-import { ITEMS, SLOTS, unlockLabel } from '../../config/cosmetics';
+import {
+  ITEMS,
+  SLOTS,
+  itemPreviewSources,
+  itemVariantSources,
+  unlockLabel,
+} from '../../config/cosmetics';
 import { useAvatar } from '../../state/avatar';
+import { preloadImages } from '../../utils/imagePreload';
 import { PickerSheet } from '../pickers';
 import { StepHeadline } from '../ui';
 
@@ -30,17 +37,33 @@ export default function CharacterStep({
   const { equipped, setPart, isUnlocked } = useAvatar();
   const rigRef = useRef(null);
   const slot = useMemo(() => SLOTS.find((s) => s.key === slotKey), [slotKey]);
-  const items = ITEMS[slotKey] || [];
+  const all = ITEMS[slotKey] || [];
+
+  // First run shows only what the runner can actually wear. A wall of padlocks
+  // is a shop pitch, and this is the five minutes where they are meeting their
+  // character — the locked catalogue is the Avatar Studio's job. The equipped
+  // item is always kept, so a server-granted piece can never vanish mid-flow.
+  const items = useMemo(
+    () => all.filter((item) => isUnlocked(item) || item.id === equipped[slotKey]),
+    [all, isUnlocked, equipped, slotKey]
+  );
+
+  useEffect(() => {
+    preloadImages(itemPreviewSources(slotKey));
+    const selected = items.find((item) => item.id === equipped[slotKey]);
+    preloadImages(itemVariantSources(selected));
+  }, [equipped, items, slotKey]);
 
   const pick = (item, unlocked) => {
     if (!unlocked) {
       haptic.light();
-      toast.error(unlockLabel(item) || 'Locked — keep running to earn it');
+      toast.error(unlockLabel(item) || 'Locked. Keep running to earn it');
       return;
     }
     haptic.light();
     setPart({ [slotKey]: item.id });
-    rigRef.current?.play('thumbs');
+    // The runner reacts when the art lands, not when the cell is tapped — see
+    // `animateSwaps` in CharacterRig, and the note in AvatarStudioScreen.
   };
 
   return (
@@ -51,9 +74,9 @@ export default function CharacterStep({
         <PressableScale
           onPress={() => { haptic.light(); rigRef.current?.play('wave'); }}
           accessibilityRole="button"
-          accessibilityLabel="Your runner — tap to say hi"
+          accessibilityLabel="Your runner, tap to say hi"
         >
-          <CharacterRig ref={rigRef} equipped={equipped} size={92} animate />
+          <CharacterRig ref={rigRef} equipped={equipped} size={92} animate animateSwaps />
         </PressableScale>
       </View>
 
@@ -63,8 +86,8 @@ export default function CharacterStep({
         selectedId={equipped[slotKey]}
         onSelect={pick}
         isUnlocked={isUnlocked}
-        renderThumb={(item) => (
-          <PartThumb slot={slotKey} item={item} equipped={equipped} size={64} />
+        renderThumb={(item, size) => (
+          <PartThumb slot={slotKey} item={item} size={size} />
         )}
         palette={slot?.palette}
         colorIndex={slot?.colorKey ? equipped[slot.colorKey] ?? 0 : 0}

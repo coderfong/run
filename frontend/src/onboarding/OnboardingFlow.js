@@ -1,6 +1,6 @@
 // The PASER first-run flow.
 //
-//   name → birthday → face → hair → top → bottom → hat → PASER PRO → ready
+//   name → birthday → gender → face → hair → top → bottom → hat → PASER PRO → ready
 //
 // One night stage runs behind every step so the runner you are building is
 // always on screen; the chrome (back · progress · skip) is shared. The last
@@ -11,18 +11,20 @@
 // `mode="character"` runs only the character steps — used for accounts that
 // predate the avatar system, which have already been through an intro.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../theme';
+import { ITEMS } from '../config/cosmetics';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useReduceMotion } from '../ui/motion';
-import { StageBackdrop, StepChrome } from './ui';
+import { NIGHT_HAIR, StageBackdrop, StepChrome } from './ui';
 import NameStep from './steps/NameStep';
 import BirthdayStep from './steps/BirthdayStep';
+import GenderStep from './steps/GenderStep';
 import CharacterStep from './steps/CharacterStep';
 import ProStep from './steps/ProStep';
 import ReadyStep from './steps/ReadyStep';
@@ -71,8 +73,20 @@ const iso = ({ y, m, d }) =>
 export default function OnboardingFlow({ onDone, mode = 'full' }) {
   const insets = useSafeAreaInsets();
   const reduced = useReduceMotion();
-  const { save: saveAvatar } = useAvatar();
+  const { save: saveAvatar, setPart } = useAvatar();
   const { profile, saveProfile, completeIntro } = useProfile();
+
+  // Light the runner's hair for the night stage, ONCE, before the first step
+  // draws. Everything here happens against a dark sky and the default loadout's
+  // hair is near-black, so the character being built read as a bald head until
+  // the hair step. Mount-only on purpose: from the hair step onward the swatch
+  // the runner picks is the one that sticks, whatever it is. App.js does not
+  // render this flow until the saved loadout has hydrated, so there is nothing
+  // in flight for it to race.
+  useEffect(() => {
+    setPart({ hairColor: NIGHT_HAIR });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState({
@@ -84,14 +98,22 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
     const [y, m, d] = profile.birthday.split('-').map(Number);
     return { y, m, d };
   });
+  const [gender, setGender] = useState(profile.gender || '');
   const [finishing, setFinishing] = useState(false);
 
   const steps = useMemo(() => {
-    const character = CHARACTER_STEPS.map((s) => ({ ...s, kind: 'character' }));
+    // A slot with nothing in it but "None" has no choice to offer, and a step
+    // headed "let's put on some pants" with an empty grid under it reads as a
+    // broken screen. Skipping it is self-healing: the step comes back on its
+    // own the moment that slot has art again.
+    const character = CHARACTER_STEPS
+      .filter((s) => (ITEMS[s.slotKey] || []).some((item) => item.id !== 'none'))
+      .map((s) => ({ ...s, kind: 'character' }));
     if (mode === 'character') return [...character, { key: 'ready', kind: 'ready' }];
     return [
       { key: 'name', kind: 'name' },
       { key: 'birthday', kind: 'birthday' },
+      { key: 'gender', kind: 'gender' },
       ...character,
       { key: 'pro', kind: 'pro', optional: true },
       { key: 'ready', kind: 'ready' },
@@ -111,6 +133,7 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
           firstName: name.firstName.trim(),
           lastName: name.lastName.trim(),
           birthday: iso(birthday),
+          gender,
         });
         await completeIntro();
       }
@@ -120,7 +143,7 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
     } finally {
       onDone?.();
     }
-  }, [finishing, saveAvatar, saveProfile, completeIntro, name, birthday, mode, onDone]);
+  }, [finishing, saveAvatar, saveProfile, completeIntro, name, birthday, gender, mode, onDone]);
 
   const next = useCallback(() => {
     if (last) return finish();
@@ -138,7 +161,6 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
         value={name}
         onChange={(patch) => setName((v) => ({ ...v, ...patch }))}
         onContinue={next}
-        bottomInset={bottomInset}
       />
     );
   } else if (current.kind === 'birthday') {
@@ -149,6 +171,10 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
         onContinue={next}
         bottomInset={bottomInset}
       />
+    );
+  } else if (current.kind === 'gender') {
+    body = (
+      <GenderStep value={gender} onChange={setGender} onContinue={next} />
     );
   } else if (current.kind === 'character') {
     body = (
@@ -162,10 +188,10 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
       />
     );
   } else if (current.kind === 'pro') {
-    body = <ProStep onContinue={next} bottomInset={bottomInset} />;
+    body = <ProStep onContinue={next} />;
   } else {
     body = (
-      <ReadyStep name={name.firstName.trim()} onContinue={finish} bottomInset={bottomInset} />
+      <ReadyStep name={name.firstName.trim()} onContinue={finish} />
     );
   }
 

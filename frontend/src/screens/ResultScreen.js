@@ -1,35 +1,73 @@
-// Post-run result — claim placement + the shareable artifact. The run's
-// distance became a circle (circumference = distance); the runner taps
-// anywhere along their trail to place it, then the dark card (claimed circle
-// glowing, area hero count-up, quiet stat row, steal summary, loop-mark
-// watermark) is the shared image; splits and any PRs sit below it.
+// Post-run result, in three stages: CLAIM, then SUMMARY, then SHARE.
+//
+// They are separate because they are separate jobs and they want opposite
+// layouts. Claiming is a map decision — the runner needs to look around the
+// neighbourhood, see whose border is where, and place their ground — so it
+// gets the whole screen with the map behind it and nothing to scroll past.
+// The summary is a recap, so it scrolls. Sharing is outward-facing and comes
+// LAST, the final thing before Home, rather than being a button half way down
+// a page nobody reaches.
+//
+// Distance decides how much land the run earned; the ROUTE decides its shape.
+// The territory is one grown polygon — the run's own silhouette — and the move
+// the runner makes is rigid: slide it anywhere along the route, turn it to any
+// heading. The shape never changes as it moves, which is what makes it worth
+// aiming. Geometry for the live preview is done locally (claim/placement.js,
+// mirroring the server's `ClaimStamp`); the server is asked only for the
+// numbers, debounced.
+//
+// Sharing does NOT screenshot the recap card — a screen-shaped slab posts
+// badly. `RunShareSheet` renders a purpose-built 9:16 (or 1:1) card and hands
+// it to Instagram Stories or the system sheet.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { captureRef } from 'react-native-view-shot';
-import * as Sharing from 'expo-sharing';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LinearGradient } from 'expo-linear-gradient';
 
 import GameMap, { MAP_READY, TerritoryFill, TerritoryLayer, Trail, UserMarker } from '../components/GameMap';
 import { CharacterBust } from '../components/character/CharacterRig';
-import { buildBoardFeatures, buildLandPortraits, estimateClaims } from '../components/territoryBoard';
+import { buildBoardFeatures, buildLandPortraits, estimateClaimsInRing } from '../components/territoryBoard';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import ClaimPayoff from '../components/ClaimPayoff';
-import { shapeRing } from '../config/claimShapes';
+import GameAnimation from '../components/GameAnimation';
+import CaptureEncounter from '../components/claim/CaptureEncounter';
+import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
+import { makePlacer, normaliseDeg } from '../components/claim/placement';
+import DevSequenceControls from '../components/claim/DevSequenceControls';
+import LeaderboardTransition from '../components/claim/LeaderboardTransition';
+import TerritoryRevealCanvas from '../components/claim/TerritoryRevealCanvas';
+import TerritoryVictoryBeat, { victoryLabel } from '../components/claim/TerritoryVictoryBeat';
+import useClaimSequence from '../components/claim/useClaimSequence';
+import PaserbyReveal from '../components/paserby/PaserbyReveal';
+import RunShareSheet from '../components/share/RunShareSheet';
+import XpProgress from '../components/XpProgress';
 import { useAvatar } from '../state/avatar';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../api/client';
-import { brand, darkColors, radius, shadow, space, type, withAlpha } from '../theme';
+import { fetchAndCache, invalidate, invalidateAfterClaim } from '../api/cache';
+import { shouldReveal } from '../config/paserby';
+import { preloadScreenImages } from '../config/screenAssets';
+import { RUN_TIER } from '../config/economy';
+import { brand, darkColors, radius, shadow, space, toon, toonRadius, toonType, type, withAlpha } from '../theme';
+import { OutlinedText, ToonButton } from '../components/ui';
 import { useClan } from '../state/clan';
 import { useSettings } from '../state/settings';
 import { Confetti, CountUpText, Reveal, haptic, PressableScale } from '../ui/motion';
-import LoopMark from '../components/LoopMark';
+import PaserMark from '../components/PaserMark';
+import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
+import { rivalPopup } from '../components/RivalPopup';
 
 const D = darkColors;
+
+// The three jobs this screen does, in order. Claiming is a map decision and
+// takes the whole screen; the recap scrolls; sharing is outward-facing and
+// comes last, immediately before Home.
+const STAGE = { CLAIM: 'claim', SUMMARY: 'summary', SHARE: 'share' };
 
 // --- geometry / splits -----------------------------------------------------
 
@@ -89,103 +127,69 @@ function km2(n) {
   return v >= 0.1 ? v.toFixed(2) : v.toFixed(3);
 }
 
-// A pace-aware pat on the back, shown after every run.
-function encouragement(distanceM, durationS, xp) {
-  const km = distanceM / 1000;
-  const pace = durationS && distanceM ? durationS / 60 / km : 0; // min/km
-  if (km >= 10) return 'Huge distance today — your legs earned this. 🔥';
-  if (pace && pace < 5) return "Blazing pace! That's how territory gets taken. ⚡";
-  if (km >= 5) return 'Strong run. The map is yours for the claiming. 💪';
-  if (km >= 2) return 'Nice work out there — every km is more ground. 🏃';
-  return 'Every run counts. Lace up again soon! 👟';
-}
+// Total climb, from the altitude stored on each fix. GPS altitude is noisy by
+// several metres even standing still, so only rises past a threshold count —
+// without that a flat run "climbs" a hundred metres of jitter. Runs recorded
+// before altitude was captured have none, and the metric hides itself rather
+// than showing a confident zero.
+const ELEVATION_NOISE_M = 1.5;
 
-// --- claim placement helpers ------------------------------------------------
-
-// Cumulative distance along the trail — the slider's coordinate system.
-function cumulativePath(path) {
-  const cum = [0];
-  let total = 0;
-  for (let i = 1; i < path.length; i++) {
-    total += haversine(path[i - 1], path[i]);
-    cum.push(total);
+function elevationGainM(path) {
+  const alts = path.map((p) => p.altitude).filter((a) => typeof a === 'number' && isFinite(a));
+  if (alts.length < 3) return null;
+  let gain = 0;
+  let reference = alts[0];
+  for (const a of alts) {
+    const delta = a - reference;
+    if (delta > ELEVATION_NOISE_M) {
+      gain += delta;
+      reference = a;
+    } else if (delta < -ELEVATION_NOISE_M) {
+      reference = a;
+    }
   }
-  return { cum, total: Math.max(total, 1e-6) };
+  return gain;
 }
 
-// The exact point `frac` (0..1) of the way along the trail, interpolated
-// between vertices so the circle glides smoothly with the slider.
-function pointAtFraction(path, geo, frac) {
-  const target = Math.max(0, Math.min(1, frac)) * geo.total;
-  let i = 0;
-  while (i < geo.cum.length - 2 && geo.cum[i + 1] < target) i++;
-  const a = path[i];
-  const b = path[Math.min(i + 1, path.length - 1)];
-  const seg = geo.cum[i + 1] - geo.cum[i] || 1e-6;
-  const t = Math.max(0, Math.min(1, (target - geo.cum[i]) / seg));
-  return {
-    latitude: a.latitude + (b.latitude - a.latitude) * t,
-    longitude: a.longitude + (b.longitude - a.longitude) * t,
-  };
+// Which sticker belongs to a personal record. The labels come from the server
+// (backend/app/fitness.py RECORDS), so match on shape rather than on the exact
+// string — "Fastest 5K" must not fall back to the generic trophy just because
+// only 1K was listed here.
+function recordIcon(label) {
+  const l = String(label).toLowerCase();
+  if (l.includes('fastest')) return 'timer';
+  if (l.includes('longest')) return 'route';
+  if (l.includes('claim')) return 'claim';
+  if (l.includes('streak')) return 'streak';
+  return 'trophy';
 }
 
-// Fraction along the trail of the vertex nearest a tapped (lat, lon).
-function fractionNearest(path, geo, latitude, longitude) {
-  let best = 0, bestD = Infinity;
-  for (let i = 0; i < path.length; i++) {
-    const d = haversine(path[i], { latitude, longitude });
-    if (d < bestD) { bestD = d; best = i; }
+// --- claim helpers ----------------------------------------------------------
+
+// Where the claim sits, for the camera flight and the reveal's origin: the
+// centroid of the ground the run is about to take. There is no chosen point
+// any more — the territory is grown around the route, so the shape decides
+// where it is rather than the runner.
+function ringCentroid(ring) {
+  if (!ring || ring.length < 3) return null;
+  let twiceArea = 0, x = 0, y = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const f = xj * yi - xi * yj;
+    twiceArea += f;
+    x += (xj + xi) * f;
+    y += (yj + yi) * f;
   }
-  return geo.cum[best] / geo.total;
-}
-
-// A dependency-free slider (PanResponder) — slides the claim circle along
-// the route. Captures the gesture so the surrounding ScrollView never wins.
-function PathSlider({ frac, onChange, accent }) {
-  const widthRef = useRef(1);
-  const setFromX = (x) => {
-    const f = Math.max(0, Math.min(1, x / widthRef.current));
-    onChange(Math.round(f * 400) / 400);
-  };
-  const pan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderGrant: (e) => setFromX(e.nativeEvent.locationX),
-      onPanResponderMove: (e) => setFromX(e.nativeEvent.locationX),
-      onPanResponderTerminationRequest: () => false,
-    })
-  ).current;
-  return (
-    <View
-      style={styles.sliderWrap}
-      onLayout={(e) => { widthRef.current = Math.max(1, e.nativeEvent.layout.width); }}
-      {...pan.panHandlers}
-      accessibilityRole="adjustable"
-      accessibilityLabel="Slide the claim circle along your route"
-    >
-      <View style={styles.sliderTrack} />
-      <View style={[styles.sliderFill, { width: `${frac * 100}%`, backgroundColor: accent }]} />
-      <View style={[styles.sliderThumb, { left: `${frac * 100}%`, borderColor: accent }]} />
-    </View>
-  );
-}
-
-// Circle outline (radius in meters) around a centre, as map points, via a
-// local equirectangular approximation — display only; the server rebuilds
-// the authoritative polygon.
-function circlePoints(center, radiusM, n = 48) {
-  const mPerLat = 110540;
-  const mPerLon = 111320 * Math.cos((center.latitude * Math.PI) / 180);
-  return Array.from({ length: n }, (_, i) => {
-    const a = (2 * Math.PI * i) / n;
+  if (Math.abs(twiceArea) < 1e-12) {
+    // Degenerate ring — fall back to the mean vertex.
+    const n = ring.length;
     return {
-      latitude: center.latitude + (Math.sin(a) * radiusM) / mPerLat,
-      longitude: center.longitude + (Math.cos(a) * radiusM) / mPerLon,
+      longitude: ring.reduce((a, p) => a + p[0], 0) / n,
+      latitude: ring.reduce((a, p) => a + p[1], 0) / n,
     };
-  });
+  }
+  return { longitude: x / (3 * twiceArea), latitude: y / (3 * twiceArea) };
 }
 
 // Per-km splits from the recorded path (client-side; Phase 6 makes these
@@ -221,7 +225,7 @@ function paceStr(seconds) {
 }
 
 function formatPace(distanceM, durationS) {
-  if (!distanceM || distanceM < 50 || !durationS) return '—';
+  if (!distanceM || distanceM < 50 || !durationS) return '·';
   return `${paceStr((durationS / (distanceM / 1000)))} /km`;
 }
 
@@ -232,11 +236,14 @@ function formatDuration(durationS) {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
-function QuietStat({ label, value }) {
+function QuietStat({ label, value, unit, accent }) {
   return (
     <View style={styles.quietStat}>
       <Text style={styles.quietLabel}>{label}</Text>
-      <Text style={styles.quietValue}>{value}</Text>
+      <View style={styles.quietValueRow}>
+        <Text style={[styles.quietValue, accent && { color: accent }]}>{value}</Text>
+        {!!unit && <Text style={styles.quietUnit}>{unit}</Text>}
+      </View>
     </View>
   );
 }
@@ -268,10 +275,20 @@ export default function ResultScreen({ navigation, route }) {
   const { trailGlowColor } = useSettings();
   const team = color; // {fill, stroke, glow} — clan color or neutral
   const label = clan?.tag || 'Solo';
-  const cardRef = useRef(null);
-  const [sharing, setSharing] = useState(false);
+  const insets = useSafeAreaInsets();
+  const { height: winHeight } = useWindowDimensions();
 
   const path = route.params.path || [];
+
+  // Which of the three stages is on screen. A run with no claim to place skips
+  // straight to the recap — an empty map with a dead button is not a step.
+  // Decided once, from what /end-run said, so the stage cannot change under
+  // the runner when the options land a moment later.
+  const [stage, setStage] = useState(() =>
+    !result.territory && (result.claim_area_m2 || 0) > 0 && result.claim_ring?.length >= 3
+      ? STAGE.CLAIM
+      : STAGE.SUMMARY
+  );
 
   // Claim placement: the run earned a circle (circumference = distance);
   // it becomes territory only once the runner places it on their trail.
@@ -281,24 +298,141 @@ export default function ResultScreen({ navigation, route }) {
     stolen_from: result.stolen_from || null,
     xp_gained: 0,
   });
-  // The circle's position = a fraction along the trail (slider-driven; a
-  // map tap snaps it too). Derived, so it can never be null while a path
-  // exists — the claim button always has a live target.
-  const geo = useMemo(() => cumulativePath(path), [path]);
-  const [frac, setFrac] = useState(0.5);
+  // Where the run's earned land goes. The run decides how MUCH ground and what
+  // SHAPE it takes; the move the runner still has to make is the POSE — where
+  // along their route its centre sits, and which way it faces. Both continuous.
+  //
+  // `options` carries the shape itself (`base_ring`), its pivot, the route and
+  // a coarse sample of the space; `placer` redoes the server's rigid move
+  // locally so dragging never waits on a request; `preview` is the server's
+  // answer for what the current pose would take.
+  const [options, setOptions] = useState(null);
+  const [pose, setPose] = useState(null);
+  const [preview, setPreview] = useState(null);
+  // The pose `preview` actually describes. Compared against `pose` to know
+  // whether the numbers on screen are still the right ones.
+  const previewPose = useRef(null);
+  const [previewing, setPreviewing] = useState(false);
+
+  const placer = useMemo(() => makePlacer(options), [options]);
+
+  // The ground this run takes: the posed shape once the runner has something
+  // to pose, and the server's resting placement (the run exactly as it was
+  // run, sent by /end-run) until then or if the options never land.
+  const claimRing = useMemo(() => {
+    if (placer && pose) {
+      const ring = placer.ringAt(pose.t, pose.deg);
+      if (ring?.length >= 3) return ring;
+    }
+    return result.claim_ring?.length >= 3 ? result.claim_ring : null;
+  }, [placer, pose, result.claim_ring]);
+  const claimPoints = useMemo(
+    () => (claimRing ? claimRing.map(([lon, lat]) => ({ latitude: lat, longitude: lon })) : null),
+    [claimRing]
+  );
   const center = useMemo(
-    () => (path.length >= 2 ? pointAtFraction(path, geo, frac) : null),
-    [path, geo, frac]
+    () => ringCentroid(claimRing) || (path.length ? path[Math.floor(path.length / 2)] : null),
+    [claimRing, path]
   );
   const [claiming, setClaiming] = useState(false);
   // The full claim response, held for the payoff overlay (victims + level).
+  // Visibility is owned by the sequence phase, not by this — so a dev replay
+  // resets the payoff along with everything else.
   const [payoff, setPayoff] = useState(null);
+  // Energy gates claiming (not running). Declared HERE, above every derived
+  // value, because `claimCost` below reads it: a `const` is in its temporal
+  // dead zone until its own declaration runs, and optional chaining does not
+  // save you — `energyStatus?.x` still touches the binding. Sitting below the
+  // derived block, this threw ReferenceError on the first render of every
+  // finished run, before `options` had arrived to short-circuit the `??`.
+  const [energyStatus, setEnergyStatus] = useState(null);
+  const [shopOpen, setShopOpen] = useState(false);
+
+  // The claim lands on the map before it lands in a card: camera flight,
+  // capture encounter, the polygon wiping outward from the middle of the
+  // ground taken, the victory beat, then the payoff and standings.
+  const mapRef = useRef(null);
+  const seq = useClaimSequence({ mapRef, userId: user.id });
+  const reducedMotion = seq.reducedMotion;
+  // The encounter and victory beats are laid out in the map's own pixel space,
+  // so they need its box to keep characters inside the card.
+  const [mapBox, setMapBox] = useState(null);
+  // The rail and dial live inside a vertically scrolling sheet. Freeze their
+  // parent while either control owns the gesture so turning the claim cannot
+  // drag the whole screen under the runner's finger.
+  const [claimControlActive, setClaimControlActive] = useState(false);
+
+  // While the attack is being chosen the camera opens on the NEIGHBOURHOOD,
+  // not on the run. Framing the trail tightly was the wrong default for the
+  // job this screen is doing: the runner is deciding where to put their land,
+  // and every rival border worth aiming at is off the edge of a shot cropped
+  // to their own route. So the run's bbox is blown out and the whole thing is
+  // fitted, which leaves the trail in the middle with its surroundings around
+  // it — and the map is free to pan and zoom from there.
+  //
+  // Zooming IN is the sequence's job, after "Claim here". Fired off the map's
+  // first idle (a fitBounds issued before Mapbox has settled is dropped) and
+  // only once, or the fit would re-trigger itself on the idle it causes.
+  const fitted = useRef(false);
+  const fitToNeighbourhood = () => {
+    if (fitted.current || seq.isRunning || path.length < 2) return;
+    fitted.current = true;
+    const lats = path.map((p) => p.latitude);
+    const lons = path.map((p) => p.longitude);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    // Grow the box around its own centre. The floor matters more than the
+    // factor: a lap of one block is a tiny bbox, and 2.2x of almost nothing is
+    // still almost nothing, so short runs would open zoomed to the pavement.
+    const padLat = Math.max((maxLat - minLat) * 0.6, 0.006);
+    const padLon = Math.max((maxLon - minLon) * 0.6, 0.006);
+    mapRef.current?.fitToPoints(
+      [
+        { latitude: minLat - padLat, longitude: minLon - padLon },
+        { latitude: maxLat + padLat, longitude: maxLon + padLon },
+      ],
+      24,
+      700
+    );
+  };
+
+  // The trail as far as the 3D replay has flown. `replayProgress` is 1 unless
+  // a flyover is actually running, so this is the whole path at every other
+  // moment — including before a claim, and for every run that skips the
+  // replay (Reduce Motion, or no usable route).
+  //
+  // Never shorter than two points: a one-point LineString is not a line, and
+  // Trail would drop the layer entirely for the first frame of the flyover.
+  const replayTrail = useMemo(() => {
+    const p = seq.replayProgress;
+    if (p == null || p >= 1 || path.length < 2) return path;
+    return path.slice(0, Math.max(2, Math.ceil(path.length * p)));
+  }, [path, seq.replayProgress]);
 
   const t = claim.territory;
   const captured = !!t;
-  const claimRadius = result.claim_radius_m || 0;
   const claimArea = result.claim_area_m2 || 0;
-  const canPlace = !captured && claimRadius > 0 && path.length >= 2;
+  // `qualification_reason` is the field name; `gate_reason` is the same value
+  // under the old name, kept on the wire for clients that shipped before the
+  // rename. Read the new one first and fall back, so this screen is correct
+  // against either backend.
+  const qualificationReason = result.qualification_reason ?? result.gate_reason ?? null;
+  const canPlace = !captured && claimArea > 0 && !!claimRing;
+  // The claim can be MOVED once the server has sent the shape and the route it
+  // slides along. Until then the map is already showing the real ground (the
+  // resting placement from /end-run) and the button already works — the claim
+  // must never be blocked on the chooser arriving.
+  const canChoose = canPlace && !!placer && !!pose;
+  // The server closes individual moves (today's neutral expansions used up,
+  // not enough energy). The button follows it rather than letting the runner
+  // press something that will only be refused. No heading is ever closed any
+  // more: a rigid stamp turns about its own centre, so every pose is on the
+  // run by construction.
+  const moveBlocked = preview?.available === false;
+  // `captured` flips the instant the claim returns, which would tear the map
+  // out from under the animation — so the CLAIM STAGE is what stays mounted
+  // through the sequence, and only `endCelebration` moves off it. There is no
+  // longer a card to keep alive: the stage is the map.
 
   // Everyone's nearby land, so the placement map matches the global map:
   // rival territories painted underneath, owner portraits pinned on each plot.
@@ -327,22 +461,19 @@ export default function ResultScreen({ navigation, route }) {
     () => buildLandPortraits(board, { userId: user.id, accent: team.stroke, equipped, cap: 24 }),
     [board, user.id, team.stroke, equipped]
   );
-  // Live "who + how much you're taking" as the circle slides along the route.
-  const preview = useMemo(
-    () => (center && claimRadius ? estimateClaims(board, center, claimRadius, { userId: user.id }) : { rivals: [], sampleArea: 0 }),
-    [board, center, claimRadius, user.id]
+  // Who — and how much — this claim takes, worked out from the board the map
+  // already has. This is the FALLBACK reading, used before the server's own
+  // answer arrives and if it never does; `preview` above is the authoritative
+  // one and is what the chooser shows whenever it exists.
+  const localEstimate = useMemo(
+    () => (claimRing ? estimateClaimsInRing(board, claimRing, { userId: user.id }) : { rivals: [], sampleArea: 0 }),
+    [board, claimRing, user.id]
   );
-  const claimingFrom = preview.rivals;
+  const claimingFrom = localEstimate.rivals;
   const takingTotal = claimingFrom.reduce((s, r) => s + r.area, 0);
 
-  // Cosmetic claim shape (level-unlocked; defaults to circle). Server enforces
-  // the unlock and rebuilds the authoritative polygon.
-  const claimShape = equipped?.claimShape || 'circle';
-
-  // Energy gates claiming (not running). Fetch it so the placement card can
-  // show the meter and block/redirect to the shop when it's too low.
-  const [energyStatus, setEnergyStatus] = useState(null);
-  const [shopOpen, setShopOpen] = useState(false);
+  // Fetch the meter so the claim card can show it and redirect to the shop
+  // when it's too low. (The state itself is declared above the derived block.)
   useEffect(() => {
     if (!canPlace) return;
     let alive = true;
@@ -351,19 +482,188 @@ export default function ResultScreen({ navigation, route }) {
   }, [canPlace]);
   const refreshEnergy = () => api.energyStatus().then(setEnergyStatus).catch(() => {});
 
+  // The attack choice. Fetched once per run: the shape and the sampled grid
+  // are deterministic from the stored route, so re-asking would only ever
+  // return the same answer. A failure here is not fatal — `claimRing` falls
+  // back to the server's resting placement and the claim button still works,
+  // just without the move.
+  useEffect(() => {
+    if (captured || claimArea <= 0) return;
+    let alive = true;
+    api.claimOptions(result.run_id)
+      .then((o) => {
+        if (!alive || !o?.placements?.length) return;
+        setOptions(o);
+        // Open on the server's own recommendation, which is where the runner
+        // would land if they tapped nothing.
+        const seed =
+          o.placements[Math.min(Math.max(o.default_index || 0, 0), o.placements.length - 1)];
+        const start = { t: seed?.t ?? o.base_t ?? 0.5, deg: normaliseDeg(seed?.rotation_deg) };
+        setPose(start);
+        previewPose.current = start;
+        setPreview(seed || null);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [result.run_id, captured, claimArea]);
+
+  // What the current pose would take. The SHAPE is already on the map — drawn
+  // locally, exactly where the claim will land — so this is only ever chasing
+  // the numbers, and it is asked for on release rather than on every frame:
+  // one request per gesture instead of one per pixel.
+  //
+  // Guarded by a token rather than by an abort: two previews can be in flight
+  // after a fast drag, and the one that matters is the one for the pose the
+  // finger ended on, not whichever the network happens to answer last.
+  const previewToken = useRef(0);
+  const requestPreview = useCallback(
+    (next) => {
+      if (!result.run_id || captured) return;
+      const token = (previewToken.current += 1);
+      setPreviewing(true);
+      api
+        .claimPreview(result.run_id, next.t, next.deg)
+        .then((p) => {
+          if (token !== previewToken.current) return;
+          previewPose.current = next;
+          setPreview(p);
+        })
+        // Silent: the last good breakdown stays on screen. A pose that could
+        // not be priced is still a pose that can be claimed, and the claim
+        // itself re-derives everything server-side anyway.
+        .catch(() => {})
+        .finally(() => {
+          if (token === previewToken.current) setPreviewing(false);
+        });
+    },
+    [result.run_id, captured]
+  );
+
+  // Are the numbers on screen the ones for the shape on screen? Anything that
+  // moved since the last priced pose counts as stale, including a drag still
+  // in progress.
+  const previewStale =
+    previewing ||
+    !previewPose.current ||
+    !pose ||
+    Math.abs(previewPose.current.t - pose.t) > 1e-6 ||
+    normaliseDeg(previewPose.current.deg) !== normaliseDeg(pose.deg);
+
+  const onPose = useCallback(
+    (next, { commit } = {}) => {
+      setPose(next);
+      if (commit) requestPreview(next);
+    },
+    [requestPreview]
+  );
+
   const rings = captured
     ? (t.rings?.length ? t.rings : [t.polygon])
     : [path.map((p) => [p.longitude, p.latitude])];
+
+  // The won ground as map points — the permanent Mapbox fill the reveal hands
+  // off to. Outer ring only; a claim shape never has holes.
+  const claimedPoints = useMemo(
+    () =>
+      captured && rings[0]?.length >= 3
+        ? rings[0].map(([lon, lat]) => ({ latitude: lat, longitude: lon }))
+        : null,
+    [captured, rings]
+  );
+
+  // What the share card outlines: the ground actually held once the claim is
+  // in, the claim shape while it is still on offer. Never `rings`, which falls
+  // back to the route itself — that would draw the trail twice.
+  const shareRings = useMemo(() => {
+    if (captured && rings[0]?.length >= 3) return rings;
+    return claimRing ? [claimRing] : null;
+  }, [captured, rings, claimRing]);
 
   const heroAreaM2 = captured ? t.area_m2 : claimArea;
   const splits = useMemo(() => computeSplits(path), [path]);
   const stolen = claim.stolen_m2 || 0;
   const achievements = result.achievements || [];
   const xpGained = result.xp_gained || 0;
-  const cheer = useMemo(
-    () => encouragement(result.distance_m, result.duration_s, xpGained),
-    [result.distance_m, result.duration_s, xpGained]
+  const totalXp = xpGained + (claim.xp_gained || 0);
+
+  // Where the run left this runner on the ladder. /end-run banks its XP before
+  // it answers, so the total that comes back is the AFTER figure and the bar
+  // works out where the run started by subtracting what it paid. Fetched
+  // through the cache the finished run just invalidated, so the You tab gets
+  // this for free. A failure only costs the bar its numbers — it draws the
+  // empty track and the "+N XP" either way.
+  const [xpTotal, setXpTotal] = useState(null);
+  // What the claim had already paid by the time that total was read. Normally
+  // nothing — the request goes out on mount, long before the claim button is
+  // even enabled — but if the two ever cross, the server's total already holds
+  // the claim's XP and adding it again below would count it twice.
+  const claimRef = useRef(claim);
+  claimRef.current = claim;
+  const claimXpInTotal = useRef(0);
+  useEffect(() => {
+    let alive = true;
+    fetchAndCache('me:progression', api.progression)
+      .then((p) => {
+        if (!alive || typeof p?.xp !== 'number') return;
+        claimXpInTotal.current = claimRef.current.xp_gained || 0;
+        setXpTotal(p.xp);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // The claim pays again, on top. Added locally rather than refetched, so the
+  // bar's second move stays in step with the payoff instead of trailing a
+  // round trip behind it.
+  const xpTotalNow =
+    xpTotal == null
+      ? null
+      : xpTotal + Math.max(0, (claim.xp_gained || 0) - claimXpInTotal.current);
+
+  // The rest of the run, beyond the three numbers this screen always had.
+  const elevationM = useMemo(() => elevationGainM(path), [path]);
+  const bestKmSeconds = useMemo(
+    () => (splits.length ? Math.min(...splits.map((s) => s.seconds)) : null),
+    [splits]
   );
+  const avgSpeedKmh =
+    result.duration_s > 0 ? (result.distance_m / 1000) / (result.duration_s / 3600) : null;
+
+  // Everything the share card COULD show. Which of it actually appears is the
+  // runner's own choice in the sheet, so a metric missing here is one they
+  // cannot switch on at all. Memoised because the sheet derives its stat chips
+  // from this object.
+  const shareRun = useMemo(
+    () => ({
+      distanceM: result.distance_m,
+      durationS: result.duration_s,
+      areaM2: heroAreaM2,
+      elevationM,
+      bestKmSeconds,
+      avgSpeedKmh,
+      claimed: captured,
+    }),
+    [
+      result.distance_m,
+      result.duration_s,
+      heroAreaM2,
+      elevationM,
+      bestKmSeconds,
+      avgSpeedKmh,
+      captured,
+    ]
+  );
+
+  // What the hero number means. The old copy assumed the only reason a claim
+  // could be missing was a short run, so a 2.28 km run whose SHAPE the server
+  // never sent was told to "run a little further" — which is both wrong and
+  // unactionable. Each state now says the true thing.
+  const heroCaption = captured
+    ? `claimed for your club · strength ×${(t?.strength || 1).toFixed(1)}`
+    : canPlace
+    ? 'your ground is ready, take it above'
+    : claimArea > 0
+    ? 'this run earned ground, but the server sent no shape for it'
+    : 'run a little further to earn a claim';
   // Celebrate the finish once, on mount.
   const [showConfetti, setShowConfetti] = useState(true);
   useEffect(() => {
@@ -372,19 +672,51 @@ export default function ResultScreen({ navigation, route }) {
     return () => clearTimeout(id);
   }, []);
 
-  const onMapPress = (e) => {
-    const c = e?.geometry?.coordinates;
-    if (!c || !canPlace) return;
-    haptic.light();
-    setFrac(fractionNearest(path, geo, c[1], c[0]));
-  };
+  // --- PASERBY ---------------------------------------------------------
+  // Who this run crossed. Asked for on mount and left to land while the claim
+  // sequence plays, so the beat at the end of it opens on data it already has.
+  // The request also forces the match server-side if the background task
+  // hasn't got there yet, which is why it is worth making early rather than at
+  // the moment it is needed.
+  const [crossed, setCrossed] = useState(null);
+  const [crossedOpen, setCrossedOpen] = useState(false);
+  const [crossedDone, setCrossedDone] = useState(false);
+  const [highFiving, setHighFiving] = useState(false);
+  const [highFivedAll, setHighFivedAll] = useState(false);
+  useEffect(() => {
+    if (!result.run_id) return undefined;
+    let alive = true;
+    api
+      .paserbyReveal(result.run_id)
+      .then((d) => {
+        if (!alive) return;
+        setCrossed(d);
+        // Warm the plaza only if it is going to be shown. The backdrop is a
+        // full-window image and the beat fades straight into it, so decoding
+        // it while the claim sequence is still playing is the difference
+        // between a scene and a flash of blue.
+        if ((d?.encounters || []).length) preloadScreenImages('Crossroads');
+      })
+      // Silent: nobody to cross paths with is the normal case, and a failure
+      // here must never disturb the run's own result.
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [result.run_id]);
 
   const placeClaim = async () => {
     if (!center || claiming || !canPlace) return;
     setClaiming(true);
     try {
       haptic.light();
-      const out = await api.claimTerritory(result.run_id, center.latitude, center.longitude, claimShape);
+      // Only the POSE travels — where along the route the claim's centre sits
+      // and which way it faces. The server regrows the same shape from the
+      // stored route and moves it rigidly to that pose, so the ground claimed
+      // is always built from the run that earned it, at the size it earned.
+      const out = await api.claimTerritory(
+        result.run_id,
+        pose ? pose.t : null,
+        pose ? pose.deg : null
+      );
       setClaim({
         territory: out.territory,
         stolen_m2: out.stolen_m2 || 0,
@@ -392,8 +724,18 @@ export default function ResultScreen({ navigation, route }) {
         xp_gained: out.xp_gained || 0,
       });
       if (out.energy_max) setEnergyStatus((s) => ({ ...(s || {}), energy: out.energy, energy_max: out.energy_max }));
-      // The payoff carries the celebration now — no toast on top of it.
+      // Land changed hands: territory, energy, rivalries, club totals and every
+      // board are now wrong in the cache. Drop them so the tabs behind this
+      // screen rebuild from the server rather than from before the claim.
+      invalidateAfterClaim();
+      // The payoff carries the celebration now — no toast on top of it. It is
+      // held here but only shown when the sequence reaches its payoff phase.
       setPayoff({ ...out, center });
+      // Watch the run play back in 3D, then the ground change hands: flyover,
+      // camera flight, capture encounter, radial reveal, victory beat. `path`
+      // is what the flyover follows — without it the replay is skipped and the
+      // sequence opens on the focus flight as it used to.
+      await seq.start(out, center, { variant: 'grin-knock', path });
     } catch (e) {
       if (e.status === 402) {
         // Out of energy — send them straight to the refill shop.
@@ -409,155 +751,485 @@ export default function ResultScreen({ navigation, route }) {
     }
   };
 
-  const share = async () => {
+  // The celebration ends here, however it ends. The rivalry banner is fired on
+  // the way out rather than during the sequence: the payoff already owns the
+  // whole screen, and a notification stacked on top of a full-screen
+  // celebration is noise. By the time this runs the runner is back on a normal
+  // screen, which is exactly when a "tap to see the rivalry" prompt can be
+  // acted on.
+  const endCelebration = () => {
+    seq.complete();
+    // The claim is over, so the claim stage is over: the recap is what should
+    // be underneath whatever overlay closes last. Set before those overlays
+    // are opened, not after, so dismissing one lands on the summary rather
+    // than back on a spent map.
+    setStage(STAGE.SUMMARY);
+    // PASERBY goes LAST, and only if this run actually crossed somebody. It is
+    // a separate overlay rather than a phase of the claim sequence on purpose:
+    // a run that met nobody must end exactly the way it always did, and the
+    // territory / payoff / standings beats above are untouched either way.
+    if (!crossedDone && shouldReveal(crossed)) {
+      setCrossedOpen(true);
+      return;
+    }
+    rivalPopup.show({ victims: payoff?.victims, myAvatar: equipped });
+  };
+
+  const closeCrossed = ({ silent = false } = {}) => {
+    setCrossedOpen(false);
+    setCrossedDone(true);
+    // Looking at them IS seeing them — clear the Home badge for exactly the
+    // ones that were on screen.
+    const ids = (crossed?.encounters || []).map((e) => e.id);
+    if (ids.length) api.markPaserbySeen(ids).catch(() => {});
+    invalidate('me:paserby');
+    // The rivalry prompt was waiting behind this; fire it now, unless we're
+    // leaving for another screen.
+    if (!silent && payoff) rivalPopup.show({ victims: payoff?.victims, myAvatar: equipped });
+  };
+
+  const highFiveAll = async () => {
+    setHighFiving(true);
     try {
-      setSharing(true);
-      haptic.light();
-      const uri = await captureRef(cardRef, { format: 'png', quality: 1 });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: 'image/png' });
-      else toast.error('Sharing is not available on this device.');
-    } catch (e) {
-      toast.error(e.message || 'Could not share');
+      // One request each, and a failure on one must not lose the others — the
+      // server rejects a duplicate anyway, so the worst case is a no-op.
+      await Promise.all(
+        (crossed?.encounters || []).map((e) => api.highFive(e.id).catch(() => {}))
+      );
+      haptic.success();
+      setHighFivedAll(true);
     } finally {
-      setSharing(false);
+      setHighFiving(false);
     }
   };
 
-  return (
-    <View style={{ flex: 1, backgroundColor: D.bg }}>
-    <ScrollView style={{ flex: 1, backgroundColor: D.bg }} contentContainerStyle={styles.scroll}>
-      {/* finish celebration: encouraging line + XP earned */}
-      <Reveal from="up" style={styles.cheerCard}>
-        <Text style={[styles.cheerText, { color: team.glow }]}>{cheer}</Text>
-        {xpGained > 0 && (
-          <View style={[styles.xpPill, { borderColor: team.glow }]}>
-            <Text style={[styles.xpPillText, { color: team.glow }]}>+{xpGained} XP</Text>
-          </View>
-        )}
-      </Reveal>
+  // Leaving the result screen: the crossed-paths beat is owed to the runner
+  // even when they never claimed, so it plays before the screen closes.
+  const leaveResult = () => {
+    if (!crossedDone && shouldReveal(crossed)) {
+      setCrossedOpen(true);
+      return;
+    }
+    navigation.getParent()?.goBack();
+  };
 
-      {/* claim placement — slide the circle along the route (map tap works too) */}
-      {canPlace && (
-        <View style={styles.placeCard}>
-          <Text style={styles.placeTitle}>Place your claim</Text>
-          <Text style={styles.placeHint}>
-            {(result.distance_m / 1000).toFixed(2)} km converts to a {formatArea(claimArea)} circle.
-            Slide it anywhere along your route.
-          </Text>
-          {MAP_READY && (
-            <View style={styles.placeMap}>
-              <GameMap
-                theme="dark"
-                initialCenter={center || path[0]}
-                initialZoom={14}
-                onPress={onMapPress}
-              >
-                {/* everyone's nearby land, painted underneath the run */}
-                <TerritoryLayer id="r-board" featureCollection={boardFC} dark />
-                <Trail id="r-trail" points={path} color={trailGlowColor || team.stroke} width={4} glow />
-                {center && (
-                  <TerritoryFill
-                    id="r-claim"
-                    points={shapeRing(center, claimRadius, claimShape)}
-                    fillColor={team.stroke}
-                    strokeColor={team.glow}
-                    fillOpacity={0.22}
-                    glow
-                  />
-                )}
-                {/* owner portrait on every plot — stays on the land they still
-                    hold even after a slice is taken (largest-ring centroid) */}
-                {boardPortraits.map((m) => (
-                  <UserMarker key={m.id} point={m.at}>
-                    <CharacterBust equipped={m.avatar} size={28} ring={m.ring} bg="rgba(21,24,29,0.9)" />
-                  </UserMarker>
-                ))}
-                {/* your portrait marks the centre of the claim */}
-                {center && (
-                  <UserMarker point={center}>
-                    <CharacterBust equipped={equipped} size={36} ring={team.glow} bg="rgba(21,24,29,0.9)" />
-                  </UserMarker>
-                )}
-              </GameMap>
+  // --- stages ---------------------------------------------------------
+  //
+  // CLAIM owns the whole screen because it is a map decision and needs the
+  // map; SUMMARY scrolls; SHARE is last, the final beat before Home. The
+  // stage is state rather than three navigator screens because every one of
+  // them reads the same claim, sequence, payoff and crossed-paths state, and
+  // routing that between screens would mean either duplicating it or
+  // threading it through params.
+  const goToSummary = () => {
+    haptic.light();
+    setStage(STAGE.SUMMARY);
+  };
+  const goToShare = () => {
+    haptic.light();
+    setStage(STAGE.SHARE);
+  };
+
+  // ---------------------------------------------------------------------
+  // STAGE 1 — the claim.
+  //
+  // Full screen, map behind, controls in a sheet under it. The map is NOT in a
+  // scroll view: this is a step where the runner has to look around, and a map
+  // that hands its vertical drags to a parent scroller cannot be looked around
+  // in. That is also why the recap is a separate stage rather than living
+  // below this one on the same page.
+  // ---------------------------------------------------------------------
+  if (stage === STAGE.CLAIM) {
+    return (
+      <View style={{ flex: 1, backgroundColor: D.bg }}>
+        <View
+          style={{ flex: 1 }}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            setMapBox((b) =>
+              b && b.width === width && b.height === height ? b : { width, height }
+            );
+          }}
+        >
+          {MAP_READY ? (
+            <GameMap
+              ref={mapRef}
+              theme="dark"
+              initialCenter={center || path[0]}
+              initialZoom={13}
+              locked={seq.mapLocked}
+              onIdle={fitToNeighbourhood}
+            >
+              {/* everyone's nearby land, painted underneath the run */}
+              <TerritoryLayer id="r-board" featureCollection={boardFC} dark />
+              {/* the exact ground about to change hands — the reveal takes
+                  over from here */}
+              {claimPoints && canPlace && (
+                <TerritoryFill
+                  id="r-claim"
+                  points={claimPoints}
+                  fillColor={team.stroke}
+                  strokeColor={team.glow}
+                  fillOpacity={0.22}
+                  glow
+                />
+              )}
+              {/* The route goes on last, so it reads INSIDE the territory it
+                  grew rather than under a translucent lid.
+
+                  During the 3D replay it UNROLLS: the trail is drawn only as
+                  far as the camera has flown, so the run is re-drawn as it is
+                  re-flown instead of the whole thing sitting there finished
+                  while a camera tours it. `replayProgress` is 1 at every other
+                  moment in the app's life, which is how this stays the plain
+                  full trail everywhere else. */}
+              <Trail
+                id="r-trail"
+                points={replayTrail}
+                color={trailGlowColor || team.stroke}
+                width={4}
+                glow
+              />
+              {/* The permanent territory, switched on as the reveal lands.
+                  DO NOT fade this in. It appears UNDER the reveal canvas,
+                  which is drawing the same polygon at the same 0.42 fill, and
+                  the handoff is invisible precisely because both are at full
+                  strength when the overlay is pulled 260ms later. Easing this
+                  one up makes the territory dip as the overlay clears. */}
+              {seq.showPermanentTerritory && claimedPoints && (
+                <TerritoryFill
+                  id="r-final"
+                  points={claimedPoints}
+                  fillColor={team.stroke}
+                  strokeColor={team.glow}
+                  fillOpacity={0.42}
+                  glow
+                />
+              )}
+              {/* owner portrait on every plot — stays on the land they still
+                  hold even after a slice is taken (largest-ring centroid) */}
+              {boardPortraits.map((m) => (
+                <UserMarker key={m.id} point={m.at}>
+                  <CharacterBust equipped={m.avatar} size={28} ring={m.ring} bg="rgba(21,24,29,0.9)" />
+                </UserMarker>
+              ))}
+              {/* your portrait marks the centre of the claim */}
+              {center && (
+                <UserMarker point={center}>
+                  <CharacterBust equipped={equipped} size={36} ring={team.glow} bg="rgba(21,24,29,0.9)" />
+                </UserMarker>
+              )}
+            </GameMap>
+          ) : (
+            <View style={styles.mapMissing}>
+              <Text style={styles.mapMissingText}>
+                The live map needs a development build. Your claim still works.
+              </Text>
             </View>
           )}
 
-          {/* the slider: start of the route ⟷ end of the route */}
-          <PathSlider frac={frac} onChange={setFrac} accent={team.stroke} />
-          <View style={styles.sliderLabels}>
-            <Text style={[type.caption, { color: D.textDim }]}>Start</Text>
-            <Text style={[type.caption, { color: D.textMuted }]}>
-              {((frac * geo.total) / 1000).toFixed(2)} km mark
-            </Text>
-            <Text style={[type.caption, { color: D.textDim }]}>Finish</Text>
-          </View>
+          {/* Everything below is screen-space, pinned exactly over the map it
+              was projected against, and all of it is pointerEvents none — the
+              map must never gain an invisible lid. */}
 
-          {/* live: who — and how much — this position takes */}
-          {claimingFrom.length > 0 && (
-            <View style={styles.takeCard}>
-              <Text style={styles.takeTitle}>
-                Taking {formatArea(takingTotal)} from {claimingFrom.length} runner{claimingFrom.length === 1 ? '' : 's'}
-              </Text>
-              {claimingFrom.slice(0, 4).map((r) => (
-                <View key={r.id} style={styles.takeRow}>
-                  <CharacterBust equipped={r.avatar} size={26} ring={r.ring} bg="rgba(21,24,29,0.9)" />
-                  <Text style={styles.takeName} numberOfLines={1}>
-                    {r.username}{r.clanTag ? ` · ${r.clanTag}` : ''}
+          {/* the ground changing hands */}
+          {seq.showEncounter && (
+            <CaptureEncounter
+              visible
+              variant={seq.variant}
+              attacker={equipped}
+              defenders={seq.defenders}
+              claimScreenPoint={seq.projection?.claimPoint}
+              bounds={mapBox}
+              onImpact={seq.onImpact}
+              onComplete={seq.onEncounterComplete}
+              reducedMotion={reducedMotion}
+              playToken={seq.playToken}
+            />
+          )}
+
+          {/* the radial reveal */}
+          {seq.reveal && (
+            <TerritoryRevealCanvas
+              rings={seq.reveal.rings}
+              claimPoint={seq.reveal.claimPoint}
+              fillColor={team.stroke}
+              strokeColor={team.glow}
+              // The map's own box, so the reveal can blow the shape up to fill
+              // it and centre it — the same pixel space the capture encounter
+              // and the victory beat are laid out in.
+              bounds={mapBox}
+              reduced={reducedMotion}
+              playToken={seq.playToken}
+            />
+          )}
+
+          {/* standing on the ground they just took */}
+          {seq.showVictory && (
+            <TerritoryVictoryBeat
+              visible
+              attacker={equipped}
+              rings={seq.projection?.rings}
+              claimScreenPoint={seq.projection?.claimPoint}
+              bounds={mapBox}
+              label={victoryLabel(payoff)}
+              strokeColor={team.glow}
+              reducedMotion={reducedMotion}
+              playToken={seq.playToken}
+            />
+          )}
+
+          {/* The heading, floating over the map rather than pushing it down —
+              box-none so the map keeps every touch that is not on the text. */}
+          <View
+            style={[styles.claimHead, { paddingTop: insets.top + space.sm }]}
+            pointerEvents="box-none"
+          >
+            <LinearGradient
+              colors={['rgba(11,13,16,0.92)', 'transparent']}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <View style={styles.claimHeadRow} pointerEvents="box-none">
+              <View pointerEvents="none" style={{ flex: 1 }}>
+                <View style={[styles.stepChip, { borderColor: team.glow }]}>
+                  <View style={[styles.stepDot, { backgroundColor: team.glow }]} />
+                  <Text style={[styles.stepChipText, { color: team.glow }]}>
+                    {!canPlace ? 'GROUND TAKEN' : 'PLACE YOUR TERRITORY'}
                   </Text>
-                  <Text style={[styles.takeArea, { color: team.glow }]}>{formatArea(r.area)}</Text>
                 </View>
-              ))}
-              {claimingFrom.length > 4 && (
-                <Text style={[type.caption, { color: D.textDim, marginTop: 4 }]}>
-                  +{claimingFrom.length - 4} more
-                </Text>
+                <OutlinedText
+                  style={[toonType.headline, styles.placeTitle]}
+                  outline={toon.ink}
+                  width={2.5}
+                  align="left"
+                  containerStyle={{ alignSelf: 'flex-start' }}
+                >
+                  {!canPlace ? 'Territory claimed' : 'Where does it land?'}
+                </OutlinedText>
+              </View>
+              {canPlace && !seq.isRunning && (
+                <PressableScale
+                  onPress={goToSummary}
+                  accessibilityRole="button"
+                  accessibilityLabel="Skip claiming for now"
+                  hitSlop={12}
+                >
+                  <Text style={styles.claimLater}>Later</Text>
+                </PressableScale>
               )}
             </View>
-          )}
-
-          {/* energy gates claiming — tap the meter to refill */}
-          {energyStatus && (
-            <View style={{ marginBottom: space.md }}>
-              <EnergyMeter status={energyStatus} onPress={() => setShopOpen(true)} />
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={[styles.claimBtn, { backgroundColor: team.stroke, opacity: claiming ? 0.6 : 1 }]}
-            onPress={placeClaim}
-            disabled={claiming}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Claim territory here"
-          >
-            <Text style={styles.claimBtnText}>
-              {claiming ? 'Claiming…' : `Claim here${energyStatus ? ` · ${energyStatus.claim_cost ?? 25}⚡` : ''}`}
-            </Text>
-          </TouchableOpacity>
+            {canPlace && (
+              <Text style={styles.placeHint} pointerEvents="none">
+                <Text style={[type.bodySmBold, { color: team.glow }]}>
+                  {(result.distance_m / 1000).toFixed(2)} km
+                </Text>
+                {'  →  '}
+                <Text style={[type.bodySmBold, { color: team.glow }]}>{formatArea(claimArea)}</Text>
+                {canChoose
+                  ? ', in the shape of your run. Drag it along the route and turn it.'
+                  : ', grown around the route you ran.'}
+              </Text>
+            )}
+          </View>
         </View>
+
+        {/* the controls, in their own sheet under the map */}
+        <View style={[styles.claimSheet, { maxHeight: winHeight * 0.46 }]}>
+          <ScrollView
+            scrollEnabled={!claimControlActive}
+            contentContainerStyle={[
+              styles.claimSheetInner,
+              { paddingBottom: insets.bottom + space.lg },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            {__DEV__ && payoff && (
+              <DevSequenceControls sequence={seq} fallbackAvatar={equipped} />
+            )}
+
+            {/* Claim controls retire the moment the claim is away, and never
+                come back — `canPlace` is false for good once the run is
+                claimed, so the button cannot reappear behind the sequence. */}
+            {canPlace && (
+              <>
+                {/* The shape takes a moment to grow. The map is already
+                    showing the run and the exact ground a claim would take, so
+                    this waits out loud instead of blanking the sheet. */}
+                {!options && <ChooseAttackPending team={team} />}
+
+                {canChoose && (
+                  <ChooseAttack
+                    options={options}
+                    pose={pose}
+                    onPose={onPose}
+                    placement={preview}
+                    stale={previewStale}
+                    team={team}
+                    onInteractionChange={setClaimControlActive}
+                    disabled={claiming || seq.isRunning}
+                  />
+                )}
+
+                {/* Fallback while the options are still in flight, or if they
+                    never landed: the client's own estimate of who is under the
+                    resting placement. */}
+                {!canChoose && claimingFrom.length > 0 && (
+                  <View style={[styles.takeCard, { borderLeftColor: team.glow }]}>
+                    <Text style={styles.takeEyebrow}>UNDER YOUR TERRITORY</Text>
+                    <Text style={styles.takeTitle}>
+                      Taking <Text style={{ color: team.glow }}>{formatArea(takingTotal)}</Text> from{' '}
+                      {claimingFrom.length} runner{claimingFrom.length === 1 ? '' : 's'}
+                    </Text>
+                    {claimingFrom.slice(0, 4).map((r) => (
+                      <View key={r.id} style={styles.takeRow}>
+                        <CharacterBust equipped={r.avatar} size={26} ring={r.ring} bg="rgba(21,24,29,0.9)" />
+                        <Text style={styles.takeName} numberOfLines={1}>
+                          {r.username}{r.clanTag ? ` · ${r.clanTag}` : ''}
+                        </Text>
+                        <Text style={[styles.takeArea, { color: team.glow }]}>{formatArea(r.area)}</Text>
+                      </View>
+                    ))}
+                    {claimingFrom.length > 4 && (
+                      <Text style={[type.caption, { color: D.textDim, marginTop: 4 }]}>
+                        +{claimingFrom.length - 4} more
+                      </Text>
+                    )}
+                  </View>
+                )}
+
+                {/* Energy gates claiming — tap the meter to refill. It is the
+                    ONLY place the price appears now. It used to be on the
+                    button as well, which made every decision on this screen
+                    read as a purchase; the decision is about ground, and what
+                    it costs is a fact about the account, not about the move. */}
+                {energyStatus && (
+                  <View style={{ marginBottom: space.md }}>
+                    <EnergyMeter status={energyStatus} onPress={() => setShopOpen(true)} />
+                  </View>
+                )}
+
+                <ToonButton
+                  title={claiming ? 'Claiming…' : 'CLAIM HERE'}
+                  onPress={placeClaim}
+                  loading={claiming}
+                  disabled={claiming || seq.isRunning || moveBlocked}
+                  fill={{ colors: [team.glow, team.stroke, team.stroke], border: toon.ink }}
+                />
+              </>
+            )}
+          </ScrollView>
+        </View>
+
+        <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={refreshEnergy} />
+
+        {/* the payoff: who you took it from, the XP, the level bar. Opens on
+            the sequence's payoff phase — after the victory beat, not straight
+            off the territory handoff. */}
+        <ClaimPayoff
+          visible={seq.showPayoff}
+          claim={payoff}
+          myAvatar={equipped}
+          onClose={seq.continueToLeaderboard}
+          onViewMap={() => {
+            const c = payoff?.center;
+            endCelebration();
+            navigation.navigate('Tabs', {
+              screen: 'Map',
+              params: c ? { screen: 'MapMain', params: { focus: { lat: c.latitude, lon: c.longitude } } } : undefined,
+            });
+          }}
+        />
+
+        {/* the standings, arriving behind a character-led wipe */}
+        <LeaderboardTransition
+          visible={seq.showLeaderboard}
+          data={seq.leaderboard}
+          attacker={equipped}
+          reducedMotion={reducedMotion}
+          playToken={seq.playToken}
+          onDone={endCelebration}
+        />
+
+        <PaserbyReveal
+          visible={crossedOpen}
+          reveal={crossed}
+          highFiving={highFiving}
+          highFivedAll={highFivedAll}
+          onHighFiveAll={highFiveAll}
+          onViewCrossroads={() => {
+            closeCrossed({ silent: true });
+            navigation.navigate('Tabs', {
+              screen: 'You',
+              params: { screen: 'Crossroads', initial: false },
+            });
+          }}
+          onContinue={closeCrossed}
+        />
+
+        {showConfetti && <Confetti />}
+      </View>
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // STAGE 2 — the recap, and STAGE 3 — sharing, which is rendered over it as
+  // a full-screen sheet so the last thing before Home is the share card.
+  // ---------------------------------------------------------------------
+  return (
+    <View style={{ flex: 1, backgroundColor: D.bg }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: D.bg }}
+      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + space.md }]}
+    >
+
+      {/* An activity that earned nothing has to SAY so — a result screen that
+          silently pays zero reads as a bug, not as a rule. */}
+      {qualificationReason ? (
+        <Reveal from="up" style={styles.gateCard}>
+          <Text style={styles.gateTitle}>
+            {/* The tier is a full string — `unqualified_for_rewards`, not
+                `unqualified`. Comparing against the short form meant this
+                heading was ALWAYS "Too short to claim", including for the 20 m
+                walk that in fact earned nothing at all. */}
+            {result.tier === RUN_TIER.UNQUALIFIED
+              ? 'No rewards for this one'
+              : 'Too short to claim'}
+          </Text>
+          <Text style={styles.gateText}>{qualificationReason}</Text>
+        </Reveal>
+      ) : (
+        (result.coins_gained > 0 || result.energy_gained > 0) && (
+          <Reveal from="up" style={styles.earnRow}>
+            {result.coins_gained > 0 && (
+              <Text style={styles.earnItem}>+{result.coins_gained} coins</Text>
+            )}
+            {result.energy_gained > 0 && (
+              <Text style={styles.earnItem}>+{result.energy_gained} ⚡</Text>
+            )}
+            {(result.coins_capped || result.energy_capped) && (
+              <Text style={styles.earnCapped}>daily cap reached</Text>
+            )}
+          </Reveal>
+        )
       )}
 
-      <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={refreshEnergy} />
-
-      {/* the payoff: who you took it from, the XP, the level bar */}
-      <ClaimPayoff
-        visible={!!payoff}
-        claim={payoff}
-        myAvatar={equipped}
-        onClose={() => setPayoff(null)}
-        onViewMap={() => {
-          const c = payoff?.center;
-          setPayoff(null);
-          navigation.navigate('Tabs', {
-            screen: 'Map',
-            params: c ? { screen: 'MapMain', params: { focus: { lat: c.latitude, lon: c.longitude } } } : undefined,
-          });
-        }}
-      />
+      {/* A run whose public contribution is being withheld has to SAY something
+          neutral. Reporting full success while the territory quietly reaches
+          nobody reads as a broken server. This names no detector, no threshold
+          and no evidence — the server deliberately sends only a state. */}
+      {result.verification_state === 'pending' ? (
+        <Reveal from="up" style={styles.gateCard}>
+          <Text style={styles.gateTitle}>Run recorded</Text>
+          <Text style={styles.gateText}>
+            Competitive rewards for this one are still being verified.
+          </Text>
+        </Reveal>
+      ) : null}
 
       {/* the shareable card */}
       <Reveal delay={canPlace ? 140 : 0}>
-      <View ref={cardRef} collapsable={false} style={styles.card}>
+      <View style={styles.card}>
         <View style={[styles.eyebrow, { borderColor: team.glow }]}>
           <View style={[styles.eyebrowDot, { backgroundColor: team.glow }]} />
           <Text style={[styles.eyebrowText, { color: team.glow }]}>
@@ -575,19 +1247,37 @@ export default function ResultScreen({ navigation, route }) {
           <CountUpText value={heroAreaM2} format={km2} style={[styles.heroArea, { color: team.glow }]} />
           <Text style={styles.heroUnit}> km²</Text>
         </View>
-        <Text style={styles.heroCaption}>
-          {captured
-            ? `claimed for your club · strength ×${(t.strength || 1).toFixed(1)}`
-            : canPlace
-            ? 'your circle is ready — place it on your route above'
-            : 'run at least a little further to earn a claim'}
-        </Text>
+        <Text style={styles.heroCaption}>{heroCaption}</Text>
 
         <View style={styles.quietRow}>
-          <QuietStat label="Distance" value={`${(result.distance_m / 1000).toFixed(2)} km`} />
+          <QuietStat label="Distance" value={(result.distance_m / 1000).toFixed(2)} unit="km" />
           <QuietStat label="Pace" value={formatPace(result.distance_m, result.duration_s)} />
           <QuietStat label="Duration" value={formatDuration(result.duration_s)} />
         </View>
+        <View style={[styles.quietRow, styles.quietRowTight]}>
+          <QuietStat
+            label="Best km"
+            value={bestKmSeconds ? paceStr(bestKmSeconds) : '·'}
+            unit={bestKmSeconds ? '/km' : undefined}
+          />
+          <QuietStat
+            label="Elev gain"
+            value={elevationM == null ? '·' : String(Math.round(elevationM))}
+            unit={elevationM == null ? undefined : 'm'}
+          />
+          <QuietStat
+            label="Avg speed"
+            value={avgSpeedKmh ? avgSpeedKmh.toFixed(1) : '·'}
+            unit={avgSpeedKmh ? 'km/h' : undefined}
+          />
+        </View>
+
+        {/* The XP as a POSITION, not a receipt: the ladder bar runs from where
+            this runner stood before the run to where they stand now, and rolls
+            the level over if the run crossed one. */}
+        {totalXp > 0 && (
+          <XpProgress xp={xpTotalNow} gained={totalXp} accent={team.glow} />
+        )}
 
         {(captured || stolen > 0) && (
           <View style={styles.deltaRow}>
@@ -600,16 +1290,11 @@ export default function ResultScreen({ navigation, route }) {
                 +{formatArea(heroAreaM2)} · {label} holds more
               </Text>
             )}
-            {claim.xp_gained > 0 && (
-              <Text style={[styles.deltaText, { color: team.glow, marginTop: 4 }]}>
-                +{claim.xp_gained} XP
-              </Text>
-            )}
           </View>
         )}
 
         <View style={styles.watermark}>
-          <LoopMark size={16} />
+          <PaserMark size={18} color={D.textDim} />
           <Text style={styles.watermarkText}>PASER</Text>
         </View>
       </View>
@@ -618,11 +1303,28 @@ export default function ResultScreen({ navigation, route }) {
       {/* PRs (Phase 6 fills achievements) */}
       {achievements.length > 0 && (
         <Reveal delay={220} style={styles.section}>
-          <Text style={styles.sectionTitle}>Personal records</Text>
+          <View style={styles.prHead}>
+            <GameAnimation name="achievementBadge" size={62} trigger={result.run_id} />
+            <Text style={styles.sectionTitle}>Personal records</Text>
+          </View>
           <View style={styles.prWrap}>
             {achievements.map((a) => (
-              <View key={a} style={[styles.prChip, { borderColor: team.glow }]}>
-                <Text style={[styles.prText, { color: team.glow }]}>{a}</Text>
+              <View key={a} style={[styles.prCard, { borderColor: withAlpha(team.glow, 0.55) }]}>
+                <LinearGradient
+                  colors={[withAlpha(team.glow, 0.22), 'transparent']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={[styles.prIconWrap, { backgroundColor: withAlpha(team.glow, 0.16) }]}>
+                  <AppIcon name={recordIcon(a)} size={26} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.prKicker}>NEW RECORD</Text>
+                  <Text style={[styles.prText, { color: D.text }]} numberOfLines={1}>
+                    {a}
+                  </Text>
+                </View>
               </View>
             ))}
           </View>
@@ -634,13 +1336,17 @@ export default function ResultScreen({ navigation, route }) {
         <Splits splits={splits} accent={team.glow} />
       </Reveal>
 
+      {/* One way on, because sharing is the NEXT STAGE rather than a button
+          half way down this page. The escape hatch is on the share screen
+          itself, which goes straight Home — so nobody is trapped into
+          posting, but everybody is offered it once. */}
       <Reveal delay={380} style={styles.actions}>
         <PressableScale
           style={shadow.glow(brand.pink)}
-          onPress={share}
-          disabled={sharing || claiming}
+          onPress={goToShare}
+          disabled={claiming}
           accessibilityRole="button"
-          accessibilityLabel="Share result card"
+          accessibilityLabel="Continue to sharing"
         >
           <LinearGradient
             colors={brand.gradient}
@@ -648,19 +1354,47 @@ export default function ResultScreen({ navigation, route }) {
             end={{ x: 1, y: 0.5 }}
             style={styles.shareBtn}
           >
-            <Text style={styles.shareBtnText}>{sharing ? 'Preparing…' : 'Share'}</Text>
+            <Text style={styles.shareBtnText}>Continue</Text>
           </LinearGradient>
-        </PressableScale>
-        <PressableScale
-          style={styles.doneBtn}
-          onPress={() => navigation.getParent()?.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Back to home"
-        >
-          <Text style={styles.doneBtnText}>Done</Text>
         </PressableScale>
       </Reveal>
     </ScrollView>
+
+    {/* STAGE 3 — the outward-facing card, story/post shaped and built for
+        Instagram rather than cropped out of this screen. The last thing
+        before Home: its Done goes back, sharing or not. */}
+    <RunShareSheet
+      visible={stage === STAGE.SHARE}
+      onClose={leaveResult}
+      closeLabel="Done"
+      team={team}
+      path={path}
+      rings={shareRings}
+      run={shareRun}
+      // The runner's own avatar, to stand at the end of their route.
+      equipped={equipped}
+    />
+
+    {/* CROSSED PATHS — the last beat, after the standings have been dismissed
+        and only when this run turned somebody up. */}
+    <PaserbyReveal
+      visible={crossedOpen}
+      reveal={crossed}
+      highFiving={highFiving}
+      highFivedAll={highFivedAll}
+      onHighFiveAll={highFiveAll}
+      onViewCrossroads={() => {
+        closeCrossed({ silent: true });
+        navigation.navigate('Tabs', {
+          screen: 'You',
+          // initial:false keeps the profile underneath, so Crossroads' back
+          // button works and the You tab isn't stranded on a detail screen.
+          params: { screen: 'Crossroads', initial: false },
+        });
+      }}
+      onContinue={closeCrossed}
+    />
+
     {showConfetti && <Confetti />}
     </View>
   );
@@ -669,73 +1403,86 @@ export default function ResultScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   scroll: { padding: space.lg, paddingBottom: space.xxl },
 
-  cheerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.md,
+  gateCard: {
+    backgroundColor: D.cardAlt,
+    borderRadius: toonRadius.cell,
+    borderLeftWidth: 4,
+    borderLeftColor: D.textDim,
+    padding: space.md,
     marginBottom: space.md,
   },
-  cheerText: { ...type.bodyBold, flex: 1 },
-  xpPill: {
+  gateTitle: { ...type.bodySmBold, color: D.text, marginBottom: 2 },
+  gateText: { ...type.bodySm, color: D.textMuted },
+
+  earnRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.md },
+  earnItem: { ...type.bodySmBold, color: D.textMuted },
+  earnCapped: { ...type.caption, color: D.textDim },
+
+  // The claim card is the centrepiece of the whole post-run screen, so it wears
+  // the game's own surface (ink outline, hard shadow, outlined display type)
+  // instead of the plain settings-style card it used to be.
+  // --- the claim stage ---------------------------------------------------
+  // The map is the screen here, so the heading floats over it behind a
+  // gradient rather than taking a band of its own. `box-none` on the container
+  // and `none` on the text keeps every touch that is not the Later button
+  // going to the map underneath, which is the whole point of this stage.
+  claimHead: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.lg,
+  },
+  claimHeadRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  claimLater: { ...type.bodySmBold, color: D.textMuted, paddingTop: 6 },
+  claimSheet: {
+    backgroundColor: D.card,
+    borderTopWidth: 2.5,
+    borderTopColor: toon.ink,
+  },
+  claimSheetInner: { padding: space.lg },
+  mapMissing: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: space.xl,
+    backgroundColor: D.cardAlt,
+  },
+  mapMissingText: { ...type.bodySm, color: D.textMuted, textAlign: 'center' },
+  stepChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    alignSelf: 'flex-start',
     borderWidth: 1.5,
     borderRadius: radius.pill,
     paddingHorizontal: space.md,
-    paddingVertical: 5,
+    paddingVertical: 4,
+    marginBottom: space.sm,
   },
-  xpPillText: { ...type.bodySmBold },
-
-  placeCard: {
-    backgroundColor: D.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: D.border,
-    padding: space.lg,
-    marginBottom: space.lg,
-  },
-  placeTitle: { ...type.heading, color: D.text, marginBottom: 4 },
-  placeHint: { ...type.caption, color: D.textMuted, marginBottom: space.md },
-  placeMap: { height: 300, borderRadius: radius.md, overflow: 'hidden', marginBottom: space.md },
-
-  sliderWrap: { height: 44, justifyContent: 'center', marginHorizontal: 4 },
-  sliderTrack: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: D.cardAlt,
-  },
-  sliderFill: { position: 'absolute', left: 0, height: 6, borderRadius: 3 },
-  sliderThumb: {
-    position: 'absolute',
-    width: 26,
-    height: 26,
-    marginLeft: -13,
-    borderRadius: 13,
-    borderWidth: 3,
-    backgroundColor: '#fff',
-  },
-  sliderLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: space.md,
-    marginTop: 2,
-  },
+  stepDot: { width: 7, height: 7, borderRadius: 4 },
+  stepChipText: { ...type.captionMedium, letterSpacing: 0.8 },
+  placeTitle: { color: D.text, marginBottom: 4 },
+  placeHint: { ...type.bodySm, color: D.textMuted, marginBottom: space.md },
 
   takeCard: {
     backgroundColor: D.cardAlt,
-    borderRadius: radius.md,
+    borderRadius: toonRadius.cell,
+    borderLeftWidth: 4,
     padding: space.md,
     marginBottom: space.md,
+  },
+  takeEyebrow: {
+    ...type.captionMedium,
+    color: D.textDim,
+    letterSpacing: 1,
+    marginBottom: 3,
   },
   takeTitle: { ...type.bodySmBold, color: D.text, marginBottom: space.sm },
   takeRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: 6 },
   takeName: { ...type.bodySm, color: D.textMuted, flex: 1 },
   takeArea: { ...type.bodySmBold },
-
-  claimBtn: { paddingVertical: 15, borderRadius: radius.pill, alignItems: 'center' },
-  claimBtnText: { ...type.button, color: '#fff' },
 
   card: {
     backgroundColor: D.card,
@@ -761,9 +1508,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'space-between',
     marginTop: space.xl, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: D.border,
   },
+  // The second metric row hangs off the first, so the six read as one block
+  // rather than as two bordered sections.
+  quietRowTight: { marginTop: space.lg, paddingTop: 0, borderTopWidth: 0 },
   quietStat: { flex: 1, alignItems: 'center' },
   quietLabel: { ...type.labelSm, color: D.textDim, marginBottom: 4 },
+  quietValueRow: { flexDirection: 'row', alignItems: 'flex-end' },
   quietValue: { ...type.statSm, color: D.text },
+  quietUnit: { ...type.caption, color: D.textDim, marginLeft: 2, marginBottom: 1 },
   deltaRow: { marginTop: space.lg },
   deltaText: { ...type.bodySmBold, textAlign: 'center' },
   watermark: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: space.lg },
@@ -777,13 +1529,32 @@ const styles = StyleSheet.create({
   splitBar: { height: '100%', borderRadius: 4 },
   splitPace: { ...type.statSm, color: D.textMuted, width: 52, textAlign: 'right' },
 
-  prWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  prChip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6 },
-  prText: { ...type.bodySmBold },
+  prWrap: { gap: space.sm },
+  prHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs },
+  // A record is the best thing that happened on this run — a bare outlined
+  // pill made it look like a filter chip.
+  prCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    borderWidth: 1.5,
+    borderRadius: toonRadius.cell,
+    backgroundColor: D.cardAlt,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    overflow: 'hidden',
+  },
+  prIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  prKicker: { ...type.labelSm, fontSize: 10, color: D.textDim, letterSpacing: 1.1, marginBottom: 1 },
+  prText: { ...type.bodyBold },
 
   actions: { marginTop: space.xl, gap: space.md },
   shareBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
   shareBtnText: { ...type.button, color: '#fff' },
-  doneBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center', borderWidth: 1, borderColor: D.border },
-  doneBtnText: { ...type.button, color: D.text },
 });

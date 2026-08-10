@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, StatusBar, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import * as Location from 'expo-location';
@@ -6,6 +6,7 @@ import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
 import {
   createNavigationContainerRef,
+  DarkTheme,
   DefaultTheme,
   NavigationContainer,
 } from '@react-navigation/native';
@@ -51,6 +52,7 @@ import ShopScreen from './src/screens/ShopScreen';
 import ProgressionScreen from './src/screens/ProgressionScreen';
 import PasersScreen from './src/screens/PasersScreen';
 import RivalsScreen from './src/screens/RivalsScreen';
+import CrossroadsScreen from './src/screens/CrossroadsScreen';
 import RunnerProfileScreen from './src/screens/RunnerProfileScreen';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
@@ -62,10 +64,17 @@ import { RecordingProvider, useRecording } from './src/state/recording';
 import { SettingsProvider } from './src/state/settings';
 import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
+import { RivalPopupHost } from './src/components/RivalPopup';
 import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
-import { colors, darkColors, fonts, ThemeProvider, useTheme } from './src/theme';
+import { hydrateCache } from './src/api/cache';
+import { preloadCriticalImages, preloadStartupImages } from './src/config/screenAssets';
+// No static `colors` here on purpose — App used to build the nav theme and the
+// header chrome from it, which pinned both to the dark palette. Everything
+// theme-dependent now reads useTheme(); `darkColors` stays only for the record
+// modal, which is deliberately dark in either theme.
+import { darkColors, fonts, ThemeProvider, useTheme } from './src/theme';
 
 // Crash telemetry — a strict no-op unless a DSN is provided via env/extra.
 const SENTRY_DSN =
@@ -74,17 +83,49 @@ if (SENTRY_DSN) Sentry.init({ dsn: SENTRY_DSN, tracesSampleRate: 0.1 });
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-const navTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: colors.bg,
-    card: colors.bg,
-    text: colors.text,
-    border: colors.border,
-    primary: colors.primary,
-  },
-};
+// React Navigation paints the surface UNDER every screen — including the strip
+// behind the floating tab pill, which our TabBar leaves transparent on purpose.
+// This used to be a module-level const built from the static `colors` (the dark
+// palette, see theme/index.js), so light mode kept a black band along the
+// bottom of every tabbed screen. Both hooks below read the ACTIVE palette
+// instead; they run inside the tree, under ThemeProvider.
+function useNavTheme() {
+  const { colors, scheme } = useTheme();
+  return useMemo(() => {
+    const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: colors.bg,
+        card: colors.bg,
+        text: colors.text,
+        border: colors.border,
+        primary: colors.primary,
+      },
+    };
+  }, [colors, scheme]);
+}
+
+// Chrome for the native stack headers, on the active palette. Applied through
+// each navigator's `screenOptions` so it themes every pushed screen at once —
+// it was previously spread into the options of each screen one at a time.
+function useHeaderChrome() {
+  const { colors } = useTheme();
+  return useMemo(
+    () => ({
+      headerStyle: { backgroundColor: colors.bg },
+      headerTitleStyle: { color: colors.text, fontFamily: fonts.display },
+      headerTintColor: colors.text,
+      headerShadowVisible: false,
+      // Without this iOS labels the back button with the PREVIOUS ROUTE'S
+      // NAME — Season showed a chevron reading "HomeMain". Route names are
+      // internal identifiers, not copy; show the chevron alone.
+      headerBackButtonDisplayMode: 'minimal',
+    }),
+    [colors]
+  );
+}
 
 // pacer:// deep links (territoryrun:// kept as a legacy prefix for older
 // invite links and installed builds).
@@ -109,33 +150,52 @@ const linking = {
 
 const HomeStackNav = createNativeStackNavigator();
 function HomeStack() {
+  const header = useHeaderChrome();
   return (
-    <HomeStackNav.Navigator screenOptions={{ headerShown: false }}>
+    <HomeStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <HomeStackNav.Screen name="HomeMain" component={HomeScreen} />
       <HomeStackNav.Screen
         name="Leaderboard"
         component={LeaderboardScreen}
-        options={{ headerShown: true, title: 'Leaderboard', ...headerLight }}
+        options={{ headerShown: true, title: 'Leaderboard' }}
       />
       <HomeStackNav.Screen
         name="RunDetail"
         component={RunDetailScreen}
-        options={{ headerShown: true, title: 'Run', ...headerLight }}
+        options={{ headerShown: true, title: 'Run' }}
       />
       <HomeStackNav.Screen
         name="Notifications"
         component={NotificationsScreen}
-        options={{ headerShown: true, title: 'Notifications', ...headerLight }}
+        options={{ headerShown: true, title: 'Notifications' }}
       />
-      <HomeStackNav.Screen
-        name="Season"
-        component={SeasonScreen}
-        options={{ headerShown: true, title: 'Season', ...headerLight }}
-      />
+      {/* Season draws its own art header (with a back button), like Pasers
+          and Rivals — the native one would stack a second bar above it. */}
+      <HomeStackNav.Screen name="Season" component={SeasonScreen} />
       <HomeStackNav.Screen
         name="ClubDetail"
         component={ClubDetailScreen}
-        options={{ headerShown: true, title: 'Club', ...headerLight }}
+        options={{ headerShown: true, title: 'Club' }}
+      />
+      {/* The side rail's destinations, registered HERE as well as under You.
+          They used to be opened with navigate('You', { screen: … }), which
+          crossed into the other tab: back from the shop rail landed on the
+          profile, and you could not get to Home without a second tap. A screen
+          opened from Home is pushed onto Home's own stack, so back is Home.
+          The You tab keeps its own copies for the routes reached from the
+          profile, and each instance carries its own navigation state. */}
+      <HomeStackNav.Screen
+        name="Progression"
+        component={ProgressionScreen}
+        options={{ headerShown: true, title: 'Levels & rewards' }}
+      />
+      <HomeStackNav.Screen name="Rivals" component={RivalsScreen} />
+      <HomeStackNav.Screen name="Crossroads" component={CrossroadsScreen} />
+      {/* Reachable from Crossroads, so it has to exist on this stack too. */}
+      <HomeStackNav.Screen
+        name="RunnerProfile"
+        component={RunnerProfileScreen}
+        options={{ headerShown: true, title: 'Runner' }}
       />
     </HomeStackNav.Navigator>
   );
@@ -143,8 +203,9 @@ function HomeStack() {
 
 const MapStackNav = createNativeStackNavigator();
 function MapStack() {
+  const header = useHeaderChrome();
   return (
-    <MapStackNav.Navigator screenOptions={{ headerShown: false }}>
+    <MapStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <MapStackNav.Screen name="MapMain" component={GlobalMapScreen} />
     </MapStackNav.Navigator>
   );
@@ -152,28 +213,31 @@ function MapStack() {
 
 const ClubStackNav = createNativeStackNavigator();
 function ClubStack() {
+  const header = useHeaderChrome();
   return (
-    <ClubStackNav.Navigator screenOptions={{ headerShown: false }}>
+    <ClubStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <ClubStackNav.Screen name="ClubMain" component={ClubScreen} />
+      {/* A create form is a detour, not a destination, so it comes up as a
+          sheet you dismiss rather than a page you navigate back out of. */}
       <ClubStackNav.Screen
         name="ClubCreate"
         component={ClubCreateScreen}
-        options={{ headerShown: true, title: 'Create club', ...headerLight }}
+        options={{ headerShown: true, title: 'Create club', presentation: 'modal' }}
       />
       <ClubStackNav.Screen
         name="ClubJoin"
         component={ClubJoinScreen}
-        options={{ headerShown: true, title: 'Join club', ...headerLight }}
+        options={{ headerShown: true, title: 'Join club' }}
       />
       <ClubStackNav.Screen
         name="ClubDetail"
         component={ClubDetailScreen}
-        options={{ headerShown: true, title: 'Club', ...headerLight }}
+        options={{ headerShown: true, title: 'Club' }}
       />
       <ClubStackNav.Screen
         name="ClubChat"
         component={ClubChatScreen}
-        options={{ headerShown: true, title: 'Club chat', ...headerLight }}
+        options={{ headerShown: true, title: 'Club chat' }}
       />
     </ClubStackNav.Navigator>
   );
@@ -181,44 +245,39 @@ function ClubStack() {
 
 const YouStackNav = createNativeStackNavigator();
 function YouStack() {
+  const header = useHeaderChrome();
   return (
-    <YouStackNav.Navigator screenOptions={{ headerShown: false }}>
+    <YouStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
       <YouStackNav.Screen
         name="Progression"
         component={ProgressionScreen}
-        options={{ headerShown: true, title: 'Levels & rewards', ...headerLight }}
+        options={{ headerShown: true, title: 'Levels & rewards' }}
       />
       <YouStackNav.Screen
         name="AvatarStudio"
         component={AvatarStudioScreen}
-        options={{ headerShown: true, title: 'Your runner', ...headerLight }}
+        options={{ headerShown: true, title: 'Your runner' }}
       />
       <YouStackNav.Screen
         name="RunDetail"
         component={RunDetailScreen}
-        options={{ headerShown: true, title: 'Run', ...headerLight }}
+        options={{ headerShown: true, title: 'Run' }}
       />
-      {/* Pasers and Rivals draw their own gradient headers (with a back
-          button), so the native one is off. */}
+      {/* Pasers, Rivals and Crossroads draw their own gradient headers (with a
+          back button), so the native one is off. */}
       <YouStackNav.Screen name="Pasers" component={PasersScreen} />
       <YouStackNav.Screen name="Rivals" component={RivalsScreen} />
+      <YouStackNav.Screen name="Crossroads" component={CrossroadsScreen} />
       <YouStackNav.Screen
         name="RunnerProfile"
         component={RunnerProfileScreen}
         // title is set by the screen once the runner's name loads
-        options={{ headerShown: true, title: 'Runner', ...headerLight }}
+        options={{ headerShown: true, title: 'Runner' }}
       />
     </YouStackNav.Navigator>
   );
 }
-
-const headerLight = {
-  headerStyle: { backgroundColor: colors.bg },
-  headerTitleStyle: { color: colors.text, fontFamily: fonts.display },
-  headerTintColor: colors.text,
-  headerShadowVisible: false,
-};
 
 // --- tabs ------------------------------------------------------------------
 
@@ -242,22 +301,33 @@ const YouTab = withBoundary(YouStack);
 // bookends the swipe: Home↔Map and Club↔You swipe; leave Map by tapping).
 const Tab = createMaterialTopTabNavigator();
 function MainTabs() {
+  const { colors } = useTheme();
   const { width } = useWindowDimensions();
   return (
     <Tab.Navigator
       tabBarPosition="bottom"
       tabBar={(props) => <TabBar {...props} />}
       initialLayout={{ width }}
-      screenOptions={{ swipeEnabled: true, lazy: true }}
+      // Our TabBar is a floating pill on a transparent dock, so the pager's own
+      // surface is what shows around and under it — state it explicitly rather
+      // than relying on the navigator's default.
+      style={{ backgroundColor: colors.bg }}
+      sceneContainerStyle={{ backgroundColor: colors.bg }}
+      // Keep lazy mounting's low initial cost, but prepare every one of our
+      // four tabs while Home is visible. With the default distance of 0, iOS
+      // first mounted and decoded a tab only after the user tapped/swiped it.
+      screenOptions={{ swipeEnabled: true, lazy: true, lazyPreloadDistance: 3 }}
     >
       <Tab.Screen name="Home" component={HomeTab} />
       <Tab.Screen name="Map" component={MapTab} options={{ swipeEnabled: false }} />
       <Tab.Screen name="Club" component={ClubTab} />
-      {/* Home deep-links into You › Pasers / Rivals, which leaves the You
-          stack sitting on that inner screen. Tapping the You tab then
-          re-showed Pasers instead of the profile, because navigate('You')
-          restores the stack's existing state. Reset to the profile on every
-          tab press — the standard "tap the tab, go to its root" behaviour. */}
+      {/* The steal popup and the tutorial still deep-link into You › Rivals /
+          Pasers, which leaves the You stack sitting on that inner screen.
+          Tapping the You tab then re-showed it instead of the profile, because
+          navigate('You') restores the stack's existing state. Reset to the
+          profile on every tab press — the standard "tap the tab, go to its
+          root" behaviour. (Home's side rail no longer comes through here; it
+          pushes onto Home's own stack.) */}
       <Tab.Screen
         name="You"
         component={YouTab}
@@ -310,7 +380,14 @@ function RecordModal() {
           headerLeft: () => <CloseRecordButton navigation={navigation} />,
         })}
       />
-      <RecordStackNav.Screen name="Result" component={ResultScreen} options={{ headerShown: false }} />
+      {/* Fades rather than pushing. A horizontal push says "you moved forward
+          and can come back"; finishing a run is neither — the run ends and its
+          payoff resolves in place. */}
+      <RecordStackNav.Screen
+        name="Result"
+        component={ResultScreen}
+        options={{ headerShown: false, animation: 'fade' }}
+      />
     </RecordStackNav.Navigator>
   );
 }
@@ -328,8 +405,9 @@ function AuthNavigator() {
 
 const RootStackNav = createNativeStackNavigator();
 function RootStack() {
+  const header = useHeaderChrome();
   return (
-    <RootStackNav.Navigator screenOptions={{ headerShown: false }}>
+    <RootStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <RootStackNav.Screen name="Tabs" component={MainTabs} />
       {/* Shop lives at the ROOT, not inside the You stack. The Home side rail
           opens it, and when it sat under You that deep-link left the You tab
@@ -338,7 +416,7 @@ function RootStack() {
       <RootStackNav.Screen
         name="Shop"
         component={ShopScreen}
-        options={{ headerShown: true, title: 'Shop', ...headerLight }}
+        options={{ headerShown: true, title: 'Water point' }}
       />
       <RootStackNav.Screen
         name="Record"
@@ -370,6 +448,8 @@ function FullScreenSpinner() {
 const navigationRef = createNavigationContainerRef();
 
 function RootNavigator() {
+  const { colors } = useTheme();
+  const navTheme = useNavTheme();
   const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
   const { needsSetup: avatarNeedsSetup, loading: avatarLoading } = useAvatar();
   const { profile, displayName, loading: profileLoading, completeTutorial } = useProfile();
@@ -433,6 +513,19 @@ function RootNavigator() {
         <NavigationContainer ref={navigationRef} theme={navTheme} linking={linking}>
           <RootStack />
         </NavigationContainer>
+        {/* Steal alerts drop in over whatever screen is up, so the host lives
+            outside the navigator — same as the tutorial overlay. */}
+        <RivalPopupHost
+          onOpen={() => {
+            if (!navigationRef.isReady()) return;
+            // initial:false keeps YouMain underneath, so Rivals' back button
+            // works and the You tab isn't left stranded on a detail screen.
+            navigationRef.navigate('Tabs', {
+              screen: 'You',
+              params: { screen: 'Rivals', initial: false },
+            });
+          }}
+        />
         {/* first-run coach marks, dimming the real home screen behind them */}
         {profile.tutorialPending ? (
           <TutorialOverlay
@@ -442,7 +535,9 @@ function RootNavigator() {
               if (!navigationRef.isReady()) return;
               navigationRef.navigate('Tabs', {
                 screen: 'You',
-                params: { screen: 'Pasers' },
+                // initial:false keeps the profile under Pasers, so its back
+                // button returns there instead of dead-ending the tab.
+                params: { screen: 'Pasers', initial: false },
               });
             }}
           />
@@ -463,6 +558,14 @@ function RootNavigator() {
 }
 
 function App() {
+  const [startupImagesReady, setStartupImagesReady] = useState(false);
+  // The response cache is read from disk into memory ONCE, here, so that every
+  // screen's first render can seed itself from it synchronously. Doing it later
+  // (or per screen) would put an AsyncStorage tick in front of the content and
+  // give back the frame of skeleton the cache exists to remove. It is a single
+  // small read and it overlaps the font load, so it costs no real time — but it
+  // is raced anyway, because nothing on the launch path may block forever.
+  const [cacheReady, setCacheReady] = useState(false);
   const [fontsLoaded, fontError] = useFonts({
     SpaceGrotesk_500Medium,
     SpaceGrotesk_700Bold,
@@ -476,10 +579,48 @@ function App() {
   });
 
   useEffect(() => {
-    if (fontsLoaded || fontError) SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded, fontError]);
+    let alive = true;
+    const done = () => alive && setCacheReady(true);
+    const guard = setTimeout(done, 400);
+    hydrateCache().finally(() => {
+      clearTimeout(guard);
+      done();
+    });
+    return () => {
+      alive = false;
+      clearTimeout(guard);
+    };
+  }, []);
 
-  if (!fontsLoaded && !fontError) return null;
+  useEffect(() => {
+    let active = true;
+    const finish = () => {
+      if (active) setStartupImagesReady(true);
+    };
+    // A corrupt/missing optional PNG must not strand someone on the native
+    // splash. Normal bundled assets resolve well before this guard fires.
+    const guard = setTimeout(finish, 1500);
+    // Hold the splash for the first frame's art only; the rest of the startup
+    // family decodes behind the running app. Waiting on the full set put every
+    // one of those decodes in front of the user before anything was drawn.
+    preloadCriticalImages().finally(() => {
+      clearTimeout(guard);
+      finish();
+      preloadStartupImages().catch(() => {});
+    });
+    return () => {
+      active = false;
+      clearTimeout(guard);
+    };
+  }, []);
+
+  const ready = (fontsLoaded || fontError) && startupImagesReady && cacheReady;
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync().catch(() => {});
+  }, [ready]);
+
+  if (!ready) return null;
 
   return (
     <SafeAreaProvider>

@@ -1,5 +1,18 @@
-// Segmented — a flat two-or-more option toggle. Active segment fills with a
-// surface step (no accent flood — the map/clan colors own saturation).
+// Segmented — a flat two-or-more option toggle.
+//
+// THE ACTIVE SEGMENT IS AN INK FILL, not a surface step. It used to be
+// `colors.card` sitting in a `colors.bgElevated` trough, which is invisible:
+// in the dark palette those two tokens are the SAME value (#15181D), and in
+// the light one they are #FFFFFF on #EEF0F4 — a ~3% step. Either way you
+// could not tell which option was selected. `primary`/`primaryInk` is the
+// app's neutral high-contrast pairing (the same one Button uses when there is
+// no clan accent yet), so this reads unmistakably in both themes without
+// flooding the UI with an accent the map and clan colors own.
+//
+// The options are also deliberately loose inside the track: the segments used
+// to sit 4pt apart in a 3pt trough, so Clubs/Solo and System/Light/Dark read
+// as one crowded slab rather than as separate choices. `labelSuffix` qualifies
+// the per-option screen-reader name ("Light theme" rather than a bare "Light").
 
 import React from 'react';
 import { Text, View } from 'react-native';
@@ -7,7 +20,7 @@ import { Text, View } from 'react-native';
 import { radius, useTheme, useThemedType } from '../../theme';
 import { PressableScale } from '../../ui/motion';
 
-export default function Segmented({ options, value, onChange, style }) {
+export default function Segmented({ options, value, onChange, style, labelSuffix }) {
   const { colors } = useTheme();
   const type = useThemedType();
   return (
@@ -17,8 +30,8 @@ export default function Segmented({ options, value, onChange, style }) {
           flexDirection: 'row',
           backgroundColor: colors.bgElevated,
           borderRadius: radius.pill,
-          padding: 3,
-          gap: 4,
+          padding: 5,
+          gap: 10,
         },
         style,
       ]}
@@ -26,24 +39,35 @@ export default function Segmented({ options, value, onChange, style }) {
       {options.map((opt) => {
         const active = opt.key === value;
         return (
-          <PressableScale
-            key={opt.key}
-            style={{
-              flex: 1,
-              paddingVertical: 8,
-              borderRadius: radius.pill,
-              alignItems: 'center',
-              backgroundColor: active ? colors.card : 'transparent',
-            }}
-            onPress={() => onChange(opt.key)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={opt.label}
-          >
-            <Text style={[type.bodySmBold, { color: active ? colors.text : colors.textMuted }]}>
-              {opt.label}
-            </Text>
-          </PressableScale>
+          // flex:1 belongs on this wrapper, NOT on PressableScale — that
+          // forwards its style to an inner Animated.View, so flex there never
+          // reached the pressable and every segment collapsed to text width,
+          // bunching them at the left of the track. Same fix as TabBar.
+          <View key={opt.key} style={{ flex: 1 }}>
+            <PressableScale
+              style={{
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                borderRadius: radius.pill,
+                alignItems: 'center',
+                backgroundColor: active ? colors.primary : 'transparent',
+              }}
+              onPress={() => onChange(opt.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={labelSuffix ? `${opt.label} ${labelSuffix}` : opt.label}
+            >
+              <Text
+                style={[
+                  type.bodySmBold,
+                  { color: active ? colors.primaryInk : colors.textMuted },
+                ]}
+                numberOfLines={1}
+              >
+                {opt.label}
+              </Text>
+            </PressableScale>
+          </View>
         );
       })}
     </View>
