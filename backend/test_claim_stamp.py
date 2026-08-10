@@ -23,10 +23,14 @@ sys.path.insert(0, r"C:\Users\user\Desktop\run\backend")
 
 from shapely.geometry import Point  # noqa: E402
 
+from app.config import settings  # noqa: E402
 from app.geospatial import (  # noqa: E402
+    _route_anchors,
     build_claim_stamp,
+    claim_area_m2,
     claim_placement_samples,
     clamp_t,
+    grow_claim_region_metric,
     normalise_rotation,
 )
 
@@ -126,6 +130,99 @@ for label, route in (("straight 3km", straight(3000)), ("lap 600m", lap(600))):
         all(o < 1e-6 for o in offs),
         f"max offset {max(offs):.2e} m",
     )
+
+print("\n--- silhouette: does the claim LOOK like the run? ---")
+#
+# THE BUG THIS EXISTS FOR. `_route_anchors` bisects a Douglas-Peucker tolerance
+# to get the route's vertex count under `claim_anchor_max`. It used to stop at
+# the first trial that landed anywhere in [min, max] — and since the search
+# starts at half the route's own length as a tolerance, the first trial is
+# always maximally coarse. Every run of every shape came back with exactly
+# `claim_anchor_min` = 4 anchors, and for a closed loop four coords is three
+# distinct points, so running round a square block earned a TRIANGLE.
+#
+# It is checked by silhouette rather than by anchor count, because the anchor
+# count is the mechanism and the silhouette is the promise. Fill ratio (area
+# over its own bounding box) is the fingerprint: a square fills ~100%, a disc
+# ~79%, a triangle ~50%.
+
+
+def _fill_ratio(poly):
+    x0, y0, x1, y1 = poly.bounds
+    return poly.area / max((x1 - x0) * (y1 - y0), 1e-9)
+
+
+def _aspect(poly):
+    x0, y0, x1, y1 = poly.bounds
+    w, h = x1 - x0, y1 - y0
+    return max(w, h) / max(min(w, h), 1e-9)
+
+
+def _box_lap(side, n=400):
+    """A square block, run once round, in plain metric coords."""
+    pts, per = [], side * 4
+    for i in range(n + 1):
+        d = per * i / n
+        if d < side:
+            pts.append((d, 0.0))
+        elif d < 2 * side:
+            pts.append((side, d - side))
+        elif d < 3 * side:
+            pts.append((side - (d - 2 * side), side))
+        else:
+            pts.append((0.0, side - (d - 3 * side)))
+    return pts
+
+
+def _ell(leg, n=300):
+    pts = []
+    for i in range(n + 1):
+        d = (i / n) * 2 * leg
+        pts.append((d, 0.0) if d < leg else (leg, d - leg))
+    return pts
+
+
+def _line(length, n=200):
+    return [(length * i / n, 0.0) for i in range(n + 1)]
+
+
+square = grow_claim_region_metric(_box_lap(300), claim_area_m2(1200))
+failures += not report(
+    "a square lap grows a SQUARE, not a triangle",
+    square is not None and _fill_ratio(square) > 0.80 and _aspect(square) < 1.25,
+    f"fills {_fill_ratio(square) * 100:.0f}% of its box, aspect {_aspect(square):.2f}"
+    if square else "no shape",
+)
+
+bent = grow_claim_region_metric(_ell(800), claim_area_m2(1600))
+failures += not report(
+    "an L stays bent instead of rounding off into a blob",
+    bent is not None and _fill_ratio(bent) < 0.62,
+    f"fills {_fill_ratio(bent) * 100:.0f}% of its box (a blob would be ~79)"
+    if bent else "no shape",
+)
+
+capsule = grow_claim_region_metric(_line(2000), claim_area_m2(2000))
+failures += not report(
+    "a straight run grows a long capsule",
+    capsule is not None and _aspect(capsule) > 3.0,
+    f"aspect {_aspect(capsule):.2f}" if capsule else "no shape",
+)
+
+# The mechanism, stated once: a wobbly route must spend its whole anchor
+# budget. This is what actually regressed, and it regressed silently.
+wobbly = _route_anchors([
+    (
+        math.copysign(abs(math.cos(2 * math.pi * i / 200)) ** 0.5, math.cos(2 * math.pi * i / 200)) * 250,
+        math.copysign(abs(math.sin(2 * math.pi * i / 200)) ** 0.5, math.sin(2 * math.pi * i / 200)) * 200,
+    )
+    for i in range(201)
+])
+failures += not report(
+    "a curvy route spends its anchor budget rather than collapsing to the floor",
+    len(wobbly) >= settings.claim_anchor_max - 1,
+    f"{len(wobbly)} anchors of a {settings.claim_anchor_max} budget",
+)
 
 print("\n--- input folding ---")
 failures += not report("clamp_t folds out-of-range", clamp_t(-3) == 0.0 and clamp_t(9) == 1.0)

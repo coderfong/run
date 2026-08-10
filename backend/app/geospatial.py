@@ -421,25 +421,46 @@ def _largest_polygon(geom) -> Optional[Polygon]:
 def _route_anchors(coords: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
     """Reduce a metric path to `claim_anchor_min`..`claim_anchor_max` anchors.
 
-    Douglas-Peucker with the tolerance bisected until the vertex count lands
-    in the window; a path with too few turns to hit the minimum (a dead
-    straight run) is resampled at even arc-length instead, so the spine always
-    has enough points to bend."""
+    Douglas-Peucker with the tolerance bisected to find the SMALLEST tolerance
+    whose simplification still fits under `claim_anchor_max` — which is the
+    tolerance that keeps the most detail the budget allows. A path with too few
+    turns to hit the minimum (a dead straight run) is resampled at even
+    arc-length instead, so the spine always has enough points to bend.
+
+    THE BUG THIS EXISTS FOR. The bisection used to stop at the first trial that
+    landed anywhere in [min, max]. The search starts at half the route's own
+    length as a tolerance, and at 600 m of tolerance a 1.2 km lap simplifies to
+    four points — which is inside the window, so it broke out immediately and
+    that was the answer. Every run, of every shape and distance, came back with
+    exactly `claim_anchor_min` anchors. For a closed loop four coords is three
+    distinct points, so a runner who went round a square block earned a
+    TRIANGLE, and the whole "your run, as territory" premise silently did not
+    hold.
+
+    The window is a budget, not a target: land as close to `hi_n` as the
+    geometry allows, and only fall back to `lo_n` when the route genuinely has
+    no more corners to keep.
+    """
     lo_n, hi_n = settings.claim_anchor_min, settings.claim_anchor_max
     line = LineString(coords)
     best = list(line.coords)
 
     if len(best) > hi_n:
+        # Invariant: `lo` is a tolerance that leaves MORE than hi_n vertices,
+        # `hi` is one that leaves at most hi_n. Squeeze until they meet; `best`
+        # always holds the finest acceptable simplification seen so far.
         lo, hi = 0.0, max(line.length, 1.0)
         for _ in range(32):
+            # Sub-metre tolerance differences cannot change which corners
+            # survive at this scale, so stop once the bracket is that tight.
+            if hi - lo < 0.5:
+                break
             mid = (lo + hi) / 2
             trial = list(line.simplify(mid, preserve_topology=False).coords)
             if len(trial) > hi_n:
                 lo = mid
             else:
                 best, hi = trial, mid
-                if len(trial) >= lo_n:
-                    break
 
     if len(best) < lo_n:
         # Evenly spaced samples along the ORIGINAL line, not the simplified
@@ -863,18 +884,12 @@ class ClaimStamp:
 
     `base` is in metric space with its centroid at the ORIGIN, which is what
     makes a turn a plain rotation about (0, 0) rather than an affine hunt for
-    the right pivot. `anchor` is where that centroid actually sits — the shape
-    AS RUN — and `t0` is the point on the route nearest to it.
+    the right pivot. `anchor` records where that centroid was grown and `t0`
+    is the point on the route nearest to it.
 
-    Sliding is RELATIVE to the run, not absolute along the route: a placement
-    at `t` moves the shape by however far the route travels between `t0` and
-    `t`. That is the only definition under which "as run" is a pose the runner
-    can return to, and it is the only one that survives a loop. On a lap of a
-    block the grown territory is the filled block, so its centroid sits in the
-    middle of the loop with no route anywhere near it; putting that centroid
-    ON the route would shove the whole territory off to one side of the ground
-    it was grown from, and the shape would jump the moment the control was
-    touched.
+    Sliding is literal: a placement at `t` puts the centre on the matching
+    route point. On a closed lap this makes the claim orbit the path instead
+    of preserving an invisible offset from the middle of the loop.
 
     Build it once per run and ask it for as many placements as you like: each
     costs a rotation and a translation of an existing polygon, plus one
@@ -882,7 +897,7 @@ class ClaimStamp:
     """
 
     base: Polygon           # metric, centroid at (0, 0)
-    anchor: Tuple[float, float]   # metric, where that centroid sits as run
+    anchor: Tuple[float, float]   # metric, original grown centroid
     line: LineString        # metric route
     t0: float               # route fraction nearest `anchor` — the resting pose
     to_metric: Transformer
@@ -902,11 +917,8 @@ class ClaimStamp:
         return (p.x, p.y)
 
     def centre_metric(self, t: float) -> Tuple[float, float]:
-        """Where the claim's centre sits once slid to `t`."""
-        ax, ay = self.anchor
-        rx, ry = self._route_point(t)
-        ox, oy = self._route_point(self.t0)
-        return (ax + rx - ox, ay + ry - oy)
+        """The route point addressed by `t`, used as the claim's centre."""
+        return self._route_point(t)
 
     def metric_at(self, t: float, deg: float) -> Polygon:
         """The placed shape, still in metric space."""
