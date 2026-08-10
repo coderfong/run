@@ -1,1 +1,1 @@
-from . import auth, leaderboard, runs, territories, users  # noqa: F401
+from . import auth, dev, leaderboard, runs, territories, users  # noqa: F401

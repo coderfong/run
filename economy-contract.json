@@ -1,0 +1,133 @@
+{
+  "_comment": [
+    "THE ECONOMY CONTRACT. Fixed test vectors that backend/app/economy.py and",
+    "frontend/src/config/economy.js must BOTH satisfy.",
+    "",
+    "This file exists because the two sides silently diverged once already: the",
+    "running screen kept previewing the retired circle model, (d*d)/(4*pi),",
+    "long after the server moved to a tapered territorial-distance curve. At",
+    "5 km it promised 1.99 km2 against the 0.375 km2 actually granted, so the",
+    "game looked like it took 80% of the reward away at the result screen.",
+    "",
+    "Nothing here is a snapshot of an implementation — these are the agreed",
+    "numbers. Change a rule and you change this file, which fails both suites",
+    "until both sides are updated.",
+    "",
+    "  backend:   python test_economy_contract.py",
+    "  frontend:  node scripts/check-economy-contract.mjs"
+  ],
+
+  "economy_version": 2,
+
+  "constants": {
+    "claim_area_per_m": 75.0,
+    "max_polygon_area_m2": 1250000.0,
+    "min_rewarded_distance_m": 500.0,
+    "min_rewarded_duration_s": 240.0,
+    "min_claim_distance_m": 1000.0,
+    "min_claim_duration_s": 420.0,
+    "min_unique_route_length_m": 700.0,
+    "max_neutral_claims_per_game_day": 0,
+    "energy_first_claim_discount": 0.5
+  },
+
+  "claim_area_m2": [
+    { "distance_m": 0, "expected": 0.0 },
+    { "distance_m": 1000, "expected": 75000.0 },
+    { "distance_m": 5000, "expected": 375000.0 },
+    { "distance_m": 10000, "expected": 618750.0 },
+    { "distance_m": 15000, "expected": 731250.0 },
+    { "distance_m": 20000, "expected": 843750.0 },
+    { "distance_m": 30000, "expected": 918750.0 },
+    { "distance_m": 100000, "expected": 1250000.0, "note": "area cap bites" }
+  ],
+
+  "daily_entitlement": [
+    { "label": "one 10 km run", "splits": [10000], "expected_total": 618750.0 },
+    {
+      "label": "ten 1 km runs must equal one 10 km run",
+      "splits": [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000],
+      "expected_total": 618750.0
+    },
+    { "label": "two 5 km runs", "splits": [5000, 5000], "expected_total": 618750.0 },
+    { "label": "uneven splits", "splits": [2000, 3000, 5000], "expected_total": 618750.0 },
+    {
+      "label": "twenty 500 m runs",
+      "splits": [500, 500, 500, 500, 500, 500, 500, 500, 500, 500,
+                 500, 500, 500, 500, 500, 500, 500, 500, 500, 500],
+      "expected_total": 618750.0
+    },
+    {
+      "label": "the first run of the day keeps the untapered slice",
+      "splits": [5000],
+      "expected_total": 375000.0
+    }
+  ],
+
+  "run_tier": [
+    { "distance_m": 499, "duration_s": 900, "unique_m": 5000, "expected": "unqualified_for_rewards" },
+    { "distance_m": 500, "duration_s": 900, "unique_m": 5000, "expected": "qualified_for_rewards_only" },
+    { "distance_m": 2000, "duration_s": 239, "unique_m": 5000, "expected": "unqualified_for_rewards" },
+    { "distance_m": 2000, "duration_s": 240, "unique_m": 5000, "expected": "qualified_for_rewards_only" },
+    { "distance_m": 999, "duration_s": 900, "unique_m": 5000, "expected": "qualified_for_rewards_only" },
+    { "distance_m": 1000, "duration_s": 900, "unique_m": 5000, "expected": "qualified_for_claim" },
+    { "distance_m": 2000, "duration_s": 419, "unique_m": 5000, "expected": "qualified_for_rewards_only" },
+    { "distance_m": 2000, "duration_s": 420, "unique_m": 5000, "expected": "qualified_for_claim" },
+    { "distance_m": 2000, "duration_s": 900, "unique_m": 699, "expected": "qualified_for_rewards_only" },
+    { "distance_m": 2000, "duration_s": 900, "unique_m": 700, "expected": "qualified_for_claim" }
+  ],
+
+  "run_coins": [
+    { "distance_m": 1000, "expected": 18 },
+    { "distance_m": 5000, "expected": 50 },
+    { "distance_m": 10000, "expected": 90 },
+    { "distance_m": 12000, "expected": 100, "note": "per-run ceiling" },
+    { "distance_m": 30000, "expected": 100 }
+  ],
+
+  "run_energy": [
+    { "distance_m": 1000, "expected": 4 },
+    { "distance_m": 5000, "expected": 8 },
+    { "distance_m": 12000, "expected": 15, "note": "per-run ceiling" },
+    { "distance_m": 30000, "expected": 15 }
+  ],
+
+  "claim_cost": [
+    { "action": "empty", "first_of_day": false, "expected": 16 },
+    { "action": "empty", "first_of_day": true, "expected": 8 },
+    { "action": "reinforce", "first_of_day": false, "expected": 12 },
+    { "action": "reinforce", "first_of_day": true, "expected": 6 },
+    { "action": "attack", "first_of_day": false, "expected": 20 },
+    { "action": "attack", "first_of_day": true, "expected": 10 },
+    { "action": "fortified", "first_of_day": false, "expected": 24 },
+    { "action": "fortified", "first_of_day": true, "expected": 12 }
+  ],
+
+  "claim_action": [
+    {
+      "label": "open ground",
+      "area_m2": 300000, "enemy_m2": 0, "defended_m2": 0, "mine_m2": 0,
+      "expected": "empty"
+    },
+    {
+      "label": "mostly your own land",
+      "area_m2": 300000, "enemy_m2": 0, "defended_m2": 0, "mine_m2": 200000,
+      "expected": "reinforce"
+    },
+    {
+      "label": "a rival loses ground",
+      "area_m2": 300000, "enemy_m2": 50000, "defended_m2": 0, "mine_m2": 0,
+      "expected": "attack"
+    },
+    {
+      "label": "their defence holds more than falls",
+      "area_m2": 300000, "enemy_m2": 10000, "defended_m2": 60000, "mine_m2": 0,
+      "expected": "fortified"
+    },
+    {
+      "label": "a clipped edge is not a battle",
+      "area_m2": 300000, "enemy_m2": 400, "defended_m2": 0, "mine_m2": 0,
+      "expected": "empty"
+    }
+  ]
+}

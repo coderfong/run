@@ -7,12 +7,11 @@ LOOKS like. /end-run finalises the run and returns both the area and
 `claim_ring`, the territory grown around the middle of the trail, so the result
 screen can show the ground before it is taken.
 
-WHERE that land goes is the runner's move: /runs/{id}/claim-options returns the
-positions along the route the earned area could be deployed to, each with what
-it would take, and /claim-territory takes the one at the index it is given.
-Only the index travels — the shapes are always rebuilt server-side from the
-stored route. /submit-path remains a pure streaming endpoint for partial GPS
-traces.
+WHERE that land goes is the runner's move: /runs/{id}/claim-options returns a
+route and a coarse survey of what the earned shape could take. /claim-territory
+accepts the continuous pose (route fraction + heading); the shape is always
+rebuilt server-side from the stored route. /submit-path remains a pure
+streaming endpoint for partial GPS traces.
 """
 
 import math
@@ -187,9 +186,15 @@ def _end_run_replay(db: Session, run) -> schemas.RunResultOut:
     if eligible and area > 0:
         route = _run_route(db, run)
         if route:
-            # The run's one shape, sitting where it was run. Same polygon
-            # /claim-options calls `base_ring` — see the note at /end-run.
-            preview = route_claim_polygon_wgs(route, area)
+            # The route-centred resting pose. This is the same polygon
+            # /claim-options calls `base_ring`, so loading controls cannot
+            # move the preview sideways on a closed loop.
+            stamp = _run_stamp(route, area)
+            preview = (
+                stamp.at(stamp.t0, 0.0)
+                if stamp is not None
+                else route_claim_polygon_wgs(route, area)
+            )
             if preview is not None:
                 claim_ring = polygon_to_lonlat_ring(preview)
     return schemas.RunResultOut(
@@ -300,14 +305,15 @@ def end_run(
     radius = claim_radius_m(run.distance_m) if eligible else 0.0
     claim_ring = []
     if eligible:
-        # The run's territory, in the shape of the whole run and sitting
-        # exactly where it was run. This is the claim at its resting pose
-        # (t = 0.5, unturned), so the result screen can draw the real ground
-        # immediately and the placement controls only ever MOVE what is
-        # already on screen. Grown here rather than via the options grid so
-        # /end-run still builds exactly one polygon — surveying the route is
-        # /claim-options' job, once the runner asks to aim.
-        preview = route_claim_polygon_wgs(cleaned.wgs_coords, area)
+        # The route-centred resting pose, so the result screen can draw the
+        # real ground immediately and loading /claim-options never changes
+        # the placement model underneath it.
+        stamp = _run_stamp(cleaned.wgs_coords, area)
+        preview = (
+            stamp.at(stamp.t0, 0.0)
+            if stamp is not None
+            else route_claim_polygon_wgs(cleaned.wgs_coords, area)
+        )
         if preview is not None:
             claim_ring = polygon_to_lonlat_ring(preview)
 
@@ -949,7 +955,11 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
         # be closed. A rigid stamp slides with the route and turns about its
         # own centre, so every pose is on the run by construction and the whole
         # 360 is open.
-        if p.action == economy.ACTION_EMPTY and neutral_left <= 0:
+        #
+        # `neutral_limit_active()` and not just `neutral_left <= 0`: the ration
+        # is off by default and the remaining-count is then a sentinel, not a
+        # count. See economy.neutral_claims_remaining.
+        if economy.neutral_limit_active() and p.action == economy.ACTION_EMPTY and neutral_left <= 0:
             p.available = False
             p.unavailable_reason = economy.REASON_NEUTRAL_LIMIT
         elif est["energy"] < p.energy_cost:
@@ -1302,12 +1312,19 @@ def claim_territory(
             b["area_m2"], b["enemy_m2"], b["defended_m2"], b["mine_m2"]
         )
 
-    # Neutral expansion is rationed; fighting and upkeep are not. Checked
+    # Neutral expansion CAN be rationed, but is not by default — Energy is the
+    # cap on claiming and this was a second one on the same decision (see
+    # `max_neutral_claims_per_game_day`). When it is switched back on: checked
     # before any mutation, so a refused expansion costs no energy and burns no
-    # allowance. Flagged runs are exempt because their claims are private and
-    # never counted.
+    # allowance, and flagged runs are exempt because their claims are private
+    # and never counted.
     neutral_left = economy.neutral_claims_remaining(db, user.id)
-    if action == economy.ACTION_EMPTY and run.verified and neutral_left <= 0:
+    if (
+        economy.neutral_limit_active()
+        and action == economy.ACTION_EMPTY
+        and run.verified
+        and neutral_left <= 0
+    ):
         raise HTTPException(409, economy.REASON_NEUTRAL_LIMIT)
 
     cost = economy.claim_cost(action, first_of_day)

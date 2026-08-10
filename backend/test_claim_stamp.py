@@ -7,11 +7,9 @@ itself, so this is where that is actually checked:
 
   * the shape holds exactly the area the run earned, and no pose can change
     it — otherwise a heading would be worth more land than another;
-  * the resting pose is the run exactly as it was run, so "put it back" is
-    always available;
+  * every slider position puts the centre on the corresponding route point;
   * a turn pivots about the claim's own centre, so it cannot walk off;
-  * the centre never drifts further from the trail than it started, which is
-    what replaced the route-attachment gate.
+  * the centre never drifts away from the trail.
 
 Unlike test_claim_placement.py and test_claim_rotation.py this needs no server
 and no database — it is pure geometry. Run it directly:
@@ -30,7 +28,6 @@ from app.geospatial import (  # noqa: E402
     claim_placement_samples,
     clamp_t,
     normalise_rotation,
-    route_claim_polygon_wgs,
 )
 
 LAT, LON = 1.36, 103.82
@@ -90,16 +87,11 @@ for label, route in (("straight 3km", straight(3000)), ("lap 600m", lap(600))):
     spread = (max(areas) - min(areas)) / AREA
     failures += not report("area invariant under pose", spread < 1e-6, f"spread {spread:.2e}")
 
-    # 3. the resting pose IS the shape as it was run
-    in_place = route_claim_polygon_wgs(route, AREA)
-    rest = stamp.at(stamp.t0, 0.0)
-    if in_place is None:
-        failures += 1
-        print("FAIL  in-place shape built")
-    else:
-        # symmetric difference as a share of area: 0 means the same ground
-        d = in_place.symmetric_difference(rest).area / max(in_place.area, 1e-9)
-        failures += not report("rest pose == shape as run", d < 1e-6, f"symdiff {d:.2e}")
+    # 3. the initial handle position is a literal point on the route
+    rest_off = stamp.line.distance(Point(*stamp.centre_metric(stamp.t0)))
+    failures += not report(
+        "resting centre is on the route", rest_off < 1e-6, f"offset {rest_off:.2e} m"
+    )
 
     # 4. sliding actually moves it, over a range that scales with the route.
     #    NOT measured end to end: on a closed lap t=0 and t=1 are the same
@@ -127,14 +119,12 @@ for label, route in (("straight 3km", straight(3000)), ("lap 600m", lap(600))):
     else:
         report("rotation pivots about the claim's own centre", True)
 
-    # 6. every pose keeps its centre attached to the run's own ground:
-    #    the centre offset from the route is fixed by construction
-    off_rest = stamp.line.distance(Point(*stamp.anchor))
+    # 6. every pose puts the centre on the run itself, including a closed lap.
     offs = [stamp.line.distance(Point(*stamp.centre_metric(t))) for t in (0.0, 0.25, 0.75, 1.0)]
     failures += not report(
-        "centre stays as close to the route as it was run",
-        all(o <= off_rest + 1.0 for o in offs),
-        f"rest {off_rest:.0f} m, max {max(offs):.0f} m",
+        "centre follows the route",
+        all(o < 1e-6 for o in offs),
+        f"max offset {max(offs):.2e} m",
     )
 
 print("\n--- input folding ---")

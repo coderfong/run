@@ -298,11 +298,21 @@ class Settings(BaseSettings):
     daily_reset_utc_offset_hours: float = 8.0
 
     # ---- daily territorial limits -----------------------------------------
-    # Painting the map should take running, not repetition. After this many
-    # NEUTRAL expansions in a game day, open ground is closed — but attacking
-    # a rival, reinforcing your own land and supporting your club all stay
-    # open, and runs keep paying XP, coins and energy as normal.
-    max_neutral_claims_per_game_day: int = 3
+    # The neutral-expansion ration, OFF since 2026-08-10. 0 disables it; any
+    # positive value is the number of NEUTRAL expansions allowed per game day.
+    #
+    # It was switched off because it was a second cap on a decision that was
+    # already capped. Every claim costs Energy, Energy regenerates on a clock
+    # and can be bought, so it is the thing that rations claiming — and it
+    # rations it continuously rather than as a cliff. On top of that, this
+    # counter told a runner who had done the running AND had the Energy to
+    # spend that they still could not take open ground, which reads as the
+    # game being broken rather than as a rule. Two currencies for one decision.
+    #
+    # The behaviour is kept rather than deleted because the reason it existed
+    # is real (painting the map by repetition), and if Energy alone turns out
+    # to be too loose this is one env var away from returning.
+    max_neutral_claims_per_game_day: int = 0
 
     # Temporary safety rails until opponent-relative rank scoring lands. Both
     # exist because a flat per-claim reward is farmable by anyone willing to

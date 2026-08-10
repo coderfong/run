@@ -277,23 +277,64 @@ def test_live_split(base_lat, base_lon):
 
 
 def test_live_neutral_limit(base_lat, base_lon):
-    print("\n[5-7] live: the neutral expansion limit")
+    """The neutral expansion ration, whichever way it is configured.
+
+    It is OFF by default since 2026-08-10 — Energy is what caps claiming, and
+    this was a second, harsher cap on the same decision. The test follows the
+    configuration rather than asserting one answer, so switching it back on
+    with `MAX_NEUTRAL_CLAIMS_PER_GAME_DAY` does not turn the suite red.
+    """
+    cap = settings.max_neutral_claims_per_game_day
+    active = economy.neutral_limit_active()
+    print(f"\n[5-7] live: the neutral expansion limit ({'cap ' + str(cap) if active else 'OFF'})")
     tok, _ = S.signup(f"neut_{S.SFX}")
-    claimed = 0
-    for i in range(3):
+
+    def claim_neutral(i):
         rid, _ = do_run(tok, base_lat + 0.10 + i * 0.01, base_lon, 1200, duration_s=480)
         opts = S.call("GET", f"/runs/{rid}/claim-options", token=tok)[1]
         p = opts["placements"][opts["default_index"]]
         st, res = S.call("POST", "/claim-territory",
                          {"run_id": rid, "placement": p["placement"], "rotation": p["rotation"]},
                          token=tok)
+        return rid, opts, st, res
+
+    if not active:
+        # Energy is the only gate. Take open ground more times than the old
+        # ration ever allowed and check nothing refuses it for being neutral.
+        landed = 0
+        for i in range(5):
+            _rid, _opts, st, res = claim_neutral(i)
+            if st == 200 and res.get("action") == economy.ACTION_EMPTY:
+                landed += 1
+            elif st == 402:
+                # Ran out of Energy, which is the point — that IS the cap.
+                check(f"neutral claim {i + 1} stopped by Energy, not by a ration", True)
+                break
+            else:
+                check(f"neutral claim {i + 1} refused for something other than Energy",
+                      False, f"{st} {res}")
+                break
+        check("more neutral claims land than the old ration allowed",
+              landed > 3 or landed >= 4, landed)
+        rid_n, opts_n, _st, _res = claim_neutral(9)
+        neutral = [p for p in opts_n["placements"] if p["action"] == economy.ACTION_EMPTY]
+        check("no placement is ever closed for the neutral reason",
+              all(p.get("unavailable_reason") != economy.REASON_NEUTRAL_LIMIT
+                  for p in opts_n["placements"]),
+              next((p["unavailable_reason"] for p in opts_n["placements"]
+                    if p.get("unavailable_reason") == economy.REASON_NEUTRAL_LIMIT), "none"))
+        return tok
+
+    claimed = 0
+    for i in range(cap):
+        _rid, _opts, st, res = claim_neutral(i)
         if st == 200 and res.get("action") == economy.ACTION_EMPTY:
             claimed += 1
             check(f"neutral claim {claimed} allowed, {res['neutral_claims_remaining']} left",
                   True)
-    check("three neutral claims landed", claimed == 3, claimed)
+    check(f"{cap} neutral claims landed", claimed == cap, claimed)
 
-    # Fourth neutral expansion: refused, and nothing consumed.
+    # One past the cap: refused, and nothing consumed.
     rid4, _ = do_run(tok, base_lat + 0.14, base_lon, 1200, duration_s=480)
     opts4 = S.call("GET", f"/runs/{rid4}/claim-options", token=tok)[1]
     check("options report no neutral expansions left",
@@ -307,7 +348,7 @@ def test_live_neutral_limit(base_lat, base_lon):
     st, refused = S.call("POST", "/claim-territory",
                          {"run_id": rid4, "placement": neutral[0]["placement"],
                           "rotation": neutral[0]["rotation"]}, token=tok)
-    check("fourth neutral expansion refused", st == 409, f"{st} {refused}")
+    check("the expansion past the cap is refused", st == 409, f"{st} {refused}")
     _, en_after = S.call("GET", "/me/energy", token=tok)
     check("a refused expansion costs no energy",
           en_after["energy"] >= energy_before, f"{energy_before} -> {en_after['energy']}")

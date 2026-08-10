@@ -16,7 +16,7 @@ from .config import settings
 from .database import SessionLocal
 from .ratelimit import limiter
 from .routes import (
-    auth, clans, feed, leaderboard, paserby, pasers, profile, progression, rivals, runs,
+    auth, clans, dev, feed, leaderboard, paserby, pasers, profile, progression, rivals, runs,
     shop, social, territories, users,
 )
 
@@ -126,6 +126,7 @@ app.include_router(auth.router)
 app.include_router(auth.me_router)
 app.include_router(users.router, tags=["users"])
 app.include_router(runs.router, tags=["runs"])
+app.include_router(dev.router)
 app.include_router(territories.router, tags=["territories"])
 app.include_router(leaderboard.router, tags=["leaderboard"])
 app.include_router(clans.router)

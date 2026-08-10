@@ -58,7 +58,9 @@ REASON_MIN_REWARD_DURATION = "Keep moving for at least 4 minutes to earn run rew
 REASON_MIN_CLAIM_DISTANCE = "Complete at least 1 km to claim territory."
 REASON_MIN_CLAIM_DURATION = "Keep moving for at least 7 minutes to claim territory."
 REASON_MIN_UNIQUE = "This route did not contain enough unique movement."
-REASON_NEUTRAL_LIMIT = "You have used today's three neutral expansions."
+# No longer names a number: the ration is configurable and off by default, so
+# "three" was a promise the setting could break silently.
+REASON_NEUTRAL_LIMIT = "You have used today's neutral expansions."
 REASON_OFF_ROUTE = "Turned too far. This would claim streets you didn't run."
 REASON_ALREADY_CLAIMED = "This run has already been used for a claim."
 
@@ -408,7 +410,37 @@ def neutral_claims_today(db, user_id) -> int:
     return int(row[0] or 0)
 
 
+def neutral_limit_active() -> bool:
+    """Is the neutral-expansion ration switched on at all?
+
+    OFF by default (see `max_neutral_claims_per_game_day` in config). Energy is
+    what caps claiming; this was a second, harsher cap on the same decision.
+
+    Every caller that would REFUSE a claim has to ask this first — reading
+    `neutral_claims_remaining() <= 0` on its own is not enough, because that
+    function reports a full allowance when the rule is off and a caller which
+    forgot the check would still be comparing against a number.
+    """
+    return settings.max_neutral_claims_per_game_day > 0
+
+
+# What `neutral_claims_remaining` reports when the ration is off. A large
+# POSITIVE number rather than 0 or -1 on purpose: the field is on the wire and
+# older clients test it for "have I got any left", so both of those would be
+# read as "none" and could grey out a button the server is perfectly willing to
+# honour. Nothing should display this figure verbatim.
+UNLIMITED_NEUTRAL_CLAIMS = 9999
+
+
 def neutral_claims_remaining(db, user_id) -> int:
+    """Neutral expansions left in this game day.
+
+    When the ration is off this is not a count of anything — it reports
+    `UNLIMITED_NEUTRAL_CLAIMS` and does not query the database, because there
+    is no number for a caller to act on.
+    """
+    if not neutral_limit_active():
+        return UNLIMITED_NEUTRAL_CLAIMS
     return max(0, settings.max_neutral_claims_per_game_day - neutral_claims_today(db, user_id))
 
 
