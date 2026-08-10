@@ -8,7 +8,7 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, privacy, ranks, schemas
+from .. import models, privacy, ranks, reactions as reaction_rules, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -79,6 +79,7 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         text("SELECT 1 FROM run_kudos WHERE run_id = :rid AND user_id = :uid"), {"rid": run_id, "uid": user.id}
     ).fetchone()
     ccount = db.execute(text("SELECT COUNT(*) FROM run_comments WHERE run_id = :rid"), {"rid": run_id}).scalar()
+    summary, mine = reaction_rules.summarise(db, [run_id], user.id)
 
     return schemas.RunDetail(
         run_id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id),
@@ -89,6 +90,8 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         splits=[schemas.RunSplit(km=s[0], seconds=float(s[1])) for s in splits],
         kudos_count=int(kcount or 0), kudoed=bool(kmine),
         comment_count=int(ccount or 0),
+        reactions=[schemas.RunReaction(**x) for x in summary.get(run_id, [])],
+        my_reaction=mine.get(run_id),
     )
 
 
@@ -108,7 +111,7 @@ def run_comments(run_id: str, user: models.User = Depends(current_user), db: Ses
     rows = db.execute(
         text(
             """
-            SELECT c.id::text, c.user_id::text, u.username, c.body, c.created_at
+            SELECT c.id::text, c.user_id::text, u.username, c.body, c.created_at, c.emote
             FROM run_comments c JOIN users u ON u.id = c.user_id
             WHERE c.run_id = :rid
             ORDER BY c.created_at
@@ -119,7 +122,12 @@ def run_comments(run_id: str, user: models.User = Depends(current_user), db: Ses
     ).fetchall()
     return [
         schemas.RunCommentOut(
-            id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id), body=r[3], created_at=r[4]
+            id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id),
+            body=r[3], created_at=r[4],
+            # An emote written by a build the server no longer recognises is
+            # dropped rather than sent on: the client would render a blank box
+            # where a sticker should be, which reads as a broken comment.
+            emote=r[5] if reaction_rules.is_allowed(r[5]) else None,
         )
         for r in rows
     ]
@@ -131,23 +139,30 @@ def add_run_comment(request: Request, response: Response, run_id: str, payload: 
                     background: BackgroundTasks,
                     user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     owner_id = _run_visible_to(db, run_id, user)
+    try:
+        emote = reaction_rules.normalise(payload.emote)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    body = (payload.body or "").strip() or None
     row = db.execute(
         text(
-            "INSERT INTO run_comments (run_id, user_id, body) VALUES (:rid, :uid, :b) "
+            "INSERT INTO run_comments (run_id, user_id, body, emote) VALUES (:rid, :uid, :b, :e) "
             "RETURNING id::text, created_at"
         ),
-        {"rid": run_id, "uid": user.id, "b": payload.body.strip()},
+        {"rid": run_id, "uid": user.id, "b": body, "e": emote},
     ).fetchone()
     db.commit()
     if owner_id != user.id:
-        snippet = payload.body.strip()[:80]
+        # A sticker-only comment has no words to quote, so the push says what
+        # was left rather than showing an empty line after the colon.
+        snippet = body[:80] if body else f"reacted {emote}"
         background.add_task(
             notify, [owner_id], "kudos", "New comment on your run",
             f"{user.username}: {snippet}", None, str(user.id),
         )
     return schemas.RunCommentOut(
         id=row[0], user_id=user.id, username=user.username, is_you=True,
-        body=payload.body.strip(), created_at=row[1],
+        body=body, emote=emote, created_at=row[1],
     )
 
 
@@ -175,6 +190,75 @@ def toggle_kudos(request: Request, response: Response, run_id: str, background: 
     db.commit()
     count = db.execute(text("SELECT COUNT(*) FROM run_kudos WHERE run_id = :rid"), {"rid": run_id}).scalar()
     return {"kudoed": kudoed, "kudos_count": int(count or 0)}
+
+
+@router.get("/runs/{run_id}/reactions", response_model=schemas.RunReactionsOut)
+def run_reactions(run_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    _run_visible_to(db, run_id, user)
+    summary, mine = reaction_rules.summarise(db, [run_id], user.id)
+    return schemas.RunReactionsOut(
+        reactions=[schemas.RunReaction(**x) for x in summary.get(run_id, [])],
+        my_reaction=mine.get(run_id),
+    )
+
+
+@router.post("/runs/{run_id}/reactions", response_model=schemas.RunReactionsOut)
+@limiter.limit(settings.rate_limit_default)
+def set_run_reaction(request: Request, response: Response, run_id: str, payload: schemas.RunReactionIn,
+                     background: BackgroundTasks,
+                     user: models.User = Depends(current_user), db: Session = Depends(get_db)):
+    """Leave, swap, or take back one emote on a run.
+
+    ONE per person, so this is a SET rather than an append: sending a different
+    emote replaces yours, sending null (or the one you already left) clears it.
+    The upsert does the swap in a single statement, which matters because two
+    quick taps on two different emotes would otherwise race into a duplicate
+    key on the (run_id, user_id) unique index.
+    """
+    owner_id = _run_visible_to(db, run_id, user)
+    try:
+        emote = reaction_rules.normalise(payload.emote)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    previous = db.execute(
+        text("SELECT emote FROM run_reactions WHERE run_id = :rid AND user_id = :uid"),
+        {"rid": run_id, "uid": user.id},
+    ).fetchone()
+    # Tapping the emote you already left is how you take it back off — the
+    # picker has no separate clear button, and a tile you have selected should
+    # behave like a toggle.
+    if emote is None or (previous and previous[0] == emote):
+        db.execute(
+            text("DELETE FROM run_reactions WHERE run_id = :rid AND user_id = :uid"),
+            {"rid": run_id, "uid": user.id},
+        )
+        emote = None
+    else:
+        db.execute(
+            text(
+                """
+                INSERT INTO run_reactions (run_id, user_id, emote) VALUES (:rid, :uid, :e)
+                ON CONFLICT (run_id, user_id) DO UPDATE SET emote = :e, created_at = now()
+                """
+            ),
+            {"rid": run_id, "uid": user.id, "e": emote},
+        )
+    db.commit()
+
+    # Only a NEW reaction pushes. Swapping between emotes, or clearing, would
+    # otherwise let one person ring somebody's phone as often as they liked.
+    if emote and not previous and owner_id != user.id:
+        background.add_task(
+            notify, [owner_id], "kudos", "Someone reacted to your run",
+            f"{user.username} reacted to your run.", None, str(user.id),
+        )
+
+    summary, mine = reaction_rules.summarise(db, [run_id], user.id)
+    return schemas.RunReactionsOut(
+        reactions=[schemas.RunReaction(**x) for x in summary.get(run_id, [])],
+        my_reaction=mine.get(run_id),
+    )
 
 
 @router.post("/me/push-token")

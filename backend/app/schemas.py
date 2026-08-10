@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ClanColor(BaseModel):
@@ -493,6 +493,18 @@ class MapPolygonsOut(BaseModel):
 
 # ---- feed + profile stats (Phase 4) --------------------------------------
 
+class RunReaction(BaseModel):
+    """One emote on a run, and how many people left it.
+
+    `mine` saves the client a lookup: a card has to draw the viewer's own
+    choice differently from everybody else's, and it should not have to scan
+    the list for its own id to find out which one that is.
+    """
+    emote: str
+    count: int = 0
+    mine: bool = False
+
+
 class FeedItem(BaseModel):
     id: str
     kind: str = "run"  # 'run' | (Phase 5) 'claim' | 'clan' | 'goal'
@@ -525,6 +537,10 @@ class FeedItem(BaseModel):
     # bounced attacks are the defender's story, not the feed's.
     victims: List[ClaimVictim] = []
     stolen_m2: float = 0.0
+    # Emote reactions, folded to the distinct emotes with counts. Empty for a
+    # run nobody has reacted to, which is the common case and costs nothing.
+    reactions: List["RunReaction"] = []
+    my_reaction: Optional[str] = None
 
 
 class FeedOut(BaseModel):
@@ -608,12 +624,47 @@ class RunDetail(BaseModel):
     kudos_count: int = 0
     kudoed: bool = False
     comment_count: int = 0
+    reactions: List[RunReaction] = []
+    my_reaction: Optional[str] = None
 
 
 # ---- run comments + club chat ---------------------------------------------
 
 class RunCommentIn(BaseModel):
-    body: str = Field(..., min_length=1, max_length=280)
+    """Text, an emote sticker, or both. At least one of the two.
+
+    `body` is optional now that a sticker on its own is a comment. The check is
+    here rather than only in the database so a client gets a 422 that names the
+    problem instead of a constraint violation.
+    """
+    body: Optional[str] = Field(None, max_length=280)
+    emote: Optional[str] = None
+
+    @field_validator("body")
+    @classmethod
+    def _blank_is_absent(cls, v):
+        # "   " is not a comment. Collapsing it to None here means the rest of
+        # the model, and the emote-or-body rule below, see one empty value.
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+    @model_validator(mode="after")
+    def _needs_something(self):
+        if not self.body and not self.emote:
+            raise ValueError("a comment needs text, an emote, or both")
+        return self
+
+
+class RunReactionIn(BaseModel):
+    """The emote to leave on a run, or null to take yours back off."""
+    emote: Optional[str] = None
+
+
+class RunReactionsOut(BaseModel):
+    reactions: List[RunReaction] = []
+    my_reaction: Optional[str] = None
 
 
 class RunCommentOut(BaseModel):
@@ -621,7 +672,8 @@ class RunCommentOut(BaseModel):
     user_id: str
     username: str
     is_you: bool = False
-    body: str
+    body: Optional[str] = None
+    emote: Optional[str] = None
     created_at: datetime
 
 

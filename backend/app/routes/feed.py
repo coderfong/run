@@ -14,7 +14,7 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, privacy, ranks, schemas
+from .. import models, privacy, ranks, reactions as reaction_rules, schemas
 from ..clans_meta import color_triple
 from ..database import get_db
 from ..geospatial import geometry_to_rings
@@ -133,6 +133,10 @@ def feed(
                 )
             )
 
+    # Emotes for the whole page in one grouped query, for the same reason as
+    # the steals above: fifty rows must not become fifty round trips.
+    reactions_by_run, my_reaction_by_run = reaction_rules.summarise(db, run_ids, user.id)
+
     items = [
         schemas.FeedItem(
             id=r[0],
@@ -165,6 +169,8 @@ def feed(
             ),
             victims=victims_by_run.get(r[0], []),
             stolen_m2=stolen_by_run.get(r[0], 0.0),
+            reactions=[schemas.RunReaction(**x) for x in reactions_by_run.get(r[0], [])],
+            my_reaction=my_reaction_by_run.get(r[0]),
         )
         for r in rows
     ]
