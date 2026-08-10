@@ -12,6 +12,7 @@ import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from shapely import wkt as shapely_wkt
+from shapely.ops import unary_union
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -79,7 +80,27 @@ def seed_rival_for_run(
         raise HTTPException(422, "run has no usable claim shape")
 
     rival = _dev_rival(db, user)
-    polygon = stamp.at(0.5, 0.0)
+
+    # Under EVERY pose the result screen might open on, not just one of them.
+    #
+    # This used to seed a single claim-shaped polygon at t = 0.5, on the
+    # assumption that the middle of the route is where the claim starts. It is
+    # not, and there are two different poses in play before the runner touches
+    # anything: /end-run draws the shape at its RESTING pose (`stamp.t0`, which
+    # for a lap is nowhere near 0.5), and /claim-options then moves it to
+    # whichever sample it recommends. Seeding one and opening on the other put
+    # the rival's land a quarter of a lap from the claim — measured on the
+    # simulator's own presets, the overlap was 26% at 1.2 km and 0% from 3 km
+    # up. Nothing to take means no victims, which means the capture beat
+    # correctly plays the empty-ground landing and the scenario silently does
+    # not do the one thing it exists for.
+    #
+    # The union of both poses costs nothing here and makes the harness
+    # deterministic: wherever the claim opens, there is a rival underneath it.
+    poses = {round(stamp.t0, 4), 0.5}
+    polygon = unary_union([stamp.at(t, 0.0) for t in sorted(poses)])
+    if polygon.geom_type == "GeometryCollection" or polygon.is_empty:
+        polygon = stamp.at(stamp.t0, 0.0)
     # Each scenario starts clean for this developer's bot. This does not touch
     # any real runner's rows, including the developer's own territory.
     db.execute(text("DELETE FROM territories WHERE user_id = :u"), {"u": rival.id})

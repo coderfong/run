@@ -302,11 +302,9 @@ class ClaimOptionsOut(BaseModel):
     # preview and the claim are the same polygon.
     base_ring: List[Tuple[float, float]] = []
     base_centre: Optional[Tuple[float, float]] = None
-    # Where along `route` the shape sits AT REST — the pose that is the run
-    # exactly as it was run. Sliding is measured from here, not from 0.5, so
-    # the runner can always put the claim back where they earned it. For a lap
-    # this is nowhere near the middle: the territory is the filled block and
-    # its centre is off the trail entirely.
+    # Where along `route` the initial pose sits. Its centre is the route point
+    # at this fraction; dragging maps every other fraction the same literal
+    # way, including around a closed lap.
     base_t: float = 0.5
     # The route `t` addresses, cleaned and simplified — NOT the raw GPS path
     # the client recorded. Sent because t must mean the same thing on both
