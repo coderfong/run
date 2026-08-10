@@ -158,4 +158,19 @@ def health():
 
 @app.get("/version")
 def version():
-    return {"version": settings.app_version, "env": settings.env}
+    """What is actually running here.
+
+    `commit` is the thing worth having: `version` is a hand-maintained string
+    that does not move when code does, so it cannot answer "did my push go
+    out". The commit can, in one request, without credentials — which matters
+    most for changes that live inside authenticated handlers and have no other
+    externally visible signature.
+
+    Short-form, because it is for eyeballing against `git log --oneline`.
+    Empty off Render, which is the honest answer rather than a guess.
+    """
+    return {
+        "version": settings.app_version,
+        "env": settings.env,
+        "commit": (settings.render_git_commit or "")[:7],
+    }

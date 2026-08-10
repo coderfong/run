@@ -32,6 +32,21 @@ class Settings(BaseSettings):
     # App version reported by GET /version (override per deploy).
     app_version: str = "2.0.0"
 
+    # The COMMIT this process is running, reported by GET /version.
+    #
+    # `app_version` cannot answer "is my fix live" — it is a hand-maintained
+    # string that only moves when somebody edits the deploy config, so it says
+    # 2.0.0 through any number of pushes. That gap is not academic: three
+    # separate times this build, "did the deploy take" could only be answered
+    # by inference, and for a change living inside an authenticated handler it
+    # could not be answered at all.
+    #
+    # Render injects RENDER_GIT_COMMIT into every service automatically, so
+    # this needs no dashboard entry and no blueprint edit — it is populated by
+    # the platform on Render and empty everywhere else, which is exactly the
+    # honest answer when running locally.
+    render_git_commit: str = ""
+
     # Loop / polygon validation thresholds.
     # Tuned to filter out GPS jitter and trivial micro-loops.
     min_loop_points: int = 8           # minimum GPS samples before we look for a loop
