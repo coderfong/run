@@ -162,20 +162,19 @@ make sure every screenshot reflects the submitted binary.
 
 ## Before submission
 
-- [ ] Commit and push the working tree. The audit's backend fixes — content
-      moderation, Apple token revocation, migrations `0030`–`0032` — are all
-      still uncommitted, so pushing is what deploys them. On 2026-08-12 the
-      live API reported commit `aef34dc`, which is HEAD and therefore has none
-      of them.
-- [ ] Confirm Alembic ran through revision `0032` on Render (the Dockerfile
-      boot command migrates, so the push above should do it).
-- [ ] Set Render `ENV=production` and `APP_VERSION=2.1.0`.
+- [x] Backend deployed. Commit `b5170cf` pushed 2026-08-12 and live on Render:
+      `GET /version` reports `2.1.0` / commit `b5170cf`, `GET /health` reports
+      `{"ok": true, "db": true}`, and `/me/reports`, `/me/blocks` and
+      `/auth/apple` are in the served OpenAPI. The service boots by running
+      Alembic, so revisions `0030`–`0032` ran with it.
+- [ ] Set Render `ENV=production`. Still `development` as of the deploy above,
+      and it is the last thing `/version` gets wrong. `APP_VERSION` now tracks
+      the code and already reads `2.1.0`.
 - [ ] Configure `APPLE_CLIENT_IDS`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`,
       `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`; test Apple sign-in and deletion.
+      This is also the real proof that `0032` landed: token revocation reads
+      the column it added.
 - [ ] Configure and test Google sign-in with the same client id used by the app.
-- [ ] Verify `GET /health` reports a healthy database and `GET /version` reports
-      `2.1.0` and `production`. On 2026-08-12 the live API still reported
-      `2.0.0` and `development`.
 - [ ] Remove seeded/fabricated production runs and rotate any credential that
       has previously been shared outside the secrets manager.
 - [x] Live privacy page covers Apple Health correctly. Checked 2026-08-12: it
