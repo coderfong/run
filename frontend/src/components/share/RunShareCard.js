@@ -1,31 +1,33 @@
-// The image that leaves the app, built to Strava's shape: a full-bleed
-// background (your own photo, or a clan-coloured wash), the route drawn big
-// across it, and a stat stack in the corner with the brand mark under it.
+// The image that leaves the app, built to Strava's shape: the route drawn big,
+// a stat stack under it and the brand mark at the bottom — on NOTHING.
 //
-// The first pass was a dark grey slab with a thin line in the middle and a lot
-// of nothing around it — it read as a screenshot of an app rather than
-// something anyone would post. Two rules keep it honest:
+// The card is a STICKER and only a sticker. It exports as a transparent PNG,
+// and Instagram lays it over whatever the runner already has on their story.
+// That is the whole point: their own selfie or photo is the background and
+// PASER supplies the numbers. There used to be a background chooser here — a
+// clan-coloured wash, or a photo picked out of the library. Both are gone: they
+// competed with the runner's own story and turned a sticker into a slab.
+//
+// Two rules keep it honest:
 //
 //   1. CAPTURE-SAFE. `captureRef` rasterises what is on screen RIGHT NOW, so
 //      nothing here may be a map view, an `expo-image`, or an animation. The
-//      route is SVG, the mark is a plain RN `Image` on a bundled asset, and a
-//      chosen photo reports `onPhotoReady` so the sheet can wait for its
-//      decode instead of capturing a hole.
-//   2. FULL-BLEED. Instagram paints its story canvas with the colours it is
-//      handed and drops the image on top; an image with visible edges posts as
-//      a card floating on black. The background reaches every edge and
-//      `CARD_INK` is what the canvas behind it should be painted.
+//      route is SVG and the mark is a plain RN `Image` on a bundled asset.
+//   2. LEGIBLE ON ANYTHING. With no background of its own, every element has to
+//      carry its own contrast — the text shadows and the route's dark
+//      under-stroke are not decoration, they are what stops white on white.
 
 import React, { useMemo } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import PaserMark from '../PaserMark';
 import LogoRunner, { MARK_FEET } from '../character/LogoRunner';
 import { brand, type, withAlpha } from '../../theme';
 
-// The ink the card sits on — and what Instagram should paint around it.
+// The canvas colour Instagram paints BEHIND the sticker, until the runner picks
+// their own background. Never painted on the card itself, which is transparent
+// all the way to its edges.
 export const CARD_INK = '#07080A';
 
 export const SHARE_FORMATS = {
@@ -37,6 +39,10 @@ export const SHARE_FORMATS = {
 // bottom) covers roughly the first 11% and last 15% of a story.
 const STORY_SAFE_TOP = 0.11;
 const STORY_SAFE_BOTTOM = 0.15;
+// Native SVG only needs enough vertices to preserve the route at share-card
+// resolution. Keeping every recorder fix can create a multi-thousand-command
+// path exactly when Continue mounts the share preview.
+const MAX_DRAW_POINTS = 480;
 
 // --- geometry ---------------------------------------------------------------
 
@@ -45,10 +51,13 @@ const STORY_SAFE_BOTTOM = 0.15;
 function projectGroups(groups, w, h, pad) {
   const all = groups.flatMap((g) => g.points || []);
   if (all.length < 2) return groups.map(() => null);
-  const lats = all.map((p) => p[1]);
-  const lons = all.map((p) => p[0]);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  all.forEach(([lon, lat]) => {
+    minLat = Math.min(minLat, lat);
+    maxLat = Math.max(maxLat, lat);
+    minLon = Math.min(minLon, lon);
+    maxLon = Math.max(maxLon, lon);
+  });
   const kx = Math.cos(((minLat + maxLat) / 2) * (Math.PI / 180));
   const spanX = Math.max((maxLon - minLon) * kx, 1e-9);
   const spanY = Math.max(maxLat - minLat, 1e-9);
@@ -64,8 +73,13 @@ function projectGroups(groups, w, h, pad) {
   return groups.map((g) => {
     const pts = g.points || [];
     if (pts.length < 2) return null;
+    const drawPts = pts.length <= MAX_DRAW_POINTS
+      ? pts
+      : Array.from({ length: MAX_DRAW_POINTS }, (_, i) =>
+        pts[Math.round((i * (pts.length - 1)) / (MAX_DRAW_POINTS - 1))]
+      );
     let d = '';
-    pts.forEach((p, i) => {
+    drawPts.forEach((p, i) => {
       const [x, y] = at(p);
       d += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)} `;
     });
@@ -160,25 +174,21 @@ const STAT_ROW_U = 46;
 const FLEX_ALIGN = { left: 'flex-start', center: 'center', right: 'flex-end' };
 const ROW_JUSTIFY = { left: 'flex-start', center: 'center', right: 'flex-end' };
 
-// How hard the type has to fight its background.
+// How hard the type has to fight whatever ends up behind it.
 //
-// On the card's own dark backgrounds a soft shadow is plenty; as a sticker
-// there IS no background — the type may land on a pale sky or a white t-shirt,
-// where translucent labels simply vanish. So the sticker gets fully opaque text
-// and a tight shadow that reads as an outline rather than a glow.
+// There IS no background — the type may land on a pale sky or a white t-shirt,
+// where translucent labels simply vanish. So everything is fully opaque and
+// carries a tight shadow that reads as an outline rather than a glow.
 //
-// `dark` flips the whole thing for a bright photo: ink type carrying a white
+// `dark` flips the whole thing for a bright story: ink type carrying a white
 // halo. Without it the only options on a snowy or sunlit shot are "washed out"
 // and "washed out".
-function toneFor(sticker, textColor = 'light') {
+function toneFor(textColor = 'light') {
   const dark = textColor === 'dark';
   const ink = dark ? '#0C0C10' : '#FFFFFF';
   const shadow = dark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.85)';
-  const softShadow = dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
   const fade = (a) => (dark ? `rgba(12,12,16,${a})` : `rgba(255,255,255,${a})`);
-  return sticker
-    ? { text: ink, label: fade(0.98), unit: fade(0.96), shadow, radius: 5 }
-    : { text: ink, label: fade(0.72), unit: fade(0.8), shadow: softShadow, radius: 9 };
+  return { text: ink, label: fade(0.98), unit: fade(0.96), shadow, radius: 5 };
 }
 
 function Stat({ label, value, unit, u, tone, align }) {
@@ -245,11 +255,6 @@ function Stat({ label, value, unit, u, tone, align }) {
  * @param {object}   props.run           {distanceM, durationS, areaM2, elevationM, claimed}
  * @param {Array}    props.path          recorded route [{latitude, longitude}]
  * @param {Array}    props.rings         claimed/claimable rings [[[lon,lat], …]]
- * @param {'colour'|'photo'|'none'} props.background
- *        'none' exports with a TRANSPARENT background, to be dropped straight
- *        onto whatever the runner already has on their story.
- * @param {string}   props.photoUri      full-bleed background photo ('photo')
- * @param {Function} props.onPhotoReady  fired once that photo has decoded
  * @param {string}   props.accent        accent colour; defaults to the clan's
  * @param {'light'|'dark'} props.textColor
  * @param {'left'|'center'|'right'} props.align
@@ -266,9 +271,6 @@ export default function RunShareCard({
   run = {},
   path = [],
   rings = null,
-  background = 'colour',
-  photoUri = null,
-  onPhotoReady,
   accent,
   textColor = 'light',
   align = 'left',
@@ -285,20 +287,14 @@ export default function RunShareCard({
   const story = spec.key === 'story';
 
   const glow = accent || team?.glow || brand.pink;
-  const stroke = accent || team?.stroke || brand.pink;
 
   const padX = 26 * u;
   const padTop = story ? height * STORY_SAFE_TOP : 24 * u;
   const padBottom = story ? height * STORY_SAFE_BOTTOM : 24 * u;
 
-  // 'none' is the sticker: no fill of any kind, so the export keeps its alpha
-  // and Instagram lays it over the runner's own selfie. Every element on the
-  // card therefore has to carry its own legibility — the text shadows and the
-  // route's dark under-stroke are not decoration, they are what stops white on
-  // white.
-  const sticker = background === 'none';
-  const photo = background === 'photo' && !!photoUri;
-  const tone = toneFor(sticker, textColor);
+  // No fill of any kind, so the export keeps its alpha and Instagram lays it
+  // over the runner's own selfie.
+  const tone = toneFor(textColor);
 
   // The route owns the card rather than a little square in the middle of it:
   // it takes every pixel the fixed furniture does not. Measured, not guessed —
@@ -359,47 +355,12 @@ export default function RunShareCard({
       style={{
         width,
         height,
-        backgroundColor: sticker ? 'transparent' : CARD_INK,
+        // Transparent, always: the export has to keep its alpha or Instagram
+        // gets a slab to drag around instead of a sticker.
+        backgroundColor: 'transparent',
         overflow: 'hidden',
       }}
     >
-      {/* --- background: nothing at all, the runner's photo, or a clan wash --- */}
-      {sticker ? null : photo ? (
-        <>
-          <Image
-            source={{ uri: photoUri }}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-            fadeDuration={0}
-            onLoad={() => onPhotoReady?.()}
-            onError={() => onPhotoReady?.()}
-          />
-          {/* Legibility scrim — heavy enough under the numbers to read on a
-              bright photo, light enough that the photo is still the picture.
-              A near-opaque bottom third turns the runner's own shot into a
-              black bar with text on it. */}
-          <LinearGradient
-            colors={['rgba(0,0,0,0.45)', 'rgba(0,0,0,0.05)', 'rgba(0,0,0,0.55)', 'rgba(0,0,0,0.82)']}
-            locations={[0, 0.36, 0.82, 1]}
-            style={StyleSheet.absoluteFill}
-          />
-        </>
-      ) : (
-        <>
-          <LinearGradient
-            colors={[withAlpha(glow, 0.55), withAlpha(stroke, 0.18), CARD_INK]}
-            start={{ x: 0.15, y: 0 }}
-            end={{ x: 0.85, y: 0.9 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <LinearGradient
-            colors={['rgba(7,8,10,0)', 'rgba(7,8,10,0.7)', CARD_INK]}
-            start={{ x: 0.5, y: 0.42 }}
-            end={{ x: 0.5, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </>
-      )}
 
       {/* --- the headline: the ground, which is the whole point of PASER --- */}
       <View
@@ -530,9 +491,9 @@ export default function RunShareCard({
           height: statsH,
         }}
       >
-        {stats.map((s) => (
+        {stats.map(({ key, ...stat }) => (
           <View
-            key={s.key}
+            key={key}
             style={{
               // One chosen metric gets the whole row — half a row with nothing
               // beside it reads as a layout that lost something.
@@ -540,7 +501,7 @@ export default function RunShareCard({
               height: STAT_ROW_U * u,
             }}
           >
-            <Stat {...s} u={u} tone={tone} align={align} />
+            <Stat {...stat} u={u} tone={tone} align={align} />
           </View>
         ))}
       </View>

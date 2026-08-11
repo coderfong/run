@@ -288,10 +288,20 @@ def end_run(
     # claim can never disagree, and a later run can never change what an
     # earlier one was worth.
     eligible = economy.claim_allowed(tier)
+    # The simulator exists to exercise this flow repeatedly. Its synthetic runs
+    # used to consume the same daily diminishing entitlement as real runs, so
+    # after enough test passes /end-run correctly but unhelpfully returned
+    # 0.000 km² for every subsequent scenario. Only a server-allowlisted dev
+    # account may activate this marker; for everyone else it is ignored.
+    dev_simulated = bool(payload.simulated and is_dev_account(user))
     if economy.consumes_entitlement(tier):
-        before_m = economy.claim_distance_today(db, user.id, exclude_run_id=run.id)
-        run.claim_distance_m = run.distance_m
-        area = economy.entitled_area_m2(before_m, run.distance_m)
+        if dev_simulated:
+            run.claim_distance_m = 0.0
+            area = claim_area_m2(run.distance_m)
+        else:
+            before_m = economy.claim_distance_today(db, user.id, exclude_run_id=run.id)
+            run.claim_distance_m = run.distance_m
+            area = economy.entitled_area_m2(before_m, run.distance_m)
     elif eligible:
         # Shadow-flagged: it gets a shape so the submitter sees a normal
         # result, but it banks no entitlement — the day's real allowance is
@@ -1516,18 +1526,36 @@ def claim_territory(
     if run.verified and xp_gain > 0:
         sync_level_rewards(db, user.id)
 
-    # BOTH sides of a take are notified: the victim who lost land ("stolen")
-    # and the attacker who took it ("captured").
-    if stolen_m2 > 0 and stolen_from:
-        victim = db.execute(
-            text("SELECT id::text FROM users WHERE username = :u"), {"u": stolen_from}
-        ).fetchone()
-        if victim:
-            background.add_task(
-                notify, [victim[0]], "stolen", "Your land is under attack",
-                f"{user.username} took {round(stolen_m2):,} m² of your territory.",
-                None, str(user.id),
-            )
+    # BOTH sides of a take are notified: EVERY victim who lost land ("stolen")
+    # and the attacker who took it ("captured"). `stolen_from` is only the
+    # headline victim and used to make multi-owner claims silently notify that
+    # one person. Aggregate the real event list instead.
+    taken_by_victim: dict[str, float] = {}
+    for ev in steal_events:
+        if ev["defended"] or ev["area_m2"] < STEAL_LEDGER_MIN_M2:
+            continue
+        victim_id = str(ev["victim_id"])
+        taken_by_victim[victim_id] = taken_by_victim.get(victim_id, 0.0) + float(ev["area_m2"])
+
+    for victim_id, taken_m2 in taken_by_victim.items():
+        capture_id = f"{run.id}:{victim_id}"
+        background.add_task(
+            notify,
+            [victim_id],
+            "stolen",
+            "Your land was captured",
+            f"{user.username} took {round(taken_m2):,} m² of your territory.",
+            {
+                "capture_id": capture_id,
+                "taken_m2": taken_m2,
+                "lat": claim_centre.y,
+                "lon": claim_centre.x,
+                "attacker_id": str(user.id),
+                "attacker_username": user.username,
+                "attacker_avatar": user.avatar or {},
+            },
+            str(user.id),
+        )
     if stolen_m2 > 0:
         from_str = f" from {stolen_from}" if stolen_from else ""
         background.add_task(

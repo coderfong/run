@@ -752,14 +752,35 @@ def unblock(db, user_id, other_id) -> bool:
     return bool(n)
 
 
-def report(db, user_id, other_id, reason: str, detail=None, encounter_id=None) -> str:
+def is_blocked(db, user_id, other_id) -> bool:
+    """True when either runner has blocked the other."""
+    if str(user_id) == str(other_id):
+        return False
+    return bool(
+        db.execute(
+            text(
+                """
+                SELECT 1 FROM user_blocks
+                WHERE (blocker_id = CAST(:me AS uuid) AND blocked_id = CAST(:them AS uuid))
+                   OR (blocker_id = CAST(:them AS uuid) AND blocked_id = CAST(:me AS uuid))
+                LIMIT 1
+                """
+            ),
+            {"me": str(user_id), "them": str(other_id)},
+        ).fetchone()
+    )
+
+
+def report(
+    db, user_id, other_id, reason: str, detail=None, encounter_id=None, surface="content"
+) -> str:
     """File a report for moderation. Stored, never acted on automatically."""
     row = db.execute(
         text(
             """
             INSERT INTO user_reports
                 (reporter_id, reported_id, surface, reason, detail, encounter_id)
-            VALUES (CAST(:me AS uuid), CAST(:them AS uuid), 'paserby', :reason, :detail,
+            VALUES (CAST(:me AS uuid), CAST(:them AS uuid), :surface, :reason, :detail,
                     CAST(:enc AS uuid))
             RETURNING id::text
             """
@@ -770,6 +791,7 @@ def report(db, user_id, other_id, reason: str, detail=None, encounter_id=None) -
             "reason": reason,
             "detail": detail,
             "enc": str(encounter_id) if encounter_id else None,
+            "surface": surface,
         },
     ).fetchone()
     db.commit()

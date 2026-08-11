@@ -49,8 +49,8 @@ export const CLAIM_TIMING = {
   attackAnticipation: 520,
   attackDash: 500,
   defenderExit: 1100,
-  // The reveal starts at impact and the defenders finish leaving over the top
-  // of it — waiting for an empty screen first drains the energy out of it.
+  // Capture presentation begins at impact. Its authored reveal cue starts the
+  // territory transition while defenders finish leaving over the top of it.
   defenderExitOverlap: 400,
   // Empty ground: the attacker just lands on the spot and plants a flag.
   emptyLanding: 1050,

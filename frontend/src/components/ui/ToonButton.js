@@ -33,6 +33,11 @@ export default function ToonButton({
 }) {
   const fill = fillOverride || ctaFills[variant] || ctaFills.primary;
   const height = size === 'sm' ? 48 : 60;
+  // A small button is usually also a NARROW one — it shares a row with a ghost
+  // action rather than spanning the card. Starting it a couple of points down
+  // means a two-word label lands at its natural size instead of arriving
+  // already shrunk by the fit below.
+  const fontSize = size === 'sm' ? 16 : toonType.button.fontSize;
   const off = disabled || loading;
 
   const press = () => {
@@ -68,7 +73,18 @@ export default function ToonButton({
           ) : (
             <View style={styles.row}>
               {icon}
-              <OutlinedText style={[toonType.button, { color: labelColor }]} outline={toon.ink} width={2}>
+              {/* The label owns the leftover width and shrinks into it. A long
+                  CTA ("EXPAND YOUR LEAD") used to run under the pill's rim,
+                  because the row had no padding, no width limit, and the clip
+                  simply cut whatever hung out. */}
+              <OutlinedText
+                style={[toonType.button, { fontSize, color: labelColor }]}
+                outline={toon.ink}
+                width={2}
+                fit
+                minimumFontScale={0.62}
+                containerStyle={styles.label}
+              >
                 {title}
               </OutlinedText>
             </View>
@@ -107,7 +123,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // maxWidth is what makes the label shrinkable at all: without it the row
+  // sizes to its content and simply overflows the pill it sits in.
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: '100%',
+    paddingHorizontal: 18,
+  },
+  label: { flexShrink: 1 },
   sheen: {
     position: 'absolute',
     top: 2,

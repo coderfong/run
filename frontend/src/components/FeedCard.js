@@ -2,7 +2,7 @@
 // taken), the shape of the territory it grew, and — when the run took land off
 // somebody — the steal itself, played out on the card.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Polygon, Polyline } from 'react-native-svg';
 import AppIcon from './AppIcon';
@@ -19,6 +19,8 @@ import { PressableScale, haptic } from '../ui/motion';
 import { Card, Row, StatValue } from './ui';
 import { fmtArea } from './RivalCard';
 import GameLottie from './GameLottie';
+import ReactionBar, { ReactionTrigger } from './ReactionBar';
+import { useRunReactions } from '../hooks/useRunReactions';
 
 // Virtual drawing box; the <Svg> scales it to the card width, aspect preserved.
 // Taller than it was: a claim is now the shape of the RUN rather than a disc,
@@ -119,7 +121,7 @@ function formatArea(m2) {
   return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
 }
 
-export default function FeedCard({ item, navigation, autoPlaySteal = false }) {
+export default function FeedCard({ item, navigation, autoPlaySteal = false, screenFocused = true }) {
   const { colors } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
@@ -134,7 +136,15 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false }) {
   const [kudoed, setKudoed] = useState(item.kudoed);
   const [count, setCount] = useState(item.kudos_count || 0);
   const [kudosFx, setKudosFx] = useState(0);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const victims = item.victims || [];
+  // Seeded from the row the feed already handed us, so the chips are on the
+  // card at first paint rather than a fetch later.
+  const { reactions, mine, burst, react } = useRunReactions(item.id, item);
+
+  useEffect(() => {
+    if (!screenFocused) setPickerOpen(false);
+  }, [screenFocused]);
 
   const kudos = async () => {
     haptic.light();
@@ -161,7 +171,13 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false }) {
   };
 
   return (
-    <Card onPress={() => navigation?.navigate('RunDetail', { runId: item.id })} style={{ marginBottom: space.md }}>
+    <Card
+      onPress={() => {
+        setPickerOpen(false);
+        navigation?.navigate('RunDetail', { runId: item.id });
+      }}
+      style={{ marginBottom: space.md }}
+    >
       <Row between>
         {/* Shrinks, so the wider portrait is never paid for by the comment and
             kudos buttons being pushed off the right edge on a long username. */}
@@ -198,32 +214,59 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false }) {
           </View>
         </Row>
         <Row gap={2}>
+          {/* Reactions sit LEFT of comment and kudos: those two are the actions
+              that have always been here, and the new one should not displace
+              the muscle memory for either. */}
+          <ReactionTrigger
+            mine={mine}
+            active={pickerOpen}
+            color={c.stroke}
+            onPress={() => { haptic.light(); setPickerOpen((v) => !v); }}
+          />
           <PressableScale
-            onPress={() => navigation?.navigate('RunDetail', { runId: item.id, focusComments: true })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, padding: 4 }}
+            onPress={() => {
+              setPickerOpen(false);
+              navigation?.navigate('RunDetail', { runId: item.id, focusComments: true });
+            }}
+            style={styles.action}
             accessibilityRole="button"
             accessibilityLabel="View comments"
           >
             {/* Full strength. At the shared 0.45 `faded` these two read as
                 greyed-out — disabled, not "tap me" — which is the wrong signal
                 for the only two things you can do to somebody else's run. */}
-            <AppIcon name="comment" size={22} />
+            <AppIcon name="comment" size={28} />
             {(item.comment_count || 0) > 0 ? (
               <Text style={[type.captionMedium, { color: colors.textMuted }]}>{item.comment_count}</Text>
             ) : null}
           </PressableScale>
           <View style={styles.kudosSlot}>
             {kudosFx > 0 ? <GameLottie name="kudos" size={86} trigger={kudosFx} style={styles.kudosFx} /> : null}
-            <PressableScale onPress={kudos} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, padding: 4 }} accessibilityRole="button" accessibilityLabel="Give kudos">
+            <PressableScale onPress={kudos} style={styles.action} accessibilityRole="button" accessibilityLabel="Give kudos">
               {/* Kudos still has two states, but the "not yet" one is a step
                   down rather than a fade to grey — the heart keeps its colour so
                   the difference reads as weight, not as availability. */}
-              <AppIcon name="like" size={22} opacity={kudoed ? 1 : 0.85} />
+              <AppIcon name="like" size={28} />
               {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
             </PressableScale>
           </View>
         </Row>
       </Row>
+
+      {/* Under the header, above the map thumb: the chips belong to the person
+          and the run, not to the stats. Draws nothing at all until the run has
+          a reaction on it or the picker is open, so a quiet feed is unchanged. */}
+      <ReactionBar
+        compact
+        reactions={reactions}
+        mine={mine}
+        burst={burst}
+        color={c.stroke}
+        onReact={react}
+        open={pickerOpen}
+        inlinePicker
+        onRequestClose={() => setPickerOpen(false)}
+      />
 
       <RouteThumb item={item} color={c.stroke} />
 
@@ -269,4 +312,13 @@ const makeStyles = (colors) =>
     },
     kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
     kudosFx: { position: 'absolute', zIndex: 4 },
+    action: {
+      minWidth: 40,
+      minHeight: 40,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      padding: 4,
+    },
   });

@@ -204,6 +204,12 @@ def report_user(
     if db.get(models.User, payload.user_id) is None:
         raise HTTPException(404, "runner not found")
     report_id = paserby.report(
-        db, user.id, payload.user_id, payload.reason, payload.detail, payload.encounter_id
+        db,
+        user.id,
+        payload.user_id,
+        payload.reason,
+        payload.detail,
+        payload.encounter_id,
+        surface="paserby" if payload.encounter_id else "content",
     )
     return {"ok": True, "report_id": report_id}

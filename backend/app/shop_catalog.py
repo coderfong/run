@@ -16,26 +16,19 @@ PRICE_BY_RARITY = {
 # check-catalog.js), so a flat map is safe and keeps lookups simple.
 SHOP_ITEMS = {
     # --- accessory ---
-    "scarf": ("accessory", "common"),  # Scarf
-    "goldmedal": ("accessory", "rare"),  # Gold medal
-    "hydrovest": ("accessory", "rare"),  # Race vest
     "cape": ("accessory", "epic"),  # Cape
     "angelwings": ("accessory", "epic"),  # Angel wings
-    "neonwings": ("accessory", "legendary"),  # Neon wings
     "redcape": ("accessory", "epic"),  # Hero cape
     "starnecklace": ("accessory", "rare"),  # Star pendant
     "greenscarf": ("accessory", "common"),  # Knit scarf
     "tealscarf": ("accessory", "common"),  # Winter scarf
     "gaiter": ("accessory", "common"),  # Neck gaiter
-    "katanas": ("accessory", "epic"),  # Twin blades
     "lacecollar": ("accessory", "rare"),  # Lace collar
     "dogtags": ("accessory", "rare"),  # Dog tags
     "pearlcollar": ("accessory", "rare"),  # Pearl collar
     "pearls": ("accessory", "common"),  # Pearl strand
     "charmchain": ("accessory", "common"),  # Charm chain
-    "flowerchain": ("accessory", "common"),  # Daisy chain
     "lei": ("accessory", "common"),  # Flower lei
-    "neckerchief": ("accessory", "common"),  # Neckerchief
     "sailorcollar": ("accessory", "common"),  # Sailor collar
     "bowtie": ("accessory", "common"),  # Bow tie
     "necktie": ("accessory", "common"),  # Necktie
@@ -55,158 +48,44 @@ SHOP_ITEMS = {
     "royalrobe": ("accessory", "legendary"),  # Royal robe
     "lacebib": ("accessory", "common"),  # Lace bib
     # --- bottom ---
-    "wb001": ("bottom", "common"),  # Shorts · Teal 1
-    "wb002": ("bottom", "common"),  # Shorts · Red 1
-    "wb003": ("bottom", "common"),  # Shorts · Teal 2
-    "wb004": ("bottom", "common"),  # Shorts · Olive 1
-    "wb009": ("bottom", "common"),  # Trousers · Navy 2
-    "wb012": ("bottom", "common"),  # Shorts · Mint 1
-    "wb013": ("bottom", "common"),  # Skirt · Purple
-    "wb014": ("bottom", "common"),  # Shorts · Charcoal 1
-    "wb017": ("bottom", "common"),  # Shorts · Sky 1
-    "wb018": ("bottom", "common"),  # Bike shorts · White
-    "wb019": ("bottom", "common"),  # Trousers · Olive 3
-    "wb021": ("bottom", "common"),  # Shorts · Brown
-    "wb024": ("bottom", "common"),  # Shorts · Sand
-    "wb025": ("bottom", "rare"),  # Shorts · Red 2
-    "wb026": ("bottom", "common"),  # Shorts · Blue
-    "wb027": ("bottom", "common"),  # Shorts · Charcoal 2
-    "wb031": ("bottom", "common"),  # Skirt · Green
-    "wb032": ("bottom", "common"),  # Shorts · Sky 2
-    "wb036": ("bottom", "common"),  # Shorts · Red 3
-    "wb043": ("bottom", "common"),  # Shorts · Teal 3
-    "wb047": ("bottom", "common"),  # Shorts · Cream 1
-    "wb048": ("bottom", "common"),  # Shorts · Orange 1
-    "wb050": ("bottom", "rare"),  # Shorts · Mint 2
-    "wb052": ("bottom", "common"),  # Bike shorts · Charcoal 1
-    "wb054": ("bottom", "common"),  # Shorts · Navy
-    "wb056": ("bottom", "common"),  # Shorts · Blush 1
-    "wb061": ("bottom", "common"),  # Shorts · Orange 2
-    "wb062": ("bottom", "common"),  # Bike shorts · Charcoal 2
     "wb065": ("bottom", "rare"),  # Shorts · Yellow 1
-    "wb068": ("bottom", "common"),  # Shorts · Olive 2
-    "wb071": ("bottom", "common"),  # Shorts · Blush 2
-    "wb072": ("bottom", "common"),  # Bike shorts · Charcoal 3
-    "wb073": ("bottom", "common"),  # Skirt · Mint 2
-    "wb083": ("bottom", "common"),  # Skirt · Coral 1
-    "wb084": ("bottom", "common"),  # Shorts · Blush 4
-    "wb086": ("bottom", "common"),  # Bike shorts · Yellow
-    "wb092": ("bottom", "common"),  # Trousers · Black
-    "wb093": ("bottom", "common"),  # Shorts · Cream 2
-    "wb094": ("bottom", "common"),  # Shorts · Blush 5
-    "wb097": ("bottom", "common"),  # Shorts · Blush 6
-    "wb102": ("bottom", "common"),  # Trousers · Teal 2
-    "wb103": ("bottom", "common"),  # Shorts · Teal 4
     "wb105": ("bottom", "rare"),  # Trousers · Sand 6
-    "wb106": ("bottom", "common"),  # Trousers · Teal 3
-    "wb107": ("bottom", "common"),  # Skirt · Grey
-    "wb108": ("bottom", "common"),  # Skirt · Teal
-    "wb109": ("bottom", "common"),  # Shorts · Teal 5
-    "wb110": ("bottom", "epic"),  # Shorts · Charcoal 3
-    "wb111": ("bottom", "common"),  # Trousers · Teal 4
     # --- face ---
-    "smiley": ("face", "common"),  # Smiley
-    "neutral": ("face", "common"),  # Neutral
-    "chill": ("face", "common"),  # Chill
-    "laugh": ("face", "common"),  # Laugh
-    "content": ("face", "common"),  # Content
-    "grump": ("face", "common"),  # Grump
-    "determined": ("face", "common"),  # Game face
     "wink": ("face", "common"),  # Wink
     "tongueout": ("face", "common"),  # Cheeky
-    "whoa": ("face", "rare"),  # Whoa
     "stareyes": ("face", "rare"),  # Star eyes
     "sleepy": ("face", "rare"),  # Sleepy
     "hearteyes": ("face", "rare"),  # Dizzy
     "exhausted": ("face", "rare"),  # Cooked
     "blush": ("face", "epic"),  # Blush
-    "worried": ("face", "common"),  # Worried
-    "uneasy": ("face", "common"),  # Uneasy
-    "glum": ("face", "common"),  # Glum
-    "deadpan": ("face", "common"),  # Deadpan
-    "sad": ("face", "common"),  # Sad
     "smirk": ("face", "common"),  # Smirk
     "beam": ("face", "common"),  # Beaming
     "angry": ("face", "common"),  # Angry
     "joy": ("face", "common"),  # Joy
     "sob": ("face", "rare"),  # Sob
-    "gasp": ("face", "rare"),  # Gasp
     "sly": ("face", "rare"),  # Sly
-    "rage": ("face", "epic"),  # Rage
     # --- footwear ---
-    "wf001": ("footwear", "common"),  # Shoes · Coral 1
-    "wf002": ("footwear", "common"),  # Shoes · Yellow 1
-    "wf004": ("footwear", "common"),  # Shoes · Blush 2
-    "wf005": ("footwear", "rare"),  # Shoes · Cream 1
-    "wf006": ("footwear", "common"),  # Shoes · Charcoal 1
-    "wf007": ("footwear", "common"),  # Shoes · Blue 1
-    "wf008": ("footwear", "common"),  # Shoes · Sky 1
-    "wf009": ("footwear", "common"),  # Shoes · Sky 2
-    "wf010": ("footwear", "rare"),  # Shoes · Navy 1
-    "wf011": ("footwear", "epic"),  # Shoes · Yellow 2
-    "wf012": ("footwear", "common"),  # Shoes · Olive 1
-    "wf013": ("footwear", "common"),  # Shoes · Sky 3
     "wf015": ("footwear", "rare"),  # Shoes · Charcoal 2
-    "wf018": ("footwear", "common"),  # Shoes · Red 1
-    "wf019": ("footwear", "common"),  # Shoes · Cream 2
     "wf020": ("footwear", "rare"),  # Shoes · Blush 4
-    "wf021": ("footwear", "common"),  # Shoes · Lilac 1
     "wf022": ("footwear", "epic"),  # Shoes · Charcoal 3
-    "wf023": ("footwear", "common"),  # Shoes · Charcoal 4
-    "wf024": ("footwear", "common"),  # Shoes · Orange
     "wf025": ("footwear", "rare"),  # Shoes · Mint 2
-    "wf026": ("footwear", "common"),  # Shoes · Purple 1
-    "wf027": ("footwear", "common"),  # Shoes · Cream 3
-    "wf028": ("footwear", "common"),  # Shoes · Cream 4
-    "wf029": ("footwear", "common"),  # Shoes · Mint 3
     "wf030": ("footwear", "rare"),  # Shoes · Pink 1
-    "wf031": ("footwear", "common"),  # Shoes · Blush 5
-    "wf032": ("footwear", "common"),  # Shoes · Cream 5
-    "wf034": ("footwear", "common"),  # Shoes · Blush 6
-    "wf036": ("footwear", "common"),  # Shoes · Charcoal 5
-    "wf037": ("footwear", "common"),  # Shoes · Cream 7
     "wf040": ("footwear", "rare"),  # Shoes · Grey 1
-    "wf041": ("footwear", "common"),  # Shoes · Yellow 4
-    "wf043": ("footwear", "common"),  # Shoes · Red 2
-    "wf044": ("footwear", "epic"),  # Shoes · Pink 2
     "wf045": ("footwear", "rare"),  # Shoes · Cream 9
-    "wf046": ("footwear", "common"),  # Shoes · Charcoal 6
-    "wf047": ("footwear", "common"),  # Shoes · Mint 4
-    "wf048": ("footwear", "common"),  # Shoes · Coral 3
-    "wf049": ("footwear", "common"),  # Shoes · Cream 10
     "wf050": ("footwear", "rare"),  # Shoes · Charcoal 7
-    "wf051": ("footwear", "common"),  # Shoes · Grey 2
-    "wf052": ("footwear", "common"),  # Shoes · Maroon 1
-    "wf053": ("footwear", "common"),  # Shoes · Brown 1
-    "wf054": ("footwear", "common"),  # Shoes · Cream 11
     "wf055": ("footwear", "epic"),  # Shoes · Lilac 2
     "wf060": ("footwear", "rare"),  # Shoes · Red 3
-    "wf061": ("footwear", "common"),  # Shoes · Navy 3
-    "wf063": ("footwear", "common"),  # Shoes · Charcoal 8
-    "wf064": ("footwear", "common"),  # Shoes · Sky 4
     "wf070": ("footwear", "rare"),  # Shoes · Coral 4
-    "wf071": ("footwear", "common"),  # Shoes · Cream 12
-    "wf076": ("footwear", "common"),  # Shoes · Charcoal 10
-    "wf078": ("footwear", "common"),  # Shoes · Brown 2
-    "wf079": ("footwear", "common"),  # Shoes · Blush 8
-    "wf081": ("footwear", "common"),  # Shoes · Blush 9
-    "wf083": ("footwear", "common"),  # Shoes · Coral 5
-    "wf084": ("footwear", "common"),  # Shoes · Charcoal 11
     "wf085": ("footwear", "rare"),  # Shoes · Maroon 3
-    "wf086": ("footwear", "common"),  # Shoes · Sky 5
     # --- glasses ---
     "rounds": ("glasses", "common"),  # Rounds
-    "rects": ("glasses", "rare"),  # Rects
     "wayfarer": ("glasses", "common"),  # Wayfarers
     "roundgold": ("glasses", "common"),  # Round golds
     "halfframe": ("glasses", "rare"),  # Half frames
     "heart": ("glasses", "rare"),  # Heart sunnies
     "shieldvisor": ("glasses", "rare"),  # Shield visor
-    "cleargoggles": ("glasses", "rare"),  # Clear goggles
-    "sportshield": ("glasses", "epic"),  # Sport shield
     "skigoggles": ("glasses", "epic"),  # Ski goggles
     "starglasses": ("glasses", "rare"),  # Star shades
-    "steampunk": ("glasses", "epic"),  # Steampunk goggles
     "hexshades": ("glasses", "rare"),  # Hex shades
     "cateye": ("glasses", "rare"),  # Cat eye
     "pixelshades": ("glasses", "epic"),  # Pixel shades
@@ -219,33 +98,15 @@ SHOP_ITEMS = {
     "pearlspecs": ("glasses", "rare"),  # Pearl specs
     "butterfly": ("glasses", "rare"),  # Butterfly shades
     "tintgoggles": ("glasses", "rare"),  # Tint goggles
-    "onimask": ("glasses", "legendary"),  # Oni mask
     # --- hair ---
-    "curtains": ("hair", "common"),  # Curtains
-    "middlepart": ("hair", "common"),  # Middle part
-    "swept": ("hair", "common"),  # Swept
-    "curls": ("hair", "common"),  # Curls
-    "pixie": ("hair", "common"),  # Pixie
-    "bluntbob": ("hair", "common"),  # Blunt bob
-    "fringebob": ("hair", "common"),  # Fringe bob
-    "sleeklong": ("hair", "common"),  # Sleek long
-    "messy": ("hair", "common"),  # Messy
     "longwaves": ("hair", "common"),  # Long waves
-    "flow": ("hair", "common"),  # Flow
     "ravenlong": ("hair", "common"),  # Straight long
     "bangs": ("hair", "common"),  # Bangs
-    "roundfro": ("hair", "rare"),  # Round fro
     "softwaves": ("hair", "rare"),  # Soft waves
-    "topknot": ("hair", "rare"),  # Top knot
     "sidepony": ("hair", "rare"),  # Side pony
     "fringebun": ("hair", "rare"),  # Fringe bun
     "highpony": ("hair", "rare"),  # High pony
-    "surfer": ("hair", "epic"),  # Surfer
     "spacebuns": ("hair", "epic"),  # Space buns
-    "hijab": ("hair", "common"),  # Sports hijab
-    "curtainlong": ("hair", "common"),  # Curtain long
-    "twoblock": ("hair", "common"),  # Two block
-    "buzz": ("hair", "common"),  # Buzz cut
     "braids": ("hair", "common"),  # Braided pigtails
     "bunstrands": ("hair", "common"),  # Soft bun
     "comma": ("hair", "rare"),  # Comma fringe
@@ -253,17 +114,12 @@ SHOP_ITEMS = {
     "bigafro": ("hair", "rare"),  # Big afro
     "highbun": ("hair", "rare"),  # High bun
     # --- headwear ---
-    "cap": ("headwear", "common"),  # Cap
-    "sweatband": ("headwear", "common"),  # Sweatband
     "beanie": ("headwear", "common"),  # Beanie
-    "bandana": ("headwear", "common"),  # Bandana
     "snapback": ("headwear", "common"),  # Backwards cap
     "bucket": ("headwear", "common"),  # Bucket hat
-    "pombeanie": ("headwear", "rare"),  # Pom beanie
     "visor": ("headwear", "rare"),  # Visor
     "skatehelmet": ("headwear", "rare"),  # Skate helmet
     "hardhat": ("headwear", "rare"),  # Hard hat
-    "bikehelmet": ("headwear", "epic"),  # Bike helmet
     "frogbeanie": ("headwear", "rare"),  # Frog beanie
     "wizardhat": ("headwear", "epic"),  # Wizard hat
     "antlers": ("headwear", "rare"),  # Antlers
@@ -274,21 +130,16 @@ SHOP_ITEMS = {
     "headdress": ("headwear", "epic"),  # Feather crown
     "gradcap": ("headwear", "rare"),  # Grad cap
     "bowler": ("headwear", "common"),  # Bowler
-    "tiara": ("headwear", "epic"),  # Tiara
     "turban": ("headwear", "rare"),  # Turban
-    "catears": ("headwear", "common"),  # Cat ears
-    "pinkbow": ("headwear", "common"),  # Bow
     "flowercrown": ("headwear", "common"),  # Flower crown
     "catbeanie": ("headwear", "rare"),  # Cat beanie
     "boater": ("headwear", "common"),  # Boater
     "jockeycap": ("headwear", "common"),  # Jockey cap
-    "beret": ("headwear", "common"),  # Beret
     "newsboy": ("headwear", "common"),  # Newsboy cap
     "flatcap": ("headwear", "common"),  # Flat cap
     "captaincap": ("headwear", "rare"),  # Captain cap
     "sailorhat": ("headwear", "common"),  # Sailor hat
     "nursecap": ("headwear", "common"),  # Nurse cap
-    "spacehelmet": ("headwear", "legendary"),  # Space helmet
     "sultanturban": ("headwear", "epic"),  # Jewel turban
     "ushanka": ("headwear", "rare"),  # Ushanka
     "bunnyears": ("headwear", "common"),  # Bunny ears
@@ -296,38 +147,27 @@ SHOP_ITEMS = {
     "heartbopper": ("headwear", "common"),  # Heart boppers
     "cherrybopper": ("headwear", "common"),  # Cherry boppers
     "spikecrown": ("headwear", "rare"),  # Spike band
-    "punkcrown": ("headwear", "epic"),  # Punk crown
-    "royalcrown": ("headwear", "legendary"),  # Royal crown
     "bowberet": ("headwear", "common"),  # Bow beret
     "bowcap": ("headwear", "common"),  # Bow cap
     "maidband": ("headwear", "common"),  # Maid band
-    "daisyband": ("headwear", "common"),  # Daisy band
     "angelheart": ("headwear", "epic"),  # Angel heart
-    "flowerclip": ("headwear", "common"),  # Flower clip
     "ballcap": ("headwear", "common"),  # Ball cap
-    "knitbeanie": ("headwear", "common"),  # Knit beanie
     "canvasbucket": ("headwear", "common"),  # Canvas bucket
     "runvisor": ("headwear", "common"),  # Run visor
-    "sportcap": ("headwear", "common"),  # Sport cap
     "headphones": ("headwear", "rare"),  # Headphones
     "sitehelmet": ("headwear", "rare"),  # Site helmet
     "witchhat": ("headwear", "epic"),  # Witch hat
-    "bowband": ("headwear", "common"),  # Bow band
-    "flatberet": ("headwear", "common"),  # Flat beret
     "puffmuffs": ("headwear", "common"),  # Puff earmuffs
     "flatsnap": ("headwear", "common"),  # Flat snapback
     "gardenhat": ("headwear", "common"),  # Garden hat
-    "cuffbeanie": ("headwear", "common"),  # Cuffed beanie
     "wideband": ("headwear", "common"),  # Wide band
     "tiedbandana": ("headwear", "common"),  # Tied bandana
     "jeweltiara": ("headwear", "epic"),  # Jewel tiara
-    "classiccap": ("headwear", "common"),  # Classic cap
     "tophat": ("headwear", "epic"),  # Top hat
     "fedora": ("headwear", "rare"),  # Fedora
     "cowpokehat": ("headwear", "rare"),  # Cowpoke hat
     "cheftoque": ("headwear", "rare"),  # Chef toque
     "mortarboard": ("headwear", "rare"),  # Mortarboard
-    "kittyears": ("headwear", "common"),  # Kitty ears
     "bloomcrown": ("headwear", "common"),  # Bloom crown
     "rabbitears": ("headwear", "common"),  # Rabbit ears
     "tricorn": ("headwear", "epic"),  # Tricorn
@@ -336,7 +176,6 @@ SHOP_ITEMS = {
     "golfcap": ("headwear", "common"),  # Golf cap
     "trapperhat": ("headwear", "rare"),  # Trapper hat
     "unicornhorn": ("headwear", "epic"),  # Unicorn horn
-    "butterflyclip": ("headwear", "common"),  # Butterfly clip
     "haloring": ("headwear", "legendary"),  # Halo ring
     "loveboppers": ("headwear", "common"),  # Love boppers
     "officercap": ("headwear", "rare"),  # Officer cap
@@ -345,12 +184,10 @@ SHOP_ITEMS = {
     "scrumcap": ("headwear", "rare"),  # Scrum cap
     "sunbowhat": ("headwear", "common"),  # Sun hat
     "santahat": ("headwear", "rare"),  # Santa hat
-    "slouchberet": ("headwear", "common"),  # Slouch beret
     "rodeohat": ("headwear", "rare"),  # Rodeo hat
     "headwrap": ("headwear", "rare"),  # Head wrap
     "vikinghelm": ("headwear", "epic"),  # Viking helm
     "mobcap": ("headwear", "common"),  # Mob cap
-    "headscarf": ("headwear", "common"),  # Head scarf
     "clochehat": ("headwear", "common"),  # Cloche hat
     "bowwrap": ("headwear", "common"),  # Bow wrap
     "minerhelmet": ("headwear", "rare"),  # Miner helmet
@@ -358,40 +195,30 @@ SHOP_ITEMS = {
     "paradeshako": ("headwear", "epic"),  # Parade shako
     "jestercap": ("headwear", "epic"),  # Jester cap
     "weddingveil": ("headwear", "epic"),  # Wedding veil
-    "rosecrown": ("headwear", "common"),  # Rose crown
     "scallopband": ("headwear", "common"),  # Scallop band
     "pinupwrap": ("headwear", "common"),  # Pin up wrap
     "derbyhat": ("headwear", "common"),  # Derby hat
-    "dadcap": ("headwear", "common"),  # Dad cap
     "laurelcrown": ("headwear", "epic"),  # Laurel crown
     "samuraihelm": ("headwear", "epic"),  # Samurai helm
     "skullcap": ("headwear", "common"),  # Skull cap
-    "topbow": ("headwear", "common"),  # Top bow
     "boaterhat": ("headwear", "common"),  # Boater hat
     "pearltiara": ("headwear", "rare"),  # Pearl tiara
     "swimcap": ("headwear", "common"),  # Swim cap
     "bigbow": ("headwear", "common"),  # Big bow
     # --- top ---
-    "stripetee": ("top", "common"),  # Stripe tee
     "daisydress": ("top", "common"),  # Daisy dress
     "overshirt": ("top", "rare"),  # Overshirt
     "sweater": ("top", "rare"),  # Sweater
-    "singlet": ("top", "common"),  # Race singlet
     "oversized": ("top", "common"),  # Oversized tee
     "camisole": ("top", "common"),  # Camisole
     "polo": ("top", "common"),  # PE polo
     "windbreaker": ("top", "rare"),  # Windbreaker
-    "sportpolo": ("top", "common"),  # Sport polo
-    "greyhoodie": ("top", "common"),  # Hoodie
     "bomber": ("top", "rare"),  # Bomber jacket
     "denimjacket": ("top", "rare"),  # Denim jacket
     "cardigan": ("top", "common"),  # Cardigan
-    "labcoat": ("top", "rare"),  # Lab coat
     "judogi": ("top", "rare"),  # Judo gi
     "utilityvest": ("top", "rare"),  # Utility vest
     "sailortop": ("top", "common"),  # Sailor top
-    "puffer": ("top", "rare"),  # Puffer jacket
-    "puffblouse": ("top", "common"),  # Puff blouse
     "letterman": ("top", "rare"),  # Letterman jacket
     "teamjersey": ("top", "rare"),  # Team jersey
     "cyclejersey": ("top", "rare"),  # Cycle jersey
@@ -403,68 +230,23 @@ SHOP_ITEMS = {
     "frilltop": ("top", "common"),  # Frill top
     "maidapron": ("top", "rare"),  # Maid apron
     "bowcami": ("top", "common"),  # Bow cami
-    "knightarmor": ("top", "legendary"),  # Knight armour
-    "o0t": ("top", "common"),  # Quilted jacket · Navy
-    "o1t": ("top", "common"),  # Training vest · Red
-    "o2t": ("top", "common"),  # Polo · Forest
     "o3t": ("top", "rare"),  # Zip hoodie · Yellow
-    "o4t": ("top", "epic"),  # Ribbed tee · Black
-    "o6t": ("top", "common"),  # Crop polo · White
     "o9t": ("top", "epic"),  # Loose tee · Sea glass
-    "o10t": ("top", "common"),  # Zip hoodie · Red
-    "o12t": ("top", "common"),  # Tank top · Cobalt
     "o13t": ("top", "rare"),  # Ringer tee · Yellow
     "o14t": ("top", "epic"),  # Loose tee · Black
-    "o16t": ("top", "common"),  # Polo · White
     "o18t": ("top", "rare"),  # Loose tee · Mint
-    "o30t": ("top", "common"),  # Zip hoodie · Sky
-    "o31t": ("top", "common"),  # Tank top · Orange
-    "o36t": ("top", "common"),  # Track jacket · Coral
-    "o40t": ("top", "common"),  # Layered vest · Orange
-    "o41t": ("top", "common"),  # Camp shirt · Sand
-    "o45t": ("top", "common"),  # Zip hoodie · Coral
     "o48t": ("top", "rare"),  # Polo · Lilac
-    "o49t": ("top", "epic"),  # Baseball jacket · Red
-    "o50t": ("top", "common"),  # Track jacket · Teal
     "o54t": ("top", "rare"),  # Baseball jacket · Blush
-    "o56t": ("top", "common"),  # Sports bra · Mint
-    "o57t": ("top", "common"),  # Racer jacket · White
     "o68t": ("top", "rare"),  # Pullover hoodie · Black
-    "o70t": ("top", "common"),  # Flannel shirt · Olive
-    "o71t": ("top", "common"),  # Puffer layer · Black
-    "o72t": ("top", "common"),  # Heart cardigan · Blush
     "o78t": ("top", "rare"),  # Pullover hoodie · Jet
-    "o82t": ("top", "common"),  # Button cardigan · Blush
-    "o87t": ("top", "common"),  # Shirt jacket · Navy
     "o88t": ("top", "rare"),  # Hooded puffer · Ash
     "o89t": ("top", "rare"),  # Flight bomber · Green
-    "o90t": ("top", "common"),  # Blazer · Grey
-    "o91t": ("top", "common"),  # Sherpa trucker · Tan
-    "o92t": ("top", "common"),  # Longline cardigan · Cream
     "o93t": ("top", "rare"),  # Blazer · Navy
     "o94t": ("top", "rare"),  # Striped knit · Cream
-    "o95t": ("top", "common"),  # Zip hoodie · Mauve
-    "k1t": ("top", "common"),  # Running vest · White
-    "k2t": ("top", "common"),  # Boxy tee · Black
-    "k3t": ("top", "common"),  # Zip hoodie · Charcoal
-    "k4t": ("top", "common"),  # Raglan tee · Black
-    "k5t": ("top", "common"),  # Crop tee · Pink
     "k6t": ("top", "rare"),  # Track hoodie · Blue
-    "k8t": ("top", "common"),  # Half-zip · Lilac
-    "k9t": ("top", "common"),  # Block hoodie · Blush
-    "k11t": ("top", "common"),  # Stripe polo · White
     "k12t": ("top", "rare"),  # Crop jacket · Blush
-    "k13t": ("top", "common"),  # Rugby shirt · Lilac
-    "k14t": ("top", "common"),  # Crop puffer · Grey
-    "k15t": ("top", "common"),  # Pocket hoodie · Slate
-    "o58o": ("top", "common"),  # Starlit mage robes
-    "o59o": ("top", "common"),  # Shinobi gi
-    "o60o": ("top", "common"),  # Astronaut suit
     "o61o": ("top", "rare"),  # Pirate coat
-    "o64o": ("top", "common"),  # Leaf fairy dress
-    "o66o": ("top", "common"),  # Valkyrie armour
     "o69o": ("top", "epic"),  # Tactical rig
-    "o79o": ("top", "common"),  # Storm parka
 }
 
 

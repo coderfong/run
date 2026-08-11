@@ -1,8 +1,8 @@
 // ShopScreen — the PASER water point: a race-day hydration station where the
 // rotating stock is sold over the counter.
 //
-// Twelve items at a time on a 12-hour clock, not the whole 155-item
-// catalogue: a shop you can exhaust in one sitting has no reason to be
+// Twelve items at a time on a 12-hour clock, not the whole catalogue: a shop
+// you can exhaust in one sitting has no reason to be
 // revisited, and everything looks equally unremarkable when it's all on
 // display at once. The selection is derived from the window index server-side
 // (coins.py) so it needs no state and can't drift between client and server.
@@ -43,10 +43,13 @@ import GameAnimation, { AnimationStack } from '../components/GameAnimation';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import PitStopScene from '../components/shop/PitStopScene';
 import { PIT_STOP_ANIM } from '../config/pitStop';
+import { IAP_ENABLED } from '../config/releaseFeatures';
 import { CountUpText, haptic, Reveal, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
 
 const SLOT_LABEL = Object.fromEntries(SLOTS.map((s) => [s.key, s.label]));
+const SLOT_ORDER = Object.fromEntries(SLOTS.map((s, index) => [s.key, index]));
+const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
 
 function useCountdown(expiresAt) {
   const remaining = (expiry) => (expiry ? Math.max(0, expiry * 1000 - Date.now()) : 0);
@@ -144,9 +147,12 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
         }`}
         accessibilityHint={item.owned ? undefined : 'Shows the item details and the buy button'}
       >
-        {/* Art and price only. Rarity still reads off the cell's tinted
-            border, and is spelled out in the panel below. */}
+        {/* The name keeps similarly shaped tops/shoes distinguishable; rarity
+            remains both a section heading and the card's tinted border. */}
         <PartThumb slot={item.slot} item={cat} size={56} />
+        <Text style={[type.captionMedium, styles.cellName, { color: colors.text }]} numberOfLines={2}>
+          {cat?.label || item.item_id}
+        </Text>
         {item.owned ? (
           <Text style={[type.caption, { color: colors.textMuted }]}>Owned</Text>
         ) : (
@@ -284,7 +290,7 @@ export default function ShopScreen() {
   const { colors } = useTheme();
   const type = useThemedType();
   const focused = useIsFocused();
-  const { equipped, refreshUnlocks } = useAvatar();
+  const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
   const { data, loading, error, refresh: load, setData } = useQuery('me:coins', api.shop);
   const [selectedId, setSelectedId] = useState(null);
   // `tick` bumps on every confirmed purchase so the scene replays its
@@ -302,7 +308,22 @@ export default function ShopScreen() {
 
   useEffect(() => () => clearTimeout(resetTimer.current), []);
 
-  const items = data?.items || [];
+  // The server owns rotation and prices; the client adds its stat/pass unlock
+  // knowledge so the shop never offers a Buy button for an already-equippable
+  // item. Sort by rarity, then wearable slot, then the visible name.
+  const items = useMemo(() => (data?.items || [])
+    .map((item) => {
+      const cat = getItem(item.slot, item.item_id);
+      return { ...item, cat, owned: item.owned || (!!cat && isUnlocked(cat)) };
+    })
+    .sort((a, b) => (
+      RARITY_ORDER.indexOf(a.rarity) - RARITY_ORDER.indexOf(b.rarity)
+      || (SLOT_ORDER[a.slot] ?? 99) - (SLOT_ORDER[b.slot] ?? 99)
+      || (a.cat?.label || a.item_id).localeCompare(b.cat?.label || b.item_id)
+    )), [data?.items, isUnlocked]);
+  const sections = useMemo(() => RARITY_ORDER
+    .map((rarity) => ({ rarity, items: items.filter((item) => item.rarity === rarity) }))
+    .filter((section) => section.items.length > 0), [items]);
   const coins = data?.coins ?? 0;
 
   const selected = useMemo(
@@ -315,7 +336,7 @@ export default function ShopScreen() {
     if (selectedId && data && !items.some((i) => i.item_id === selectedId)) setSelectedId(null);
   }, [items, selectedId, data]);
 
-  const selectedCat = selected ? getItem(selected.slot, selected.item_id) : null;
+  const selectedCat = selected?.cat || null;
   const affordable = !!selected && coins >= selected.price;
   // PASER stock never sells out — the rotation is deterministic and endless —
   // so the scene's "can't sell you this" branch covers the two cases that do
@@ -451,7 +472,9 @@ export default function ShopScreen() {
                   </Text>
                 </View>
               </Row>
-              <Button title="Get more" size="sm" full={false} onPress={() => setGetMore(true)} />
+              {IAP_ENABLED ? (
+                <Button title="Get more" size="sm" full={false} onPress={() => setGetMore(true)} />
+              ) : null}
             </Card>
           ) : (
             <Skeleton width="100%" height={76} style={{ borderRadius: radius.card }} />
@@ -467,17 +490,34 @@ export default function ShopScreen() {
               The station is restocking. Check back when the clock runs out.
             </Text>
           ) : (
-            <View style={styles.grid}>
-              {items.map((item) => (
-                <ShopProductCard
-                  key={item.item_id}
-                  item={item}
-                  cat={getItem(item.slot, item.item_id)}
-                  selected={selectedId === item.item_id}
-                  disabled={purchase.status === 'pending'}
-                  onSelect={select}
-                />
-              ))}
+            <View style={styles.stock}>
+              {sections.map((section) => {
+                const tint = RARITY_COLOR[section.rarity] || colors.border;
+                return (
+                  <View key={section.rarity} style={styles.stockSection}>
+                    <Row gap={7} style={styles.sectionHead}>
+                      <View style={[styles.rarityDot, { backgroundColor: tint }]} />
+                      <Text style={[type.captionMedium, styles.sectionTitle, { color: tint }]}>
+                        {section.rarity.toUpperCase()}
+                      </Text>
+                      <View style={[styles.sectionRule, { backgroundColor: withAlpha(tint, 0.35) }]} />
+                      <Text style={[type.caption, { color: colors.textDim }]}>{section.items.length}</Text>
+                    </Row>
+                    <View style={styles.grid}>
+                      {section.items.map((item) => (
+                        <ShopProductCard
+                          key={item.item_id}
+                          item={item}
+                          cat={item.cat}
+                          selected={selectedId === item.item_id}
+                          disabled={purchase.status === 'pending'}
+                          onSelect={select}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                );
+              })}
             </View>
           )}
 
@@ -489,11 +529,13 @@ export default function ShopScreen() {
         </View>
       </ScrollView>
 
-      <BuyEnergySheet
-        visible={getMore}
-        onClose={() => setGetMore(false)}
-        onPurchased={load}
-      />
+      {IAP_ENABLED ? (
+        <BuyEnergySheet
+          visible={getMore}
+          onClose={() => setGetMore(false)}
+          onPurchased={load}
+        />
+      ) : null}
 
       {/* The payoff, shared with the reward pass so buying and claiming feel
           like the same kind of moment. */}
@@ -519,12 +561,18 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
   },
+  stock: { gap: space.lg },
+  stockSection: { gap: space.sm },
+  sectionHead: { alignItems: 'center' },
+  sectionTitle: { letterSpacing: 1.1 },
+  sectionRule: { height: 1, flex: 1 },
   cellWrap: { width: '31.5%', marginBottom: space.md },
   cell: {
     width: '100%', alignItems: 'center', gap: 4,
-    paddingTop: space.md, paddingBottom: space.md,
+    minHeight: 132, padding: space.sm,
     borderRadius: radius.card,
   },
+  cellName: { minHeight: 32, textAlign: 'center' },
   panel: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,
     borderWidth: 1.5,

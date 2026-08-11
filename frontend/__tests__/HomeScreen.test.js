@@ -47,6 +47,7 @@ jest.mock('../src/api/cache', () => ({
   setCached: jest.fn(),
   markAttempt: jest.fn(),
   touchedAt: jest.fn(() => 0),
+  subscribeCached: jest.fn(() => jest.fn()),
   invalidate: jest.fn(),
   invalidateAfterClaim: jest.fn(),
 }));
@@ -66,6 +67,7 @@ jest.mock('../src/utils/runnerAssetPreload', () => ({ preloadRunnerAssets: jest.
 import { NavigationContext } from '@react-navigation/native';
 
 import HomeScreen from '../src/screens/HomeScreen';
+import FeedCard from '../src/components/FeedCard';
 
 // `useFocusEffect` and `useQuery` both reach for the navigation object through
 // context rather than through props, so passing one as a prop is not enough —
@@ -168,6 +170,29 @@ describe('HomeScreen', () => {
     const tree = mount();
     await act(async () => {});
     expect(tree).toBeTruthy();
+    act(() => tree.unmount());
+  });
+});
+
+describe('feed reactions', () => {
+  it('closes the inline picker when Home loses navigation focus', () => {
+    const item = runner({ reactions: [], my_reaction: null });
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <FeedCard item={item} navigation={navigation} screenFocused />
+      );
+    });
+
+    act(() => {
+      tree.root.findByProps({ accessibilityLabel: 'Add a reaction' }).props.onPress();
+    });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Love it' }).length).toBeGreaterThan(0);
+
+    act(() => {
+      tree.update(<FeedCard item={item} navigation={navigation} screenFocused={false} />);
+    });
+    expect(tree.root.findAllByProps({ accessibilityLabel: 'Love it' })).toHaveLength(0);
     act(() => tree.unmount());
   });
 });

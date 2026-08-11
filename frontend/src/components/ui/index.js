@@ -13,6 +13,8 @@ export { default as EmptyState } from './EmptyState';
 export { default as Skeleton } from './Skeleton';
 export { default as Sheet } from './Sheet';
 export { default as Segmented } from './Segmented';
+// Hand-drawn box frames (assets/frames, cut by scripts/animations/cut_frames.py).
+export { default as Framed } from './Framed';
 // Game-style ("toon") surface — tokens in src/theme/toon.js.
 export { default as OutlinedText } from './OutlinedText';
 export { default as ToonButton, ToonGhostButton } from './ToonButton';

@@ -1,117 +1,208 @@
-# PASER — App Store submission pack
+# PASER App Store submission pack (2.1.0)
 
-Everything you paste into App Store Connect + the steps to submit. App name is
-**PASER**; bundle id `com.pacerrun.app`.
+Audited 2026-08-12 against the current iOS build configuration and Apple's
+current submission rules. Bundle id: `com.pacerrun.app`.
 
----
+## Submission status
 
-## 1. Create the app record (unblocks TestFlight + submission)
+The source now passes Expo's store-readiness checks and produces an iOS bundle,
+but **do not submit the existing EAS build**. Build 23 predates the changes in
+this working tree. Complete every unchecked gate in "Before submission" below,
+then create and test a fresh production build.
 
-1. Go to <https://appstoreconnect.apple.com> → **Apps → +** → **New App**.
-2. Platform **iOS**, Name **PASER**, Primary language **English (U.S.)**,
-   Bundle ID **com.pacerrun.app**, SKU **paser-ios** (any unique string).
-3. Once created, open the app → the number in the URL / **App Information → Apple ID**
-   is your **`ascAppId`** (a ~10-digit number). Put it in `frontend/eas.json`
-   (see step 4) so `eas submit` works.
+## App Store Connect metadata
 
-## 2. Listing copy (paste these in)
+- Name: `PASER`
+- Subtitle: `Run. Claim. Conquer.`
+- Primary category: Health & Fitness
+- Secondary category: Games
+- Bundle ID: `com.pacerrun.app`
+- Version: `2.1.0`
+- Privacy Policy URL: `https://www.bido.live/privacy`
+- Support URL: `https://www.bido.live/support`
+- Regulated medical device declaration: **No**
+- Copyright: use the legal owner and current year
 
-**Name:** `PASER`
+Promotional text:
 
-**Subtitle** (≤30): `Run. Claim. Conquer.`
+> Turn every run into territory. Claim the map with your distance, defend it
+> with your club, and race to hold the most land this season.
 
-**Promotional text** (≤170):
-> Turn every run into territory. Claim the map with your distance, defend it with
-> your club, and race to hold the most land this season.
+Description:
 
-**Description:**
-```
+```text
 PASER turns running into a game of real-world territory.
 
-Every run you finish becomes a claim zone as big as the distance you covered —
-place it anywhere along your route and take that ground for yourself and your club.
-Run faster to claim stronger land. Run the same streets again to reinforce it.
+Every run you finish becomes a claim zone based on the distance you covered.
+Place it along your route, take ground for yourself and your club, and return
+to defend it.
 
-• CLAIM THE MAP — your distance converts into a circle of territory you drop on your route.
-• RUN CLUBS — join or create a club, defend land together, and climb the season standings.
-• STRENGTH & STEALS — faster runs make stronger claims; out-run a rival to take their turf.
-• BUILD YOUR RUNNER — a customisable character with hair, outfits, faces and colours.
-• STAY MOTIVATED — streak calendar, XP and levels, personal records, and a live activity feed.
-• SOCIAL — comment on runs, chat with your club, and give kudos.
+- CLAIM THE MAP - turn real runs into territory.
+- RUN CLUBS - join or create a club and climb the season standings together.
+- STRENGTH & STEALS - faster runs make stronger claims; challenge rival turf.
+- BUILD YOUR RUNNER - customize your character with outfits and accessories.
+- STAY MOTIVATED - follow streaks, XP, levels, records, and your activity feed.
+- APPLE HEALTH - optionally save every finished run as a running workout.
+- BE SOCIAL - comment on runs, chat with your club, and react to achievements.
 
-PASER records your route only during an active run. Lace up, head out, and start
-taking ground.
+PASER records your route only during an active, user-started run.
 ```
 
-**Keywords** (≤100 chars, comma-separated, no spaces):
-```
-run,running,run tracker,gps,fitness,territory,map,club,run club,game,streak,cardio,jog,workout
-```
+Keywords (100-character field; verify in App Store Connect after pasting):
 
-**Support URL:** `https://bido.live/privacy` (or a real support page)
-**Marketing URL:** *(optional)*
-**Privacy Policy URL:** `https://bido.live/privacy`
-
-**Category:** Primary **Health & Fitness**, Secondary **Games**.
-
-## 3. App Privacy (the data questionnaire)
-
-Declare **Data linked to you**:
-- **Location — Precise Location** → App Functionality (route recording). *Yes, used for app functionality; not for tracking.*
-- **Health & Fitness** (distance/steps) → App Functionality.
-- **User Content** (comments, chat) → App Functionality.
-- **Identifiers / User ID** (username, push token) → App Functionality.
-Answer **No** to "used for tracking" and **No** to third-party advertising.
-
-## 4. `eas.json` submit config
-
-`frontend/eas.json` now has a `submit.production` block with placeholders —
-replace them and you can submit non-interactively:
-- `ascAppId`: the Apple ID number from step 1.
-- `appleId`: your Apple Developer account email.
-- `appleTeamId`: from <https://developer.apple.com/account> → Membership.
-
-(Or skip editing and run the interactive command in step 5, which fills these in.)
-
-## 5. Submit the build to TestFlight, then the App Store
-
-The background-tracking build is already built on EAS. From `frontend/`:
-
-```
-# interactive — signs in and auto-detects the app; easiest first time
-npx eas-cli submit --platform ios --latest
+```text
+run,running,gps,fitness,territory,map,club,game,streak,cardio,jog,workout,route
 ```
 
-Then in App Store Connect: **TestFlight** tab → the build appears after ~5–15 min
-of processing → test it. When happy, **Distribution → + Version → 2.0.0**, attach
-the build, fill the listing above, and **Submit for Review**.
+What's New:
 
-## 6. Review notes (paste into "App Review Information → Notes")
-
-```
-PASER is a fitness game: real running distance is converted into map territory.
-
-DEMO ACCOUNT (required — the app needs login):
-  username: <create a test account and put it here>
-  password: <...>
-
-BACKGROUND LOCATION: PASER requests "Always" location solely to keep recording a
-run's route when the screen is off DURING an active, user-started run. Tracking
-starts only when the user taps Start on the Record screen and stops when they
-finish/pause. The standard blue background-location indicator is shown while
-recording. Location is never collected outside an active run.
-
-HOW TO TEST: sign in with the demo account, open the Record tab, tap Start, and
-move (or use a simulated route). Distance accrues; tap the hold-to-finish control
-to end and place the claim circle on the map.
+```text
+Run to claim territory, build your runner, team up with a club, and share your
+achievements with PASERs. This update also improves privacy and community safety.
 ```
 
-> ⚠️ Fill in a real demo username/password before submitting — reviewers reject
-> login-gated apps without working credentials.
+Do not advertise PASER PRO, Energy purchases, or coin packs in this version:
+those purchase surfaces are deliberately disabled until a real StoreKit flow
+is complete.
 
-## 7. "What's New" (version 2.0.0)
+Apple Health sync **is** in this version and may be described, but describe it
+exactly: an optional switch that saves finished runs to Apple Health as running
+workouts. PASER writes only. It never reads Health data.
 
+## App Privacy answers
+
+Answer **Yes, data is collected**. Declare these as linked to the user, used
+for App Functionality, and **not used for tracking**:
+
+| Apple data type | What PASER uses it for |
+| --- | --- |
+| Contact Info - Email Address | Optional account recovery and social-provider sign-in |
+| Location - Precise Location | Active-run recording, route display, and territory claims |
+| Health & Fitness - Fitness | Run distance, duration, pace, and on-foot verification. Workouts written to Apple Health are not collected by PASER; they stay on the device |
+| User Content - Other User Content | Usernames, club names/descriptions, comments, chat, reactions, and reports |
+| Identifiers - User ID | Account, social graph, runs, and moderation |
+| Identifiers - Device ID | Push-notification token, if Apple classifies the token this way |
+| Other Data - Other Data Types | Date of birth used for the 13+ gate and stronger route-privacy defaults for minors |
+
+Declare Diagnostics only if `EXPO_PUBLIC_SENTRY_DSN` is enabled in the submitted
+mobile build. The current production profile does not set it. Answer **No** for
+tracking, advertising, and data-broker use.
+
+The public privacy policy must match these answers, and it must cover Apple
+Health, which HealthKit apps are required to have (Guideline 5.1.3). Publish
+the Apple Health section of `PRIVACY.md` at the live privacy URL before
+submission: write-only, opt-in, never read, never sent to PASER's servers,
+never used for advertising or shared with third parties.
+
+## Age rating questionnaire
+
+- User-generated content: Yes
+- Messaging and chat: Yes
+- Social media: Yes
+- Health or wellness topics: Yes
+- Loot boxes: No for this build (nothing can be purchased; paid surfaces are off)
+- Gambling, contests, advertising, web access: No
+- Set the app's minimum age to 13; onboarding already enforces 13+
+
+With Apple's current definitions, the social feed/chat makes **13+** the
+appropriate rating. Re-answer the questionnaire if the feature set changes.
+
+## Review notes
+
+```text
+PASER is a 13+ fitness game. A user-started outdoor run is converted into map
+territory after the user finishes the run.
+
+DEMO ACCOUNT
+Username: <working review username>
+Password: <working review password>
+
+BACKGROUND LOCATION
+PASER requests background location only so an active run can continue when the
+screen locks. Collection begins after the runner taps Start and ends when the
+runner finishes the run. PASER does not collect background location outside an
+active run.
+
+HOW TO TEST
+Sign in with the demo account, open Record, start a run, and move using a device
+or simulated location. Finish the run, choose a claim position, and submit it.
+The demo account should already contain realistic runs so Map, Feed, Clubs,
+comments, chat, report/block, and account deletion can be reviewed indoors.
+
+COMMUNITY SAFETY
+Use the three-dot button on another runner's profile, run, comment, or club-chat
+message to report or block them. Blocking hides both users from one another's
+social content. Account deletion is in You > Settings > Delete account.
+
+APPLE HEALTH
+Health sync is optional and off by default. Turn it on in You > Settings >
+Apple Health and allow it on the permission sheet. PASER then writes each
+finished run to Apple Health as a running workout with its time and distance.
+PASER requests write access only and never reads health data.
+
+PURCHASES
+This version does not offer in-app purchases.
 ```
-Welcome to PASER. Run to claim real-world territory, defend it with your run club,
-and climb the season standings.
+
+## Screenshots
+
+Provide 1-10 portrait screenshots without alpha. Use a current 6.9-inch iPhone
+set (for example 1320x2868, 1290x2796, or 1260x2736). Suggested sequence:
+
+1. Home with a realistic recent run and streak.
+2. Record screen with an active route.
+3. Claim placement and captured territory.
+4. Global map with several territories.
+5. Club and season standings.
+6. Social feed with reactions/comments.
+7. Runner customization or rewards.
+
+Use only data and artwork you are licensed to display. Avoid mock Apple UI and
+make sure every screenshot reflects the submitted binary.
+
+## Before submission
+
+- [ ] Commit and push the working tree. The audit's backend fixes — content
+      moderation, Apple token revocation, migrations `0030`–`0032` — are all
+      still uncommitted, so pushing is what deploys them. On 2026-08-12 the
+      live API reported commit `aef34dc`, which is HEAD and therefore has none
+      of them.
+- [ ] Confirm Alembic ran through revision `0032` on Render (the Dockerfile
+      boot command migrates, so the push above should do it).
+- [ ] Set Render `ENV=production` and `APP_VERSION=2.1.0`.
+- [ ] Configure `APPLE_CLIENT_IDS`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`,
+      `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`; test Apple sign-in and deletion.
+- [ ] Configure and test Google sign-in with the same client id used by the app.
+- [ ] Verify `GET /health` reports a healthy database and `GET /version` reports
+      `2.1.0` and `production`. On 2026-08-12 the live API still reported
+      `2.0.0` and `development`.
+- [ ] Remove seeded/fabricated production runs and rotate any credential that
+      has previously been shared outside the secrets manager.
+- [x] Live privacy page covers Apple Health correctly. Checked 2026-08-12: it
+      already states that PASER writes finished runs to Apple Health and reads
+      nothing, which is exactly what the binary now does.
+- [ ] Create a real, stable reviewer account and paste it into Review Notes.
+- [ ] Create a fresh EAS production build; the latest existing build (23) does
+      not contain this audit's fixes.
+- [ ] Test the fresh build on a physical iPhone through TestFlight: password,
+      Apple, and Google sign-in; permissions; foreground/background run; claim;
+      map; notifications; share/save; report; block; and account deletion.
+- [ ] Test Apple Health on that build: You > Settings > Apple Health, allow on
+      the permission sheet, finish a run, and confirm the workout and its
+      distance appear in the Health app. Confirm the sheet only ever offers
+      write access. Health sync cannot be verified anywhere but a real device,
+      and it is the one feature in this release with no earlier build behind
+      it. If it does not work, pull the Apple Health bullet from the
+      description before submitting rather than shipping a claim that fails.
+- [ ] Capture final 6.9-inch screenshots from that exact build.
+- [ ] Complete App Privacy, age rating, content-rights, export-compliance, and
+      regulated-medical-device questions in App Store Connect.
+- [ ] Confirm the support and privacy URLs work without authentication.
+
+Build and submit only after those gates are complete:
+
+```bash
+cd frontend
+npx eas-cli build --platform ios --profile production
+npx eas-cli submit --platform ios --profile production --latest
 ```

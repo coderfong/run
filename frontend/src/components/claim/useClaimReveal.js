@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useReduceMotion, haptic } from '../../ui/motion';
+import { useReduceMotion } from '../../ui/motion';
 import { sleep, timingFor } from './timing';
 import { projectRings, ringsToLatLngs, territoryRings } from './geometry';
 
@@ -71,7 +71,6 @@ export default function useClaimReveal(mapRef) {
   const startReveal = useCallback((projection) => {
     if (!projection) return;
     setReveal(projection);
-    haptic.light();
   }, []);
 
   const showFinalTerritory = useCallback(() => setFinalVisible(true), []);

@@ -6,8 +6,6 @@
 //   EXPO_PUBLIC_MAPBOX_TOKEN pk.* public — runtime (Mapbox.setAccessToken)
 //   EXPO_PUBLIC_MAP_STYLE_LIGHT / _DARK  custom Studio style URLs (optional)
 
-const base = require('./app.json').expo;
-
 const DOWNLOAD_TOKEN = process.env.MAPBOX_DOWNLOAD_TOKEN || '';
 
 // Google sign-in (iOS only for now). A client ID is a PUBLIC identifier, not a
@@ -23,7 +21,7 @@ const googleReversedScheme =
   'com.googleusercontent.apps.' +
   GOOGLE_IOS_CLIENT_ID.replace(/\.apps\.googleusercontent\.com$/, '');
 
-module.exports = () => {
+module.exports = ({ config: base }) => {
   // Replace the bare "@rnmapbox/maps" plugin string with a config tuple that
   // carries the download token (leave any other plugins untouched).
   const plugins = (base.plugins || []).map((p) =>

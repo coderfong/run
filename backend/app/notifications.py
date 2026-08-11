@@ -2,7 +2,8 @@
 the request never blocks on the HTTP call. Each category is gated by the
 recipient's notif_prefs. Best-effort — failures are swallowed.
 
-Categories: stolen | clan_goal | kudos | season | recap.
+Categories: stolen | captured | clan_goal | kudos | season | recap | pasers |
+paserby.
 """
 
 import json
@@ -52,18 +53,27 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
                 allowed.append(uid)
         if not allowed:
             return
+        # Category always rides inside the structured payload too. Expo push
+        # listeners receive only `data`, while the inbox has a first-class
+        # category column; keeping both views identical lets the foreground
+        # client recognise the same capture whichever path arrives first.
+        # Round-trip through JSON once so UUIDs passed by older call sites are
+        # converted to strings for both Postgres JSONB and Expo's encoder.
+        event_json = json.dumps({"category": category, **(data or {})}, default=str)
+        event_data = json.loads(event_json)
         # Inbox rows (the bell) — written for every allowed recipient even if
         # they have no push token registered.
         for uid in allowed:
             db.execute(
                 text(
-                    "INSERT INTO notifications (user_id, category, title, body, actor_id) "
-                    "VALUES (:u, :c, :t, :b, CAST(:a AS uuid))"
+                    "INSERT INTO notifications (user_id, category, title, body, actor_id, data) "
+                    "VALUES (:u, :c, :t, :b, CAST(:a AS uuid), CAST(:d AS jsonb))"
                 ),
                 {"u": uid, "c": category, "t": title, "b": body,
                  # never point a row at its own recipient — "you did this to
                  # yourself" would just be your own face staring back
-                 "a": str(actor_id) if actor_id and str(actor_id) != str(uid) else None},
+                 "a": str(actor_id) if actor_id and str(actor_id) != str(uid) else None,
+                 "d": event_json},
             )
         db.commit()
         # user_id is uuid; the bound list arrives as text[] — cast the column.
@@ -72,7 +82,7 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
             {"ids": allowed},
         ).fetchall()
         messages = [
-            {"to": r[0], "title": title, "body": body, "data": data or {}, "sound": "default"}
+            {"to": r[0], "title": title, "body": body, "data": event_data, "sound": "default"}
             for r in rows
             if r[0]
         ]

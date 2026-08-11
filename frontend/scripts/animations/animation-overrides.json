@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "overrides": {},
+  "notes": "Keys are absoluteSourcePath values from docs/animation-library-inventory.json. Use overrides to confirm or correct frameWidth, frameHeight, columns, rows, frameCount, fps, category, tags, or usable state without changing the scanner."
+}

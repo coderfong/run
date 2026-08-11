@@ -9,6 +9,8 @@ way cosmeticsArt.js and borderArt.js are generated.
 Excluded from the shop:
   * premiumOnly items — PASER PRO exclusives. If coins could buy them the
     pass has no product left to sell.
+  * passOnly items — free-track rewards must still be new when claimed.
+  * free starter items — charging for something already equippable is wrong.
   * 'none' entries — the empty-slot placeholders.
 
 Run from frontend/:  python scripts/gen-shop-catalog.py
@@ -45,8 +47,8 @@ for m in re.finditer(r"\n  (\w+): \[([\s\S]*?)\n  \],", src):
         iid = mid.group(1)
         if iid == "none":
             continue
-        if "premiumOnly" in line:
-            continue                      # pass-exclusive, never coin-buyable
+        if any(marker in line for marker in ("unlock: free", "passOnly", "premiumOnly")):
+            continue                      # already owned or reserved for a pass track
         rarity = (re.search(r"rarity: '(\w+)'", line) or [None, "common"])[1]
         label = (re.search(r"label: '([^']*)'", line) or [None, iid])[1]
         items.append((slot, iid, rarity, label))
@@ -59,7 +61,9 @@ for arr, slot in PUSHED.items():
         raise SystemExit(f"{arr} not found in outfitItems.js")
     for line in osrc[start:end].splitlines():
         mid = re.search(r"id: '([^']+)'", line)
-        if not mid or mid.group(1) == "none" or "premiumOnly" in line:
+        if not mid or mid.group(1) == "none":
+            continue
+        if any(marker in line for marker in ("unlock: free", "passOnly", "premiumOnly")):
             continue
         rarity = (re.search(r"rarity: '(\w+)'", line) or [None, "common"])[1]
         label = (re.search(r"label: '([^']*)'", line) or [None, mid.group(1)])[1]

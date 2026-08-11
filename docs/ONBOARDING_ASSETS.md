@@ -224,29 +224,16 @@ inside a gold/pink/teal/purple frame the code already draws, so deliver the
 | `rail-shop` | An energy bolt over a small shopfront awning. |
 | `rail-season` | A trophy on a plinth with a laurel. |
 
-### 6d. Premium-exclusive cosmetics (P0 — the actual PRO product)
+### 6d. Premium-exclusive cosmetics (complete)
 
-**This is the biggest gap.** `PREMIUM_ITEMS` in `backend/app/progression.py`
-currently hands over 17 items that already exist in the free catalogue — so
-PRO is *early access*, not exclusivity. It deliberately avoids the five
-level-gated items (crown, angel wings, neon wings, sport shield, ski goggles)
-because taking those from free players would be a downgrade.
+`PREMIUM_ITEMS` in `backend/app/progression.py` now awards 17 cosmetics marked
+`premiumOnly`. They have no stat, free-pass, lootbox, or coin-shop route. The
+track starts with epic items and becomes legendary from level 32 onward.
 
-To make PRO genuinely exclusive, generate **17 new cosmetics** on the existing
-character-sheet pipeline (`frontend/scripts/asset-pipeline.py`, same canvases
-and anchors as the current slot art), then swap the ids in `PREMIUM_ITEMS`:
-
-| Slot | Suggested exclusives (levels 2 → 48, escalating) |
-|---|---|
-| headwear | flame crown, wolf hood, laurel wreath, astronaut helmet |
-| glasses | mirrored visor, cyber shades, monocle |
-| top | gold tracksuit, champion jersey, aurora windbreaker |
-| bottom | flame joggers, neon shorts |
-| accessory | jetpack, dragon wings, trophy backpack, comet trail, boombox |
-
-Rarity should skew epic/legendary — a paid tier that hands over a common tee
-reads as a scam. Keep the outline weight identical to the free art; the
-difference should be material and effect, never line style.
+The free track is separately curated: 40 `passOnly` items span all eight
+wearable slots and progress common → rare → epic → legendary. Run
+`node scripts/check-catalog.js` after catalogue or reward-map changes; it
+enforces both inventories and verifies that neither leaks into the shop.
 
 ### 6e. Optional polish
 
@@ -311,7 +298,7 @@ Progress checklist — tick as they land:
 - [ ] 8c Creator stage + PRO hero (2)
 - [ ] 8d Body builds + skin tones (5 + recolour master)
 - [ ] 8e App-screen art (10)
-- [ ] 8f PRO exclusive cosmetics (17)
+- [x] 8f PRO exclusive cosmetics (17)
 - [ ] 8g Lootbox rarities (4)
 - [ ] 8h Side-rail tiles (4)
 - [ ] 8i Optional polish (2)
@@ -451,70 +438,21 @@ Path: `assets/art/ui/<file>`. All **transparent** unless noted.
 
 ---
 
-## 8f. The 17 PRO exclusive cosmetics
+## 8f. The 17 PRO exclusive cosmetics (complete)
 
-### Rules that apply to all 17 — read once, save yourself a reroll
+The art is installed, every item is marked `premiumOnly`, and the live pass
+order is owned by `PREMIUM_ITEMS` in `backend/app/progression.py`:
 
-**One file per item, not ten.** `frontend/scripts/asset-pipeline.py` generates
-the 10 palette variants for colourable slots. You deliver a single master.
+| Levels | Cosmetics |
+|---|---|
+| 2–8 | Laurel wreath, Monocle, Varsity jacket, Zip gilet |
+| 12–18 | Wolf ears, Boombox, Aurora jacket, Mirror visor |
+| 22–28 | Punk crown, Kabuto, Knight armour |
+| 32–48 | Flame crown, Cyber shades, Dragon wings, Varsity jacket · Navy, Jetpack, Halo |
 
-**Paint colourable items in NEUTRAL GREY, never in colour.** The pipeline
-recolours by multiplying the palette hue through each pixel's luminance
-(`out = palette × (luma / dominant_luma)`), so:
-
-- the largest flat area = the *dominant tone*; it becomes the palette colour
-  exactly. Keep it one clean mid-grey (~60–70% luma).
-- darker greys become shadows of that colour; lighter greys become highlights.
-- the black ink outline has low luma, so it stays black. Good.
-- **avoid pure white** on a colourable region — it clips to washed-out.
-- a deliberately *saturated* accent survives as itself (the pipeline prefers
-  saturated pixels when picking the dominant), so use that for a gold buckle
-  or a red stripe you want on every colour variant.
-
-**Which slots are colourable:** headwear, glasses, top, bottom, hair → grey
-master. **accessory and face are NOT colourable** → paint in final colour.
-
-**Generate at 1024 × 1024, transparent, item alone.** No character, no
-mannequin, no background, no shadow on the ground. The pipeline trims the
-transparent margin and rescales to the slot convention (`SLOT_FIT`):
-headwear/hair/top/bottom → 512 max side · glasses → 420 wide · accessory →
-560 max side.
-
-**Front-facing and flat-on.** The rig composites the layer straight onto the
-body; a hat drawn at a three-quarter angle will look pinned on crooked.
-Symmetrical unless the design is deliberately asymmetric.
-
-**Match an existing item's proportions** in the same slot (open
-`assets/character/headwear/hat7.png` next to your generation). If it lands
-slightly off, one `layout: { w, top, cy }` override in `config/cosmetics.js`
-fixes it — send me the file and I'll tune it.
-
-### The list, in pass order (levels from `PREMIUM_ITEMS`)
-
-| Lvl | Slot | Id to use | Prompt (after the style block) |
-|---|---|---|---|
-| 2 | headwear | `laurel` | A laurel wreath crown of overlapping leaves, open at the front, drawn flat-on. **Neutral grey master.** |
-| 4 | glasses | `monocle` | A single round monocle lens with a thin rim and a short chain curling to the right. **Neutral grey master.** |
-| 6 | top | `champjersey` | A sleeveless champion's jersey with a wide chest band and a small number panel, no lettering. **Neutral grey master**, keep the band a saturated gold so it survives recolouring. |
-| 8 | bottom | `neonshorts` | Athletic split-leg running shorts with a piped side stripe. **Neutral grey master.** |
-| 12 | headwear | `wolfhood` | A wolf-head hood: ears up, snout over the brow, fur tufts at the cheeks. **Neutral grey master.** |
-| 14 | accessory | `boombox` | A chunky boombox held at the shoulder, two speakers, carry handle, a couple of music notes. **Final colour** (silver + red buttons). |
-| 16 | top | `aurorajacket` | A windbreaker with a diagonal chest seam and a raised collar, cuffs ribbed. **Neutral grey master.** |
-| 18 | glasses | `cybershades` | A single visor-style bar lens, thin frame, small tech notch at the temple. **Neutral grey master.** |
-| 22 | headwear | `astrohelmet` | A round astronaut helmet with a wide curved visor and a neck ring. **Neutral grey master**, visor left as a light flat panel. |
-| 26 | accessory | `jetpack` | A twin-cylinder jetpack worn on the back, shoulder straps visible at the front edges, two short flame plumes at the base. **Final colour** (steel grey + orange flame). |
-| 28 | top | `goldtrack` | A zip-up tracksuit jacket with two sleeve stripes and a stand collar. **Neutral grey master**, stripes saturated gold. |
-| 32 | headwear | `flamecrown` | A spiked crown whose points are stylised flames, jewel at the centre. **Neutral grey master**, jewel saturated red. |
-| 34 | glasses | `mirrorvisor` | A wraparound sport visor lens, single curved piece, small bridge notch. **Neutral grey master.** |
-| 38 | accessory | `dragonwings` | A pair of bat-like dragon wings, membrane between four finger bones, spread symmetrically. **Final colour** (deep purple membrane, black bones). Drawn WIDE — this renders behind the body. |
-| 42 | headwear | `cometcrest` | A headband with a comet streaking back from one side, star sparks in the trail. **Neutral grey master**, sparks saturated cyan. |
-| 46 | accessory | `trophypack` | A backpack with a small gold trophy strapped to the top, side pockets. **Final colour.** |
-| 48 | bottom | `flamejoggers` | Cuffed joggers with a flame pattern climbing from the ankle to the knee. **Neutral grey master**, flames saturated orange. |
-
-After the files land, swap the ids in `PREMIUM_ITEMS`
-(`backend/app/progression.py`) and add the items to `ITEMS` in
-`frontend/src/config/cosmetics.js` — I can do both in one pass, and the
-verification script re-checks that all 48 keys still resolve.
+Do not add a stat or coin route to these entries. `check-catalog.js` verifies
+all 17 keys, their epic/legendary rarity floor, and their absence from the
+generated shop catalogue.
 
 ## 8g. Lootbox rarities — 4 files
 

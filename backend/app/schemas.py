@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ClanColor(BaseModel):
@@ -47,6 +47,10 @@ class EndRunIn(BaseModel):
     points: List[GpsPoint]
     # Cumulative pedometer steps during the run (anti-cheat stride check).
     step_count: Optional[int] = Field(None, ge=0)
+    # Development harness marker. The route only honours this for a server-side
+    # allowlisted dev account; ordinary clients cannot opt out of the daily
+    # entitlement curve by sending the flag themselves.
+    simulated: bool = False
 
 
 # A single live-stream submission. The frontend can call /submit-path
@@ -585,6 +589,10 @@ class NotificationItem(BaseModel):
     actor_avatar: Optional[dict] = None
     actor_rank_key: str = "wood"
     actor_clan_color: Optional[ClanColor] = None
+    # Event-specific context. Capture notices carry capture_id, taken_m2 and
+    # the affected map point so the foreground client can animate and deep-link
+    # without parsing human copy.
+    data: dict = Field(default_factory=dict)
 
 
 class NotificationsOut(BaseModel):
@@ -631,30 +639,16 @@ class RunDetail(BaseModel):
 # ---- run comments + club chat ---------------------------------------------
 
 class RunCommentIn(BaseModel):
-    """Text, an emote sticker, or both. At least one of the two.
-
-    `body` is optional now that a sticker on its own is a comment. The check is
-    here rather than only in the database so a client gets a 422 that names the
-    problem instead of a constraint violation.
-    """
-    body: Optional[str] = Field(None, max_length=280)
-    emote: Optional[str] = None
+    """Discussion is text-only; emoji belong to the run reaction endpoint."""
+    body: str = Field(..., min_length=1, max_length=280)
 
     @field_validator("body")
     @classmethod
-    def _blank_is_absent(cls, v):
-        # "   " is not a comment. Collapsing it to None here means the rest of
-        # the model, and the emote-or-body rule below, see one empty value.
-        if v is None:
-            return None
+    def _strip_and_require_text(cls, v):
         v = v.strip()
-        return v or None
-
-    @model_validator(mode="after")
-    def _needs_something(self):
-        if not self.body and not self.emote:
-            raise ValueError("a comment needs text, an emote, or both")
-        return self
+        if not v:
+            raise ValueError("a comment needs text")
+        return v
 
 
 class RunReactionIn(BaseModel):
@@ -672,8 +666,7 @@ class RunCommentOut(BaseModel):
     user_id: str
     username: str
     is_you: bool = False
-    body: Optional[str] = None
-    emote: Optional[str] = None
+    body: str
     created_at: datetime
 
 

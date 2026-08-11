@@ -10,10 +10,12 @@
 // sequence uses. Delete this file and the feature still works.
 
 import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 import { radius, space, useTheme, useThemedType } from '../../theme';
 import { CAPTURE_VARIANTS } from './useClaimSequence';
+import { CAPTURE_STYLES, DEFAULT_CAPTURE_STYLE_ID } from '../../effects/captureStyles';
 
 // Stand-in opponents for scenarios the real claim didn't produce. They wear
 // the player's own avatar — a dev harness should not invent cosmetics.
@@ -59,11 +61,13 @@ function Chip({ label, active, onPress }) {
 }
 
 export default function DevSequenceControls({ sequence, fallbackAvatar, style }) {
+  const navigation = useNavigation();
   const { colors } = useTheme();
   const type = useThemedType();
   const [scenario, setScenario] = useState('real');
   const [variant, setVariant] = useState('grin-knock');
   const [motion, setMotion] = useState('auto');
+  const [captureStyle, setCaptureStyle] = useState(DEFAULT_CAPTURE_STYLE_ID);
 
   if (!__DEV__) return null;
 
@@ -80,10 +84,12 @@ export default function DevSequenceControls({ sequence, fallbackAvatar, style })
     const s = next.scenario ?? scenario;
     const v = next.variant ?? variant;
     const m = next.motion ?? motion;
+    const fx = next.captureStyle ?? captureStyle;
     sequence.replay({
       defenders: defendersFor(s),
       variant: v,
       reducedOverride: reducedFor(m),
+      captureStyle: fx,
     });
   };
 
@@ -100,6 +106,13 @@ export default function DevSequenceControls({ sequence, fallbackAvatar, style })
         >
           <Text style={[type.captionMedium, { color: colors.bg }]}>Replay</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => navigation.getParent()?.navigate('AnimationGallery')}
+          activeOpacity={0.8}
+          style={[styles.gallery, { borderColor: colors.border }]}
+        >
+          <Text style={[type.captionMedium, { color: colors.text }]}>FX gallery</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.row}>
@@ -112,6 +125,20 @@ export default function DevSequenceControls({ sequence, fallbackAvatar, style })
           />
         ))}
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.styleRow}>
+        {CAPTURE_STYLES.map((capture) => (
+          <Chip
+            key={capture.id}
+            label={capture.name}
+            active={captureStyle === capture.id}
+            onPress={() => {
+              setCaptureStyle(capture.id);
+              replay({ captureStyle: capture.id });
+            }}
+          />
+        ))}
+      </ScrollView>
 
       <View style={styles.row}>
         {CAPTURE_VARIANTS.map((v) => (
@@ -157,4 +184,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   replay: { borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 5 },
+  gallery: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 5 },
+  styleRow: { gap: 6, paddingRight: 12 },
 });

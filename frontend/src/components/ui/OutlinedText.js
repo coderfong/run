@@ -24,9 +24,19 @@ export default function OutlinedText({
   align = 'center',
   numberOfLines,
   containerStyle,
+  // Shrink the type until the string fits the box it was given, instead of
+  // wrapping or running under the edge. Applied to EVERY copy: the ring is
+  // eight separate Texts, and letting only the fill shrink leaves the outline
+  // drawn at the original size around a smaller word.
+  fit = false,
+  minimumFontScale = 0.7,
   ...rest
 }) {
   const shared = [style, { textAlign: align }];
+  // Fitting is a single-line operation — a string allowed to wrap always
+  // "fits" and never shrinks.
+  const lines = fit ? numberOfLines || 1 : numberOfLines;
+  const fitProps = fit ? { adjustsFontSizeToFit: true, minimumFontScale } : null;
   return (
     <View style={containerStyle}>
       {/* width 0 means NO outline — skip the ring entirely rather than stacking
@@ -43,7 +53,8 @@ export default function OutlinedText({
         {RING.map(([x, y]) => (
           <Text
             key={`${x}:${y}`}
-            numberOfLines={numberOfLines}
+            numberOfLines={lines}
+            {...fitProps}
             style={[
               StyleSheet.absoluteFill,
               shared,
@@ -55,7 +66,7 @@ export default function OutlinedText({
         ))}
       </View>
       ) : null}
-      <Text numberOfLines={numberOfLines} style={shared} {...rest}>
+      <Text numberOfLines={lines} {...fitProps} style={shared} {...rest}>
         {children}
       </Text>
     </View>

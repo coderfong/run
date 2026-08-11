@@ -1,0 +1,2001 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "C:\\Users\\user\\Desktop\\animations",
+  "curatedAssets": 45,
+  "selectedAssets": 44,
+  "selectedBaseBytes": 1114854,
+  "selectedBytes": 4464371,
+  "densityScales": [
+    1,
+    2,
+    3
+  ],
+  "releaseApprovedOnly": true,
+  "blockedAssets": [
+    {
+      "id": "glitch_portal_01",
+      "name": "Glitch Portal",
+      "package": "glitch_portals",
+      "reason": "No explicit license file was included; verify the original download terms."
+    }
+  ],
+  "effects": [
+    {
+      "id": "acid_splash_01",
+      "name": "Acid Splash",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/acid-splash/grid/sprite-sheet.png",
+      "category": "water",
+      "tags": [
+        "capture",
+        "acid",
+        "splash",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.25,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/acid-splash/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\water\\acid_splash_01.png",
+      "requirePath": "../../assets/effects/water/acid_splash_01.png",
+      "fileSize": 7775,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\water\\acid_splash_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 9822
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\water\\acid_splash_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 14259
+        }
+      },
+      "runtimeBytes": 31856
+    },
+    {
+      "id": "arcane_parry_01",
+      "name": "Arcane Parry",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/arcane-parry/grid/sprite-sheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "arcane",
+        "magic",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/arcane-parry/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\arcane_parry_01.png",
+      "requirePath": "../../assets/effects/magic/arcane_parry_01.png",
+      "fileSize": 17059,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\arcane_parry_01@2x.png",
+          "width": 960,
+          "height": 768,
+          "fileSize": 22183
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\arcane_parry_01@3x.png",
+          "width": 1440,
+          "height": 1152,
+          "fileSize": 30389
+        }
+      },
+      "runtimeBytes": 69631
+    },
+    {
+      "id": "crescent_slash_01",
+      "name": "Crescent Slash",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/crescent-slash/grid/sprite-sheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "slash",
+        "energy",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 2,
+      "frameCount": 10,
+      "fps": 20,
+      "visualScale": 1.35,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/crescent-slash/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\crescent_slash_01.png",
+      "requirePath": "../../assets/effects/impact/crescent_slash_01.png",
+      "fileSize": 2891,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\crescent_slash_01@2x.png",
+          "width": 960,
+          "height": 384,
+          "fileSize": 3818
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\crescent_slash_01@3x.png",
+          "width": 1440,
+          "height": 576,
+          "fileSize": 6076
+        }
+      },
+      "runtimeBytes": 12785
+    },
+    {
+      "id": "earth_rupture_01",
+      "name": "Earth Rupture",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/earth-rupture/grid/sprite-sheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "earth",
+        "rupture",
+        "debris"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 20,
+      "fps": 20,
+      "visualScale": 1.15,
+      "visualOffsetY": -0.1,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/earth-rupture/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\earth_rupture_01.png",
+      "requirePath": "../../assets/effects/impact/earth_rupture_01.png",
+      "fileSize": 16182,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\earth_rupture_01@2x.png",
+          "width": 960,
+          "height": 768,
+          "fileSize": 20384
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\earth_rupture_01@3x.png",
+          "width": 1440,
+          "height": 1152,
+          "fileSize": 26448
+        }
+      },
+      "runtimeBytes": 63014
+    },
+    {
+      "id": "electric_impact_01",
+      "name": "Electric Impact",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/electric-impact/grid/sprite-sheet.png",
+      "category": "lightning",
+      "tags": [
+        "capture",
+        "electric",
+        "lightning",
+        "shockwave",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.25,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/electric-impact/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_impact_01.png",
+      "requirePath": "../../assets/effects/lightning/electric_impact_01.png",
+      "fileSize": 8615,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_impact_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 10565
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_impact_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 14875
+        }
+      },
+      "runtimeBytes": 34055
+    },
+    {
+      "id": "ember_jet_01",
+      "name": "Ember Jet",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/ember-jet/grid/sprite-sheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "ember",
+        "projectile"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.2,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/ember-jet/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\ember_jet_01.png",
+      "requirePath": "../../assets/effects/fire/ember_jet_01.png",
+      "fileSize": 7121,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\ember_jet_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 8806
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\ember_jet_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 12794
+        }
+      },
+      "runtimeBytes": 28721
+    },
+    {
+      "id": "frost_nova_01",
+      "name": "Frost Nova",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/frost-nova/grid/sprite-sheet.png",
+      "category": "ice",
+      "tags": [
+        "capture",
+        "ice",
+        "frost",
+        "nova"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 13,
+      "fps": 20,
+      "visualScale": 1.2,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/frost-nova/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\frost_nova_01.png",
+      "requirePath": "../../assets/effects/ice/frost_nova_01.png",
+      "fileSize": 6079,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\frost_nova_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 7677
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\frost_nova_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 11477
+        }
+      },
+      "runtimeBytes": 25233
+    },
+    {
+      "id": "magical_projectile_01",
+      "name": "Magical Projectile",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/magical-projectile/grid/sprite-sheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "orb",
+        "projectile"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 12,
+      "fps": 20,
+      "visualScale": 2,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/magical-projectile/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magical_projectile_01.png",
+      "requirePath": "../../assets/effects/magic/magical_projectile_01.png",
+      "fileSize": 4463,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magical_projectile_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 6122
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magical_projectile_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 9718
+        }
+      },
+      "runtimeBytes": 20303
+    },
+    {
+      "id": "radiant_heal_01",
+      "name": "Radiant Heal",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/radiant-heal/grid/sprite-sheet.png",
+      "category": "celebration",
+      "tags": [
+        "capture",
+        "radiant",
+        "heal",
+        "holy",
+        "victory"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.15,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/radiant-heal/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\radiant_heal_01.png",
+      "requirePath": "../../assets/effects/celebration/radiant_heal_01.png",
+      "fileSize": 9541,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\radiant_heal_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 11996
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\radiant_heal_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 16559
+        }
+      },
+      "runtimeBytes": 38096
+    },
+    {
+      "id": "solar_shrapnel_01",
+      "name": "Solar Shrapnel",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/solar-shrapnel/grid/sprite-sheet.png",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "solar",
+        "shrapnel",
+        "impact",
+        "fire"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/solar-shrapnel/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\solar_shrapnel_01.png",
+      "requirePath": "../../assets/effects/energy/solar_shrapnel_01.png",
+      "fileSize": 7805,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\solar_shrapnel_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 9649
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\solar_shrapnel_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 13914
+        }
+      },
+      "runtimeBytes": 31368
+    },
+    {
+      "id": "spectral_bloom_01",
+      "name": "Spectral Bloom",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/spectral-bloom/grid/sprite-sheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "spectral",
+        "bloom",
+        "portal",
+        "magic"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/spectral-bloom/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\spectral_bloom_01.png",
+      "requirePath": "../../assets/effects/magic/spectral_bloom_01.png",
+      "fileSize": 11413,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\spectral_bloom_01@2x.png",
+          "width": 960,
+          "height": 768,
+          "fileSize": 14322
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\spectral_bloom_01@3x.png",
+          "width": 1440,
+          "height": 1152,
+          "fileSize": 20224
+        }
+      },
+      "runtimeBytes": 45959
+    },
+    {
+      "id": "void_implosion_01",
+      "name": "Void Implosion",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/void-implosion/grid/sprite-sheet.png",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "void",
+        "implosion",
+        "dark",
+        "portal"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/void-implosion/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\void_implosion_01.png",
+      "requirePath": "../../assets/effects/energy/void_implosion_01.png",
+      "fileSize": 9147,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\void_implosion_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 11271
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\void_implosion_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 16028
+        }
+      },
+      "runtimeBytes": 36446
+    },
+    {
+      "id": "warm_explosion_01",
+      "name": "Warm Explosion",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/warm-explosion/grid/sprite-sheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "fire",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 15,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/warm-explosion/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\warm_explosion_01.png",
+      "requirePath": "../../assets/effects/explosion/warm_explosion_01.png",
+      "fileSize": 9000,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\warm_explosion_01@2x.png",
+          "width": 960,
+          "height": 576,
+          "fileSize": 11243
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\warm_explosion_01@3x.png",
+          "width": 1440,
+          "height": 864,
+          "fileSize": 15859
+        }
+      },
+      "runtimeBytes": 36102
+    },
+    {
+      "id": "fire_column_01",
+      "name": "Fire Column",
+      "package": "free_pixel",
+      "entry": "11_fire_spritesheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "flame"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.4,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::11_fire_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_column_01.png",
+      "requirePath": "../../assets/effects/fire/fire_column_01.png",
+      "fileSize": 49572,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_column_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 64688
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_column_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 82370
+        }
+      },
+      "runtimeBytes": 196630
+    },
+    {
+      "id": "nebula_burst_01",
+      "name": "Nebula Burst",
+      "package": "free_pixel",
+      "entry": "12_nebula_spritesheet.png",
+      "category": "celebration",
+      "tags": [
+        "capture",
+        "nebula",
+        "stars",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::12_nebula_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\nebula_burst_01.png",
+      "requirePath": "../../assets/effects/celebration/nebula_burst_01.png",
+      "fileSize": 153165,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\nebula_burst_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 180667
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\nebula_burst_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 212728
+        }
+      },
+      "runtimeBytes": 546560
+    },
+    {
+      "id": "vortex_red_01",
+      "name": "Red Vortex",
+      "package": "free_pixel",
+      "entry": "13_vortex_spritesheet.png",
+      "category": "portal",
+      "tags": [
+        "capture",
+        "vortex",
+        "portal",
+        "red"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::13_vortex_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\portal\\vortex_red_01.png",
+      "requirePath": "../../assets/effects/portal/vortex_red_01.png",
+      "fileSize": 104181,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\portal\\vortex_red_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 127610
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\portal\\vortex_red_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 151460
+        }
+      },
+      "runtimeBytes": 383251
+    },
+    {
+      "id": "sunburn_ring_01",
+      "name": "Sunburn Ring",
+      "package": "free_pixel",
+      "entry": "16_sunburn_spritesheet.png",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "solar",
+        "ring",
+        "fire"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::16_sunburn_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\sunburn_ring_01.png",
+      "requirePath": "../../assets/effects/energy/sunburn_ring_01.png",
+      "fileSize": 55652,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\sunburn_ring_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 67180
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\sunburn_ring_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 85655
+        }
+      },
+      "runtimeBytes": 208487
+    },
+    {
+      "id": "freezing_bloom_01",
+      "name": "Freezing Bloom",
+      "package": "free_pixel",
+      "entry": "19_freezing_spritesheet.png",
+      "category": "ice",
+      "tags": [
+        "capture",
+        "ice",
+        "frost",
+        "snow",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 10,
+      "rows": 10,
+      "frameCount": 100,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::19_freezing_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\freezing_bloom_01.png",
+      "requirePath": "../../assets/effects/ice/freezing_bloom_01.png",
+      "fileSize": 202938,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\freezing_bloom_01@2x.png",
+          "width": 2000,
+          "height": 2000,
+          "fileSize": 348053
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\freezing_bloom_01@3x.png",
+          "width": 3000,
+          "height": 3000,
+          "fileSize": 444581
+        }
+      },
+      "runtimeBytes": 995572
+    },
+    {
+      "id": "magic_spell_01",
+      "name": "Magic Spell",
+      "package": "free_pixel",
+      "entry": "1_magicspell_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "spell",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 9,
+      "rows": 9,
+      "frameCount": 81,
+      "fps": 30,
+      "visualScale": 1.7,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::1_magicspell_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_spell_01.png",
+      "requirePath": "../../assets/effects/magic/magic_spell_01.png",
+      "fileSize": 53077,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_spell_01@2x.png",
+          "width": 1800,
+          "height": 1800,
+          "fileSize": 67945
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_spell_01@3x.png",
+          "width": 2700,
+          "height": 2700,
+          "fileSize": 89711
+        }
+      },
+      "runtimeBytes": 210733
+    },
+    {
+      "id": "magic_bubbles_01",
+      "name": "Magic Bubbles",
+      "package": "free_pixel",
+      "entry": "20_magicbubbles_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "bubbles",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.6,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::20_magicbubbles_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_bubbles_01.png",
+      "requirePath": "../../assets/effects/magic/magic_bubbles_01.png",
+      "fileSize": 35396,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_bubbles_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 44103
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_bubbles_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 59948
+        }
+      },
+      "runtimeBytes": 139447
+    },
+    {
+      "id": "magic_infinity_01",
+      "name": "Magic Infinity",
+      "package": "free_pixel",
+      "entry": "2_magic8_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "infinity",
+        "portal"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::2_magic8_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_infinity_01.png",
+      "requirePath": "../../assets/effects/magic/magic_infinity_01.png",
+      "fileSize": 145952,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_infinity_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 178056
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_infinity_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 204310
+        }
+      },
+      "runtimeBytes": 528318
+    },
+    {
+      "id": "blue_fire_01",
+      "name": "Blue Fire",
+      "package": "free_pixel",
+      "entry": "3_bluefire_spritesheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "blue",
+        "fire",
+        "magic"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.55,
+      "visualOffsetX": -0.1,
+      "visualOffsetY": -0.2,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::3_bluefire_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\blue_fire_01.png",
+      "requirePath": "../../assets/effects/fire/blue_fire_01.png",
+      "fileSize": 43393,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\blue_fire_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 59725
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\blue_fire_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 74339
+        }
+      },
+      "runtimeBytes": 177457
+    },
+    {
+      "id": "fire_spin_01",
+      "name": "Fire Spin",
+      "package": "free_pixel",
+      "entry": "7_firespin_spritesheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "spin",
+        "ring"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.5,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::7_firespin_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_spin_01.png",
+      "requirePath": "../../assets/effects/fire/fire_spin_01.png",
+      "fileSize": 67792,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_spin_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 91092
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_spin_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 107387
+        }
+      },
+      "runtimeBytes": 266271
+    },
+    {
+      "id": "explosion_orange_01",
+      "name": "Orange Pixel Explosion",
+      "package": "super_mini",
+      "entry": "Super Pixel Effects Mini Pack 1/spritesheet/fx1_explosion_small_orange/spritesheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "pixel",
+        "impact"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 11,
+      "rows": 1,
+      "frameCount": 11,
+      "fps": 15,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Effects Mini Pack 1.zip::Super Pixel Effects Mini Pack 1/spritesheet/fx1_explosion_small_orange/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\explosion_orange_01.png",
+      "requirePath": "../../assets/effects/explosion/explosion_orange_01.png",
+      "fileSize": 3984,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\explosion_orange_01@2x.png",
+          "width": 704,
+          "height": 64,
+          "fileSize": 4482
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\explosion_orange_01@3x.png",
+          "width": 1056,
+          "height": 96,
+          "fileSize": 5394
+        }
+      },
+      "runtimeBytes": 13860
+    },
+    {
+      "id": "electric_burst_01",
+      "name": "Violet Electric Burst",
+      "package": "super_mini",
+      "entry": "Super Pixel Effects Mini Pack 1/spritesheet/fx2_electric_burst_large_violet/spritesheet.png",
+      "category": "lightning",
+      "tags": [
+        "capture",
+        "electric",
+        "lightning",
+        "burst"
+      ],
+      "frameWidth": 72,
+      "frameHeight": 72,
+      "columns": 16,
+      "rows": 1,
+      "frameCount": 16,
+      "fps": 15,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Effects Mini Pack 1.zip::Super Pixel Effects Mini Pack 1/spritesheet/fx2_electric_burst_large_violet/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_burst_01.png",
+      "requirePath": "../../assets/effects/lightning/electric_burst_01.png",
+      "fileSize": 16312,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_burst_01@2x.png",
+          "width": 2304,
+          "height": 144,
+          "fileSize": 19351
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_burst_01@3x.png",
+          "width": 3456,
+          "height": 216,
+          "fileSize": 26555
+        }
+      },
+      "runtimeBytes": 62218
+    },
+    {
+      "id": "impact_shock_01",
+      "name": "Ground Impact Shock",
+      "package": "super_mini",
+      "entry": "Super Pixel Effects Mini Pack 1/spritesheet/fx2_impact_shock_large_brown/spritesheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "impact",
+        "shockwave",
+        "earth"
+      ],
+      "frameWidth": 140,
+      "frameHeight": 50,
+      "columns": 7,
+      "rows": 1,
+      "frameCount": 7,
+      "fps": 15,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Effects Mini Pack 1.zip::Super Pixel Effects Mini Pack 1/spritesheet/fx2_impact_shock_large_brown/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\impact_shock_01.png",
+      "requirePath": "../../assets/effects/impact/impact_shock_01.png",
+      "fileSize": 11916,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\impact_shock_01@2x.png",
+          "width": 1960,
+          "height": 100,
+          "fileSize": 13833
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\impact_shock_01@3x.png",
+          "width": 2940,
+          "height": 150,
+          "fileSize": 17946
+        }
+      },
+      "runtimeBytes": 43695
+    },
+    {
+      "id": "bomb_blast_01",
+      "name": "Bomb Blast",
+      "package": "ansimuz_explosions",
+      "entry": "explosion pack 1/Explosions pack/explosion-1-c/spritesheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "bomb",
+        "explosion",
+        "smoke",
+        "steal"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 80,
+      "columns": 10,
+      "rows": 1,
+      "frameCount": 10,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-c/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\bomb_blast_01.png",
+      "requirePath": "../../assets/effects/explosion/bomb_blast_01.png",
+      "fileSize": 7578,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\bomb_blast_01@2x.png",
+          "width": 2560,
+          "height": 160,
+          "fileSize": 9430
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\bomb_blast_01@3x.png",
+          "width": 3840,
+          "height": 240,
+          "fileSize": 14157
+        }
+      },
+      "runtimeBytes": 31165
+    },
+    {
+      "id": "fall_leaf_01",
+      "name": "Autumn Leaf",
+      "package": "leaves",
+      "entry": "ELR-WindyLeafs/ELR_FallLeaf.png",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "autumn"
+      ],
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "columns": 4,
+      "rows": 1,
+      "frameCount": 4,
+      "fps": 8,
+      "loop": true,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\ELR-WindyLeafs.zip::ELR-WindyLeafs/ELR_FallLeaf.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\fall_leaf_01.png",
+      "requirePath": "../../assets/effects/ambient/fall_leaf_01.png",
+      "fileSize": 327,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\fall_leaf_01@2x.png",
+          "width": 160,
+          "height": 32,
+          "fileSize": 347
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\fall_leaf_01@3x.png",
+          "width": 240,
+          "height": 48,
+          "fileSize": 396
+        }
+      },
+      "runtimeBytes": 1070
+    },
+    {
+      "id": "spring_leaf_01",
+      "name": "Spring Leaf",
+      "package": "leaves",
+      "entry": "ELR-WindyLeafs/ELR_SpringlLeaf.png",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "spring"
+      ],
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "columns": 4,
+      "rows": 1,
+      "frameCount": 4,
+      "fps": 8,
+      "loop": true,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\ELR-WindyLeafs.zip::ELR-WindyLeafs/ELR_SpringlLeaf.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\spring_leaf_01.png",
+      "requirePath": "../../assets/effects/ambient/spring_leaf_01.png",
+      "fileSize": 331,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\spring_leaf_01@2x.png",
+          "width": 160,
+          "height": 32,
+          "fileSize": 367
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\spring_leaf_01@3x.png",
+          "width": 240,
+          "height": 48,
+          "fileSize": 420
+        }
+      },
+      "runtimeBytes": 1118
+    },
+    {
+      "id": "winter_leaf_01",
+      "name": "Winter Leaf",
+      "package": "leaves",
+      "entry": "ELR-WindyLeafs/ELR_WinterlLeaf.png",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "winter"
+      ],
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "columns": 4,
+      "rows": 1,
+      "frameCount": 4,
+      "fps": 8,
+      "loop": true,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\ELR-WindyLeafs.zip::ELR-WindyLeafs/ELR_WinterlLeaf.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\winter_leaf_01.png",
+      "requirePath": "../../assets/effects/ambient/winter_leaf_01.png",
+      "fileSize": 331,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\winter_leaf_01@2x.png",
+          "width": 160,
+          "height": 32,
+          "fileSize": 343
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\winter_leaf_01@3x.png",
+          "width": 240,
+          "height": 48,
+          "fileSize": 389
+        }
+      },
+      "runtimeBytes": 1063
+    },
+    {
+      "id": "reaction_love",
+      "name": "Love",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetLove.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "love"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetLove.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_love.png",
+      "requirePath": "../../assets/effects/emoji/reaction_love.png",
+      "fileSize": 3040,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_love@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 4702
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_love@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 5679
+        }
+      },
+      "runtimeBytes": 13421
+    },
+    {
+      "id": "reaction_happy",
+      "name": "Laughing",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetLaughing.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "laughing"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetLaughing.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_happy.png",
+      "requirePath": "../../assets/effects/emoji/reaction_happy.png",
+      "fileSize": 3090,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_happy@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 4078
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_happy@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 5102
+        }
+      },
+      "runtimeBytes": 12270
+    },
+    {
+      "id": "reaction_wow",
+      "name": "OMG",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetOMG.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "omg"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetOMG.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_wow.png",
+      "requirePath": "../../assets/effects/emoji/reaction_wow.png",
+      "fileSize": 3745,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_wow@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 4996
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_wow@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 6169
+        }
+      },
+      "runtimeBytes": 14910
+    },
+    {
+      "id": "reaction_respect",
+      "name": "Ok",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetOk.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "ok"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetOk.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_respect.png",
+      "requirePath": "../../assets/effects/emoji/reaction_respect.png",
+      "fileSize": 3898,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_respect@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 5101
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_respect@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 6234
+        }
+      },
+      "runtimeBytes": 15233
+    },
+    {
+      "id": "reaction_brutal",
+      "name": "Mind Blown",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetHeadblown.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "headblown"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetHeadblown.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_brutal.png",
+      "requirePath": "../../assets/effects/emoji/reaction_brutal.png",
+      "fileSize": 4149,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_brutal@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 5077
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_brutal@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 6252
+        }
+      },
+      "runtimeBytes": 15478
+    },
+    {
+      "id": "reaction_rival",
+      "name": "Angry",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetAngry.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "angry"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetAngry.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_rival.png",
+      "requirePath": "../../assets/effects/emoji/reaction_rival.png",
+      "fileSize": 3840,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_rival@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 5004
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_rival@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 6083
+        }
+      },
+      "runtimeBytes": 14927
+    },
+    {
+      "id": "reaction_vibes",
+      "name": "Lit",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetLit.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "lit"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetLit.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_vibes.png",
+      "requirePath": "../../assets/effects/emoji/reaction_vibes.png",
+      "fileSize": 3966,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_vibes@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 5355
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_vibes@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 6448
+        }
+      },
+      "runtimeBytes": 15769
+    },
+    {
+      "id": "reaction_idea",
+      "name": "Idea",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetIdea.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "idea"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetIdea.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_idea.png",
+      "requirePath": "../../assets/effects/emoji/reaction_idea.png",
+      "fileSize": 4022,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_idea@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 5253
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_idea@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 6311
+        }
+      },
+      "runtimeBytes": 15586
+    },
+    {
+      "id": "reaction_exclamation",
+      "name": "Exclamation",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetExclamation.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "exclamation"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetExclamation.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_exclamation.png",
+      "requirePath": "../../assets/effects/emoji/reaction_exclamation.png",
+      "fileSize": 2381,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_exclamation@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 3366
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_exclamation@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 4294
+        }
+      },
+      "runtimeBytes": 10041
+    },
+    {
+      "id": "reaction_crying",
+      "name": "Crying",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetCrying.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "crying"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetCrying.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_crying.png",
+      "requirePath": "../../assets/effects/emoji/reaction_crying.png",
+      "fileSize": 3097,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_crying@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 4170
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_crying@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 5150
+        }
+      },
+      "runtimeBytes": 12417
+    },
+    {
+      "id": "reaction_question",
+      "name": "Question",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetQuestion.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "question"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetQuestion.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_question.png",
+      "requirePath": "../../assets/effects/emoji/reaction_question.png",
+      "fileSize": 2641,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_question@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 3714
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_question@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 4643
+        }
+      },
+      "runtimeBytes": 10998
+    },
+    {
+      "id": "reaction_speechless",
+      "name": "Speechless",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetSpeechless.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "speechless"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetSpeechless.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_speechless.png",
+      "requirePath": "../../assets/effects/emoji/reaction_speechless.png",
+      "fileSize": 2583,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_speechless@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 3515
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_speechless@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 4439
+        }
+      },
+      "runtimeBytes": 10537
+    },
+    {
+      "id": "reaction_sleepy",
+      "name": "Sleepy",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetSleepy.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "sleepy"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetSleepy.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_sleepy.png",
+      "requirePath": "../../assets/effects/emoji/reaction_sleepy.png",
+      "fileSize": 3175,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_sleepy@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 4379
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_sleepy@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 5299
+        }
+      },
+      "runtimeBytes": 12853
+    },
+    {
+      "id": "reaction_frustrated",
+      "name": "Frustrated",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetFrustrated.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "frustrated"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetFrustrated.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_frustrated.png",
+      "requirePath": "../../assets/effects/emoji/reaction_frustrated.png",
+      "fileSize": 2239,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_frustrated@2x.png",
+          "width": 320,
+          "height": 256,
+          "fileSize": 3166
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_frustrated@3x.png",
+          "width": 480,
+          "height": 384,
+          "fileSize": 4042
+        }
+      },
+      "runtimeBytes": 9447
+    }
+  ],
+  "packages": {
+    "foundry": {
+      "container": "pvfx-foundry-thirteen-spritesheets.zip",
+      "license": "CC0-1.0",
+      "releaseApproved": true,
+      "credit": "VFX from PVFX Foundry Thirteen by Pixel VFX Studio"
+    },
+    "free_pixel": {
+      "container": "Free Pixel Effects Pack.zip",
+      "license": "Public domain",
+      "releaseApproved": true,
+      "credit": "CodeManu / DavitMasia"
+    },
+    "super_mini": {
+      "container": "Super Pixel Effects Mini Pack 1.zip",
+      "license": "Commercial/non-commercial game use; no pack redistribution; attribution required",
+      "releaseApproved": true,
+      "credit": "Will Tice"
+    },
+    "ansimuz_explosions": {
+      "container": "explosion pack 1.zip",
+      "license": "CC0-1.0",
+      "releaseApproved": true,
+      "credit": "Explosion pack by Luis Zuno (ansimuz)",
+      "licenseNote": "public-license.pdf inside the download states CC0: any project, personal or commercial, no attribution required."
+    },
+    "glitch_portals": {
+      "container": "Glitch Portals.zip",
+      "license": "See source pack",
+      "releaseApproved": false,
+      "releaseBlockReason": "No explicit license file was included; verify the original download terms.",
+      "credit": null
+    },
+    "leaves": {
+      "container": "ELR-WindyLeafs.zip",
+      "license": "See source pack",
+      "releaseApproved": true,
+      "credit": null,
+      "licenseNote": "Terms verified by the project owner 2026-08-11; no licence file shipped in the download."
+    },
+    "tiny_rpg": {
+      "container": "emojiPackI.zip",
+      "license": "CC0-1.0",
+      "releaseApproved": true,
+      "credit": "Tiny RPG - Emoji Pack I by Gabriel \"tiopalada\" Lima (CC0 1.0)"
+    }
+  }
+}

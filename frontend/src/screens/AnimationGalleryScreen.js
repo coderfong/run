@@ -1,0 +1,336 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Svg, { Path } from 'react-native-svg';
+
+import { CharacterBust } from '../components/character/CharacterRig';
+import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import EffectPlayer from '../effects/EffectPlayer';
+import { CAPTURE_STYLES } from '../effects/captureStyles';
+import { EFFECT_CATEGORY_LABELS } from '../effects/effectCategories';
+import { getAllEffects } from '../effects/effectRegistry';
+import { useAvatar } from '../state/avatar';
+import { radius, space, useTheme, useThemedType } from '../theme';
+
+const PREFS_KEY = 'dev:animation-gallery:v1';
+const BACKGROUNDS = ['dark', 'light', 'checkerboard', 'map'];
+const SPEEDS = [0.5, 1, 1.5, 2];
+const SCENARIOS = [
+  { id: 'empty', label: 'Empty', defenders: 0 },
+  { id: 'one', label: '1 defender', defenders: 1 },
+  { id: 'three', label: '3 defenders', defenders: 3 },
+];
+
+function Chip({ label, active, onPress }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.chip,
+        { borderColor: colors.border, backgroundColor: active ? colors.text : colors.card },
+      ]}
+    >
+      <Text style={{ color: active ? colors.bg : colors.text, fontSize: 12, fontWeight: '700' }}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function PreviewBackground({ mode, children, style }) {
+  const dark = mode === 'dark' || mode === 'map';
+  return (
+    <View style={[styles.preview, { backgroundColor: dark ? '#171B22' : '#F3F0E9' }, style]}>
+      {mode === 'checkerboard' ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          {Array.from({ length: 8 }, (_, row) => (
+            <View key={row} style={{ flex: 1, flexDirection: 'row' }}>
+              {Array.from({ length: 10 }, (_, column) => (
+                <View
+                  key={column}
+                  style={{ flex: 1, backgroundColor: (row + column) % 2 ? '#D5D5D5' : '#FAFAFA' }}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {mode === 'map' ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <View style={[styles.mapRoad, { top: '30%', transform: [{ rotate: '-8deg' }] }]} />
+          <View style={[styles.mapRoad, { top: '62%', transform: [{ rotate: '12deg' }] }]} />
+          <View style={[styles.mapBlock, { left: '9%', top: '12%' }]} />
+          <View style={[styles.mapBlock, { right: '8%', bottom: '10%' }]} />
+        </View>
+      ) : null}
+      {children}
+    </View>
+  );
+}
+
+function EffectCard({ effect, background, loop, speed, replayToken, favorite, unusable, onFavorite, onUnusable }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, opacity: unusable ? 0.52 : 1 }]}>
+      <PreviewBackground mode={background}>
+        <EffectPlayer
+          key={`${effect.id}:${replayToken}`}
+          effect={effect}
+          size={132}
+          loop={loop || !!effect.loop}
+          speed={speed}
+          playToken={replayToken}
+          allowReducedMotion
+        />
+      </PreviewBackground>
+      <View style={styles.cardBody}>
+        <View style={styles.cardTitleRow}>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={[type.bodySmBold, { color: colors.text }]}>{effect.name || effect.id}</Text>
+            <Text numberOfLines={1} style={[type.caption, { color: colors.textMuted }]}>{effect.id}</Text>
+          </View>
+          <Pressable onPress={onFavorite} hitSlop={8}><Text style={{ fontSize: 20 }}>{favorite ? '★' : '☆'}</Text></Pressable>
+        </View>
+        <Text style={[type.caption, { color: colors.textMuted }]}>
+          {effect.type} · {effect.frameWidth ? `${effect.frameWidth}×${effect.frameHeight}` : 'vector'}
+          {effect.frameCount ? ` · ${effect.frameCount}f` : ''}{effect.fps ? ` · ${effect.fps} FPS` : ''}
+        </Text>
+        <Text numberOfLines={2} style={[type.caption, { color: colors.textMuted }]}>{(effect.tags || []).join(' · ')}</Text>
+        <Pressable onPress={onUnusable} style={styles.markButton}>
+          <Text style={[type.caption, { color: unusable ? colors.danger : colors.textMuted }]}>
+            {unusable ? 'Marked unusable' : 'Mark unusable'}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function LibraryGallery() {
+  const { colors } = useTheme();
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('all');
+  const [tag, setTag] = useState(null);
+  const [background, setBackground] = useState('checkerboard');
+  const [loop, setLoop] = useState(true);
+  const [speed, setSpeed] = useState(1);
+  const [replayToken, setReplayToken] = useState(0);
+  const [favorites, setFavorites] = useState([]);
+  const [unusable, setUnusable] = useState([]);
+  const effects = useMemo(() => getAllEffects(), []);
+
+  useEffect(() => {
+    AsyncStorage.getItem(PREFS_KEY).then((raw) => {
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      setFavorites(saved.favorites || []);
+      setUnusable(saved.unusable || []);
+    }).catch(() => {});
+  }, []);
+  const persist = useCallback((nextFavorites, nextUnusable) => {
+    AsyncStorage.setItem(PREFS_KEY, JSON.stringify({ favorites: nextFavorites, unusable: nextUnusable })).catch(() => {});
+  }, []);
+  const toggle = useCallback((id, current, setter, other) => {
+    const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+    setter(next);
+    persist(setter === setFavorites ? next : other, setter === setUnusable ? next : other);
+  }, [persist, setFavorites, setUnusable]);
+
+  const categories = useMemo(() => {
+    const values = [...new Set(effects.map((effect) => effect.category))];
+    return ['all', 'capture', ...values.sort()];
+  }, [effects]);
+  const tags = useMemo(() => {
+    const counts = new Map();
+    effects.forEach((effect) => effect.tags?.forEach((value) => counts.set(value, (counts.get(value) || 0) + 1)));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 18).map(([value]) => value);
+  }, [effects]);
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return effects
+      .filter((effect) => category === 'all' || (category === 'capture' ? effect.tags?.includes('capture') : effect.category === category))
+      .filter((effect) => !tag || effect.tags?.includes(tag))
+      .filter((effect) => !needle || `${effect.id} ${effect.name} ${(effect.tags || []).join(' ')}`.toLowerCase().includes(needle))
+      .sort((a, b) => Number(favorites.includes(b.id)) - Number(favorites.includes(a.id)) || a.id.localeCompare(b.id));
+  }, [category, effects, favorites, query, tag]);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={styles.filters}>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search ID, name, or tag"
+          placeholderTextColor={colors.textMuted}
+          style={[styles.search, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          {categories.map((value) => (
+            <Chip key={value} label={EFFECT_CATEGORY_LABELS[value] || value} active={category === value} onPress={() => setCategory(value)} />
+          ))}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <Chip label="Any tag" active={!tag} onPress={() => setTag(null)} />
+          {tags.map((value) => <Chip key={value} label={value} active={tag === value} onPress={() => setTag(value)} />)}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          {BACKGROUNDS.map((value) => <Chip key={value} label={value} active={background === value} onPress={() => setBackground(value)} />)}
+          <Chip label={loop ? 'Loop on' : 'Loop off'} active={loop} onPress={() => setLoop((value) => !value)} />
+          {SPEEDS.map((value) => <Chip key={value} label={`${value}×`} active={speed === value} onPress={() => setSpeed(value)} />)}
+          <Chip label="Replay all" active={false} onPress={() => setReplayToken((value) => value + 1)} />
+        </ScrollView>
+      </View>
+      <Text style={{ color: colors.textMuted, paddingHorizontal: space.md, paddingBottom: space.sm }}>{filtered.length} registered effects</Text>
+      <FlatList
+        data={filtered}
+        keyExtractor={(effect) => effect.id}
+        numColumns={2}
+        columnWrapperStyle={styles.columns}
+        contentContainerStyle={styles.list}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={3}
+        removeClippedSubviews
+        renderItem={({ item }) => (
+          <EffectCard
+            effect={item}
+            background={background}
+            loop={loop}
+            speed={speed}
+            replayToken={replayToken}
+            favorite={favorites.includes(item.id)}
+            unusable={unusable.includes(item.id)}
+            onFavorite={() => toggle(item.id, favorites, setFavorites, unusable)}
+            onUnusable={() => toggle(item.id, unusable, setUnusable, favorites)}
+          />
+        )}
+      />
+    </View>
+  );
+}
+
+function CaptureStyleLab() {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const { equipped } = useAvatar();
+  const [styleId, setStyleId] = useState(CAPTURE_STYLES[0].id);
+  const [scenario, setScenario] = useState(SCENARIOS[0]);
+  const [reduced, setReduced] = useState(false);
+  const [playToken, setPlayToken] = useState(1);
+  const [stage, setStage] = useState({ width: 320, height: 430 });
+  const [revealed, setRevealed] = useState(false);
+  const replay = useCallback(() => {
+    setRevealed(false);
+    setPlayToken((value) => value + 1);
+  }, []);
+  const reveal = useCallback(() => setRevealed(true), []);
+  const center = useMemo(() => ({ x: stage.width / 2, y: stage.height * 0.58 }), [stage.height, stage.width]);
+  const ring = useMemo(() => [
+    { x: center.x - 105, y: center.y - 52 }, { x: center.x - 44, y: center.y - 105 },
+    { x: center.x + 86, y: center.y - 74 }, { x: center.x + 112, y: center.y + 28 },
+    { x: center.x + 28, y: center.y + 84 }, { x: center.x - 96, y: center.y + 52 },
+  ], [center]);
+  const rings = useMemo(() => [ring], [ring]);
+  const d = useMemo(() => `M ${ring.map((point) => `${point.x} ${point.y}`).join(' L ')} Z`, [ring]);
+  const characterRect = useMemo(
+    () => ({ x: center.x - 29, y: center.y - 29, width: 58, height: 58 }),
+    [center]
+  );
+
+  return (
+    <ScrollView contentContainerStyle={styles.lab}>
+      <Text style={[type.title, { color: colors.text }]}>Capture Style Lab</Text>
+      <Text style={[type.bodySm, { color: colors.textMuted }]}>Uses the same style player and current avatar as the live post-run claim.</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        {CAPTURE_STYLES.map((item) => <Chip key={item.id} label={item.name} active={styleId === item.id} onPress={() => { setStyleId(item.id); replay(); }} />)}
+      </ScrollView>
+      <View style={styles.chipRow}>
+        {SCENARIOS.map((item) => <Chip key={item.id} label={item.label} active={scenario.id === item.id} onPress={() => { setScenario(item); replay(); }} />)}
+        <Chip label={reduced ? 'Reduced on' : 'Reduced off'} active={reduced} onPress={() => { setReduced((value) => !value); replay(); }} />
+        <Chip label="Replay" active={false} onPress={replay} />
+      </View>
+      <PreviewBackground
+        mode="map"
+        style={styles.labStage}
+      >
+        <View
+          style={StyleSheet.absoluteFill}
+          onLayout={(event) => setStage(event.nativeEvent.layout)}
+        >
+          <Svg style={StyleSheet.absoluteFill}>
+            <Path d={d} fill={revealed ? 'rgba(84,231,165,0.32)' : 'rgba(255,255,255,0.03)'} stroke="#54E7A5" strokeWidth={3} />
+          </Svg>
+          {Array.from({ length: scenario.defenders }, (_, index) => (
+            <CharacterBust
+              key={index}
+              equipped={equipped}
+              size={42}
+              ring="#FF8C6B"
+              style={{ position: 'absolute', left: center.x + 52 + index * 18, top: center.y - 24 - index * 36 }}
+            />
+          ))}
+          <CharacterBust
+            equipped={equipped}
+            size={58}
+            ring="#54E7A5"
+            style={{ position: 'absolute', left: center.x - 29, top: center.y - 29 }}
+          />
+          <CaptureStylePlayer
+            style={styleId}
+            playToken={playToken}
+            bounds={stage}
+            claimPoint={center}
+            territoryRings={rings}
+            characterRect={characterRect}
+            reducedMotion={reduced}
+            onTerritoryReveal={reveal}
+          />
+        </View>
+      </PreviewBackground>
+      <Text style={[type.bodySmBold, { color: colors.text }]}>{CAPTURE_STYLES.find((item) => item.id === styleId)?.name}</Text>
+      <Text style={[type.bodySm, { color: colors.textMuted }]}>{CAPTURE_STYLES.find((item) => item.id === styleId)?.description}</Text>
+    </ScrollView>
+  );
+}
+
+export default function AnimationGalleryScreen() {
+  const { colors } = useTheme();
+  const [section, setSection] = useState('library');
+  if (!__DEV__) return <View style={{ flex: 1, backgroundColor: colors.bg }} />;
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={[styles.sectionTabs, { borderBottomColor: colors.border }] }>
+        <Chip label="Animation Library" active={section === 'library'} onPress={() => setSection('library')} />
+        <Chip label="Capture Styles" active={section === 'styles'} onPress={() => setSection('styles')} />
+      </View>
+      {section === 'library' ? <LibraryGallery /> : <CaptureStyleLab />}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  sectionTabs: { flexDirection: 'row', gap: 8, padding: space.md, borderBottomWidth: 1 },
+  filters: { gap: 8, padding: space.md },
+  search: { height: 42, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 12 },
+  chipRow: { flexDirection: 'row', gap: 7, alignItems: 'center' },
+  chip: { borderWidth: 1, borderRadius: radius.pill, paddingHorizontal: 11, paddingVertical: 7 },
+  list: { paddingHorizontal: space.sm, paddingBottom: 80 },
+  columns: { gap: space.sm },
+  card: { flex: 1, minWidth: 0, borderWidth: 1, borderRadius: radius.md, overflow: 'hidden', marginBottom: space.sm },
+  preview: { height: 166, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  cardBody: { padding: space.sm, gap: 4 },
+  cardTitleRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  markButton: { paddingTop: 5, alignSelf: 'flex-start' },
+  mapRoad: { position: 'absolute', left: '-10%', width: '120%', height: 18, backgroundColor: '#323A43' },
+  mapBlock: { position: 'absolute', width: 84, height: 58, borderWidth: 1, borderColor: '#39434E', backgroundColor: '#20262E' },
+  lab: { padding: space.md, gap: space.md, paddingBottom: 80 },
+  labStage: { width: '100%', height: 430, borderRadius: radius.lg },
+});

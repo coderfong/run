@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../theme';
 import { ITEMS } from '../config/cosmetics';
+import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useReduceMotion } from '../ui/motion';
@@ -115,7 +116,7 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
       { key: 'birthday', kind: 'birthday' },
       { key: 'gender', kind: 'gender' },
       ...character,
-      { key: 'pro', kind: 'pro', optional: true },
+      ...(IAP_ENABLED ? [{ key: 'pro', kind: 'pro', optional: true }] : []),
       { key: 'ready', kind: 'ready' },
     ];
   }, [mode]);

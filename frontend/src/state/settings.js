@@ -17,6 +17,7 @@ export const TRAIL_GLOW_COLORS = [
   { key: 'white', label: 'White', value: '#f8fafc' },
 ];
 
+
 const SettingsContext = createContext({
   trailGlow: 'clan',
   trailGlowColor: null,
@@ -38,6 +39,7 @@ export function SettingsProvider({ children }) {
     setTrailGlowState(key);
     AsyncStorage.setItem(TRAIL_GLOW_KEY, key).catch(() => {});
   };
+
 
   const value = useMemo(() => {
     const entry = TRAIL_GLOW_COLORS.find((c) => c.key === trailGlow) || TRAIL_GLOW_COLORS[0];

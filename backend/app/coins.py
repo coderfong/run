@@ -23,7 +23,7 @@ from .shop_catalog import SHOP_ITEMS, price_of
 # ---------------------------------------------------------------------------
 # Rotating storefront
 # ---------------------------------------------------------------------------
-# 155 buyable items shown at once is a catalogue, not a shop — nothing feels
+# Hundreds of buyable items shown at once is a catalogue, not a shop — nothing feels
 # special and there's no reason to come back. Instead a small window rotates
 # on a fixed clock.
 #
@@ -143,7 +143,7 @@ def buy_cosmetic(db, user_id, item_id: str):
         # Either not a real id, or a PRO exclusive that coins must not reach.
         return False, "not purchasable", None
     # Must be in the CURRENT window. Without this the rotation is decorative:
-    # anyone could buy any of the 155 items by posting its id directly.
+    # anyone could buy any catalogue item by posting its id directly.
     if item_id not in featured_ids():
         return False, "not in the shop right now", price
     if owns(db, user_id, item_id):

@@ -1,4 +1,4 @@
-"""End-to-end exercise of emote reactions and emote comments on runs.
+"""End-to-end exercise of emote reactions and text comments on runs.
 
 Runs against the real app + the real dev DB via TestClient, then deletes the
 two throwaway users and the run it made. Needs httpx (TestClient's transport).
@@ -8,7 +8,7 @@ two throwaway users and the run it made. Needs httpx (TestClient's transport).
 Covers: leaving a reaction, swapping it (one per person, not a pile), the tap
 to take it back off, the allowlist, the summary shape on /feed and on the run
 detail, `mine` pointing at the viewer's own choice and not somebody else's, and
-comments made of a sticker, of text, or of both.
+comments staying text-only while emoji remain reactions.
 """
 import os, sys, uuid
 
@@ -108,22 +108,22 @@ if row:
 detail = c.get(f"/runs/{run_id}", headers=bob_h).json()
 check("the run detail carries it as well", detail["my_reaction"] == "respect", str(detail.get("my_reaction")))
 
-print("\n== emote comments ==")
+print("\n== text-only comments ==")
 r = c.post(f"/runs/{run_id}/comments", json={"emote": "wow"}, headers=bob_h)
-check("a sticker with no words is a comment", r.status_code == 200 and r.json()["emote"] == "wow", r.text[:160])
-check("and it has no body", r.json()["body"] is None, str(r.json()))
+check("a sticker cannot become a comment", r.status_code == 422, r.text[:160])
 r = c.post(f"/runs/{run_id}/comments", json={"body": "strong pace", "emote": "love"}, headers=bob_h)
-check("text plus sticker is allowed", r.status_code == 200 and r.json()["body"] == "strong pace" and r.json()["emote"] == "love", r.text[:160])
+check("an extra emote is ignored and text is stored", r.status_code == 200 and r.json()["body"] == "strong pace" and "emote" not in r.json(), r.text[:160])
 r = c.post(f"/runs/{run_id}/comments", json={"body": "just words"}, headers=bob_h)
-check("text alone still works", r.status_code == 200 and r.json()["emote"] is None, r.text[:160])
+check("text alone works", r.status_code == 200 and r.json()["body"] == "just words", r.text[:160])
 r = c.post(f"/runs/{run_id}/comments", json={}, headers=bob_h)
 check("an empty comment is refused", r.status_code == 422, str(r.status_code))
 r = c.post(f"/runs/{run_id}/comments", json={"body": "   "}, headers=bob_h)
 check("whitespace is not a comment", r.status_code == 422, str(r.status_code))
 r = c.post(f"/runs/{run_id}/comments", json={"body": "hi", "emote": "not_real"}, headers=bob_h)
-check("a bad emote on a comment is refused", r.status_code == 422, str(r.status_code))
+check("comment emoji never enter the response", r.status_code == 200 and "emote" not in r.json(), r.text[:160])
 listed = c.get(f"/runs/{run_id}/comments", headers=bob_h).json()
-check("the comments read back with their emotes", [x["emote"] for x in listed] == ["wow", "love", None], str([(x["body"], x["emote"]) for x in listed]))
+check("comments read back as text only", [x["body"] for x in listed] == ["strong pace", "just words", "hi"], str(listed))
+check("comment responses contain no emote field", all("emote" not in x for x in listed), str(listed))
 
 # cleanup
 db.execute(text("DELETE FROM run_reactions WHERE run_id = :r"), {"r": run_id})

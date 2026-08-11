@@ -25,20 +25,30 @@ import RewardReveal from '../components/RewardReveal';
 import BuyPassSheet, { GOLD } from '../components/BuyPassSheet';
 import { art } from '../config/onboardingArt';
 import { MAX_LEVEL } from '../config/progression';
-import { ITEMS } from '../config/cosmetics';
+import { getItem, ITEMS } from '../config/cosmetics';
 import { toast } from '../ui/toast';
 import { Bar, Pulse, useReduceMotion } from '../ui/motion';
+import { IAP_ENABLED } from '../config/releaseFeatures';
 
-// Roll a random cosmetic of `rarity` from the catalog (legendary → epic pool).
-function rollCosmetic(rarity) {
-  const want = rarity === 'legendary' ? 'epic' : rarity;
+// Roll an unowned shop/stat cosmetic of the box's actual rarity. Pass rewards
+// are never in the pool: a lootbox must not bypass either reward track.
+function rollCosmetic(rarity, isUnlocked) {
   const pool = [];
   for (const slot of Object.keys(ITEMS)) {
     for (const item of ITEMS[slot]) {
-      if ((item.rarity || 'common') === want && item.id !== 'none') pool.push({ slot, item });
+      if (
+        (item.rarity || 'common') === rarity
+        && item.id !== 'none'
+        && !item.unlock?.pass
+        && !item.unlock?.premium
+      ) pool.push({ slot, item });
     }
   }
-  const src = pool.length ? pool : Object.keys(ITEMS).flatMap((s) => ITEMS[s].map((item) => ({ slot: s, item })));
+  if (!pool.length) {
+    throw new Error(`No ${rarity} cosmetics are configured for lootboxes`);
+  }
+  const locked = pool.filter(({ item }) => !isUnlocked(item));
+  const src = locked.length ? locked : pool;
   return src[Math.floor(Math.random() * src.length)];
 }
 
@@ -62,6 +72,9 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
   const claimable = unlocked && !claimed && !gated;
   const dim = !unlocked || claimed;
   const shown = rewards.slice(0, 2);
+  const cosmeticReward = rewards.find((reward) => reward.kind === 'cosmetic');
+  const [cosmeticSlot, cosmeticId] = cosmeticReward?.key?.split(':') || [];
+  const cosmeticRarity = getItem(cosmeticSlot, cosmeticId)?.rarity;
   // Generated chrome; each falls back to the code-drawn version when absent.
   //
   // NOTE: tile-free / tile-pro are deliberately NOT used. They're 9-slice
@@ -108,8 +121,19 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
           />
         ))}
       </Pulse>
-      {/* No caption — the tile shows the reward as itself. The name is still
-          on the accessibility label and in the claim toast. */}
+      {cosmeticReward ? (
+        <View style={styles.rewardNameRow}>
+          <View
+            style={[
+              styles.rewardRarityDot,
+              { backgroundColor: RARITY_COLOR[cosmeticRarity] || accent },
+            ]}
+          />
+          <Text style={[type.caption, styles.rewardName]} numberOfLines={2}>
+            {cosmeticReward.label}
+          </Text>
+        </View>
+      ) : null}
       {claimed ? (
         chipClaimedArt ? (
           <Image source={chipClaimedArt} style={styles.chipArt} resizeMode="contain" fadeDuration={0} />
@@ -217,7 +241,7 @@ export default function ProgressionScreen() {
   const { colors } = useTheme();
   const type = useThemedType();
   const reducedMotion = useReduceMotion();
-  const { equipped, refreshUnlocks } = useAvatar();
+  const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
   // Shares the 'me:progression' key with the avatar context, which fetches the
   // same payload for its unlock gates — so opening the pass from You costs no
   // request at all and the ladder is drawn on the first frame.
@@ -237,7 +261,7 @@ export default function ProgressionScreen() {
     setOpening(true);
     try {
       const { rarity } = await api.openLootbox();
-      const roll = rollCosmetic(rarity);
+      const roll = rollCosmetic(rarity, isUnlocked);
       // The unlock is what you actually keep, so a failure to write it must
       // not be swallowed by the celebration that follows.
       await api.addUnlock(roll.item.id);
@@ -390,6 +414,7 @@ export default function ProgressionScreen() {
   }
 
   const { level, xp_into_level, xp_for_next, ladder, pending_lootboxes, premium_active, claims, rank } = data;
+  const showPremium = premium_active || IAP_ENABLED;
   // At the ceiling there is no "next level" to be part-way to, and the server
   // keeps reporting progress toward a level 51 that doesn't exist. A bar
   // sitting a third full under the words "Max level reached" reads as a bug,
@@ -495,7 +520,7 @@ export default function ProgressionScreen() {
       {/* The PRO pitch, shown only to non-holders. There is no "premium pass
           active" banner any more: once you own it the whole gold track is
           unlocked down the page, which says it better than a bar does. */}
-      {!premium_active && (
+      {IAP_ENABLED && !premium_active && (
         <Card style={[styles.passBanner, { borderColor: GOLD }]}>
           <Row gap={12}>
             {art('crestPro') ? (
@@ -551,11 +576,15 @@ export default function ProgressionScreen() {
           <View style={styles.ticketHighlight} pointerEvents="none" />
           <Text style={[toonType.label, styles.ticketText, { color: '#fff' }]}>FREE</Text>
         </View>
-        <View style={{ width: SPINE_W }} />
-        <View style={[styles.ticket, styles.ticketPro]}>
-          <View style={styles.ticketHighlight} pointerEvents="none" />
-          <Text style={[toonType.label, styles.ticketText, styles.ticketTextPro]}>PASER PRO</Text>
-        </View>
+        {showPremium ? (
+          <>
+            <View style={{ width: SPINE_W }} />
+            <View style={[styles.ticket, styles.ticketPro]}>
+              <View style={styles.ticketHighlight} pointerEvents="none" />
+              <Text style={[toonType.label, styles.ticketText, styles.ticketTextPro]}>PASER PRO</Text>
+            </View>
+          </>
+        ) : null}
       </View>
 
       {/* the two-track ladder */}
@@ -563,7 +592,8 @@ export default function ProgressionScreen() {
         const reached = level >= row.level;
         const current = level + 1 === row.level;
         return (
-          <View key={row.level} style={styles.tierRow}>
+          <View key={row.level} style={[styles.tierRow, !showPremium && styles.singleTierRow]}>
+            {!showPremium ? <Spine level={row.level} reached={reached} current={current} /> : null}
             <TrackTile
               rewards={row.rewards}
               accent={brand.pink}
@@ -575,23 +605,29 @@ export default function ProgressionScreen() {
               equipped={equipped}
               isPro={false}
             />
-            <Spine level={row.level} reached={reached} current={current} />
-            <TrackTile
-              rewards={row.premium}
-              accent={GOLD}
-              unlocked={reached}
-              claimed={claimed.has(`${row.level}:premium`)}
-              gated={!premium_active}
-              busy={busyKey === `${row.level}:premium`}
-              onPress={() => (premium_active ? claim(row.level, 'premium') : setPassOpen(true))}
-              equipped={equipped}
-              isPro
-            />
+            {showPremium ? (
+              <>
+                <Spine level={row.level} reached={reached} current={current} />
+                <TrackTile
+                  rewards={row.premium}
+                  accent={GOLD}
+                  unlocked={reached}
+                  claimed={claimed.has(`${row.level}:premium`)}
+                  gated={!premium_active}
+                  busy={busyKey === `${row.level}:premium`}
+                  onPress={() => (premium_active ? claim(row.level, 'premium') : setPassOpen(true))}
+                  equipped={equipped}
+                  isPro
+                />
+              </>
+            ) : null}
           </View>
         );
       })}
 
-      <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={load} />
+      {IAP_ENABLED ? (
+        <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={load} />
+      ) : null}
       <RewardReveal
         visible={!!reveal}
         rewards={reveal?.rewards}
@@ -671,14 +707,21 @@ const styles = StyleSheet.create({
   ticketTextPro: { color: toon.ink },
 
   tierRow: { flexDirection: 'row', alignItems: 'stretch' },
+  singleTierRow: { paddingRight: SPINE_W },
   tile: {
     flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6,
     borderRadius: radius.card, padding: space.md, paddingBottom: space.lg + 6,
     // Grown with the artwork. The bottom padding still belongs to the
     // locked/claimed chip, which is the only thing that sits down there now.
-    marginVertical: space.xs, minHeight: 132,
+    marginVertical: space.xs, minHeight: 144,
   },
   artRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: ART_SIZE + 4 },
+  rewardNameRow: {
+    minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    paddingHorizontal: 2,
+  },
+  rewardRarityDot: { width: 6, height: 6, borderRadius: 3 },
+  rewardName: { flexShrink: 1, textAlign: 'center', lineHeight: 13 },
   chipArt: { position: 'absolute', bottom: 4, width: 26, height: 26 },
   stamp: { position: 'absolute', width: '86%', height: '52%', opacity: 0.75 },
   state: {

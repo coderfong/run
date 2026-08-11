@@ -1,0 +1,882 @@
+{
+  "selectedAssets": 44,
+  "selectedBytes": 4464371,
+  "excludedRecords": 2379,
+  "exclusionSummary": {
+    "not-curated-for-production": 1751,
+    "unsupported-or-broken": 619,
+    "oversized": 9,
+    "exact-duplicate-files": 351
+  },
+  "selectedByCategory": {
+    "water": 1,
+    "magic": 6,
+    "impact": 3,
+    "lightning": 2,
+    "fire": 4,
+    "ice": 2,
+    "celebration": 2,
+    "energy": 3,
+    "explosion": 3,
+    "portal": 1,
+    "ambient": 3,
+    "emoji": 14
+  },
+  "selected": [
+    {
+      "id": "acid_splash_01",
+      "name": "Acid Splash",
+      "category": "water",
+      "tags": [
+        "capture",
+        "acid",
+        "splash",
+        "impact"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/acid-splash/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\water\\acid_splash_01.png",
+      "fileSize": 7775,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 31856
+    },
+    {
+      "id": "arcane_parry_01",
+      "name": "Arcane Parry",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "arcane",
+        "magic",
+        "impact"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/arcane-parry/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\arcane_parry_01.png",
+      "fileSize": 17059,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 69631
+    },
+    {
+      "id": "crescent_slash_01",
+      "name": "Crescent Slash",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "slash",
+        "energy",
+        "impact"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/crescent-slash/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\crescent_slash_01.png",
+      "fileSize": 2891,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 12785
+    },
+    {
+      "id": "earth_rupture_01",
+      "name": "Earth Rupture",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "earth",
+        "rupture",
+        "debris"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/earth-rupture/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\earth_rupture_01.png",
+      "fileSize": 16182,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 63014
+    },
+    {
+      "id": "electric_impact_01",
+      "name": "Electric Impact",
+      "category": "lightning",
+      "tags": [
+        "capture",
+        "electric",
+        "lightning",
+        "shockwave",
+        "impact"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/electric-impact/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_impact_01.png",
+      "fileSize": 8615,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 34055
+    },
+    {
+      "id": "ember_jet_01",
+      "name": "Ember Jet",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "ember",
+        "projectile"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/ember-jet/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\ember_jet_01.png",
+      "fileSize": 7121,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 28721
+    },
+    {
+      "id": "frost_nova_01",
+      "name": "Frost Nova",
+      "category": "ice",
+      "tags": [
+        "capture",
+        "ice",
+        "frost",
+        "nova"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/frost-nova/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\frost_nova_01.png",
+      "fileSize": 6079,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 25233
+    },
+    {
+      "id": "magical_projectile_01",
+      "name": "Magical Projectile",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "orb",
+        "projectile"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/magical-projectile/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magical_projectile_01.png",
+      "fileSize": 4463,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 20303
+    },
+    {
+      "id": "radiant_heal_01",
+      "name": "Radiant Heal",
+      "category": "celebration",
+      "tags": [
+        "capture",
+        "radiant",
+        "heal",
+        "holy",
+        "victory"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/radiant-heal/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\radiant_heal_01.png",
+      "fileSize": 9541,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 38096
+    },
+    {
+      "id": "solar_shrapnel_01",
+      "name": "Solar Shrapnel",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "solar",
+        "shrapnel",
+        "impact",
+        "fire"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/solar-shrapnel/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\solar_shrapnel_01.png",
+      "fileSize": 7805,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 31368
+    },
+    {
+      "id": "spectral_bloom_01",
+      "name": "Spectral Bloom",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "spectral",
+        "bloom",
+        "portal",
+        "magic"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/spectral-bloom/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\spectral_bloom_01.png",
+      "fileSize": 11413,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 45959
+    },
+    {
+      "id": "void_implosion_01",
+      "name": "Void Implosion",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "void",
+        "implosion",
+        "dark",
+        "portal"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/void-implosion/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\void_implosion_01.png",
+      "fileSize": 9147,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 36446
+    },
+    {
+      "id": "warm_explosion_01",
+      "name": "Warm Explosion",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "fire",
+        "impact"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\pvfx-foundry-thirteen-spritesheets.zip::PVFX-Foundry-Thirteen-0.1.0/effects/warm-explosion/grid/sprite-sheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\warm_explosion_01.png",
+      "fileSize": 9000,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 36102
+    },
+    {
+      "id": "fire_column_01",
+      "name": "Fire Column",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "flame"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::11_fire_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_column_01.png",
+      "fileSize": 49572,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 196630
+    },
+    {
+      "id": "nebula_burst_01",
+      "name": "Nebula Burst",
+      "category": "celebration",
+      "tags": [
+        "capture",
+        "nebula",
+        "stars",
+        "particles"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::12_nebula_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\celebration\\nebula_burst_01.png",
+      "fileSize": 153165,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 546560
+    },
+    {
+      "id": "vortex_red_01",
+      "name": "Red Vortex",
+      "category": "portal",
+      "tags": [
+        "capture",
+        "vortex",
+        "portal",
+        "red"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::13_vortex_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\portal\\vortex_red_01.png",
+      "fileSize": 104181,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 383251
+    },
+    {
+      "id": "sunburn_ring_01",
+      "name": "Sunburn Ring",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "solar",
+        "ring",
+        "fire"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::16_sunburn_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\energy\\sunburn_ring_01.png",
+      "fileSize": 55652,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 208487
+    },
+    {
+      "id": "freezing_bloom_01",
+      "name": "Freezing Bloom",
+      "category": "ice",
+      "tags": [
+        "capture",
+        "ice",
+        "frost",
+        "snow",
+        "particles"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::19_freezing_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ice\\freezing_bloom_01.png",
+      "fileSize": 202938,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 995572
+    },
+    {
+      "id": "magic_spell_01",
+      "name": "Magic Spell",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "spell",
+        "particles"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::1_magicspell_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_spell_01.png",
+      "fileSize": 53077,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 210733
+    },
+    {
+      "id": "magic_bubbles_01",
+      "name": "Magic Bubbles",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "bubbles",
+        "particles"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::20_magicbubbles_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_bubbles_01.png",
+      "fileSize": 35396,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 139447
+    },
+    {
+      "id": "magic_infinity_01",
+      "name": "Magic Infinity",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "infinity",
+        "portal"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::2_magic8_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\magic_infinity_01.png",
+      "fileSize": 145952,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 528318
+    },
+    {
+      "id": "blue_fire_01",
+      "name": "Blue Fire",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "blue",
+        "fire",
+        "magic"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::3_bluefire_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\blue_fire_01.png",
+      "fileSize": 43393,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 177457
+    },
+    {
+      "id": "fire_spin_01",
+      "name": "Fire Spin",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "spin",
+        "ring"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::7_firespin_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\fire\\fire_spin_01.png",
+      "fileSize": 67792,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 266271
+    },
+    {
+      "id": "explosion_orange_01",
+      "name": "Orange Pixel Explosion",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "pixel",
+        "impact"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Effects Mini Pack 1.zip::Super Pixel Effects Mini Pack 1/spritesheet/fx1_explosion_small_orange/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\explosion_orange_01.png",
+      "fileSize": 3984,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 13860
+    },
+    {
+      "id": "electric_burst_01",
+      "name": "Violet Electric Burst",
+      "category": "lightning",
+      "tags": [
+        "capture",
+        "electric",
+        "lightning",
+        "burst"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Effects Mini Pack 1.zip::Super Pixel Effects Mini Pack 1/spritesheet/fx2_electric_burst_large_violet/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\lightning\\electric_burst_01.png",
+      "fileSize": 16312,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 62218
+    },
+    {
+      "id": "impact_shock_01",
+      "name": "Ground Impact Shock",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "impact",
+        "shockwave",
+        "earth"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Effects Mini Pack 1.zip::Super Pixel Effects Mini Pack 1/spritesheet/fx2_impact_shock_large_brown/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\impact_shock_01.png",
+      "fileSize": 11916,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 43695
+    },
+    {
+      "id": "bomb_blast_01",
+      "name": "Bomb Blast",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "bomb",
+        "explosion",
+        "smoke",
+        "steal"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-c/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\bomb_blast_01.png",
+      "fileSize": 7578,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 31165
+    },
+    {
+      "id": "fall_leaf_01",
+      "name": "Autumn Leaf",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "autumn"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\ELR-WindyLeafs.zip::ELR-WindyLeafs/ELR_FallLeaf.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\fall_leaf_01.png",
+      "fileSize": 327,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 1070
+    },
+    {
+      "id": "spring_leaf_01",
+      "name": "Spring Leaf",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "spring"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\ELR-WindyLeafs.zip::ELR-WindyLeafs/ELR_SpringlLeaf.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\spring_leaf_01.png",
+      "fileSize": 331,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 1118
+    },
+    {
+      "id": "winter_leaf_01",
+      "name": "Winter Leaf",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "winter"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\ELR-WindyLeafs.zip::ELR-WindyLeafs/ELR_WinterlLeaf.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\ambient\\winter_leaf_01.png",
+      "fileSize": 331,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 1063
+    },
+    {
+      "id": "reaction_love",
+      "name": "Love",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "love"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetLove.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_love.png",
+      "fileSize": 3040,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 13421
+    },
+    {
+      "id": "reaction_happy",
+      "name": "Laughing",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "laughing"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetLaughing.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_happy.png",
+      "fileSize": 3090,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 12270
+    },
+    {
+      "id": "reaction_wow",
+      "name": "OMG",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "omg"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetOMG.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_wow.png",
+      "fileSize": 3745,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 14910
+    },
+    {
+      "id": "reaction_respect",
+      "name": "Ok",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "ok"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetOk.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_respect.png",
+      "fileSize": 3898,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 15233
+    },
+    {
+      "id": "reaction_brutal",
+      "name": "Mind Blown",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "headblown"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetHeadblown.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_brutal.png",
+      "fileSize": 4149,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 15478
+    },
+    {
+      "id": "reaction_rival",
+      "name": "Angry",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "angry"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetAngry.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_rival.png",
+      "fileSize": 3840,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 14927
+    },
+    {
+      "id": "reaction_vibes",
+      "name": "Lit",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "lit"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetLit.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_vibes.png",
+      "fileSize": 3966,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 15769
+    },
+    {
+      "id": "reaction_idea",
+      "name": "Idea",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "idea"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetIdea.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_idea.png",
+      "fileSize": 4022,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 15586
+    },
+    {
+      "id": "reaction_exclamation",
+      "name": "Exclamation",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "exclamation"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetExclamation.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_exclamation.png",
+      "fileSize": 2381,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 10041
+    },
+    {
+      "id": "reaction_crying",
+      "name": "Crying",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "crying"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetCrying.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_crying.png",
+      "fileSize": 3097,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 12417
+    },
+    {
+      "id": "reaction_question",
+      "name": "Question",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "question"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetQuestion.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_question.png",
+      "fileSize": 2641,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 10998
+    },
+    {
+      "id": "reaction_speechless",
+      "name": "Speechless",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "speechless"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetSpeechless.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_speechless.png",
+      "fileSize": 2583,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 10537
+    },
+    {
+      "id": "reaction_sleepy",
+      "name": "Sleepy",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "sleepy"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetSleepy.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_sleepy.png",
+      "fileSize": 3175,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 12853
+    },
+    {
+      "id": "reaction_frustrated",
+      "name": "Frustrated",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "frustrated"
+      ],
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetFrustrated.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\reaction_frustrated.png",
+      "fileSize": 2239,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "runtimeBytes": 9447
+    }
+  ]
+}

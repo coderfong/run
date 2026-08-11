@@ -11,6 +11,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Linking,
   Platform,
   StyleSheet,
   Text,
@@ -27,12 +28,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import ForgotPassword from '../auth/ForgotPassword';
 import { brand, radius, space, type, useTheme } from '../theme';
-import { Screen, Button } from '../components/ui';
+import { Screen, Button, Card } from '../components/ui';
+import { framePose, frameVariant } from '../ui/frameRegistry';
 import { Reveal, useReduceMotion } from '../ui/motion';
 import SocialAuthButtons from '../components/SocialAuthButtons';
 import { preloadScreenImagesAfterInteractions } from '../config/screenAssets';
 
 const AUTH_HERO = require('../../assets/art/auth-hero.png');
+const PRIVACY_URL = 'https://www.bido.live/privacy';
+const SUPPORT_URL = 'https://www.bido.live/support';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
 
@@ -112,9 +116,24 @@ function Welcome({ onSignIn, onCreate }) {
           </Reveal>
 
           <Reveal from="none" delay={560}>
-            <Text style={styles.legal}>
-              By continuing, you agree to our Terms of Service and Privacy Policy
-            </Text>
+            <View style={styles.legalRow}>
+              <Text style={styles.legal}>By continuing, you acknowledge our </Text>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(PRIVACY_URL).catch(() => {})}
+                accessibilityRole="link"
+                accessibilityLabel="Privacy Policy"
+              >
+                <Text style={[styles.legal, styles.legalLink]}>Privacy Policy</Text>
+              </TouchableOpacity>
+              <Text style={styles.legal}> | </Text>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(SUPPORT_URL).catch(() => {})}
+                accessibilityRole="link"
+                accessibilityLabel="Support"
+              >
+                <Text style={[styles.legal, styles.legalLink]}>Support</Text>
+              </TouchableOpacity>
+            </View>
           </Reveal>
         </View>
       </View>
@@ -174,6 +193,11 @@ function AuthForm({ onBack, onForgot }) {
           </Text>
         </Reveal>
 
+        <Card
+          frame={frameVariant('box', `auth:${mode}`)}
+          frameTint={brand.pink}
+          framePose={framePose(`auth:${mode}`)}
+        >
         <Reveal delay={90}>
           <Text style={s.label}>Username</Text>
           <TextInput
@@ -278,6 +302,7 @@ function AuthForm({ onBack, onForgot }) {
             </Text>
           </TouchableOpacity>
         </Reveal>
+        </Card>
       </Screen>
 
       <TouchableOpacity
@@ -347,7 +372,12 @@ const styles = StyleSheet.create({
     letterSpacing: 3,
     marginTop: space.sm,
   },
-  legal: { ...type.caption, color: 'rgba(255,255,255,0.6)', textAlign: 'center', marginTop: space.xs },
+  legalRow: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center',
+    marginTop: space.xs,
+  },
+  legal: { ...type.caption, color: 'rgba(255,255,255,0.6)', textAlign: 'center' },
+  legalLink: { color: '#fff', textDecorationLine: 'underline' },
 });
 
 // Form chrome is themed (light/dark ready) — built from the active palette.

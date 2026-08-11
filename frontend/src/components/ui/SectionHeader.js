@@ -12,10 +12,45 @@ import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
 import { space, useTheme, useThemedType } from '../../theme';
+import { framePose, frameVariant } from '../../ui/frameRegistry';
+import Framed from './Framed';
 
-export default function SectionHeader({ title, action, onAction, accessory, style }) {
+/**
+ * `framed` draws the hand-drawn label box around the TITLE only, not around
+ * the whole row. The row is a title on the left and a text link on the right
+ * with a gap between them, and a box around all of that would enclose the gap
+ * as well — which reads as an empty panel with two things stuck to its inside
+ * edges rather than as a heading.
+ */
+export default function SectionHeader({
+  title,
+  action,
+  onAction,
+  accessory,
+  framed = true,
+  frameTint,
+  frame,
+  style,
+}) {
   const { colors } = useTheme();
   const type = useThemedType();
+  const frameName = frame || frameVariant('heading', title);
+  const heading = framed ? (
+    // No `inset` override: the label's own measured line depth is the right
+    // clearance, and the flat 8 that used to be here was less than the ink is
+    // thick, so the box drew straight through the title.
+    <Framed
+      frame={frameName}
+      tint={frameTint || colors.textMuted}
+      opacity={0.8}
+      pose={framePose(title)}
+      style={{ flexShrink: 1 }}
+    >
+      <Text style={type.heading}>{title}</Text>
+    </Framed>
+  ) : (
+    <Text style={type.heading}>{title}</Text>
+  );
   return (
     <View
       style={[
@@ -29,11 +64,11 @@ export default function SectionHeader({ title, action, onAction, accessory, styl
     >
       {accessory ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 }}>
-          <Text style={type.heading}>{title}</Text>
+          {heading}
           {accessory}
         </View>
       ) : (
-        <Text style={type.heading}>{title}</Text>
+        heading
       )}
       {action ? (
         <TouchableOpacity onPress={onAction} hitSlop={10} accessibilityRole="button" accessibilityLabel={action}>

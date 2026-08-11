@@ -1,0 +1,906 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "C:\\Users\\user\\Desktop\\animations",
+  "packages": {
+    "foundry": {
+      "container": "pvfx-foundry-thirteen-spritesheets.zip",
+      "license": "CC0-1.0",
+      "releaseApproved": true,
+      "credit": "VFX from PVFX Foundry Thirteen by Pixel VFX Studio"
+    },
+    "free_pixel": {
+      "container": "Free Pixel Effects Pack.zip",
+      "license": "Public domain",
+      "releaseApproved": true,
+      "credit": "CodeManu / DavitMasia"
+    },
+    "super_mini": {
+      "container": "Super Pixel Effects Mini Pack 1.zip",
+      "license": "Commercial/non-commercial game use; no pack redistribution; attribution required",
+      "releaseApproved": true,
+      "credit": "Will Tice"
+    },
+    "ansimuz_explosions": {
+      "container": "explosion pack 1.zip",
+      "license": "CC0-1.0",
+      "releaseApproved": true,
+      "credit": "Explosion pack by Luis Zuno (ansimuz)",
+      "licenseNote": "public-license.pdf inside the download states CC0: any project, personal or commercial, no attribution required."
+    },
+    "glitch_portals": {
+      "container": "Glitch Portals.zip",
+      "license": "See source pack",
+      "releaseApproved": false,
+      "releaseBlockReason": "No explicit license file was included; verify the original download terms.",
+      "credit": null
+    },
+    "leaves": {
+      "container": "ELR-WindyLeafs.zip",
+      "license": "See source pack",
+      "releaseApproved": true,
+      "credit": null,
+      "licenseNote": "Terms verified by the project owner 2026-08-11; no licence file shipped in the download."
+    },
+    "tiny_rpg": {
+      "container": "emojiPackI.zip",
+      "license": "CC0-1.0",
+      "releaseApproved": true,
+      "credit": "Tiny RPG - Emoji Pack I by Gabriel \"tiopalada\" Lima (CC0 1.0)"
+    }
+  },
+  "effects": [
+    {
+      "id": "acid_splash_01",
+      "name": "Acid Splash",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/acid-splash/grid/sprite-sheet.png",
+      "category": "water",
+      "tags": [
+        "capture",
+        "acid",
+        "splash",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.25
+    },
+    {
+      "id": "arcane_parry_01",
+      "name": "Arcane Parry",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/arcane-parry/grid/sprite-sheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "arcane",
+        "magic",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 20
+    },
+    {
+      "id": "crescent_slash_01",
+      "name": "Crescent Slash",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/crescent-slash/grid/sprite-sheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "slash",
+        "energy",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 2,
+      "frameCount": 10,
+      "fps": 20,
+      "visualScale": 1.35
+    },
+    {
+      "id": "earth_rupture_01",
+      "name": "Earth Rupture",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/earth-rupture/grid/sprite-sheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "earth",
+        "rupture",
+        "debris"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 20,
+      "fps": 20,
+      "visualScale": 1.15,
+      "visualOffsetY": -0.1
+    },
+    {
+      "id": "electric_impact_01",
+      "name": "Electric Impact",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/electric-impact/grid/sprite-sheet.png",
+      "category": "lightning",
+      "tags": [
+        "capture",
+        "electric",
+        "lightning",
+        "shockwave",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.25
+    },
+    {
+      "id": "ember_jet_01",
+      "name": "Ember Jet",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/ember-jet/grid/sprite-sheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "ember",
+        "projectile"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.2
+    },
+    {
+      "id": "frost_nova_01",
+      "name": "Frost Nova",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/frost-nova/grid/sprite-sheet.png",
+      "category": "ice",
+      "tags": [
+        "capture",
+        "ice",
+        "frost",
+        "nova"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 13,
+      "fps": 20,
+      "visualScale": 1.2
+    },
+    {
+      "id": "magical_projectile_01",
+      "name": "Magical Projectile",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/magical-projectile/grid/sprite-sheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "orb",
+        "projectile"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 12,
+      "fps": 20,
+      "visualScale": 2
+    },
+    {
+      "id": "radiant_heal_01",
+      "name": "Radiant Heal",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/radiant-heal/grid/sprite-sheet.png",
+      "category": "celebration",
+      "tags": [
+        "capture",
+        "radiant",
+        "heal",
+        "holy",
+        "victory"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20,
+      "visualScale": 1.15
+    },
+    {
+      "id": "solar_shrapnel_01",
+      "name": "Solar Shrapnel",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/solar-shrapnel/grid/sprite-sheet.png",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "solar",
+        "shrapnel",
+        "impact",
+        "fire"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20
+    },
+    {
+      "id": "spectral_bloom_01",
+      "name": "Spectral Bloom",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/spectral-bloom/grid/sprite-sheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "spectral",
+        "bloom",
+        "portal",
+        "magic"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 20
+    },
+    {
+      "id": "void_implosion_01",
+      "name": "Void Implosion",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/void-implosion/grid/sprite-sheet.png",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "void",
+        "implosion",
+        "dark",
+        "portal"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 14,
+      "fps": 20
+    },
+    {
+      "id": "warm_explosion_01",
+      "name": "Warm Explosion",
+      "package": "foundry",
+      "entry": "PVFX-Foundry-Thirteen-0.1.0/effects/warm-explosion/grid/sprite-sheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "fire",
+        "impact"
+      ],
+      "frameWidth": 96,
+      "frameHeight": 96,
+      "columns": 5,
+      "rows": 3,
+      "frameCount": 15,
+      "fps": 20
+    },
+    {
+      "id": "fire_column_01",
+      "name": "Fire Column",
+      "package": "free_pixel",
+      "entry": "11_fire_spritesheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "flame"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.4
+    },
+    {
+      "id": "nebula_burst_01",
+      "name": "Nebula Burst",
+      "package": "free_pixel",
+      "entry": "12_nebula_spritesheet.png",
+      "category": "celebration",
+      "tags": [
+        "capture",
+        "nebula",
+        "stars",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30
+    },
+    {
+      "id": "vortex_red_01",
+      "name": "Red Vortex",
+      "package": "free_pixel",
+      "entry": "13_vortex_spritesheet.png",
+      "category": "portal",
+      "tags": [
+        "capture",
+        "vortex",
+        "portal",
+        "red"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30
+    },
+    {
+      "id": "sunburn_ring_01",
+      "name": "Sunburn Ring",
+      "package": "free_pixel",
+      "entry": "16_sunburn_spritesheet.png",
+      "category": "energy",
+      "tags": [
+        "capture",
+        "solar",
+        "ring",
+        "fire"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30
+    },
+    {
+      "id": "freezing_bloom_01",
+      "name": "Freezing Bloom",
+      "package": "free_pixel",
+      "entry": "19_freezing_spritesheet.png",
+      "category": "ice",
+      "tags": [
+        "capture",
+        "ice",
+        "frost",
+        "snow",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 10,
+      "rows": 10,
+      "frameCount": 100,
+      "fps": 30
+    },
+    {
+      "id": "magic_spell_01",
+      "name": "Magic Spell",
+      "package": "free_pixel",
+      "entry": "1_magicspell_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "spell",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 9,
+      "rows": 9,
+      "frameCount": 81,
+      "fps": 30,
+      "visualScale": 1.7
+    },
+    {
+      "id": "magic_bubbles_01",
+      "name": "Magic Bubbles",
+      "package": "free_pixel",
+      "entry": "20_magicbubbles_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "bubbles",
+        "particles"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.6
+    },
+    {
+      "id": "magic_infinity_01",
+      "name": "Magic Infinity",
+      "package": "free_pixel",
+      "entry": "2_magic8_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "magic",
+        "infinity",
+        "portal"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30
+    },
+    {
+      "id": "blue_fire_01",
+      "name": "Blue Fire",
+      "package": "free_pixel",
+      "entry": "3_bluefire_spritesheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "blue",
+        "fire",
+        "magic"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.55,
+      "visualOffsetX": -0.1,
+      "visualOffsetY": -0.2
+    },
+    {
+      "id": "fire_spin_01",
+      "name": "Fire Spin",
+      "package": "free_pixel",
+      "entry": "7_firespin_spritesheet.png",
+      "category": "fire",
+      "tags": [
+        "capture",
+        "fire",
+        "spin",
+        "ring"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 64,
+      "fps": 30,
+      "visualScale": 1.5
+    },
+    {
+      "id": "explosion_orange_01",
+      "name": "Orange Pixel Explosion",
+      "package": "super_mini",
+      "entry": "Super Pixel Effects Mini Pack 1/spritesheet/fx1_explosion_small_orange/spritesheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "pixel",
+        "impact"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 11,
+      "rows": 1,
+      "frameCount": 11,
+      "fps": 15
+    },
+    {
+      "id": "electric_burst_01",
+      "name": "Violet Electric Burst",
+      "package": "super_mini",
+      "entry": "Super Pixel Effects Mini Pack 1/spritesheet/fx2_electric_burst_large_violet/spritesheet.png",
+      "category": "lightning",
+      "tags": [
+        "capture",
+        "electric",
+        "lightning",
+        "burst"
+      ],
+      "frameWidth": 72,
+      "frameHeight": 72,
+      "columns": 16,
+      "rows": 1,
+      "frameCount": 16,
+      "fps": 15
+    },
+    {
+      "id": "impact_shock_01",
+      "name": "Ground Impact Shock",
+      "package": "super_mini",
+      "entry": "Super Pixel Effects Mini Pack 1/spritesheet/fx2_impact_shock_large_brown/spritesheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "impact",
+        "shockwave",
+        "earth"
+      ],
+      "frameWidth": 140,
+      "frameHeight": 50,
+      "columns": 7,
+      "rows": 1,
+      "frameCount": 7,
+      "fps": 15
+    },
+    {
+      "id": "bomb_blast_01",
+      "name": "Bomb Blast",
+      "package": "ansimuz_explosions",
+      "entry": "explosion pack 1/Explosions pack/explosion-1-c/spritesheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "bomb",
+        "explosion",
+        "smoke",
+        "steal"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 80,
+      "columns": 10,
+      "rows": 1,
+      "frameCount": 10,
+      "fps": 14
+    },
+    {
+      "id": "glitch_portal_01",
+      "name": "Glitch Portal",
+      "package": "glitch_portals",
+      "sequence": {
+        "prefix": "V1 (128X128)/1_",
+        "extension": ".png",
+        "columns": 10
+      },
+      "category": "glitch",
+      "tags": [
+        "capture",
+        "glitch",
+        "portal",
+        "digital"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 10,
+      "rows": 6,
+      "frameCount": 60,
+      "fps": 30
+    },
+    {
+      "id": "fall_leaf_01",
+      "name": "Autumn Leaf",
+      "package": "leaves",
+      "entry": "ELR-WindyLeafs/ELR_FallLeaf.png",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "autumn"
+      ],
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "columns": 4,
+      "rows": 1,
+      "frameCount": 4,
+      "fps": 8,
+      "loop": true
+    },
+    {
+      "id": "spring_leaf_01",
+      "name": "Spring Leaf",
+      "package": "leaves",
+      "entry": "ELR-WindyLeafs/ELR_SpringlLeaf.png",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "spring"
+      ],
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "columns": 4,
+      "rows": 1,
+      "frameCount": 4,
+      "fps": 8,
+      "loop": true
+    },
+    {
+      "id": "winter_leaf_01",
+      "name": "Winter Leaf",
+      "package": "leaves",
+      "entry": "ELR-WindyLeafs/ELR_WinterlLeaf.png",
+      "category": "ambient",
+      "tags": [
+        "ambient",
+        "leaf",
+        "winter"
+      ],
+      "frameWidth": 20,
+      "frameHeight": 16,
+      "columns": 4,
+      "rows": 1,
+      "frameCount": 4,
+      "fps": 8,
+      "loop": true
+    },
+    {
+      "id": "reaction_love",
+      "name": "Love",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetLove.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "love"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_happy",
+      "name": "Laughing",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetLaughing.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "laughing"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_wow",
+      "name": "OMG",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetOMG.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "omg"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_respect",
+      "name": "Ok",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetOk.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "ok"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_brutal",
+      "name": "Mind Blown",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetHeadblown.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "headblown"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_rival",
+      "name": "Angry",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetAngry.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "angry"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_vibes",
+      "name": "Lit",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetLit.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "lit"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_idea",
+      "name": "Idea",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetIdea.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "idea"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_exclamation",
+      "name": "Exclamation",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetExclamation.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "exclamation"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_crying",
+      "name": "Crying",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetCrying.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "crying"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_question",
+      "name": "Question",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetQuestion.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "question"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_speechless",
+      "name": "Speechless",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetSpeechless.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "speechless"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_sleepy",
+      "name": "Sleepy",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetSleepy.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "sleepy"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    },
+    {
+      "id": "reaction_frustrated",
+      "name": "Frustrated",
+      "package": "tiny_rpg",
+      "entry": "20250405emoticons-SheetFrustrated.png",
+      "category": "emoji",
+      "tags": [
+        "reaction",
+        "frustrated"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 5,
+      "rows": 4,
+      "frameCount": 16,
+      "fps": 14
+    }
+  ]
+}

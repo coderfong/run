@@ -30,6 +30,7 @@ import { useWindowDimensions, View } from 'react-native';
 import { Image } from '../ui/image';
 
 import { art } from '../config/onboardingArt';
+import AmbientLayer from '../effects/AmbientLayer';
 import { useTheme } from '../theme';
 
 // Sky colour at each scene's top edge, so a scene shorter than the box it is
@@ -95,18 +96,51 @@ export function useSceneBackdrop({ aspect = DAY_ASPECT, minHeight = 0, variant =
  * crop is taken entirely off the sky. Any scene a character STANDS on wants
  * this; a decorative band does not, so the default is unchanged.
  */
+/**
+ * `ambient` a preset from the ambient registry drifting over the scene, or
+ *           null for a still one. Opt in per caller, and draws nothing at all
+ *           when its art is not in the build, so a caller never has to check.
+ *
+ * `playing` false parks everything moving in the scene. Tie it to screen focus:
+ *           a backdrop drifting behind a screen nobody is on is battery spent
+ *           on something literally invisible.
+ */
 export default function SceneBackdrop({
   aspect,
   minHeight,
   variant = 'studio',
   bleed = false,
   anchor = 'center',
+  ambient = null,
+  ambientDensity = 1,
+  playing = true,
   style,
 }) {
   const { source, width, height, sceneHeight, sky, ground } = useSceneBackdrop({ aspect, minHeight, variant });
   if (!source || !height) return null;
 
   const artHeight = bleed ? sceneHeight : height;
+
+  // The living layers, shared by both of the branches below so the two paths
+  // through this component cannot drift apart. Non-interactive and clipped by
+  // whichever wrapper renders them.
+  const life = (
+    <>
+      {ambient ? (
+        <AmbientLayer
+          preset={ambient}
+          width={width}
+          height={height}
+          density={ambientDensity}
+          playing={playing}
+          // Seeded off the scene's own size so the same screen arranges its
+          // drift the same way every time you open it, and the You page and
+          // the studio do not get identical fields.
+          seed={Math.round(width + height)}
+        />
+      ) : null}
+    </>
+  );
 
   if (anchor === 'bottom' && !bleed) {
     // The art's OWN shape, drawn at cover width and hung from the bottom.
@@ -137,6 +171,7 @@ export default function SceneBackdrop({
             resizeMode="cover"
             fadeDuration={0}
           />
+          {life}
         </View>
       );
     }
@@ -165,6 +200,7 @@ export default function SceneBackdrop({
         resizeMode="cover"
         fadeDuration={0}
       />
+      {life}
     </View>
   );
 }

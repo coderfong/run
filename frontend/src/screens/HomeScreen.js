@@ -5,15 +5,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Image } from '../ui/image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { brand, radius, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { brand, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { useReduceMotion, PressableScale } from '../ui/motion';
-import { EmptyState, OutlinedText, Skeleton } from '../components/ui';
+import { EmptyState, Framed, OutlinedText, Skeleton } from '../components/ui';
+import { framePose, frameVariant } from '../ui/frameRegistry';
 import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
@@ -25,6 +26,7 @@ import {
   preloadScreenImagesAfterInteractions,
 } from '../config/screenAssets';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
+import { IAP_ENABLED } from '../config/releaseFeatures';
 
 // Season window (matches the seeded Season 1; Phase-next: read from the API).
 const SEASON_NO = '01';
@@ -52,7 +54,15 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
       accessibilityRole="button"
       accessibilityLabel={title}
     >
-      <View style={[styles.hero, { backgroundColor: bg }]}>
+      <Framed
+        frame={frameVariant('featured', `${eyebrow}:${title}`)}
+        tint={toon.ink}
+        fill={bg}
+        pose={framePose(`${eyebrow}:${title}`)}
+        inset={false}
+        style={styles.hero}
+        contentStyle={styles.heroContent}
+      >
         <View style={styles.heroText}>
           <View>
             <Text style={[type.labelSm, styles.heroEyebrow]}>{eyebrow}</Text>
@@ -67,13 +77,21 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
             </Text>
             <Text style={[type.bodySm, styles.heroSub]}>{sub}</Text>
           </View>
-          <View style={styles.heroBtn}>
+          <Framed
+            frame={frameVariant('chip', cta)}
+            tint={toon.ink}
+            fill="#ffffff"
+            pose={framePose(cta)}
+            inset={false}
+            style={styles.heroBtn}
+            contentStyle={styles.heroBtnContent}
+          >
             <Text style={[type.buttonSm, { color: '#141414' }]}>{cta}</Text>
-          </View>
+          </Framed>
         </View>
         {/* the transparent illustration, shown whole (contain) — no crop, no fade */}
         <Image source={art} style={[styles.heroImg, { width: artWidth }]} resizeMode="contain" />
-      </View>
+      </Framed>
     </PressableScale>
   );
 }
@@ -149,6 +167,9 @@ function FeedList({ navigation, header }) {
   const styles = useThemedStyles(makeStyles);
   const accent = useAccent();
   const reduce = useReduceMotion();
+  // One focus subscription for the feed, passed down as a primitive. The tab
+  // stays mounted, but every open reaction picker should close when it leaves.
+  const screenFocused = useIsFocused();
   // The first page comes from the cache, so coming back to Home shows the feed
   // you were just looking at instead of four skeletons and a round trip. Later
   // pages are deliberately NOT cached: they're append-only scroll state, and
@@ -238,6 +259,7 @@ function FeedList({ navigation, header }) {
                 item={item}
                 navigation={navigation}
                 autoPlaySteal={item.id === autoStealId}
+                screenFocused={screenFocused}
               />
             </Animated.View>
           )}
@@ -306,7 +328,7 @@ export default function HomeScreen({ navigation }) {
             <EnergyMeter
               compact
               status={energy}
-              onPress={() => setShopOpen(true)}
+              onPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
               style={styles.headerEnergy}
             />
           )}
@@ -343,7 +365,9 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
       <FeedList navigation={navigation} header={feedHeader} />
-      <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
+      {IAP_ENABLED ? (
+        <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
+      ) : null}
     </View>
   );
 }
@@ -376,10 +400,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // hard ink outline either way (unlike neutral cards — see toonSurface).
   hero: {
     height: 190,
-    borderRadius: radius.lg,
-    borderWidth: 2.5,
-    borderColor: toon.ink,
-    overflow: 'hidden',
+  },
+  heroContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'stretch',
     padding: space.md,
@@ -393,13 +416,11 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   heroSub: { color: '#141414', opacity: 0.72, marginTop: 4 },
   heroBtn: {
     alignSelf: 'flex-start',
-    backgroundColor: '#ffffff',
-    borderRadius: radius.pill,
-    borderWidth: 2,
-    borderColor: toon.ink,
+    marginTop: space.xs,
+  },
+  heroBtnContent: {
     paddingHorizontal: space.md,
     paddingVertical: 8,
-    marginTop: space.xs,
   },
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: space.md },
   dot: { height: 6, borderRadius: 3 },

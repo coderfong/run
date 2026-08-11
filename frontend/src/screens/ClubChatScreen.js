@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Send } from 'lucide-react-native';
+import { MoreHorizontal, Send } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { getCached, setCached } from '../api/cache';
@@ -23,6 +23,7 @@ import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } fr
 import { Screen, Skeleton, EmptyState } from '../components/ui';
 import { PressableScale, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
+import { openSafetyActions } from '../utils/safety';
 
 function timeStr(iso) {
   const d = new Date(iso);
@@ -106,18 +107,38 @@ export default function ClubChatScreen({ route }) {
               return (
                 <View style={[styles.bubbleRow, item.is_you && { alignItems: 'flex-end' }]}>
                   {showName ? <Text style={styles.sender}>{item.username}</Text> : null}
-                  <View
-                    style={[
-                      styles.bubble,
-                      item.is_you
-                        ? { backgroundColor: withAlpha(accent, 0.9), borderBottomRightRadius: 4 }
-                        : { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
-                    ]}
-                  >
-                    <Text style={[type.bodySm, { color: item.is_you ? '#fff' : colors.text }]}>{item.body}</Text>
-                    <Text style={[styles.time, { color: item.is_you ? 'rgba(255,255,255,0.7)' : colors.textDim }]}>
-                      {timeStr(item.created_at)}
-                    </Text>
+                  <View style={styles.messageRow}>
+                    <View
+                      style={[
+                        styles.bubble,
+                        item.is_you
+                          ? { backgroundColor: withAlpha(accent, 0.9), borderBottomRightRadius: 4 }
+                          : { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
+                      ]}
+                    >
+                      <Text style={[type.bodySm, { color: item.is_you ? '#fff' : colors.text }]}>{item.body}</Text>
+                      <Text style={[styles.time, { color: item.is_you ? 'rgba(255,255,255,0.7)' : colors.textDim }]}>
+                        {timeStr(item.created_at)}
+                      </Text>
+                    </View>
+                    {!item.is_you && item.user_id ? (
+                      <PressableScale
+                        onPress={() => openSafetyActions({
+                          userId: item.user_id,
+                          username: item.username,
+                          context: `club message ${item.id}`,
+                          onBlocked: (blockedId) => setMessages((prev) =>
+                            (prev || []).filter((message) => message.user_id !== blockedId)
+                          ),
+                        })}
+                        hitSlop={10}
+                        style={styles.safetyButton}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Safety options for ${item.username}`}
+                      >
+                        <MoreHorizontal size={20} color={colors.textMuted} />
+                      </PressableScale>
+                    ) : null}
                   </View>
                 </View>
               );
@@ -154,6 +175,7 @@ export default function ClubChatScreen({ route }) {
 
 const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   bubbleRow: { marginBottom: space.sm, alignItems: 'flex-start' },
+  messageRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   sender: { ...type.caption, color: colors.textMuted, marginBottom: 2, marginLeft: 4 },
   bubble: {
     maxWidth: '80%',
@@ -162,6 +184,7 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     paddingVertical: 8,
   },
   time: { ...type.caption, fontSize: 10, marginTop: 2, alignSelf: 'flex-end' },
+  safetyButton: { padding: 6 },
 
   composer: {
     flexDirection: 'row',

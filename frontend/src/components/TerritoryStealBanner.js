@@ -1,9 +1,16 @@
 // TerritoryStealBanner — the four beats of a steal, played on one bar.
 //
-//   1. a bomb arcs up out of the territory bar
+//   1. a bomb arcs up out of the territory bar and drops back onto it
 //   2. it detonates, and the blast punches the STOLEN label onto the bar
 //   3. the runners you hit are thrown out of the blast as their own heads
 //   4. they land back in a row and keep pulling a sad face
+//
+// The detonation is DRAWN ART, not shapes: two sprite sheets out of the curated
+// FX library play together off one trigger — `bomb_blast_01`, the fireball that
+// erupts from the bar's top edge and rolls over into smoke and debris, and
+// `impact_shock_01`, the shrapnel that sprays sideways along the bar underneath
+// it. Both are anchored to the bar's top edge, which is where the bomb lands,
+// so the three beats read as one hit rather than three effects in a stack.
 //
 // The heads are NOT pre-baked PNG pairs: PASER avatars are composited at
 // runtime by CharacterRig, so a "sad" head is the same equipped set with the
@@ -31,22 +38,27 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { brand, toon, toonType, useTheme, withAlpha } from '../theme';
+import EffectPlayer from '../effects/EffectPlayer';
 import { haptic, useReduceMotion } from '../ui/motion';
 import AppIcon from './AppIcon';
 import { CharacterBust } from './character/CharacterRig';
 import { OutlinedText } from './ui';
-import GameLottie from './GameLottie';
 
 const BLAST = {
-  white: '#FFFFFF',
   yellow: '#FFD84D',
   orange: '#FF8A30',
-  smoke: '#E8E2D4',
-  smokeInk: '#BDB6A8',
   bomb: '#17191C',
   bombEdge: '#050607',
   bombHighlight: '#545A61',
   fuse: '#7A5A32',
+};
+
+// Both sheets are drawn at their own pixel size: the fireball is a 128x80 frame
+// and plays at 1:1, so nothing in it is resampled. The shrapnel is stretched to
+// a flat 1.2x, which is a whole-pixel step and stays crisp.
+export const STEAL_FX = {
+  blast: { id: 'bomb_blast_01', width: 128, height: 80 },
+  shock: { id: 'impact_shock_01', width: 168, height: 60 },
 };
 
 const TIMING = {
@@ -54,16 +66,11 @@ const TIMING = {
 
   bombStart: 0,
   bombPeak: 500,
-  bombImpact: 690,
+  bombImpact: 640,
 
+  // The sheets are triggered here and then run on their own clock: the fireball
+  // is 10 frames at 14fps (714ms), the shrapnel 7 at 15fps (467ms).
   flashStart: 630,
-  flashEnd: 810,
-
-  shockwaveStart: 650,
-  shockwaveEnd: 1040,
-
-  smokeStart: 680,
-  smokeEnd: 1170,
 
   stolenStart: 720,
   stolenSettled: 1080,
@@ -104,27 +111,29 @@ function headSize(count) {
 
 function Bomb({ clock }) {
   const animatedStyle = useAnimatedStyle(() => {
+    // It has to come back DOWN onto the bar: the blast sheet is a ground burst
+    // with a flat bottom edge, and it erupts from where the bomb stopped.
     const translateY = interpolate(
       clock.value,
-      [TIMING.bombStart, 140, TIMING.bombPeak, 610, TIMING.bombImpact],
-      [12, -8, -58, -54, -48],
+      [TIMING.bombStart, 140, TIMING.bombPeak, 590, TIMING.bombImpact],
+      [12, -8, -58, -34, -17],
       Extrapolation.CLAMP
     );
     const scale = interpolate(
       clock.value,
-      [TIMING.bombStart, 120, 300, 610, TIMING.bombImpact],
+      [TIMING.bombStart, 120, 300, 590, TIMING.bombImpact],
       [0, 1.14, 1, 1.04, 0],
       Extrapolation.CLAMP
     );
     const rotation = interpolate(
       clock.value,
-      [0, 220, 410, 610, TIMING.bombImpact],
+      [0, 220, 410, 590, TIMING.bombImpact],
       [-8, 8, -7, 5, 0],
       Extrapolation.CLAMP
     );
     const opacity = interpolate(
       clock.value,
-      [0, 60, 625, TIMING.bombImpact],
+      [0, 60, 590, TIMING.bombImpact],
       [0, 1, 1, 0],
       Extrapolation.CLAMP
     );
@@ -149,150 +158,19 @@ function Bomb({ clock }) {
 }
 
 // ---------------------------------------------------------------------------
-// The blast
+// The blast — two sheets from the FX library, played off one trigger
 // ---------------------------------------------------------------------------
 
-function SparkRay({ angle, clock }) {
-  const style = useAnimatedStyle(() => {
-    const progress = interpolate(
-      clock.value,
-      [TIMING.flashStart, TIMING.shockwaveEnd],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    return {
-      opacity: interpolate(progress, [0, 0.12, 0.72, 1], [0, 1, 0.8, 0]),
-      transform: [
-        { rotate: `${angle}deg` },
-        { translateY: interpolate(progress, [0, 1], [-6, -36], Extrapolation.CLAMP) },
-        { scaleY: interpolate(progress, [0, 0.3, 1], [0.25, 1, 0.4], Extrapolation.CLAMP) },
-      ],
-    };
-  });
-
-  return <Animated.View style={[styles.sparkRay, style]} />;
-}
-
-function SmokePuff({ clock, x, y, size, delay }) {
-  const style = useAnimatedStyle(() => {
-    const start = TIMING.smokeStart + delay;
-    const end = TIMING.smokeEnd + delay;
-    const progress = interpolate(clock.value, [start, end], [0, 1], Extrapolation.CLAMP);
-    return {
-      opacity: interpolate(
-        clock.value,
-        [start, start + 80, end - 140, end],
-        [0, 0.95, 0.78, 0],
-        Extrapolation.CLAMP
-      ),
-      transform: [
-        { translateX: x * progress },
-        { translateY: y * progress },
-        { scale: interpolate(progress, [0, 0.35, 1], [0.25, 1, 1.35], Extrapolation.CLAMP) },
-      ],
-    };
-  });
-
+function Blast({ token }) {
   return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.smokePuff,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          marginLeft: -size / 2,
-          marginTop: -size / 2,
-        },
-        style,
-      ]}
-    />
-  );
-}
-
-function Explosion({ clock }) {
-  const flashStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      clock.value,
-      [TIMING.flashStart, TIMING.flashStart + 45, TIMING.flashStart + 105, TIMING.flashEnd],
-      [0, 1, 0.88, 0],
-      Extrapolation.CLAMP
-    ),
-    transform: [
-      {
-        scale: interpolate(
-          clock.value,
-          [TIMING.flashStart, TIMING.flashStart + 95, TIMING.flashEnd],
-          [0.15, 1.35, 2],
-          Extrapolation.CLAMP
-        ),
-      },
-    ],
-  }));
-
-  const coreStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      clock.value,
-      [TIMING.flashStart + 20, TIMING.flashStart + 90, TIMING.smokeStart + 180, TIMING.smokeEnd],
-      [0, 1, 0.9, 0],
-      Extrapolation.CLAMP
-    ),
-    transform: [
-      {
-        scale: interpolate(
-          clock.value,
-          [TIMING.flashStart, TIMING.flashStart + 150, TIMING.smokeEnd],
-          [0.2, 1.1, 1.65],
-          Extrapolation.CLAMP
-        ),
-      },
-      {
-        rotate: `${interpolate(
-          clock.value,
-          [TIMING.flashStart, TIMING.smokeEnd],
-          [0, 18],
-          Extrapolation.CLAMP
-        )}deg`,
-      },
-    ],
-  }));
-
-  const ringStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      clock.value,
-      [TIMING.shockwaveStart, TIMING.shockwaveStart + 80, TIMING.shockwaveEnd],
-      [0, 0.95, 0],
-      Extrapolation.CLAMP
-    ),
-    transform: [
-      {
-        scale: interpolate(
-          clock.value,
-          [TIMING.shockwaveStart, TIMING.shockwaveEnd],
-          [0.25, 3.15],
-          Extrapolation.CLAMP
-        ),
-      },
-    ],
-  }));
-
-  return (
-    <View pointerEvents="none" style={styles.explosionAnchor}>
-      <Animated.View style={[styles.explosionFlash, flashStyle]} />
-      <Animated.View style={[styles.explosionCore, coreStyle]} />
-      <Animated.View style={[styles.shockwaveRing, ringStyle]} />
-
-      {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
-        <SparkRay key={angle} angle={angle} clock={clock} />
-      ))}
-
-      <SmokePuff clock={clock} x={-28} y={-18} size={26} delay={0} />
-      <SmokePuff clock={clock} x={27} y={-22} size={30} delay={30} />
-      <SmokePuff clock={clock} x={-36} y={8} size={24} delay={75} />
-      <SmokePuff clock={clock} x={35} y={10} size={22} delay={95} />
-      <SmokePuff clock={clock} x={0} y={-34} size={25} delay={45} />
-    </View>
+    <>
+      <View pointerEvents="none" style={styles.shockAnchor}>
+        <EffectPlayer effect={STEAL_FX.shock.id} size={STEAL_FX.shock.width} playToken={token} />
+      </View>
+      <View pointerEvents="none" style={styles.blastAnchor}>
+        <EffectPlayer effect={STEAL_FX.blast.id} size={STEAL_FX.blast.width} playToken={token} />
+      </View>
+    </>
   );
 }
 
@@ -636,10 +514,7 @@ export default function TerritoryStealBanner({
       {!reduced && (
         <>
           <Bomb clock={clock} />
-          <Explosion clock={clock} />
-          {blastFx > 0 ? (
-            <GameLottie name="bombBlast" size={150} trigger={blastFx} style={styles.lottieBlast} />
-          ) : null}
+          {blastFx > 0 ? <Blast token={blastFx} /> : null}
           {heads.map((victim, index) => (
             <BurstHead
               key={`burst-${victim.user_id ?? index}`}
@@ -662,7 +537,6 @@ const ROOT_H = 136;
 
 const styles = StyleSheet.create({
   root: { height: ROOT_H, justifyContent: 'flex-end', overflow: 'visible' },
-  lottieBlast: { position: 'absolute', left: '50%', top: -35, marginLeft: -75, zIndex: 8 },
 
   bar: {
     height: 46,
@@ -767,60 +641,33 @@ const styles = StyleSheet.create({
   },
   fuseSparkInner: { width: 6, height: 6, borderRadius: 3, backgroundColor: BLAST.yellow },
 
-  explosionAnchor: {
+  // The blast sheet is a GROUND burst: its flat bottom edge is the bar's top
+  // edge, 46px up, and it is drawn 4px into the bar so the two never separate
+  // by a hairline. 80px of art above that leaves the 136px root uncropped,
+  // which matters on Android, where a bounded parent clips its children.
+  blastAnchor: {
     position: 'absolute',
     zIndex: 25,
     left: '50%',
-    bottom: 62,
-    width: 1,
-    height: 1,
+    bottom: 42,
+    width: STEAL_FX.blast.width,
+    height: STEAL_FX.blast.height,
+    marginLeft: -STEAL_FX.blast.width / 2,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  // The shrapnel sprays sideways from the same point, under the fireball, so it
+  // is centred on the bar's edge rather than sitting on it.
+  shockAnchor: {
+    position: 'absolute',
+    zIndex: 24,
+    left: '50%',
+    bottom: 46 - STEAL_FX.shock.height / 2,
+    width: STEAL_FX.shock.width,
+    height: STEAL_FX.shock.height,
+    marginLeft: -STEAL_FX.shock.width / 2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  explosionFlash: {
-    position: 'absolute',
-    width: 34,
-    height: 34,
-    marginLeft: -17,
-    marginTop: -17,
-    borderRadius: 17,
-    backgroundColor: BLAST.white,
-  },
-  explosionCore: {
-    position: 'absolute',
-    width: 42,
-    height: 42,
-    marginLeft: -21,
-    marginTop: -21,
-    borderRadius: 12,
-    backgroundColor: BLAST.orange,
-    borderWidth: 5,
-    borderColor: BLAST.yellow,
-  },
-  shockwaveRing: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    marginLeft: -18,
-    marginTop: -18,
-    borderRadius: 18,
-    borderWidth: 3,
-    borderColor: BLAST.yellow,
-  },
-  sparkRay: {
-    position: 'absolute',
-    width: 4,
-    height: 22,
-    marginLeft: -2,
-    marginTop: -11,
-    borderRadius: 3,
-    backgroundColor: BLAST.yellow,
-  },
-  smokePuff: {
-    position: 'absolute',
-    backgroundColor: BLAST.smoke,
-    borderWidth: 2,
-    borderColor: BLAST.smokeInk,
   },
 
   burstAnchor: { position: 'absolute', zIndex: 20, left: '50%', bottom: 61 },

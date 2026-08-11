@@ -5,9 +5,8 @@
 // The body/skin is fixed art. Rendering/placement lives in
 // components/character/CharacterRig.js.
 //
-// Unlocks are evaluated client-side against /me/stats (same keys the trophy
-// shelf uses) + clan membership. A server-authoritative cosmetics table can
-// replace `isUnlocked` later without changing the catalog shape.
+// Unlocks combine client-side stat/clan rules with server grants from pass
+// claims, lootboxes, and the coin shop.
 
 import { ART } from './cosmeticsArt';
 import { OUTFIT_TOPS, OUTFIT_BOTTOMS, OUTFIT_SUITS, FOOTWEAR } from './outfitItems';
@@ -29,7 +28,8 @@ export const CLOTH_COLORS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Unlock conditions — `stat` keys come from /me/stats; `clan` needs membership.
+// Unlock conditions — `stat` keys come from /me/stats; pass markers require a
+// matching server grant.
 // ---------------------------------------------------------------------------
 
 const free = null;
@@ -38,6 +38,7 @@ const dist = (km, label) => ({ stat: 'career_distance_m', value: km * 1000, labe
 const zones = (n, label) => ({ stat: 'territory_count', value: n, label });
 const streak = (n, label) => ({ stat: 'current_streak_weeks', value: n, label });
 const level = (n, label) => ({ stat: 'level', value: n, label: label || `Reach level ${n}` });
+const passOnly = { pass: true, label: 'Free pass reward' };
 // PASER PRO exclusives — no stat route at all. The only way in is a pass tier
 // granting a server-side unlock (see PREMIUM_ITEMS in backend/progression.py),
 // which isUnlocked honours via ctx.unlocks.
@@ -79,11 +80,11 @@ export const ITEMS = {
     { id: 'chill', label: 'Chill', img: require('../../assets/character/face/faceN1.png'), layout: { w: 0.3951, top: 0.1219, dx: -0.0033 }, rarity: 'common', unlock: free },
     { id: 'laugh', label: 'Laugh', img: require('../../assets/character/face/faceN28.png'), rarity: 'common', unlock: free },
     { id: 'content', label: 'Content', img: require('../../assets/character/face/faceN23.png'), rarity: 'common', unlock: free },
-    { id: 'grump', label: 'Grump', img: require('../../assets/character/face/faceN5.png'), rarity: 'common', unlock: runs(1, 'Finish your first run') },
-    { id: 'determined', label: 'Game face', img: require('../../assets/character/face/faceN3.png'), rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
+    { id: 'grump', label: 'Grump', img: require('../../assets/character/face/faceN5.png'), rarity: 'common', unlock: passOnly },
+    { id: 'determined', label: 'Game face', img: require('../../assets/character/face/faceN3.png'), rarity: 'common', unlock: passOnly },
     { id: 'wink', label: 'Wink', img: require('../../assets/character/face/faceN13.png'), rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
     { id: 'tongueout', label: 'Cheeky', img: require('../../assets/character/face/faceN17.png'), rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'whoa', label: 'Whoa', img: require('../../assets/character/face/faceN16.png'), rarity: 'rare', unlock: zones(1, 'Claim your first zone') },
+    { id: 'whoa', label: 'Whoa', img: require('../../assets/character/face/faceN16.png'), rarity: 'rare', unlock: passOnly },
     { id: 'stareyes', label: 'Star eyes', img: require('../../assets/character/face/faceN21.png'), rarity: 'rare', unlock: zones(1, 'Claim your first zone') },
     { id: 'sleepy', label: 'Sleepy', img: require('../../assets/character/face/faceN14.png'), rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
     { id: 'hearteyes', label: 'Dizzy', img: require('../../assets/character/face/faceN19.png'), rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
@@ -99,9 +100,9 @@ export const ITEMS = {
     { id: 'angry', label: 'Angry', img: require('../../assets/character/face/faceN10.png'), rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
     { id: 'joy', label: 'Joy', img: require('../../assets/character/face/faceN11.png'), rarity: 'common', unlock: dist(10, 'Run 10 km total') },
     { id: 'sob', label: 'Sob', img: require('../../assets/character/face/faceN18.png'), rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
-    { id: 'gasp', label: 'Gasp', img: require('../../assets/character/face/faceN26.png'), rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
+    { id: 'gasp', label: 'Gasp', img: require('../../assets/character/face/faceN26.png'), rarity: 'rare', unlock: passOnly },
     { id: 'sly', label: 'Sly', img: require('../../assets/character/face/faceN27.png'), rarity: 'rare', unlock: streak(3, 'Hold a 3 week streak') },
-    { id: 'rage', label: 'Rage', img: require('../../assets/character/face/faceN25.png'), rarity: 'epic', unlock: level(15) },
+    { id: 'rage', label: 'Rage', img: require('../../assets/character/face/faceN25.png'), rarity: 'epic', unlock: passOnly },
   ],
   hair: [
     { id: 'none', label: 'Bald', art: null, rarity: 'common', unlock: free },
@@ -113,18 +114,18 @@ export const ITEMS = {
     { id: 'bluntbob', label: 'Blunt bob', art: ART.hairW4, layout: { top: -0.0134, dx: -0.0133 }, rarity: 'common', unlock: free },
     { id: 'fringebob', label: 'Fringe bob', art: ART.hairW2, rarity: 'common', unlock: free },
     { id: 'sleeklong', label: 'Sleek long', art: ART.hairW5, layout: { top: -0.0031 }, rarity: 'common', unlock: free },
-    { id: 'messy', label: 'Messy', art: ART.hairM10, layout: { w: 1.0467, top: -0.0786, dx: 0.0033 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
+    { id: 'messy', label: 'Messy', art: ART.hairM10, layout: { w: 1.0467, top: -0.0786, dx: 0.0033 }, rarity: 'common', unlock: passOnly },
     { id: 'longwaves', label: 'Long waves', art: ART.hairW1, layout: { top: -0.0173, dx: 0.0033 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
-    { id: 'flow', label: 'Flow', art: ART.hairM6, layout: { w: 1.0033, top: -0.0522, dx: 0.0017 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'flow', label: 'Flow', art: ART.hairM6, layout: { w: 1.0033, top: -0.0522, dx: 0.0017 }, rarity: 'common', unlock: passOnly },
     { id: 'ravenlong', label: 'Straight long', art: ART.hairW6, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
     { id: 'bangs', label: 'Bangs', art: ART.hairW11, layout: { top: -0.0592, dx: 0.0033 }, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
-    { id: 'roundfro', label: 'Round fro', art: ART.hairM8, layout: { w: 0.9367, top: -0.067, dx: 0.0017 }, bulky: true, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
+    { id: 'roundfro', label: 'Round fro', art: ART.hairM8, layout: { w: 0.9367, top: -0.067, dx: 0.0017 }, bulky: true, rarity: 'rare', unlock: passOnly },
     { id: 'softwaves', label: 'Soft waves', art: ART.hairW12, layout: { top: 0.0021, dx: 0.0033 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'topknot', label: 'Top knot', art: ART.hairM2, layout: { w: 0.8, top: -0.0793 }, bulky: true, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
+    { id: 'topknot', label: 'Top knot', art: ART.hairM2, layout: { w: 0.8, top: -0.0793 }, bulky: true, rarity: 'rare', unlock: passOnly },
     { id: 'sidepony', label: 'Side pony', art: ART.hairW9, layout: { top: -0.032, dx: 0.05 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'fringebun', label: 'Fringe bun', art: ART.hairM7, layout: { w: 0.7733, top: -0.1331 }, bulky: true, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
     { id: 'highpony', label: 'High pony', art: ART.hairW7, layout: { w: 0.8733, top: -0.105, dx: 0.0433 }, bulky: true, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
-    { id: 'surfer', label: 'Surfer', art: ART.hairM9, rarity: 'epic', unlock: dist(100, 'Run 100 km total') },
+    { id: 'surfer', label: 'Surfer', art: ART.hairM9, rarity: 'epic', unlock: passOnly },
     { id: 'spacebuns', label: 'Space buns', art: ART.hairW8, layout: { w: 1.0, top: -0.06 }, bulky: true, rarity: 'epic', unlock: zones(10, 'Hold 10 zones') },
     { id: 'hijab', label: 'Sports hijab', art: ART.hairW14, layout: { w: 0.76, top: 0.0097, dx: -0.0033 }, rarity: 'common', unlock: free },
     { id: 'curtainlong', label: 'Curtain long', art: ART.hairW17, layout: { w: 0.8767, top: -0.0085 }, rarity: 'common', unlock: free },
@@ -141,16 +142,16 @@ export const ITEMS = {
   headwear: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
     { id: 'cap', label: 'Cap', img: require('../../assets/character/headwear/hat1.png'), hidesBulky: true, layout: { w: 0.6567, top: -0.0571, dx: -0.0033 }, rarity: 'common', unlock: free },
-    { id: 'sweatband', label: 'Sweatband', img: require('../../assets/character/headwear/hat5.png'), backImg: require('../../assets/character/headwear/hat5b.png'), layout: { w: 0.6234, top: 0.0579, dx: -0.0017 }, rarity: 'common', unlock: runs(1, 'Finish your first run') },
+    { id: 'sweatband', label: 'Sweatband', img: require('../../assets/character/headwear/hat5.png'), backImg: require('../../assets/character/headwear/hat5b.png'), layout: { w: 0.6234, top: 0.0579, dx: -0.0017 }, rarity: 'common', unlock: passOnly },
     { id: 'beanie', label: 'Beanie', img: require('../../assets/character/headwear/hat3.png'), backImg: require('../../assets/character/headwear/hat3b.png'), layout: { w: 0.69, top: -0.0567 }, hideHair: true, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
-    { id: 'bandana', label: 'Bandana', img: require('../../assets/character/headwear/hat6.png'), layout: { w: 0.59, top: 0.0127, dx: -0.0017 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'bandana', label: 'Bandana', img: require('../../assets/character/headwear/hat6.png'), layout: { w: 0.59, top: 0.0127, dx: -0.0017 }, rarity: 'common', unlock: passOnly },
     { id: 'snapback', label: 'Backwards cap', img: require('../../assets/character/headwear/hat2.png'), hidesBulky: true, layout: { w: 0.68, top: -0.0584, dx: -0.005 }, rarity: 'common', unlock: zones(3, 'Hold 3 zones') },
     { id: 'bucket', label: 'Bucket hat', img: require('../../assets/character/headwear/hat10.png'), hideHair: true, layout: { top: -0.0687 }, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
-    { id: 'pombeanie', label: 'Pom beanie', img: require('../../assets/character/headwear/hat4.png'), backImg: require('../../assets/character/headwear/hat4b.png'), layout: { w: 0.7567, top: -0.1253, dx: 0.0067 }, hideHair: true, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
+    { id: 'pombeanie', label: 'Pom beanie', img: require('../../assets/character/headwear/hat4.png'), backImg: require('../../assets/character/headwear/hat4b.png'), layout: { w: 0.7567, top: -0.1253, dx: 0.0067 }, hideHair: true, rarity: 'rare', unlock: passOnly },
     { id: 'visor', label: 'Visor', img: require('../../assets/character/headwear/hat11.png'), backImg: require('../../assets/character/headwear/hat11b.png'), layout: { w: 0.6133, top: 0.0327, dx: -0.005 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'skatehelmet', label: 'Skate helmet', img: require('../../assets/character/headwear/hat9.png'), layout: { w: 0.82, top: -0.0661, dx: 0.0033 }, hideHair: true, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'hardhat', label: 'Hard hat', img: require('../../assets/character/headwear/hat12.png'), layout: { top: -0.095 }, hidesBulky: true, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
-    { id: 'bikehelmet', label: 'Bike helmet', img: require('../../assets/character/headwear/hat8.png'), layout: { top: -0.085 }, hideHair: true, rarity: 'epic', unlock: dist(50, 'Run 50 km total') },
+    { id: 'bikehelmet', label: 'Bike helmet', img: require('../../assets/character/headwear/hat8.png'), layout: { top: -0.085 }, hideHair: true, rarity: 'epic', unlock: passOnly },
     { id: 'laurel', label: 'Laurel wreath', img: require('../../assets/character/headwear/hat13.png'), layout: { w: 0.7833, top: -0.0037, dx: -0.005 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'flamecrown', label: 'Flame crown', img: require('../../assets/character/headwear/hat14.png'), layout: { top: -0.0635, dx: 0.0067 }, rarity: 'legendary', unlock: premiumOnly },
     { id: 'halo', label: 'Halo', img: require('../../assets/character/headwear/hat15.png'), layout: { w: 0.7967, top: -0.1171, dx: 0.015 }, rarity: 'legendary', unlock: premiumOnly },
@@ -165,9 +166,9 @@ export const ITEMS = {
     { id: 'headdress', label: 'Feather crown', img: require('../../assets/character/headwear/hat25.png'), layout: { w: 0.8833, top: -0.1187, dx: 0.0033 }, rarity: 'epic', unlock: level(28) },
     { id: 'gradcap', label: 'Grad cap', img: require('../../assets/character/headwear/hat26.png'), layout: { w: 1.01, top: -0.1339 }, hidesBulky: true, rarity: 'rare', unlock: runs(25, 'Finish 25 runs') },
     { id: 'bowler', label: 'Bowler', img: require('../../assets/character/headwear/hat27.png'), hidesBulky: true, layout: { w: 0.97, top: -0.1656, dx: -0.0067 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'tiara', label: 'Tiara', img: require('../../assets/character/headwear/hat29.png'), layout: { w: 0.7067, top: -0.0698, dx: 0.0033 }, rarity: 'epic', unlock: level(12) },
+    { id: 'tiara', label: 'Tiara', img: require('../../assets/character/headwear/hat29.png'), layout: { w: 0.7067, top: -0.0698, dx: 0.0033 }, rarity: 'epic', unlock: passOnly },
     { id: 'turban', label: 'Turban', img: require('../../assets/character/headwear/hat30.png'), hideHair: true, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
-    { id: 'catears', label: 'Cat ears', img: require('../../assets/character/headwear/hat31.png'), layout: { w: 0.7467, top: -0.0527 }, rarity: 'common', unlock: runs(1, 'Finish 1 runs') },
+    { id: 'catears', label: 'Cat ears', img: require('../../assets/character/headwear/hat31.png'), layout: { w: 0.7467, top: -0.0527 }, rarity: 'common', unlock: passOnly },
     { id: 'pinkbow', label: 'Bow', img: require('../../assets/character/headwear/hat32.png'), layout: { w: 0.5033, top: -0.0214, dx: 0.165 }, rarity: 'common', unlock: free },
     { id: 'flowercrown', label: 'Flower crown', img: require('../../assets/character/headwear/hat33.png'), layout: { w: 0.8067, top: -0.0428, dx: 0.0067 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
     // --- wave 3 (2026-07-31) ---
@@ -180,7 +181,7 @@ export const ITEMS = {
     { id: 'captaincap', label: 'Captain cap', img: require('../../assets/character/headwear/hat41.png'), hidesBulky: true, layout: { w: 0.8733, top: -0.0739, dx: 0.005 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
     { id: 'sailorhat', label: 'Sailor hat', img: require('../../assets/character/headwear/hat42.png'), hidesBulky: true, layout: { top: -0.0674, dx: 0.0467 }, rarity: 'common', unlock: dist(15, 'Run 15 km total') },
     { id: 'nursecap', label: 'Nurse cap', img: require('../../assets/character/headwear/hat43.png'), layout: { w: 0.7933, top: -0.0705, dx: 0.0033 }, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'spacehelmet', label: 'Space helmet', img: require('../../assets/character/headwear/hat44.png'), layout: { w: 1.02, top: -0.0254, dx: 0.0083 }, hideHair: true, rarity: 'legendary', unlock: level(44) },
+    { id: 'spacehelmet', label: 'Space helmet', img: require('../../assets/character/headwear/hat44.png'), layout: { w: 1.02, top: -0.0254, dx: 0.0083 }, hideHair: true, rarity: 'legendary', unlock: passOnly },
     { id: 'kabuto', label: 'Kabuto', img: require('../../assets/character/headwear/hat45.png'), layout: { w: 1.09, top: -0.1506, dx: -0.0117 }, hidesBulky: true, rarity: 'epic', unlock: premiumOnly },
     { id: 'sultanturban', label: 'Jewel turban', img: require('../../assets/character/headwear/hat46.png'), layout: { top: -0.05 }, hidesBulky: true, rarity: 'epic', unlock: level(26) },
     { id: 'ushanka', label: 'Ushanka', img: require('../../assets/character/headwear/hat47.png'), hideHair: true, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
@@ -189,8 +190,8 @@ export const ITEMS = {
     { id: 'heartbopper', label: 'Heart boppers', img: require('../../assets/character/headwear/hat51.png'), layout: { w: 0.8, top: -0.1048, dx: 0.0167 }, rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
     { id: 'cherrybopper', label: 'Cherry boppers', img: require('../../assets/character/headwear/hat52.png'), layout: { w: 0.74, top: -0.0251, dx: 0.0133 }, rarity: 'common', unlock: runs(8, 'Finish 8 runs') },
     { id: 'spikecrown', label: 'Spike band', img: require('../../assets/character/headwear/hat53.png'), layout: { w: 0.75, top: -0.0447, dx: 0.0083 }, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
-    { id: 'punkcrown', label: 'Punk crown', img: require('../../assets/character/headwear/hat54.png'), layout: { w: 0.74, top: -0.0419, dx: 0.01 }, rarity: 'epic', unlock: level(18) },
-    { id: 'royalcrown', label: 'Royal crown', img: require('../../assets/character/headwear/hat55.png'), layout: { w: 0.6833, top: -0.1426, dx: -0.0083 }, rarity: 'legendary', unlock: level(38) },
+    { id: 'punkcrown', label: 'Punk crown', img: require('../../assets/character/headwear/hat54.png'), layout: { w: 0.74, top: -0.0419, dx: 0.01 }, rarity: 'epic', unlock: premiumOnly },
+    { id: 'royalcrown', label: 'Royal crown', img: require('../../assets/character/headwear/hat55.png'), layout: { w: 0.6833, top: -0.1426, dx: -0.0083 }, rarity: 'legendary', unlock: passOnly },
     { id: 'bowberet', label: 'Bow beret', img: require('../../assets/character/headwear/hat56.png'), layout: { w: 0.8, top: -0.055 }, hidesBulky: true, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
     { id: 'bowcap', label: 'Bow cap', img: require('../../assets/character/headwear/hat57.png'), hidesBulky: true, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
     { id: 'maidband', label: 'Maid band', img: require('../../assets/character/headwear/hat58.png'), layout: { w: 0.44, top: -0.0308, dx: 0.19 }, rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
@@ -272,11 +273,11 @@ export const ITEMS = {
   accessory: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
     { id: 'scarf', label: 'Scarf', img: require('../../assets/character/accessory/acc5.png'), backImg: require('../../assets/character/accessory/acc5b.png'), z: 'front', layout: { w: 0.5, top: 0.2868 }, rarity: 'common', unlock: free },
-    { id: 'goldmedal', label: 'Gold medal', img: require('../../assets/character/accessory/acc7.png'), backImg: require('../../assets/character/accessory/acc7b.png'), z: 'front', layout: { w: 0.37, top: 0.2608, dx: 0.005 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'hydrovest', label: 'Race vest', img: require('../../assets/character/accessory/acc2.png'), z: 'front', layout: { w: 0.64, top: 0.3276 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
+    { id: 'goldmedal', label: 'Gold medal', img: require('../../assets/character/accessory/acc7.png'), backImg: require('../../assets/character/accessory/acc7b.png'), z: 'front', layout: { w: 0.37, top: 0.2608, dx: 0.005 }, rarity: 'rare', unlock: passOnly },
+    { id: 'hydrovest', label: 'Race vest', img: require('../../assets/character/accessory/acc2.png'), z: 'front', layout: { w: 0.64, top: 0.3276 }, rarity: 'rare', unlock: passOnly },
     { id: 'cape', label: 'Cape', img: require('../../assets/character/accessory/acc6.png'), backImg: require('../../assets/character/accessory/acc6b.png'), z: 'front', layout: { w: 1.18, top: 0.2786, dx: -0.01 }, rarity: 'epic', unlock: streak(4, 'Hold a 4 week streak') },
     { id: 'angelwings', label: 'Angel wings', img: require('../../assets/character/accessory/acc3.png'), z: 'back', layout: { w: 1.7, cy: 0.3598 }, rarity: 'epic', unlock: level(15) },
-    { id: 'neonwings', label: 'Neon wings', img: require('../../assets/character/accessory/acc4.png'), z: 'back', layout: { w: 1.7, cy: 0.3598 }, rarity: 'legendary', unlock: level(40) },
+    { id: 'neonwings', label: 'Neon wings', img: require('../../assets/character/accessory/acc4.png'), z: 'back', layout: { w: 1.7, cy: 0.3598 }, rarity: 'legendary', unlock: passOnly },
     { id: 'jetpack', label: 'Jetpack', img: require('../../assets/character/accessory/acc9.png'), z: 'back', layout: { w: 1.15, cy: 0.4395 }, rarity: 'legendary', unlock: premiumOnly },
     { id: 'dragonwings', label: 'Dragon wings', img: require('../../assets/character/accessory/acc11.png'), z: 'back', layout: { w: 1.7, cy: 0.3598 }, rarity: 'legendary', unlock: premiumOnly },
     { id: 'redcape', label: 'Hero cape', img: require('../../assets/character/accessory/acc13.png'), backImg: require('../../assets/character/accessory/acc13b.png'), z: 'back', layout: { w: 1.15, top: 0.2517 }, rarity: 'epic', unlock: level(30) },
@@ -284,7 +285,7 @@ export const ITEMS = {
     { id: 'greenscarf', label: 'Knit scarf', img: require('../../assets/character/accessory/acc17.png'), backImg: require('../../assets/character/accessory/acc17b.png'), z: 'front', layout: { w: 0.55, top: 0.2764 }, rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
     { id: 'tealscarf', label: 'Winter scarf', img: require('../../assets/character/accessory/acc18.png'), backImg: require('../../assets/character/accessory/acc18b.png'), z: 'front', layout: { w: 0.55, top: 0.2814 }, rarity: 'common', unlock: dist(15, 'Run 15 km total') },
     { id: 'gaiter', label: 'Neck gaiter', img: require('../../assets/character/accessory/acc20.png'), backImg: require('../../assets/character/accessory/acc20b.png'), z: 'front', layout: { w: 0.46, top: 0.2987 }, rarity: 'common', unlock: runs(2, 'Finish 2 runs') },
-    { id: 'katanas', label: 'Twin blades', img: require('../../assets/character/accessory/acc22.png'), z: 'back', layout: { w: 1.25, cy: 0.3998 }, rarity: 'epic', unlock: level(34) },
+    { id: 'katanas', label: 'Twin blades', img: require('../../assets/character/accessory/acc22.png'), z: 'back', layout: { w: 1.25, cy: 0.3998 }, rarity: 'epic', unlock: passOnly },
     // --- wave 3 (2026-07-31) ---
     { id: 'lacecollar', label: 'Lace collar', img: require('../../assets/character/accessory/acc23.png'), backImg: require('../../assets/character/accessory/acc23b.png'), z: 'front', layout: { w: 0.5, top: 0.2942, dx: 0.0167 }, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
     { id: 'dogtags', label: 'Dog tags', img: require('../../assets/character/accessory/acc24.png'), backImg: require('../../assets/character/accessory/acc24b.png'), z: 'front', layout: { w: 0.4667, top: 0.2893, dx: 0.0033 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },
@@ -317,14 +318,14 @@ export const ITEMS = {
   glasses: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
     { id: 'rounds', label: 'Rounds', img: require('../../assets/character/glasses/specs1.png'), layout: { w: 0.6144, cy: 0.1774, dx: -0.0017 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
-    { id: 'rects', label: 'Rects', img: require('../../assets/character/glasses/specs2.png'), layout: { w: 0.6011, cy: 0.1791, dx: -0.0017 }, rarity: 'rare', unlock: dist(10, 'Run 10 km total') },
+    { id: 'rects', label: 'Rectangle shades', img: require('../../assets/character/glasses/specs2.png'), layout: { w: 0.6011, cy: 0.1791, dx: -0.0017 }, rarity: 'rare', unlock: passOnly },
     { id: 'wayfarer', label: 'Wayfarers', img: require('../../assets/character/glasses/specs4.png'), layout: { w: 0.5867, cy: 0.1783, dx: -0.0017 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
     { id: 'roundgold', label: 'Round golds', img: require('../../assets/character/glasses/specs9.png'), layout: { w: 0.5867, cy: 0.1785, dx: 0.0033 }, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
     { id: 'halfframe', label: 'Half frames', img: require('../../assets/character/glasses/specs8.png'), layout: { w: 0.62, cy: 0.1761, dx: -0.01 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'heart', label: 'Heart sunnies', img: require('../../assets/character/glasses/specs7.png'), layout: { w: 0.5833, cy: 0.1837, dx: -0.0067 }, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
     { id: 'shieldvisor', label: 'Shield visor', img: require('../../assets/character/glasses/specs5.png'), layout: { w: 0.6167, cy: 0.1651 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
-    { id: 'cleargoggles', label: 'Clear goggles', img: require('../../assets/character/glasses/specs10.png'), layout: { w: 0.5933, cy: 0.1608, dx: -0.0067 }, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
-    { id: 'sportshield', label: 'Sport shield', img: require('../../assets/character/glasses/specs3.png'), layout: { w: 0.6, cy: 0.171 }, rarity: 'epic', unlock: level(20) },
+    { id: 'cleargoggles', label: 'Clear goggles', img: require('../../assets/character/glasses/specs10.png'), layout: { w: 0.5933, cy: 0.1608, dx: -0.0067 }, rarity: 'rare', unlock: passOnly },
+    { id: 'sportshield', label: 'Sport shield', img: require('../../assets/character/glasses/specs3.png'), layout: { w: 0.6, cy: 0.171 }, rarity: 'epic', unlock: passOnly },
     // Tallest eyewear art by a distance — narrower so its height lands in
     // line with the rest instead of covering half the face.
     { id: 'skigoggles', label: 'Ski goggles', img: require('../../assets/character/glasses/specs6.png'), layout: { w: 0.5833, cy: 0.1644, dx: -0.005 }, rarity: 'epic', unlock: level(30) },
@@ -332,7 +333,7 @@ export const ITEMS = {
     { id: 'cybershades', label: 'Cyber shades', img: require('../../assets/character/glasses/specs12.png'), layout: { w: 0.6133, cy: 0.1667, dx: 0.0033 }, rarity: 'legendary', unlock: premiumOnly },
     { id: 'mirrorvisor', label: 'Mirror visor', img: require('../../assets/character/glasses/specs13.png'), layout: { w: 0.56, cy: 0.1705, dx: -0.01 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'starglasses', label: 'Star shades', img: require('../../assets/character/glasses/specs14.png'), layout: { w: 0.58, cy: 0.167, dx: -0.0033 }, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
-    { id: 'steampunk', label: 'Steampunk goggles', img: require('../../assets/character/glasses/specs15.png'), layout: { w: 0.61, cy: 0.1728, dx: 0.0017 }, rarity: 'epic', unlock: level(16) },
+    { id: 'steampunk', label: 'Steampunk goggles', img: require('../../assets/character/glasses/specs15.png'), layout: { w: 0.61, cy: 0.1728, dx: 0.0017 }, rarity: 'epic', unlock: passOnly },
     { id: 'hexshades', label: 'Hex shades', img: require('../../assets/character/glasses/specs16.png'), layout: { w: 0.5867, cy: 0.1756, dx: -0.0033 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },
     { id: 'cateye', label: 'Cat eye', img: require('../../assets/character/glasses/specs17.png'), layout: { w: 0.5967, cy: 0.1747, dx: -0.0083 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'pixelshades', label: 'Pixel shades', img: require('../../assets/character/glasses/specs18.png'), layout: { w: 0.6067, cy: 0.1789, dx: -0.0033 }, rarity: 'epic', unlock: level(20) },
@@ -346,7 +347,7 @@ export const ITEMS = {
     { id: 'pearlspecs', label: 'Pearl specs', img: require('../../assets/character/glasses/specs25.png'), layout: { w: 0.54 }, rarity: 'rare', unlock: streak(3, 'Hold a 3 week streak') },
     { id: 'butterfly', label: 'Butterfly shades', img: require('../../assets/character/glasses/specs26.png'), layout: { w: 0.64, cy: 0.1678, dx: -0.0033 }, rarity: 'rare', unlock: runs(12, 'Finish 12 runs') },
     { id: 'tintgoggles', label: 'Tint goggles', img: require('../../assets/character/glasses/specs27.png'), layout: { w: 0.64, cy: 0.1731, dx: 0.0033 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
-    { id: 'onimask', label: 'Oni mask', img: require('../../assets/character/glasses/specs28.png'), layout: { w: 0.87, cy: 0.1873, dx: 0.005 }, rarity: 'legendary', unlock: level(42) },
+    { id: 'onimask', label: 'Oni mask', img: require('../../assets/character/glasses/specs28.png'), layout: { w: 0.87, cy: 0.1873, dx: 0.005 }, rarity: 'legendary', unlock: passOnly },
   ],
   top: [
     { id: 'stripetee', label: 'Stripe tee', img: require('../../assets/character/outfit/top5.png'), layout: { top: 0.3121 }, rarity: 'common', unlock: free },
@@ -362,16 +363,16 @@ export const ITEMS = {
     // so at full width it hung past the hips and over the bottoms.
     { id: 'aurorajacket', label: 'Aurora jacket', img: require('../../assets/character/outfit/top19.png'), layout: { w: 1.0618, top: 0.2846, dx: 0.005 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'varsity', label: 'Varsity jacket', img: require('../../assets/character/outfit/top20.png'), layout: { w: 1.0485, top: 0.285, dx: 0.0083 }, rarity: 'epic', unlock: premiumOnly },
-    { id: 'sportpolo', label: 'Sport polo', img: require('../../assets/character/outfit/top22.png'), layout: { top: 0.2911, dx: 0.01 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
-    { id: 'greyhoodie', label: 'Hoodie', img: require('../../assets/character/outfit/top23.png'), layout: { w: 0.9751, top: 0.2626, dx: 0.0017 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'sportpolo', label: 'Sport polo', img: require('../../assets/character/outfit/top22.png'), layout: { top: 0.2911, dx: 0.01 }, rarity: 'common', unlock: passOnly },
+    { id: 'greyhoodie', label: 'Hoodie', img: require('../../assets/character/outfit/top23.png'), layout: { w: 0.9751, top: 0.2626, dx: 0.0017 }, rarity: 'common', unlock: passOnly },
     { id: 'bomber', label: 'Bomber jacket', img: require('../../assets/character/outfit/top24.png'), layout: { w: 1.0518, top: 0.2911 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'denimjacket', label: 'Denim jacket', img: require('../../assets/character/outfit/top25.png'), layout: { w: 1.0285, top: 0.2996, dx: 0.0183 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
     { id: 'cardigan', label: 'Cardigan', img: require('../../assets/character/outfit/top26.png'), layout: { w: 1.0118, top: 0.3069, dx: 0.01 }, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'labcoat', label: 'Lab coat', img: require('../../assets/character/outfit/top27.png'), layout: { top: 0.2924, dx: 0.0033 }, rarity: 'rare', unlock: level(14) },
+    { id: 'labcoat', label: 'Lab coat', img: require('../../assets/character/outfit/top27.png'), layout: { top: 0.2924, dx: 0.0033 }, rarity: 'rare', unlock: passOnly },
     { id: 'judogi', label: 'Judo gi', img: require('../../assets/character/outfit/top28.png'), rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
     { id: 'utilityvest', label: 'Utility vest', img: require('../../assets/character/outfit/top29.png'), layout: { top: 0.3053, dx: 0.0167 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
     { id: 'sailortop', label: 'Sailor top', img: require('../../assets/character/outfit/top30.png'), rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
-    { id: 'puffer', label: 'Puffer jacket', img: require('../../assets/character/outfit/top31.png'), layout: { w: 1.0185, top: 0.2911, dx: 0.0033 }, rarity: 'rare', unlock: dist(75, 'Run 75 km total') },
+    { id: 'puffer', label: 'Puffer jacket', img: require('../../assets/character/outfit/top31.png'), layout: { w: 1.0185, top: 0.2911, dx: 0.0033 }, rarity: 'rare', unlock: passOnly },
     // --- wave 3 (2026-07-31) ---
     { id: 'puffblouse', label: 'Puff blouse', img: require('../../assets/character/outfit/top32.png'), layout: { w: 0.9751, top: 0.3548, dx: 0.0083 }, rarity: 'common', unlock: free },
     { id: 'letterman', label: 'Letterman jacket', img: require('../../assets/character/outfit/top33.png'), layout: { w: 1.0085, top: 0.2937, dx: 0.0083 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
@@ -385,7 +386,7 @@ export const ITEMS = {
     { id: 'frilltop', label: 'Frill top', img: require('../../assets/character/outfit/top41.png'), layout: { w: 0.7951, top: 0.2879, dx: 0.005 }, rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
     { id: 'maidapron', label: 'Maid apron', img: require('../../assets/character/outfit/top42.png'), layout: { w: 0.7451, top: 0.3512, dx: 0.0033 }, rarity: 'rare', unlock: level(8) },
     { id: 'bowcami', label: 'Bow cami', img: require('../../assets/character/outfit/top44.png'), layout: { w: 0.6751, top: 0.335, dx: 0.0083 }, rarity: 'common', unlock: dist(15, 'Run 15 km total') },
-    { id: 'knightarmor', label: 'Knight armour', img: require('../../assets/character/outfit/top45.png'), layout: { w: 0.9918, top: 0.3104, dx: 0.01 }, rarity: 'legendary', unlock: level(46) },
+    { id: 'knightarmor', label: 'Knight armour', img: require('../../assets/character/outfit/top45.png'), layout: { w: 0.9918, top: 0.3104, dx: 0.01 }, rarity: 'legendary', unlock: premiumOnly },
   ],
   bottom: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
@@ -456,12 +457,12 @@ export function itemBackImage(slot, item, equipped) {
   return item.backArt[Math.max(0, Math.min(item.backArt.length - 1, idx))];
 }
 
-// Unlock evaluation. `unlock` is null (free) or { stat, value, label } — the
-// stat is read from ctx.stats (which is /me/stats, so it includes `level`,
+// Unlock evaluation. `unlock` is null (starter), a stat predicate, or a pass
+// marker. Stats come from /me/stats (including `level`,
 // `runs_count`, `career_distance_m`, `territory_count`, `current_streak_weeks`).
 // A `{ clan: true }` predicate requires club membership. Missing ctx/stats →
 // unlocked (so the studio never wrongly locks before stats load).
-// Server-granted unlocks (premium pass tiers, lootbox rolls) arrive from
+// Server-granted unlocks (both pass tracks, shop buys, lootbox rolls) arrive from
 // /me/progression as "<slot>:<id>". Ids are unique across slots — except
 // 'none', which is free everywhere — so a flat Set of bare ids is enough and
 // keeps `isUnlocked` from needing to know its own slot.
@@ -474,15 +475,14 @@ export function isUnlocked(item, ctx) {
   // tested without grinding stats. __DEV__ is false in release builds, so
   // store users still earn their unlocks.
   if (typeof __DEV__ !== 'undefined' && __DEV__) return true;
-  // Anything the server handed you outranks the stat gate — that IS the
-  // premium track's product.
+  // Anything the server handed you outranks the local gate.
   if (ctx?.unlocks?.has?.(item?.id)) return true;
   const u = item?.unlock;
   if (!u) return true;
   if (!ctx) return true;
-  // PRO exclusives have no stat route at all — the server grant above is the
-  // only way in, so they stay locked (and labelled) for everyone else.
-  if (u.premium) return false;
+  // Pass cosmetics have no stat route. Claiming the matching tier writes the
+  // server grant checked above.
+  if (u.pass || u.premium) return false;
   if (u.clan) return !!ctx.hasClan;
   if (!ctx.stats) return true;
   return Number(ctx.stats[u.stat] || 0) >= Number(u.value || 0);

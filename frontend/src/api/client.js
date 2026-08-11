@@ -175,11 +175,11 @@ export const api = {
   // A finished run is unrecoverable if this call is abandoned, and the payload
   // (every GPS point) is the heaviest we send — so it gets a far longer
   // ceiling than the default.
-  endRun: (runId, points, stepCount = null) =>
+  endRun: (runId, points, stepCount = null, simulated = false) =>
     request('/end-run', {
       method: 'POST',
       timeoutMs: 60000,
-      body: JSON.stringify({ run_id: runId, points, step_count: stepCount }),
+      body: JSON.stringify({ run_id: runId, points, step_count: stepCount, simulated }),
     }),
   // The run's one claim shape and where it can go: `base_ring` / `base_centre`
   // / `base_t` / `route` are what the client transforms locally to draw any
@@ -224,8 +224,19 @@ export const api = {
   runDetail: (runId) => request(`/runs/${runId}`),
   toggleKudos: (runId) => request(`/runs/${runId}/kudos`, { method: 'POST', body: '{}' }),
   runComments: (runId) => request(`/runs/${runId}/comments`),
+  // Comments are text. Emoji live in the run-reaction endpoint so reactions
+  // and discussion remain distinct controls.
   addRunComment: (runId, body) =>
-    request(`/runs/${runId}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
+    request(`/runs/${runId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+  runReactions: (runId) => request(`/runs/${runId}/reactions`),
+  // One reaction per person per run: this SETS yours. Passing the emote you
+  // already left, or null, takes it back off. Both directions come back as the
+  // whole summary, so a caller never has to reconcile counts by hand.
+  setRunReaction: (runId, emote) =>
+    request(`/runs/${runId}/reactions`, { method: 'POST', body: JSON.stringify({ emote: emote || null }) }),
   clanMessages: (clanId, before) =>
     request(`/clans/${clanId}/messages${before ? `?before=${encodeURIComponent(before)}` : ''}`),
   sendClanMessage: (clanId, body) =>

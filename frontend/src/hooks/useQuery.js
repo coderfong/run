@@ -28,7 +28,14 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavigationContext } from '@react-navigation/native';
 
-import { fetchAndCache, getCached, markAttempt, setCached, touchedAt } from '../api/cache';
+import {
+  fetchAndCache,
+  getCached,
+  markAttempt,
+  setCached,
+  subscribeCached,
+  touchedAt,
+} from '../api/cache';
 
 // A refetch this soon after the last one buys nothing and costs a request.
 const DEFAULT_STALE_MS = 15 * 1000;
@@ -144,6 +151,17 @@ export function useQuery(key, fetcher, options = {}) {
     const unsub = navigation.addListener('focus', () => run());
     return unsub;
   }, [active, refetchOnFocus, navigation, run]);
+
+  // A root listener can refresh a key while this screen remains mounted (for
+  // example a foreground land capture updates the notification inbox while
+  // Home is visible). Mirror those cache writes into hook state immediately so
+  // the bell badge and any open list do not wait for another focus event.
+  useEffect(() => {
+    if (!active) return undefined;
+    return subscribeCached(key, (next) => {
+      if (mounted.current) setRaw(next);
+    });
+  }, [active, key]);
 
   // Pull-to-refresh and post-mutation refreshes bypass the staleness floor.
   const refresh = useCallback(() => run({ force: true }), [run]);

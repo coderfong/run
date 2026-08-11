@@ -1,55 +1,76 @@
-# PACER — Privacy Policy (stub, v2)
+# PASER Privacy Policy
 
-_Last updated: 2026-07-06. Finalize and host at a public URL (linked from the
-app's You → Settings and both store listings) before submission._
+_Last updated: 2026-08-12. Publish the finalized version at
+`https://www.bido.live/privacy` before submission._
 
-## What we collect
+## Data PASER collects
 
-- **Account** — your username and a salted hash of your password. No email,
-  phone, or real name.
-- **Routes** — the GPS trace of each run, **only while a run is active**. Never
-  in the background outside an active run.
-- **Territories** — the polygons your closed loops claim, their area, and when
-  they were captured.
-- **Clans** — clan membership, role, and your contributions to your clan's
-  weekly goal and season stats.
-- **Social** — kudos you give and receive; the activity feed is assembled from
-  runs (yours, your clan's, and public highlights).
-- **Motion** — step counts from your device's pedometer during a run, used
-  only to verify runs are on foot (anti-cheat). Raw motion data never leaves
-  your device.
-- **Push token** — an Expo push token so we can notify you (land attacked,
-  clan goal, kudos, season, weekly recap). Each category is toggleable in
-  You → Settings.
-- **Diagnostics** — crash reports / performance telemetry (Sentry), only if
-  enabled in the build you're running.
+- **Account information:** username, password hash for password accounts,
+  social-provider identifier for Apple/Google accounts, and an optional verified
+  email address used for account recovery.
+- **Age information:** date of birth, used to enforce the 13+ minimum age and
+  stronger route-privacy defaults for minors. It is not shown to other users.
+- **Run and fitness information:** route, distance, duration, pace, splits,
+  records, and claim results for user-started runs.
+- **Location:** precise GPS points while an active run is being recorded.
+  Background access is used only to continue that active run while the screen
+  is locked.
+- **Community content:** usernames, club names/descriptions, comments, club
+  chat, reactions, social connections, blocks, and reports.
+- **Device information:** push-notification token and notification preferences.
+- **Diagnostics:** crash/performance data only when diagnostics are enabled in
+  the installed build.
 
-## Optional: Health sync (write-only)
+The app may use motion/pedometer readings during a run to verify that activity
+is on foot. Raw motion samples stay on the device.
 
-If you enable **Sync runs to Health** in Settings, we write each finished run
-(as a running workout) to Apple Health / Google Health Connect. We **never
-read** your health data, and the toggle is off by default.
+## Apple Health
 
-## What we do NOT do
+Apple Health sync is optional and off until you turn it on in **You > Settings
+> Apple Health** and allow it on Apple's permission sheet.
 
-- No ads, no sale of data, no third-party analytics beyond crash reporting.
-- No background location outside an active run.
-- No reading of health, contacts, camera, microphone, or photos.
+- PASER **writes only**. When sync is on, each run you finish is saved to Apple
+  Health as a running workout with its start time, end time, and distance.
+- PASER **never reads** Apple Health data. It does not request read access, so
+  no other app's health data is available to it.
+- Data written to Apple Health stays on your device under Apple's control.
+  PASER does not send it to our servers, and health data is never used for
+  advertising, marketing, or sale, or disclosed to third parties.
+- Turning the switch off stops future writes. Workouts already in Apple Health
+  are yours to keep or delete in the Health app, and deleting your PASER
+  account does not remove them.
 
-## Who sees what
+## How data is used
 
-- Username, clan, territory polygons/areas, and run activity are **public**
-  in-app (map, feed, leaderboards) — claiming land is the game.
-- Raw GPS traces are not exposed by the public API; a run's route is visible
-  on its detail screen to signed-in users (flagged/anti-cheat runs are private
-  to their owner).
+Data is used to provide accounts, record and display runs, calculate territory,
+operate clubs and social features, prevent abuse, send requested notifications,
+support users, and maintain app security. PASER does not sell personal data,
+serve behavioral advertising, or track users across other companies' apps or
+websites.
 
-## Deletion
+## Visibility and route privacy
 
-You → Settings → Delete account permanently removes your account, runs,
-routes, territories, clan membership, kudos, and device tokens (hard delete
-with cascades). No retention period.
+Usernames, avatars, clubs, territory, leaderboard results, and social activity
+can be visible to other signed-in users. Routes shown to other users are trimmed
+at their start and end, respect privacy zones and publication delay settings,
+and use stronger minimum protections for minors. Users can report or block
+other runners inside PASER.
+
+## Photos and sharing
+
+PASER asks only for permission to add a run card when the user taps Save. It
+does not read the photo library. Sharing a card uses the destination selected
+by the user.
+
+## Retention and deletion
+
+Data is retained while an account is active or as needed to operate and secure
+the service. You can permanently delete the account in **You > Settings >
+Delete account**. Related runs, routes, territories, social links, and device
+tokens are deleted with the account. For accounts created with Sign in with
+Apple, PASER also attempts to revoke the associated Apple authorization.
 
 ## Contact
 
-privacy@territoryrun.app _(set up before launch)_
+Privacy and support requests can be submitted at
+`https://www.bido.live/support`.

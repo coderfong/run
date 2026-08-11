@@ -266,7 +266,9 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
       <View style={[styles.stage, { minHeight: sceneH }]}>
         {/* Bottom-anchored: the runner stands at the foot of this box, so the
             crop has to come off the sky rather than off the pavement. */}
-        <SceneBackdrop minHeight={sceneMinH} anchor="bottom" />
+        {/* Wind through the scene. Denser drift than the You page: this box
+            is a stage rather than a header behind a stat wall. */}
+        <SceneBackdrop minHeight={sceneMinH} anchor="bottom" ambient="leaves" ambientDensity={1.4} />
         {/* The runner is the subject, so they stand in the CENTRE of the scene.
             The dice used to sit in the same flex row, which pushed the
             character off-centre by half the button — on a scene composed around
@@ -292,6 +294,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
           <AppIcon name="randomize" size={32} />
         </PressableScale>
       </View>
+
 
       {/* slot chips */}
       <SlotChips active={slotKey} onChange={setSlotKey} onWarm={warmSlot} />

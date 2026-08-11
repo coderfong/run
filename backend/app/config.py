@@ -30,13 +30,13 @@ class Settings(BaseSettings):
     admin_token: str = ""
 
     # App version reported by GET /version (override per deploy).
-    app_version: str = "2.0.0"
+    app_version: str = "2.1.0"
 
     # The COMMIT this process is running, reported by GET /version.
     #
     # `app_version` cannot answer "is my fix live" — it is a hand-maintained
     # string that only moves when somebody edits the deploy config, so it says
-    # 2.0.0 through any number of pushes. That gap is not academic: three
+    # the same version through any number of pushes. That gap is not academic: three
     # separate times this build, "did the deploy take" could only be answered
     # by inference, and for a change living inside an authenticated handler it
     # could not be answered at all.
@@ -419,6 +419,14 @@ class Settings(BaseSettings):
     # Empty → that provider's endpoint returns 501 (not configured).
     google_client_ids: str = ""
     apple_client_ids: str = ""
+    # Server-side Sign in with Apple token lifecycle. The private key is the
+    # .p8 contents (literal newlines or escaped \n both work). These are needed
+    # to exchange the native authorization code and revoke the refresh token
+    # when an Apple-created account is deleted.
+    apple_client_id: str = ""
+    apple_team_id: str = ""
+    apple_key_id: str = ""
+    apple_private_key: str = ""
 
     class Config:
         env_file = ".env"

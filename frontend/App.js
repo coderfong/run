@@ -65,6 +65,7 @@ import { SettingsProvider } from './src/state/settings';
 import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
 import { RivalPopupHost } from './src/components/RivalPopup';
+import { LandCaptureAlertHost } from './src/components/LandCaptureAlert';
 import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
@@ -75,6 +76,13 @@ import { preloadCriticalImages, preloadStartupImages } from './src/config/screen
 // theme-dependent now reads useTheme(); `darkColors` stays only for the record
 // modal, which is deliberately dark in either theme.
 import { darkColors, fonts, ThemeProvider, useTheme } from './src/theme';
+
+// A production navigator has neither the screen nor its deep-link mapping.
+// Keeping the require behind the same compile-time flag also lets Metro drop
+// the gallery/lab module from release bundles.
+const AnimationGalleryScreen = __DEV__
+  ? require('./src/screens/AnimationGalleryScreen').default
+  : null;
 
 // Crash telemetry — a strict no-op unless a DSN is provided via env/extra.
 const SENTRY_DSN =
@@ -142,6 +150,7 @@ const linking = {
         },
       },
       Record: 'record',
+      ...(__DEV__ ? { AnimationGallery: 'dev/animations' } : {}),
     },
   },
 };
@@ -423,6 +432,13 @@ function RootStack() {
         component={RecordModal}
         options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
       />
+      {__DEV__ && (
+        <RootStackNav.Screen
+          name="AnimationGallery"
+          component={AnimationGalleryScreen}
+          options={{ headerShown: true, title: 'Animation Gallery' }}
+        />
+      )}
     </RootStackNav.Navigator>
   );
 }
@@ -523,6 +539,26 @@ function RootNavigator() {
             navigationRef.navigate('Tabs', {
               screen: 'You',
               params: { screen: 'Rivals', initial: false },
+            });
+          }}
+        />
+        <LandCaptureAlertHost
+          onViewLand={(capture) => {
+            if (!navigationRef.isReady()) return;
+            const focus =
+              Number.isFinite(capture?.lat) && Number.isFinite(capture?.lon)
+                ? { focus: { lat: capture.lat, lon: capture.lon } }
+                : undefined;
+            navigationRef.navigate('Tabs', {
+              screen: 'Map',
+              params: { screen: 'MapMain', params: focus },
+            });
+          }}
+          onOpenNotifications={() => {
+            if (!navigationRef.isReady()) return;
+            navigationRef.navigate('Tabs', {
+              screen: 'Home',
+              params: { screen: 'Notifications', initial: false },
             });
           }}
         />

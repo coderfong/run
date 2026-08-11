@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Flame, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
-import { colors, radius, shadow, space, type } from '../theme';
+import { radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { cityBbox } from '../config/cities';
 import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
@@ -108,6 +109,10 @@ function bboxContains(outer, inner) {
 }
 
 export default function GlobalMapScreen({ route }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { equipped } = useAvatar();
   const accent = useAccent();
@@ -328,7 +333,7 @@ export default function GlobalMapScreen({ route }) {
 
   return (
     <View style={styles.container}>
-      <GameMap ref={mapRef} theme="dark" onIdle={onIdle} onPress={() => setSelected(null)}>
+      <GameMap ref={mapRef} onIdle={onIdle} onPress={() => setSelected(null)}>
         <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} />
         {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
         {/* owner portrait in the middle of every territory in view */}
@@ -341,18 +346,22 @@ export default function GlobalMapScreen({ route }) {
         {myLoc && (
           <UserMarker point={myLoc}>
             {showPortraits ? (
-              <CharacterBust equipped={equipped} size={44} ring="#ffffff" bg={colors.card} />
+              // The "this is you" ring has to be the opposite of the map it
+              // sits on — a white ring vanished on the light style.
+              <CharacterBust equipped={equipped} size={44} ring={colors.text} bg={colors.card} />
             ) : (
-              <View style={[styles.locationDot, { backgroundColor: accent }]} />
+              <View style={[styles.locationDot, { backgroundColor: accent, borderColor: colors.card }]} />
             )}
           </UserMarker>
         )}
       </GameMap>
 
-      {/* top controls: heat + legend */}
-      <View style={styles.topControls}>
+      {/* One map tool rail. Grouping heat, layers and recentering keeps three
+          equal controls in one predictable place instead of scattering one
+          button near the tab bar and two mismatched buttons at the top. */}
+      <View style={[styles.topControls, { top: insets.top + space.md }]}>
         <TouchableOpacity
-          style={[styles.roundBtn, heatOn && { backgroundColor: colors.warn }]}
+          style={[styles.controlButton, heatOn && { backgroundColor: colors.warn }]}
           onPress={() => setHeatOn((v) => !v)}
           accessibilityRole="button"
           accessibilityLabel="Toggle contested zones"
@@ -360,34 +369,32 @@ export default function GlobalMapScreen({ route }) {
           <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.mapIconBtn}
+          style={styles.controlButton}
           onPress={() => setLegendOpen(true)}
           accessibilityRole="button"
           accessibilityLabel="Show clubs in view"
           hitSlop={8}
         >
-          <AppIcon name="layers" size={32} />
+          <AppIcon name="layers" size={30} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={locateMe}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Center map on my location"
+          hitSlop={8}
+        >
+          <AppIcon name="locate" size={30} />
         </TouchableOpacity>
       </View>
 
       {showEmpty && (
-        <View style={styles.noticePill}>
+        <View style={[styles.noticePill, { top: insets.top + space.md }]}>
           <Text style={type.heading}>Unclaimed. Be first.</Text>
           <Text style={[type.caption, { marginTop: 2 }]}>Close a loop here to claim the first land.</Text>
         </View>
       )}
-
-      {/* locate-me FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={locateMe}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel="Center map on my location"
-        hitSlop={8}
-      >
-        <AppIcon name="locate" size={32} />
-      </TouchableOpacity>
 
       {/* tapped-territory card */}
       {selected && selectedColor && (
@@ -446,49 +453,38 @@ export default function GlobalMapScreen({ route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', padding: space.xl },
 
-  topControls: { position: 'absolute', top: space.xxl, right: space.gutter, gap: space.md },
-  roundBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  topControls: {
+    position: 'absolute',
+    right: space.gutter,
     backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.pill,
+    padding: 4,
+    gap: 2,
     ...shadow.raised,
   },
-  mapIconBtn: {
-    width: 56,
-    height: 56,
+  controlButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
   noticePill: {
     position: 'absolute',
-    top: space.xxl,
     left: space.gutter,
-    right: 76,
+    right: 88,
     backgroundColor: colors.card,
     borderRadius: radius.card,
     padding: space.lg,
     ...shadow.raised,
   },
 
-  fab: {
-    position: 'absolute',
-    right: space.gutter,
-    bottom: 96,
-    width: 56,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  locationDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, borderColor: '#fff' },
+  locationDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, borderColor: colors.card },
 
   card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

@@ -10,7 +10,7 @@ import { Screen, Skeleton, EmptyState } from '../components/ui';
 import AppIcon from '../components/AppIcon';
 import PortraitBorder from '../components/PortraitBorder';
 import { CharacterBust } from '../components/character/CharacterRig';
-import { shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
+import { PressableScale, shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
 
 // category → generated sticker icon (assets/icons/*).
 const CATEGORY_ICON = {
@@ -62,7 +62,7 @@ function timeAgo(iso) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export default function NotificationsScreen() {
+export default function NotificationsScreen({ navigation }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
@@ -117,6 +117,21 @@ export default function NotificationsScreen() {
         keyExtractor={(n) => n.id}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl, paddingTop: space.md }}
         renderItem={({ item, index }) => {
+          const capture = item.category === 'stolen';
+          const lat = Number(item.data?.lat);
+          const lon = Number(item.data?.lon);
+          const hasFocus =
+            item.data?.lat != null &&
+            item.data?.lon != null &&
+            Number.isFinite(lat) &&
+            Number.isFinite(lon);
+          const openCapture = capture
+            ? () =>
+                navigation.navigate('Map', {
+                  screen: 'MapMain',
+                  params: hasFocus ? { focus: { lat, lon } } : undefined,
+                })
+            : undefined;
           return (
             <Animated.View
               entering={
@@ -124,14 +139,28 @@ export default function NotificationsScreen() {
                   ? undefined
                   : FadeInDown.delay(staggerDelay(index)).duration(260)
               }
-              style={[styles.row, !item.read && styles.unread]}
             >
-              <Actor item={item} styles={styles} />
-              <View style={{ flex: 1 }}>
-                <Text style={type.bodyBold}>{item.title}</Text>
-                <Text style={[type.bodySm, { color: colors.textMuted, marginTop: 2 }]}>{item.body}</Text>
-                <Text style={[type.caption, { marginTop: 4 }]}>{timeAgo(item.created_at)}</Text>
-              </View>
+              <PressableScale
+                onPress={openCapture}
+                disabled={!capture}
+                accessibilityRole={capture ? 'button' : undefined}
+                accessibilityLabel={capture ? `${item.title}. ${item.body}. View affected land.` : undefined}
+                style={[
+                  styles.row,
+                  !item.read && styles.unread,
+                  capture && styles.captureRow,
+                ]}
+              >
+                <Actor item={item} styles={styles} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[type.bodyBold, capture && styles.captureTitle]}>{item.title}</Text>
+                  <Text style={[type.bodySm, { color: colors.textMuted, marginTop: 2 }]}>{item.body}</Text>
+                  <View style={styles.metaRow}>
+                    <Text style={[type.caption, { flex: 1 }]}>{timeAgo(item.created_at)}</Text>
+                    {capture ? <Text style={styles.viewLand}>VIEW LAND →</Text> : null}
+                  </View>
+                </View>
+              </PressableScale>
             </Animated.View>
           );
         }}
@@ -151,6 +180,14 @@ const makeStyles = (colors) =>
       marginBottom: space.sm,
     },
     unread: { backgroundColor: colors.cardAlt },
+    captureRow: {
+      borderLeftWidth: 4,
+      borderLeftColor: brand.pink,
+      backgroundColor: colors.cardAlt,
+    },
+    captureTitle: { color: brand.pink },
+    metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5, gap: space.sm },
+    viewLand: { fontSize: 11, fontWeight: '800', color: brand.pink, letterSpacing: 0.5 },
     // The portrait needs room for the badge hanging off its corner, so it is
     // sized past the frame rather than clipped to it.
     actor: { width: 40, height: 40 },

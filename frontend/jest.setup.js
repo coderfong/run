@@ -24,6 +24,19 @@ jest.mock('@rnmapbox/maps', () => ({
   MarkerView: 'MarkerView',
 }));
 
+// Apple Health. The real module is a Nitro hybrid object that only exists in
+// an iOS build and throws at require time anywhere else — src/health.js
+// catches that, but then there is nothing left to assert against, so the fake
+// stands in. Defaults are the happy path: available and already authorized.
+jest.mock('@kingstinct/react-native-healthkit', () => ({
+  isHealthDataAvailable: jest.fn(() => true),
+  requestAuthorization: jest.fn(async () => true),
+  authorizationStatusFor: jest.fn(() => 2),
+  saveWorkoutSample: jest.fn(async () => ({})),
+  AuthorizationStatus: { notDetermined: 0, sharingDenied: 1, sharingAuthorized: 2 },
+  WorkoutActivityType: { running: 37 },
+}));
+
 // Every one of these must return a PROMISE, not undefined: the haptics helper
 // chains `.catch()` on the result so a device without a taptic engine fails
 // silently, and a bare jest.fn() turns that into a crash at mount.
@@ -43,6 +56,13 @@ jest.mock('expo-location', () => ({
   })),
   watchPositionAsync: jest.fn(async () => ({ remove: jest.fn() })),
   Accuracy: { High: 4, BestForNavigation: 6 },
+}));
+
+jest.mock('expo-notifications', () => ({
+  addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
+  getPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[test]' })),
 }));
 
 // Reanimated ships its own mock; without it every animated style throws.

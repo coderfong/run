@@ -8,7 +8,7 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, privacy, ranks, reactions as reaction_rules, schemas
+from .. import content_moderation, models, paserby, privacy, ranks, reactions as reaction_rules, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -48,6 +48,8 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
     # Shadow-flagged runs are private to their owner.
     if not r[6] and r[1] != user.id:
         raise HTTPException(404, "run not found")
+    if r[1] != user.id and paserby.is_blocked(db, user.id, r[1]):
+        raise HTTPException(404, "run not found")
 
     path = []
     if r[9]:
@@ -78,7 +80,13 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
     kmine = db.execute(
         text("SELECT 1 FROM run_kudos WHERE run_id = :rid AND user_id = :uid"), {"rid": run_id, "uid": user.id}
     ).fetchone()
-    ccount = db.execute(text("SELECT COUNT(*) FROM run_comments WHERE run_id = :rid"), {"rid": run_id}).scalar()
+    ccount = db.execute(
+        text(
+            "SELECT COUNT(*) FROM run_comments "
+            "WHERE run_id = :rid AND NULLIF(BTRIM(body), '') IS NOT NULL"
+        ),
+        {"rid": run_id},
+    ).scalar()
     summary, mine = reaction_rules.summarise(db, [run_id], user.id)
 
     return schemas.RunDetail(
@@ -102,6 +110,8 @@ def _run_visible_to(db, run_id, user):
     ).fetchone()
     if not r or (not r[1] and r[0] != user.id):
         raise HTTPException(404, "run not found")
+    if r[0] != user.id and paserby.is_blocked(db, user.id, r[0]):
+        raise HTTPException(404, "run not found")
     return r[0]
 
 
@@ -111,23 +121,24 @@ def run_comments(run_id: str, user: models.User = Depends(current_user), db: Ses
     rows = db.execute(
         text(
             """
-            SELECT c.id::text, c.user_id::text, u.username, c.body, c.created_at, c.emote
+            SELECT c.id::text, c.user_id::text, u.username, c.body, c.created_at
             FROM run_comments c JOIN users u ON u.id = c.user_id
-            WHERE c.run_id = :rid
+            WHERE c.run_id = :rid AND NULLIF(BTRIM(c.body), '') IS NOT NULL
+              AND NOT EXISTS (
+                    SELECT 1 FROM user_blocks b
+                    WHERE (b.blocker_id = CAST(:uid AS uuid) AND b.blocked_id = c.user_id)
+                       OR (b.blocker_id = c.user_id AND b.blocked_id = CAST(:uid AS uuid))
+              )
             ORDER BY c.created_at
             LIMIT 200
             """
         ),
-        {"rid": run_id},
+        {"rid": run_id, "uid": user.id},
     ).fetchall()
     return [
         schemas.RunCommentOut(
             id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id),
             body=r[3], created_at=r[4],
-            # An emote written by a build the server no longer recognises is
-            # dropped rather than sent on: the client would render a blank box
-            # where a sticker should be, which reads as a broken comment.
-            emote=r[5] if reaction_rules.is_allowed(r[5]) else None,
         )
         for r in rows
     ]
@@ -139,30 +150,23 @@ def add_run_comment(request: Request, response: Response, run_id: str, payload: 
                     background: BackgroundTasks,
                     user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     owner_id = _run_visible_to(db, run_id, user)
-    try:
-        emote = reaction_rules.normalise(payload.emote)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    body = (payload.body or "").strip() or None
+    body = content_moderation.require_allowed_text(payload.body, "comment")
     row = db.execute(
         text(
-            "INSERT INTO run_comments (run_id, user_id, body, emote) VALUES (:rid, :uid, :b, :e) "
+            "INSERT INTO run_comments (run_id, user_id, body, emote) VALUES (:rid, :uid, :b, NULL) "
             "RETURNING id::text, created_at"
         ),
-        {"rid": run_id, "uid": user.id, "b": body, "e": emote},
+        {"rid": run_id, "uid": user.id, "b": body},
     ).fetchone()
     db.commit()
     if owner_id != user.id:
-        # A sticker-only comment has no words to quote, so the push says what
-        # was left rather than showing an empty line after the colon.
-        snippet = body[:80] if body else f"reacted {emote}"
         background.add_task(
             notify, [owner_id], "kudos", "New comment on your run",
-            f"{user.username}: {snippet}", None, str(user.id),
+            f"{user.username}: {body[:80]}", None, str(user.id),
         )
     return schemas.RunCommentOut(
         id=row[0], user_id=user.id, username=user.username, is_you=True,
-        body=body, emote=emote, created_at=row[1],
+        body=body, created_at=row[1],
     )
 
 
@@ -327,7 +331,8 @@ def my_notifications(limit: int = 30, user: models.User = Depends(current_user),
             """
             SELECT n.id::text, n.category, n.title, n.body, n.read, n.created_at,
                    n.actor_id::text, a.username, a.avatar,
-                   COALESCE(a.rank_points, 0), a.rank_points_at, c.color_key
+                   COALESCE(a.rank_points, 0), a.rank_points_at, c.color_key,
+                   COALESCE(n.data, '{}'::jsonb)
             FROM notifications n
             LEFT JOIN users a ON a.id = n.actor_id
             LEFT JOIN clan_members cm ON cm.user_id = n.actor_id
@@ -350,6 +355,7 @@ def my_notifications(limit: int = 30, user: models.User = Depends(current_user),
                 actor_avatar=r[8],
                 actor_rank_key=ranks.key_for(r[9], r[10]),
                 actor_clan_color=schemas.ClanColor(**color_triple(r[11])) if r[11] else None,
+                data=r[12] or {},
             )
             for r in rows
         ],

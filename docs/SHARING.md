@@ -11,19 +11,23 @@ Strava-shaped flow:
 
 1. **Pick a format** — Story (9:16, exported 1080×1920) or Post (1:1, exported
    1080×1080).
-2. **Pick a background** — three ways:
-   * **No background** — the card exports as a TRANSPARENT PNG and goes to
-     Instagram as a *sticker*, so the runner's own selfie or photo (whatever
-     they put on the story) is the background and the stats sit over it. This
-     is the one to reach for; the others are for when there is no photo worth
-     posting.
-   * **Colour** — the clan-coloured wash.
-   * **Photo** — one of the runner's own pictures (`expo-image-picker`)
-     full-bleed inside the card itself.
+2. **The background is always transparent.** There is no chooser. The card
+   exports as a TRANSPARENT PNG and goes to Instagram as a *sticker*, so the
+   runner's own selfie or photo — whatever they already put on the story — is
+   the background and the stats sit over it.
+
+   The colour wash and the photo picker were both **removed on 2026-08-11**.
+   Either one covers the story it is posted onto, so the runner ends up with two
+   backgrounds fighting for the same 9:16, and a sticker with an opaque
+   background is just a background they have to drag around. `expo-image-picker`
+   came out of `package.json` and `app.json` with the photo option, and the
+   photo-library *read* permission string went with it.
+
+   The preview sits on a **checkerboard** with a `TRANSPARENT` badge on it,
+   because "transparent" and "dark grey" look identical against a dark screen.
 3. **Customise it** — under the preview:
    * **Accent** — the clan colour first, then eight swatches (including ink,
-     for a bright photo). Drives the territory number, the route's end dot and
-     the colour background.
+     for a bright story). Drives the territory number and the route's end dot.
    * **Text** — Light or Dark. Dark flips the whole card to ink type with a
      white halo, which is the only thing that reads on a snowy or sunlit shot.
    * **Align** — Left / Centre / Right, applied to the headline, the stat grid
@@ -39,13 +43,24 @@ Strava-shaped flow:
      the route.
 4. **See the real card** — the preview *is* the component that gets captured
    (`RunShareCard`), so there is no gap between preview and post.
-5. **Send it** —
-   * **Share to Instagram Stories** — a direct handoff. Instagram opens with
-     the card already set as the story background; the runner adds stickers and
-     posts. Only offered when Instagram is actually there.
-   * **More options** — the system share sheet (Instagram feed, WhatsApp,
-     Messages, Save Image). Always available, and every Instagram failure falls
-     back to it rather than dead-ending.
+5. **Send it** — a "Share to" row of round destinations, the shape every share
+   sheet already uses:
+   * **Instagram Story** — a direct handoff. Instagram opens with the card as a
+     *sticker* over whatever background the runner picks. Only offered when
+     Instagram is actually there.
+   * **Save** — the camera roll (`expo-media-library`, add-only permission,
+     asked at the moment of use).
+   * **Copy** — the card on the clipboard AS AN IMAGE (`expo-clipboard`), ready
+     to paste into a message or a story. Captured straight to base64 rather than
+     read back off disk.
+   * **More** — the system share sheet (Instagram feed, WhatsApp, Messages,
+     Files). Always available, and every Instagram failure falls back to it
+     rather than dead-ending.
+
+   Save and Copy hide themselves when their native module is missing, the same
+   way the Instagram button does, so an older binary simply shows fewer targets.
+
+   There is no **Copy Link**: a run has no public URL to link to.
 
 ### The card
 
@@ -65,8 +80,7 @@ Rules it has to keep:
   still-decoding image is what turns `captureRef` output into a black
   rectangle. The route is an SVG polyline, the claimed ground an SVG polygon,
   both projected through one shared bounding box so they stay registered, and
-  the mark is a plain RN `Image`. A chosen photo reports `onPhotoReady` and the
-  sheet waits for it before capturing.
+  the mark is a plain RN `Image`.
 
   The one exception is the head on the route runner, which comes from
   `CharacterRig` and so draws through `expo-image` (every other screen needs
@@ -101,22 +115,32 @@ with its own head removed — a separate connected shape in the art, so the cut 
 exact — and `scripts/make-brand-mark.py` prints the head-slot fractions that
 `LogoRunner` must stay in step with. Re-run it if the icon ever changes.
 
-The head is a clipped window onto a full `CharacterRig`, cut at the CHIN so the
-head plate's own outline forms the bottom edge; any lower and the rig's
-shoulders come through as a cream band across the logo's chest.
+The head is drawn by `CharacterRig` in **`headOnly` mode** — the plate, face,
+hair, glasses and hat, and nothing below the jaw.
+
+It used to be the whole rig behind a rectangular window cut at the chin, and
+that window was a bug (fixed 2026-08-11): the shirt collar and the shoulders sit
+at y=214 of the 640-tall body art, *above* the chin at y=226, so they came
+through under the jaw as a pale band, and any hair past the jaw was sliced off
+in the same straight line. Skipping those layers at the source means there is
+nothing to hide, so there is no window and nothing gets a flat edge — long hair
+simply falls over the mark the way it falls over the doll. The 12° tilt now
+carries an explicit `transformOrigin` at the head centre, because without the
+window the box it rotates in is the rig's full height.
 
 **The trade:** the player's cosmetics below the neck no longer show on the card.
 Their face, hair and headwear do.
-* **Full-bleed, or none at all.** With a background, it reaches every edge and
-  `CARD_INK` is handed to Instagram as the story canvas colour, so letterboxing
-  does not show a card floating on black. With `background="none"` the card
-  paints nothing, the PNG keeps its alpha, and `socialShare` passes it as
-  `stickerImage` rather than `backgroundImage` — a sticker with an opaque
-  background is just a background the runner has to drag around.
-* **Type carries its own legibility.** As a sticker there is no scrim to hide
-  behind: the labels go fully opaque and the shadow tightens to read as an
-  outline (`toneFor`), because a translucent label vanishes on a pale sky or a
-  white t-shirt.
+
+### Export rules
+
+* **Transparent, always.** The card paints nothing, the PNG keeps its alpha, and
+  `socialShare` passes it as `stickerImage` rather than `backgroundImage`.
+  `CARD_INK` is still handed to Instagram as the canvas colour behind the
+  sticker, until the runner picks their own background.
+* **Type carries its own legibility.** There is no scrim to hide behind: the
+  labels are fully opaque and the shadow is tight enough to read as an outline
+  (`toneFor`), because a translucent label vanishes on a pale sky or a white
+  t-shirt.
 * **Measured, not hand-tuned.** The route band takes the height the headline,
   stats, brag line and signature do not — that is what stops a long route being
   drawn straight through the numbers. The stat grid is two-up because a single
@@ -125,11 +149,13 @@ Their face, hair and headwear do.
 
 ## 1. A new native build is required — **YOU**
 
-Instagram Stories sharing uses **`react-native-share`**, and photo backgrounds
-use **`expo-image-picker`** — both native modules (plus `expo-build-properties`
-for the react-native-share config plugin). The photo picker arrived AFTER the
-2.1.0 build, so a binary built before it shows "Photo backgrounds need a newer
-build of PASER" and the colour background still works.
+Instagram Stories sharing uses **`react-native-share`**; Save uses
+**`expo-media-library`** and Copy uses **`expo-clipboard`**. All three ship
+native code (plus `expo-build-properties` for the react-native-share config
+plugin). The two added on 2026-08-11 arrived AFTER the 2.1.0 build, so a binary
+built before them simply shows fewer destinations in the "Share to" row —
+`socialShare.js` requires each lazily and reports "not available" instead of
+throwing.
 
 * `expo.version` was bumped **2.0.0 → 2.1.0** for this, and the
   `runtimeVersion` policy is `appVersion` — so 2.1.0 updates can only land on a
@@ -190,4 +216,6 @@ No Meta SDK, no login, nothing else to configure.
 | Blank/black exported image | Something non-static got into `RunShareCard` (map, `expo-image`, animation) |
 | Card content clipped | A text block grew past its estimate in `RunShareCard` (`headH` / `statsH` / `signatureH`) |
 | A metric has no chip | `availableStats` dropped it — the run has no honest number for it (elevation needs altitude, which only runs recorded after 2026-08-06 carry) |
-| Sticker text invisible | Bright background with Light text; switch Text to Dark |
+| Sticker text invisible | Bright story background with Light text; switch Text to Dark |
+| No Save / Copy button | A binary built before `expo-media-library` / `expo-clipboard` |
+| Preview looks like grey squares | That is the transparency checkerboard, not the card |

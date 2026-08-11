@@ -1,4 +1,11 @@
-# PASER v2.0.0 — release checklist
+# Historical PASER v2.0.0 release checklist
+
+> Superseded on 2026-08-12 by [`APP_STORE.md`](APP_STORE.md). Do not follow the
+> IAP instructions below for 2.1.0: that surface is disabled until its native
+> implementation is ready. Apple Health went the other way and is live in
+> 2.1.0, write-only, described in `RELEASE.md`. Historical operational
+> warnings about seeded production data, credential rotation, and mail setup
+> still need to be checked before release.
 
 Audited 2026-07-30. Everything below was verified against the code, not
 assumed. Items marked **YOU** need something only you can do (secrets, store

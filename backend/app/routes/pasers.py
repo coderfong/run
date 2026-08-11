@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, ranks, schemas
+from .. import models, paserby, ranks, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -77,6 +77,11 @@ def search_users(
             LEFT JOIN clans c ON c.id = cm.clan_id
             {_LINK_JOIN}
             WHERE u.id <> :uid AND lower(u.username) LIKE :term
+              AND NOT EXISTS (
+                    SELECT 1 FROM user_blocks b
+                    WHERE (b.blocker_id = CAST(:uid AS uuid) AND b.blocked_id = u.id)
+                       OR (b.blocker_id = u.id AND b.blocked_id = CAST(:uid AS uuid))
+              )
             ORDER BY (lower(u.username) = :exact) DESC, length(u.username), lower(u.username)
             LIMIT :lim
             """
@@ -163,6 +168,8 @@ def send_request(
         raise HTTPException(400, "you are already your own paser")
     target = db.get(models.User, target_id)
     if target is None:
+        raise HTTPException(404, "runner not found")
+    if paserby.is_blocked(db, user.id, target_id):
         raise HTTPException(404, "runner not found")
 
     existing = db.execute(
@@ -321,6 +328,8 @@ def runner_profile(
     db: Session = Depends(get_db),
 ):
     """Another runner's public profile — the tap-through from a paser row."""
+    if other_id != str(user.id) and paserby.is_blocked(db, user.id, other_id):
+        raise HTTPException(404, "runner not found")
     u = db.execute(
         text(
             f"""

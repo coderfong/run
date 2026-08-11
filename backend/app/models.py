@@ -44,6 +44,9 @@ class User(Base):
     # Social sign-in identity (Google / Apple). Null for password accounts.
     oauth_provider = Column(Text, nullable=True)
     oauth_sub = Column(Text, nullable=True)
+    # Sign in with Apple refresh token. It is obtained by exchanging the
+    # single-use authorization code and revoked before account deletion.
+    oauth_refresh_token = Column(Text, nullable=True)
 
     # Recovery address. Null for every account created before 0028 and for
     # anyone who declines to give one — such an account works normally but

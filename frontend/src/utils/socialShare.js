@@ -2,18 +2,21 @@
 // card that gets shared so the visual stays a pure component and the messy
 // per-platform rules live in one place.
 //
-// Two destinations:
+// Four destinations:
 //   * Instagram Stories — a direct handoff (react-native-share → the
 //     `instagram-stories://` pasteboard flow on iOS, an ADD_TO_STORY intent on
 //     Android). This is the Strava-style path: the card lands in the story
-//     composer as the background, ready to post.
+//     composer as a sticker, over the runner's own background.
+//   * the camera roll (expo-media-library)
+//   * the clipboard, as an image (expo-clipboard)
 //   * the system share sheet (expo-sharing) — everything else: Instagram
-//     feed, WhatsApp, Messages, Save Image.
+//     feed, WhatsApp, Messages, Files.
 //
-// NATIVE MODULE: react-native-share ships native code, so Instagram Stories
-// only works in a binary built after it was added. Old binaries (and OTA
-// updates onto them) throw on the first call — every entry point here degrades
-// to the system sheet rather than failing, so the Share button always works.
+// NATIVE MODULES: react-native-share, expo-media-library and expo-clipboard all
+// ship native code, so each only works in a binary built after it was added.
+// Old binaries (and OTA updates onto them) throw on the first call — every
+// entry point here is required lazily and reports "not available" rather than
+// throwing, so the share sheet always works with whatever the binary has.
 
 import { Linking, Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -128,9 +131,75 @@ export async function shareToInstagramStories(
   }
 }
 
+// Same lazy-require shape as `nativeShare`: a binary built before the module
+// was added must lose the button, not crash on import.
+function lazy(load) {
+  let mod;
+  return () => {
+    if (mod === undefined) {
+      try {
+        mod = load();
+      } catch {
+        mod = null;
+      }
+    }
+    return mod;
+  };
+}
+
+const mediaLibrary = lazy(() => require('expo-media-library'));
+const clipboard = lazy(() => require('expo-clipboard'));
+
+export function canSaveToPhotos() {
+  return !!mediaLibrary();
+}
+
+export function canCopyImage() {
+  // Only the image API matters here; the text one has always existed.
+  return typeof clipboard()?.setImageAsync === 'function';
+}
+
+/**
+ * Save the card to the camera roll. Asks for the add-only permission the first
+ * time — PASER never reads the library, so it requests write access only.
+ */
+export async function saveToPhotos(imageUri) {
+  const Media = mediaLibrary();
+  if (!Media) return { ok: false, reason: 'Saving needs a newer build of PASER.' };
+  try {
+    const perm = await Media.requestPermissionsAsync(true);
+    if (!perm?.granted) {
+      return { ok: false, reason: 'PASER needs permission to save to your photos.' };
+    }
+    await Media.saveToLibraryAsync(fileUri(imageUri));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: String(e?.message || e) || 'Could not save the image.' };
+  }
+}
+
+/**
+ * Put the card on the clipboard AS AN IMAGE, so it can be pasted straight into
+ * a message or a story. Takes base64 rather than a file URI: that is what
+ * `expo-clipboard` wants, and `captureRef` can hand it over directly, which
+ * saves reading the file back off disk.
+ */
+export async function copyImageToClipboard(base64) {
+  const Clipboard = clipboard();
+  if (!Clipboard?.setImageAsync) {
+    return { ok: false, reason: 'Copying an image needs a newer build of PASER.' };
+  }
+  try {
+    await Clipboard.setImageAsync(base64);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: String(e?.message || e) || 'Could not copy the image.' };
+  }
+}
+
 /**
  * The system share sheet. Works on every binary and every platform, and is
- * where Instagram feed / WhatsApp / Messages / Save Image come from.
+ * where Instagram feed / WhatsApp / Messages / Files come from.
  */
 export async function shareToSystemSheet(imageUri, { dialogTitle = 'Share your run' } = {}) {
   if (!(await Sharing.isAvailableAsync())) {

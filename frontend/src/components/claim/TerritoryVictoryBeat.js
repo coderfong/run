@@ -25,7 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { toon, toonType } from '../../theme';
-import { haptic } from '../../ui/motion';
+import { CAPTURE_LAYER } from '../../effects/layers';
 import AppIcon from '../AppIcon';
 import { AnimationStack } from '../GameAnimation';
 import CharacterRig from '../character/CharacterRig';
@@ -53,9 +53,14 @@ export function victoryLabel(claim) {
   return 'NEW TERRITORY';
 }
 
+// The shields are deliberately absent. A red shield over a claim you just WON
+// reads as a warning — as if something had gone wrong or the ground were about
+// to be taken back — which is the opposite of what this beat is for. The
+// impact and the smoke already say "this was taken off somebody"; the badge
+// on top only muddied it.
 function victoryEffects(label) {
-  if (label === 'TERRITORY STOLEN') return ['impactRed', 'smokePuff', 'shieldDanger'];
-  if (label === 'TERRITORY CAPTURED') return ['impactGold', 'bubbleBurst', 'shieldSafe'];
+  if (label === 'TERRITORY STOLEN') return ['impactRed', 'smokePuff'];
+  if (label === 'TERRITORY CAPTURED') return ['impactGold', 'bubbleBurst'];
   return ['victoryRays', 'bubbleBurst'];
 }
 
@@ -132,7 +137,6 @@ export default function TerritoryVictoryBeat({
 
     // 3 + 4 + 5. border pulse, the app's own celebration, victory face
     track(setTimeout(() => {
-      haptic.success();
       rigRef.current?.play('celebrate');
       pulse.value = withSequence(
         withTiming(1, { duration: 130 }),
@@ -198,7 +202,7 @@ export default function TerritoryVictoryBeat({
   const fxTop = Math.max(0, footY - FX_SIZE + 20);
 
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: CAPTURE_LAYER.VICTORY }]}>
       {/* 3. one pulse of the territory border, drawn from the same projected
           rings the reveal used */}
       {outlinePath && (

@@ -11,19 +11,14 @@
 // (`gained`), so it never needs its own endpoint: the start of the animation is
 // simply the total minus the gain. A claim's XP arriving later moves it a
 // second time, from where it came to rest rather than from the beginning.
-//
-// Painted for the always-dark result card (see ResultScreen), so it takes the
-// dark palette directly rather than the live one.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { MAX_LEVEL, levelBandColor, levelFromXp, xpForLevel } from '../config/progression';
-import { darkColors, radius, space, toonRadius, type, withAlpha } from '../theme';
+import { radius, space, toonRadius, useTheme, useThemedStyles, withAlpha } from '../theme';
 import { CountUpText, Reveal, SteppedBar, haptic } from '../ui/motion';
-
-const D = darkColors;
 
 // How long the whole move takes, shared out between the level boundaries it
 // crosses in proportion to how much of each one it covers. A run that crosses
@@ -93,6 +88,8 @@ const fmtGain = (n) => {
 };
 
 export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay = 420, style }) {
+  const { colors: D } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   // The window this bar is animating across. Held in state and only moved when
   // the total actually moves: the result screen re-renders constantly (options
   // landing, the energy meter, the claim sequence) and deriving the window from
@@ -202,7 +199,7 @@ export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay =
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   root: { alignSelf: 'stretch', marginTop: space.lg },
   head: {
     flexDirection: 'row',
@@ -222,13 +219,13 @@ const styles = StyleSheet.create({
   track: {
     height: 14,
     borderRadius: toonRadius.pill,
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
     borderWidth: 1,
-    borderColor: D.border,
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   fill: { height: '100%' },
   captionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  caption: { ...type.caption, color: D.textDim },
-  captionStrong: { ...type.caption, color: D.textMuted },
+  caption: { ...type.caption, color: colors.textDim },
+  captionStrong: { ...type.caption, color: colors.textMuted },
 });

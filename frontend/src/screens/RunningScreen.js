@@ -24,7 +24,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { api } from '../api/client';
-import { invalidateAfterRun } from '../api/cache';
+import { invalidateAfterLandLoss, invalidateAfterRun } from '../api/cache';
 import { useAuth } from '../auth/AuthContext';
 import { claimGateReason, entitledAreaM2, RUN_TIER, runTier } from '../config/economy';
 import {
@@ -40,6 +40,7 @@ import { writeWorkout } from '../health';
 import { darkColors, radius, runTuning as T, space, type } from '../theme';
 import { haptic, PressableScale, Pulse } from '../ui/motion';
 import { toast } from '../ui/toast';
+import { landCaptureAlert } from '../components/LandCaptureAlert';
 import GameLottie from '../components/GameLottie';
 import { RunEventOverlay, RunStartOverlay } from '../components/run/RunGameplayFx';
 
@@ -880,7 +881,8 @@ export default function RunningScreen({ navigation }) {
       const result = await api.endRun(
         run.id,
         toApiPoints(finalPath),
-        steps ?? (pedometerOkRef.current ? stepCountRef.current : null)
+        steps ?? (pedometerOkRef.current ? stepCountRef.current : null),
+        simulated
       );
       if (simulated && devScenario === 'steal') {
         try {
@@ -896,7 +898,8 @@ export default function RunningScreen({ navigation }) {
       // tabs you come back to fetch fresh numbers instead of serving the
       // pre-run cache for the length of their staleness window.
       invalidateAfterRun();
-      // Optional, write-only health sync (no-op unless enabled + module present).
+      // Optional, write-only Apple Health sync (no-op unless the runner turned
+      // it on in Settings and granted write access).
       // A simulated run is skipped: the dev harness may write to the server,
       // which is its whole purpose, but it has no business putting a workout
       // nobody did into the phone's health record.
@@ -975,10 +978,21 @@ export default function RunningScreen({ navigation }) {
             setSimulating(true);
             try {
               const result = await api.devRivalTakesMine();
-              invalidateAfterRun();
-              toast.success(
-                `${result.rival_username} took ${Math.round(result.taken_m2 || 0).toLocaleString()} m². Open Map, Rivals, or Notifications to inspect it.`
-              );
+              invalidateAfterLandLoss();
+              landCaptureAlert.show({
+                category: 'stolen',
+                capture_id: result.capture_id,
+                rival_id: result.rival_id,
+                rival_username: result.rival_username,
+                rival_avatar: result.rival_avatar,
+                taken_m2: result.taken_m2,
+                lat: result.lat,
+                lon: result.lon,
+                title: 'Your land was captured',
+                body: `${result.rival_username} took ${Math.round(
+                  result.taken_m2 || 0
+                ).toLocaleString()} m² of your territory.`,
+              });
             } catch (error) {
               toast.error(error.message || 'Could not run the rival capture scenario');
             } finally {
@@ -1064,6 +1078,10 @@ export default function RunningScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* The one map that does NOT follow the app's scheme. This screen is a
+          night-run surface by design (see `D` above) and its HUD is painted
+          dark whatever the rest of the app is wearing, so a light map style
+          here would put dark chrome on a white board. */}
       <GameMap ref={mapRef} theme="dark" style={styles.map} initialZoom={16}>
         {/* others' claimed land around you — the turf you're running through */}
         {board && <TerritoryLayer id="run-board" featureCollection={board} dark />}

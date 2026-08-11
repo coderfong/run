@@ -17,6 +17,7 @@ import { PressableScale, Reveal } from '../ui/motion';
 import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
+import { openSafetyActions } from '../utils/safety';
 
 const km = (m) => (m / 1000).toFixed(1);
 const km2 = (m2) => (m2 / 1e6).toFixed(2);
@@ -155,6 +156,21 @@ export default function RunnerProfileScreen({ navigation, route }) {
           <Pill label={`${p.paser_count} paser${p.paser_count === 1 ? '' : 's'}`} color={colors.textMuted} />
         </Row>
         {paserAction()}
+        {p.state !== 'self' ? (
+          <Button
+            title="Report or block"
+            variant="secondary"
+            size="sm"
+            full={false}
+            style={{ marginTop: space.sm }}
+            onPress={() => openSafetyActions({
+              userId,
+              username: p.username,
+              context: 'runner profile',
+              onBlocked: () => navigation.goBack(),
+            })}
+          />
+        ) : null}
       </Reveal>
 
       <View style={styles.wall}>

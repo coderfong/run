@@ -59,6 +59,8 @@ jest.mock('../src/components/GameMap', () => {
 jest.mock('../src/ui/motion', () => {
   const React2 = require('react');
   const Pass = ({ children }) => React2.createElement(React2.Fragment, null, children);
+  const PressableScale = ({ children, ...props }) =>
+    React2.createElement('PressableScaleStub', props, children);
   return {
     haptic: {
       light: jest.fn(),
@@ -75,7 +77,7 @@ jest.mock('../src/ui/motion', () => {
     shouldStagger: () => false,
     Reveal: Pass,
     Confetti: () => null,
-    PressableScale: Pass,
+    PressableScale,
     Bar: Pass,
     SteppedBar: Pass,
     Pulse: Pass,
@@ -102,6 +104,7 @@ jest.mock('../src/api/client', () => ({
 jest.mock('../src/api/cache', () => ({
   invalidateAfterClaim: jest.fn(),
   invalidate: jest.fn(),
+  subscribeCached: jest.fn(() => jest.fn()),
   // Pending like every other request on the first frame — the XP bar has to
   // render its empty track before the ladder totals land.
   fetchAndCache: jest.fn(() => new Promise(() => {})),
@@ -192,6 +195,43 @@ describe('ResultScreen', () => {
         );
       });
     }).not.toThrow();
+    act(() => tree.unmount());
+  });
+
+  it('opens the share stage for a simulator-sized route when Continue is pressed', () => {
+    const summary = {
+      ...result,
+      claim_area_m2: 0,
+      claim_ring: [],
+      claim_eligible: false,
+      tier: 'qualified_for_rewards_only',
+      qualification_reason: 'Complete at least 1 km to claim territory.',
+    };
+    const simulatedPath = Array.from({ length: 1600 }, (_, i) => {
+      const angle = (i / 1599) * Math.PI * 2;
+      return {
+        latitude: 1.36 + Math.sin(angle) * 0.006,
+        longitude: 103.82 + Math.cos(angle) * 0.006,
+        timestamp: i * 1000,
+      };
+    });
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ResultScreen
+          navigation={navigation}
+          route={{ params: { result: summary, path: simulatedPath } }}
+        />
+      );
+    });
+
+    const continueButton = tree.root.findByProps({ accessibilityLabel: 'Continue to sharing' });
+    expect(() => {
+      act(() => continueButton.props.onPress());
+    }).not.toThrow();
+    expect(
+      tree.root.findAllByProps({ accessibilityLabel: 'Finish and go home' }).length
+    ).toBeGreaterThan(0);
     act(() => tree.unmount());
   });
 });

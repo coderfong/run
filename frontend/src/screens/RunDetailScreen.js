@@ -1,9 +1,10 @@
 // Run detail — route on the game board, splits, claim outcome, kudos,
 // comments. Reached from the feed and the You tab's recent runs.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Heart, Send } from 'lucide-react-native';
+import { MoreHorizontal, Send } from 'lucide-react-native';
+import { useIsFocused } from '@react-navigation/native';
 
 import { api } from '../api/client';
 import { updateCached } from '../api/cache';
@@ -15,6 +16,10 @@ import { PressableScale, haptic } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
 import GameLottie from '../components/GameLottie';
+import ReactionBar, { ReactionTrigger } from '../components/ReactionBar';
+import { useRunReactions } from '../hooks/useRunReactions';
+import AppIcon from '../components/AppIcon';
+import { openSafetyActions } from '../utils/safety';
 
 const km = (m) => (m / 1000).toFixed(2);
 
@@ -43,7 +48,7 @@ function timeAgo(iso) {
   return `${Math.floor(s / 86400)}d`;
 }
 
-export default function RunDetailScreen({ route }) {
+export default function RunDetailScreen({ navigation, route }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
@@ -64,6 +69,18 @@ export default function RunDetailScreen({ route }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [kudosFx, setKudosFx] = useState(0);
+  const [reactOpen, setReactOpen] = useState(false);
+  const screenFocused = useIsFocused();
+
+  useEffect(() => {
+    if (!screenFocused) setReactOpen(false);
+  }, [screenFocused]);
+
+  // `d` is undefined until the first fetch or cache hit lands, which is fine:
+  // the summary starts empty and fills in with everything else.
+  const { reactions, mine, burst, react } = useRunReactions(runId, d, (r) => {
+    setD((p) => (p ? { ...p, reactions: r.reactions, my_reaction: r.my_reaction } : p));
+  });
 
   const sendComment = async () => {
     const body = draft.trim();
@@ -119,6 +136,10 @@ export default function RunDetailScreen({ route }) {
   const path = (d.path || []).map(([lon, lat]) => ({ latitude: lat, longitude: lon }));
   const ring = (d.territory_rings?.[0] || []).map(([lon, lat]) => ({ latitude: lat, longitude: lon }));
   const slowest = d.splits.length ? Math.max(...d.splits.map((s) => s.seconds)) : 1;
+  // Reactions are deliberately separate from comments. Older servers may
+  // still return sticker-only rows; omit those instead of putting emojis back
+  // into the discussion.
+  const textComments = (comments || []).filter((cm) => cm.body?.trim());
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
@@ -126,7 +147,7 @@ export default function RunDetailScreen({ route }) {
       {/* map */}
       <View style={styles.map}>
         {MAP_READY && path.length > 1 ? (
-          <GameMap theme="dark" initialCenter={path[0]} initialZoom={14}>
+          <GameMap initialCenter={path[0]} initialZoom={14}>
             {ring.length >= 3 && <TerritoryFill id="d-terr" points={ring} fillColor={c.stroke} strokeColor={c.stroke} fillOpacity={0.35} />}
             <Trail id="d-trail" points={path} color={c.stroke} width={5} />
             <MapPoint id="d-start" point={path[0]} color={c.stroke} />
@@ -146,12 +167,50 @@ export default function RunDetailScreen({ route }) {
         </View>
         <View style={styles.kudosSlot}>
           {kudosFx > 0 ? <GameLottie name="kudos" size={96} trigger={kudosFx} style={styles.kudosFx} /> : null}
-          <PressableScale onPress={kudos} style={styles.kudos} accessibilityRole="button" accessibilityLabel="Give kudos">
-            <Heart size={20} color={d.kudoed ? c.stroke : colors.textMuted} fill={d.kudoed ? c.stroke : 'transparent'} />
-            <Text style={[type.bodySmBold, { color: d.kudoed ? c.stroke : colors.textMuted }]}>{d.kudos_count}</Text>
-          </PressableScale>
+          <Row gap={2}>
+            {!d.is_you ? (
+              <PressableScale
+                onPress={() => openSafetyActions({
+                  userId: d.user_id,
+                  username: d.username,
+                  context: `run ${runId}`,
+                  onBlocked: () => navigation.goBack(),
+                })}
+                style={styles.kudos}
+                accessibilityRole="button"
+                accessibilityLabel={`Safety options for ${d.username}`}
+              >
+                <MoreHorizontal size={24} color={colors.textMuted} />
+              </PressableScale>
+            ) : null}
+            <ReactionTrigger
+              mine={mine}
+              active={reactOpen}
+              color={c.stroke}
+              onPress={() => { haptic.light(); setReactOpen((v) => !v); }}
+            />
+            <PressableScale onPress={kudos} style={styles.kudos} accessibilityRole="button" accessibilityLabel="Give kudos">
+              <AppIcon name="like" size={28} />
+              <Text style={[type.bodySmBold, { color: d.kudoed ? c.stroke : colors.textMuted }]}>{d.kudos_count}</Text>
+            </PressableScale>
+          </Row>
         </View>
       </Row>
+
+      {/* Chips always; the picker only when asked for. This page used to show
+          all eight tiles permanently, which put a control block between the
+          runner's name and their splits on a screen you opened to read the
+          run. */}
+      <ReactionBar
+        reactions={reactions}
+        mine={mine}
+        burst={burst}
+        color={c.stroke}
+        onReact={react}
+        open={reactOpen}
+        onRequestClose={() => setReactOpen(false)}
+        style={{ marginTop: space.md }}
+      />
 
       <Row between style={{ marginTop: space.lg }}>
         <StatValue size="md" label="Distance" value={km(d.distance_m)} unit="km" />
@@ -160,9 +219,11 @@ export default function RunDetailScreen({ route }) {
         <StatValue size="md" label={d.closed_loop ? 'Claimed' : 'No claim'} value={d.closed_loop ? (d.area_m2 / 1e6).toFixed(d.area_m2 >= 1e5 ? 2 : 3) : '·'} unit={d.closed_loop ? 'km²' : ''} color={d.closed_loop ? c.stroke : colors.textDim} />
       </Row>
 
-      {/* splits */}
+      {/* splits — drawn box. The two panels on this page are the two blocks
+          of detail you came here to read, so they are the ones that earn the
+          ink; the map and the stat row above are already strong shapes. */}
       {d.splits.length > 0 && (
-        <Card style={{ marginTop: space.xl }}>
+        <Card frame="panel" frameTint={c.stroke} style={[styles.framedPanel, { marginTop: space.xl }]}>
           <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>Splits</Text>
           {d.splits.map((s) => (
             <View key={s.km} style={styles.splitRow}>
@@ -177,26 +238,46 @@ export default function RunDetailScreen({ route }) {
       )}
 
       {/* comments */}
-      <Card style={{ marginTop: space.xl }}>
+      <Card frame="panel" frameTint={c.stroke} style={[styles.framedPanel, { marginTop: space.xl }]}>
         <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>
-          Comments{comments?.length ? ` · ${comments.length}` : ''}
+          Comments{textComments.length ? ` · ${textComments.length}` : ''}
         </Text>
         {comments === undefined ? (
           <Skeleton width="100%" height={16} />
-        ) : comments.length === 0 ? (
+        ) : textComments.length === 0 ? (
           <Text style={[type.caption, { marginBottom: space.sm }]}>Be the first to say something.</Text>
         ) : (
-          comments.map((cm) => (
+          textComments.map((cm) => (
             <View key={cm.id} style={styles.commentRow}>
-              <Text style={type.bodySmBold}>
-                {cm.username}
-                {cm.is_you ? ' · you' : ''}
-                <Text style={[type.caption, { color: colors.textDim }]}>  {timeAgo(cm.created_at)}</Text>
-              </Text>
+              <Row between>
+                <Text style={type.bodySmBold}>
+                  {cm.username}
+                  {cm.is_you ? ' · you' : ''}
+                  <Text style={[type.caption, { color: colors.textDim }]}>  {timeAgo(cm.created_at)}</Text>
+                </Text>
+                {!cm.is_you ? (
+                  <PressableScale
+                    onPress={() => openSafetyActions({
+                      userId: cm.user_id,
+                      username: cm.username,
+                      context: `comment ${cm.id} on run ${runId}`,
+                      onBlocked: (blockedId) => setComments((prev) =>
+                        (prev || []).filter((item) => item.user_id !== blockedId)
+                      ),
+                    })}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Safety options for ${cm.username}`}
+                  >
+                    <MoreHorizontal size={20} color={colors.textMuted} />
+                  </PressableScale>
+                ) : null}
+              </Row>
               <Text style={[type.bodySm, { marginTop: 2 }]}>{cm.body}</Text>
             </View>
           ))
         )}
+
         <View style={styles.commentInputRow}>
           <TextInput
             style={styles.commentInput}
@@ -235,6 +316,14 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.bgElevated, overflow: 'hidden' },
   bar: { height: '100%', borderRadius: 4 },
   splitPace: { ...type.statSm, color: colors.textMuted, width: 52, textAlign: 'right' },
+  // The panel art has a clipped upper-left corner. Its ordinary line clearance
+  // is enough for straight edges but not for that diagonal.
+  framedPanel: {
+    paddingTop: 40,
+    paddingLeft: 28,
+    paddingRight: 24,
+    paddingBottom: 24,
+  },
 
   commentRow: { marginBottom: space.md },
   commentInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, marginTop: space.sm },

@@ -206,21 +206,33 @@ def rival_takes_mine(
     if taken_from_me <= 0:
         raise HTTPException(409, "the dev rival did not take any of your land")
 
+    capture_id = f"dev:{uuid.uuid4()}"
+    event_data = {
+        "capture_id": capture_id,
+        "taken_m2": taken_from_me,
+        "lat": centre.y,
+        "lon": centre.x,
+        "attacker_id": str(rival.id),
+        "attacker_username": rival.username,
+        "attacker_avatar": rival.avatar or {},
+    }
     background.add_task(
         notify,
         [str(user.id)],
         "stolen",
-        "Your land is under attack",
+        "Your land was captured",
         f"{rival.username} took {round(taken_from_me):,} m² of your territory.",
-        None,
+        event_data,
         str(rival.id),
     )
     return {
         "ok": True,
         "rival_id": str(rival.id),
         "rival_username": rival.username,
+        "rival_avatar": rival.avatar or {},
         "taken_m2": taken_from_me,
         "territory_id": str(territory.id) if territory else None,
         "lat": centre.y,
         "lon": centre.x,
+        "capture_id": capture_id,
     }

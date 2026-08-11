@@ -30,10 +30,9 @@ import {
   normaliseDeg,
   turnFromRun,
 } from './placement';
-import { darkColors, radius, space, toon, toonRadius, type, withAlpha } from '../../theme';
+import { radius, space, toon, toonRadius, useTheme, useThemedStyles, useThemedType, withAlpha } from '../../theme';
 import { haptic, PressableScale } from '../../ui/motion';
 
-const D = darkColors;
 
 // Land reads in m² until it stops being readable — a claim is usually a
 // couple of km², but the interesting numbers (what you took off someone) are
@@ -62,6 +61,8 @@ const ACTION_LABEL = {
 };
 
 function StatRow({ label, value, color, dim }) {
+  const { colors: D } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.statRow}>
       <View style={[styles.swatch, { backgroundColor: color, opacity: dim ? 0.35 : 1 }]} />
@@ -83,6 +84,8 @@ function StatRow({ label, value, color, dim }) {
 // magnetism, because "put it back where I earned it" is a thing runners
 // actually want and hitting an exact float by dragging is not possible.
 function PositionRail({ t, baseT, accent, onChange, onCommit, onInteractionChange, disabled }) {
+  const { colors: D } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [width, setWidth] = useState(0);
   const widthRef = useRef(0);
   widthRef.current = width;
@@ -190,6 +193,8 @@ const DIAL = 112;
 const DIAL_R = DIAL / 2 - 12;
 
 function RotationDial({ deg, accent, onChange, onCommit, onInteractionChange, disabled }) {
+  const { colors: D } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const centre = DIAL / 2;
   const degRef = useRef(deg);
   degRef.current = deg;
@@ -312,6 +317,7 @@ function RotationDial({ deg, accent, onChange, onCommit, onInteractionChange, di
 // missing rather than blanking the card — the runner is looking at a real
 // answer, just not yet a movable one.
 export function ChooseAttackPending({ team }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.pendingCard}>
       <ActivityIndicator size="small" color={team.glow} />
@@ -339,6 +345,8 @@ export default function ChooseAttack({
   onInteractionChange,
   disabled,
 }) {
+  const { colors: D } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const p = placement;
   const baseT = typeof options?.base_t === 'number' ? options.base_t : 0.5;
   const atRest = Math.abs(pose.t - baseT) < 1e-6 && normaliseDeg(pose.deg) === 0;
@@ -477,13 +485,13 @@ export default function ChooseAttack({
         <View style={styles.faces}>
           {takeable.slice(0, 5).map((r) => (
             <View key={r.user_id} style={styles.face}>
-              <CharacterBust equipped={r.avatar} size={30} ring={D.danger} bg="rgba(21,24,29,0.9)" />
+              <CharacterBust equipped={r.avatar} size={30} ring={D.danger} bg={D.cardAlt} />
               <Text style={styles.faceName} numberOfLines={1}>{r.username}</Text>
             </View>
           ))}
           {held.slice(0, 3).map((r) => (
             <View key={r.user_id} style={[styles.face, { opacity: 0.55 }]}>
-              <CharacterBust equipped={r.avatar} size={30} ring={D.border} bg="rgba(21,24,29,0.9)" />
+              <CharacterBust equipped={r.avatar} size={30} ring={D.border} bg={D.cardAlt} />
               <Text style={styles.faceName} numberOfLines={1}>{r.username}</Text>
             </View>
           ))}
@@ -509,7 +517,7 @@ export default function ChooseAttack({
 
 const HANDLE = 26;
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   recRow: { flexDirection: 'row', gap: space.sm, marginBottom: space.md, flexWrap: 'wrap' },
   recChip: {
     flex: 1,
@@ -530,16 +538,16 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     gap: space.sm,
   },
-  railEnd: { ...type.captionMedium, color: D.textDim, letterSpacing: 1, fontSize: 9 },
-  railHint: { ...type.caption, color: D.textDim, flex: 1, textAlign: 'center', fontSize: 10 },
+  railEnd: { ...type.captionMedium, color: colors.textDim, letterSpacing: 1, fontSize: 9 },
+  railHint: { ...type.caption, color: colors.textDim, flex: 1, textAlign: 'center', fontSize: 10 },
   // A generous touch target: the rail is 8px of paint but 40px of finger.
   railTouch: { height: 40, justifyContent: 'center' },
   railTrack: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
     borderWidth: 1,
-    borderColor: D.border,
+    borderColor: colors.border,
   },
   railFill: { position: 'absolute', height: 6, borderRadius: 3 },
   // Where the claim sits if nothing is touched — the run as it was run.
@@ -564,10 +572,10 @@ const styles = StyleSheet.create({
   dialTouch: { width: DIAL, height: DIAL },
   dialText: { flex: 1 },
   dialValue: { ...type.statSm, marginTop: 2, marginBottom: 3 },
-  dialHint: { ...type.caption, color: D.textDim, fontSize: 10, lineHeight: 14 },
+  dialHint: { ...type.caption, color: colors.textDim, fontSize: 10, lineHeight: 14 },
 
   breakdown: {
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
     borderRadius: toonRadius.cell,
     padding: space.md,
     marginBottom: space.md,
@@ -575,55 +583,55 @@ const styles = StyleSheet.create({
   breakdownStale: { opacity: 0.55 },
   statRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: 7 },
   swatch: { width: 10, height: 10, borderRadius: 3 },
-  statLabel: { ...type.bodySm, color: D.textMuted, flex: 1 },
+  statLabel: { ...type.bodySm, color: colors.textMuted, flex: 1 },
   statValue: { ...type.bodySmBold },
   totalRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: D.border,
+    borderTopColor: colors.border,
     paddingTop: space.sm,
     marginTop: 3,
   },
-  totalLabel: { ...type.captionMedium, color: D.textDim, letterSpacing: 1 },
+  totalLabel: { ...type.captionMedium, color: colors.textDim, letterSpacing: 1 },
   totalValue: { ...type.statSm },
 
   costCard: {
     borderWidth: 1.5,
-    borderColor: D.border,
+    borderColor: colors.border,
     borderRadius: toonRadius.cell,
     padding: space.md,
     marginBottom: space.md,
   },
-  costAction: { ...type.bodySmBold, color: D.text },
+  costAction: { ...type.bodySmBold, color: colors.text },
 
   faces: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: space.sm, marginBottom: space.md },
   face: { alignItems: 'center', width: 46 },
-  faceName: { ...type.caption, color: D.textDim, fontSize: 9, marginTop: 2 },
-  facesNote: { ...type.caption, color: D.textMuted, flex: 1, minWidth: 120 },
+  faceName: { ...type.caption, color: colors.textDim, fontSize: 9, marginTop: 2 },
+  facesNote: { ...type.caption, color: colors.textMuted, flex: 1, minWidth: 120 },
 
-  defendedNote: { ...type.caption, color: D.textDim, marginBottom: space.md },
+  defendedNote: { ...type.caption, color: colors.textDim, marginBottom: space.md },
 
   blockedCard: {
     borderLeftWidth: 4,
-    borderLeftColor: D.danger,
-    backgroundColor: D.cardAlt,
+    borderLeftColor: colors.danger,
+    backgroundColor: colors.cardAlt,
     borderRadius: toonRadius.cell,
     padding: space.md,
     marginBottom: space.md,
   },
-  blockedText: { ...type.bodySmBold, color: D.text },
+  blockedText: { ...type.bodySmBold, color: colors.text },
 
   pendingCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
     borderRadius: toonRadius.cell,
     padding: space.md,
     marginBottom: space.md,
   },
-  pendingTitle: { ...type.bodySmBold, color: D.text },
-  pendingBody: { ...type.caption, color: D.textDim, marginTop: 2 },
+  pendingTitle: { ...type.bodySmBold, color: colors.text },
+  pendingBody: { ...type.caption, color: colors.textDim, marginTop: 2 },
 });

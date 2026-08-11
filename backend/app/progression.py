@@ -87,34 +87,20 @@ _RARITY_UP = {"common": "rare", "rare": "epic", "epic": "legendary", "legendary"
 # this list exists to kill.
 # EXCLUSIVITY: every id below is premium-ONLY art with no stat route at all —
 # each carries `unlock: premiumOnly` in the client catalogue, so isUnlocked
-# returns false until a claimed tier writes the user_unlocks row. Free players
-# lose nothing (their level-gated crown/wings/shields are untouched); the pass
-# adds seventeen items they simply never had. Rarity skews epic/legendary on
-# purpose — a paid tier handing over a common tee reads as a scam.
-# 2026-08-08: the bottom and footwear slots were emptied, so the seven tiers
-# that handed over a pair of shorts, joggers or a skirt had to name something
-# else. The five free tiers moved to items that were already in the catalogue
-# and unclaimed. The two PRO tiers moved to wave-5 tops promoted to
-# premium-only — brand new art nobody had earned, so the rule above still
-# holds: free players lose nothing, and the pass keeps all seventeen of its
-# cosmetic tiers rather than degrading two of them to an energy pack.
+# returns false until a claimed tier writes the user_unlocks row. The pass adds
+# seventeen items unavailable from the free track or coin shop. Rarity skews
+# epic/legendary on purpose — a paid tier handing over a common tee reads as a scam.
 PREMIUM_ITEMS = {
     2: ("headwear:laurel", "Laurel wreath"),
     4: ("glasses:monocle", "Monocle"),
     6: ("top:varsity", "Varsity jacket"),
     8: ("top:k7t", "Zip gilet"),
     12: ("headwear:wolfears", "Wolf ears"),
-    # Refilled 2026-07-31 with wave-3 PRO art. Both are new items, never on
-    # the free track, so nothing was taken from non-payers to fill them.
     14: ("accessory:boombox", "Boombox"),
-    26: ("headwear:kabuto", "Kabuto"),
     16: ("top:aurorajacket", "Aurora jacket"),
     18: ("glasses:mirrorvisor", "Mirror visor"),
     22: ("headwear:punkcrown", "Punk crown"),
-    # Champion jersey was cut from the catalogue 2026-08-06. Knight armour
-    # takes the tier: it is legendary, it was not on either track, and PRO gets
-    # it here at 28 instead of level 46 or 2000 coins. Early access rather than
-    # an exclusive, so nothing was taken from non-payers to fill the hole.
+    26: ("headwear:kabuto", "Kabuto"),
     28: ("top:knightarmor", "Knight armour"),
     32: ("headwear:flamecrown", "Flame crown"),
     34: ("glasses:cybershades", "Cyber shades"),
@@ -149,61 +135,56 @@ def premium_rewards_for_level(level: int) -> list[dict]:
     return [{"kind": "energy", "key": f"+{amount}", "label": f"+{amount}"}]
 
 
-# The free track's filler tiers. Every level that isn't a border/shape/FX/box
-# milestone hands over a NAMED cosmetic, keyed "<slot>:<id>" against
+# The free track's cosmetic tiers. Every level that isn't a box milestone
+# hands over a NAMED cosmetic, keyed "<slot>:<id>" against
 # frontend/src/config/cosmetics.js, so the ladder can draw the actual item art.
 # A generic "Collectible" tile with a stand-in icon is a broken promise — the
 # player can't tell what they're running toward.
 #
-# Ordered roughly by desirability so the ladder escalates. None of these are in
-# PREMIUM_ITEMS, and none are the five level-gated items (crown, angel wings,
-# neon wings, sport shield, ski goggles) that free players already earn.
+# The eight-level bands deliberately step common -> rare -> epic -> legendary,
+# cover all eight wearable slots, and use items marked `passOnly` client-side.
+# With no parallel shop/stat route, claiming a tier always adds something new.
 FREE_ITEMS = {
-    # 1 and 43 used to be border tiers; borders moved to rank, so they get a
-    # real item rather than falling through to the generic energy fallback.
-    1: ("headwear:catears", "Cat ears"),
-    2: ("face:grump", "Grump"),
+    1: ("face:grump", "Grump"),
+    2: ("headwear:catears", "Cat ears"),
     3: ("hair:messy", "Messy"),
-    4: ("top:polo", "PE polo"),
-    6: ("top:sportpolo", "Sport polo"),
-    7: ("face:wink", "Wink"),
-    # 8, 32 and 44 used to be claim-shape unlocks (see SHAPE_UNLOCKS above).
-    8: ("headwear:snapback", "Snapback"),
-    9: ("hair:buzz", "Buzz cut"),
-    11: ("headwear:cap", "Cap"),
-    12: ("headwear:cowboyhat", "Cowboy hat"),
-    13: ("top:greyhoodie", "Hoodie"),
-    14: ("headwear:bucket", "Bucket hat"),
-    16: ("glasses:rects", "Rects"),
-    17: ("hair:softwaves", "Soft waves"),
-    18: ("face:tongueout", "Cheeky"),
-    19: ("top:stripetee", "Stripe tee"),
-    21: ("headwear:bandana", "Bandana"),
-    22: ("top:windbreaker", "Windbreaker"),
-    23: ("hair:braids", "Braided pigtails"),
-    24: ("glasses:steampunk", "Steampunk goggles"),
-    26: ("top:singlet", "Race singlet"),
-    27: ("face:stareyes", "Star eyes"),
-    28: ("glasses:roundgold", "Round golds"),
+    4: ("top:sportpolo", "Sport polo"),
+    6: ("face:determined", "Game face"),
+    7: ("headwear:sweatband", "Sweatband"),
+    8: ("top:greyhoodie", "Hoodie"),
+    9: ("hair:flow", "Flow"),
+    11: ("headwear:bandana", "Bandana"),
+    12: ("glasses:rects", "Rectangle shades"),
+    13: ("hair:roundfro", "Round fro"),
+    14: ("bottom:wb025", "Red running shorts"),
+    16: ("top:labcoat", "Lab coat"),
+    17: ("footwear:wf005", "Cream runners"),
+    18: ("face:whoa", "Whoa"),
+    19: ("accessory:goldmedal", "Gold medal"),
+    21: ("headwear:pombeanie", "Pom beanie"),
+    22: ("bottom:wb050", "Mint running shorts"),
+    23: ("glasses:cleargoggles", "Clear goggles"),
+    24: ("headwear:tiara", "Tiara"),
+    26: ("top:puffer", "Puffer jacket"),
+    27: ("face:gasp", "Gasp"),
+    28: ("footwear:wf010", "Navy runners"),
     29: ("accessory:hydrovest", "Race vest"),
-    31: ("headwear:beanie", "Beanie"),
-    32: ("glasses:aviators", "Aviators"),
-    33: ("hair:spacebuns", "Space buns"),
-    34: ("top:sweater", "Sweater"),
-    36: ("top:puffer", "Puffer jacket"),
-    37: ("accessory:dogtags", "Dog tags"),
-    # id kept (users may be wearing it, and this tier may already be claimed);
-    # the new face art has no heart eyes, so it now points at the dizzy face.
-    38: ("face:hearteyes", "Dizzy"),
-    39: ("headwear:piratehat", "Pirate hat"),
-    41: ("glasses:cleargoggles", "Clear goggles"),
-    42: ("hair:surfer", "Surfer"),
-    43: ("accessory:katanas", "Twin blades"),
-    44: ("accessory:trophychain", "Trophy chain"),
-    46: ("top:oversized", "Oversized tee"),
-    47: ("headwear:bikehelmet", "Bike helmet"),
-    48: ("accessory:redcape", "Hero cape"),
-    49: ("accessory:goldmedal", "Gold medal"),
+    31: ("hair:topknot", "Top knot"),
+    32: ("glasses:sportshield", "Sport shield"),
+    33: ("top:o4t", "Ribbed tee · Black"),
+    34: ("bottom:wb110", "Charcoal race shorts"),
+    36: ("footwear:wf011", "Volt runners"),
+    37: ("headwear:bikehelmet", "Bike helmet"),
+    38: ("face:rage", "Rage"),
+    39: ("accessory:katanas", "Twin blades"),
+    41: ("hair:surfer", "Surfer"),
+    42: ("glasses:steampunk", "Steampunk goggles"),
+    43: ("top:o49t", "Baseball jacket · Red"),
+    44: ("footwear:wf044", "Pink sprint shoes"),
+    46: ("headwear:spacehelmet", "Space helmet"),
+    47: ("headwear:royalcrown", "Royal crown"),
+    48: ("accessory:neonwings", "Neon wings"),
+    49: ("glasses:onimask", "Oni mask"),
 }
 
 

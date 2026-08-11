@@ -31,7 +31,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { haptic } from '../../ui/motion';
+import { CAPTURE_LAYER } from '../../effects/layers';
+import { useTheme, useThemedStyles } from '../../theme';
 import { CharacterBust } from '../character/CharacterRig';
 import { attackerFace, defenderFace, withFace } from './expressions';
 import { timingFor } from './timing';
@@ -46,7 +47,6 @@ const DEFENDER_SIZE = 40;
 // than three full composed rigs on a map is both unreadable and expensive.
 const MAX_DEFENDERS = 3;
 
-const SPARK = { white: '#FFFFFF' };
 
 // Beat offsets from the start of the encounter, derived from the shared
 // timing table so retuning one place retunes the component.
@@ -91,6 +91,8 @@ function clampOrigin(point, bounds) {
 // ---------------------------------------------------------------------------
 
 function Defender({ defender, index, variant, schedule, reducedMotion, playToken, registerTimer }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const offsetX = 108 + index * 26;
   const offsetY = index % 2 === 0 ? 6 : -14;
 
@@ -226,7 +228,7 @@ function Defender({ defender, index, variant, schedule, reducedMotion, playToken
         equipped={equipped}
         size={DEFENDER_SIZE}
         ring={defender.clan_color?.stroke}
-        bg="rgba(21,24,29,0.9)"
+        bg={colors.card}
       />
     </Animated.View>
   );
@@ -246,6 +248,8 @@ export default function CaptureEncounter({
   reducedMotion = false,
   playToken = 0,
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const T = timingFor(reducedMotion);
   const shown = useMemo(() => (defenders || []).slice(0, MAX_DEFENDERS), [defenders]);
   const overflow = Math.max(0, (defenders?.length || 0) - shown.length);
@@ -289,7 +293,6 @@ export default function CaptureEncounter({
     streakOpacity.value = 0;
 
     const fireImpact = () => {
-      haptic.medium();
       setImpactFx((token) => token + 1);
       impactRef.current?.();
     };
@@ -478,16 +481,17 @@ export default function CaptureEncounter({
         <CharacterBust
           equipped={attackerEquipped}
           size={ATTACKER_SIZE}
-          bg="rgba(21,24,29,0.92)"
+          bg={colors.card}
         />
       </Animated.View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) => StyleSheet.create({
   scene: {
     position: 'absolute',
+    zIndex: CAPTURE_LAYER.CHARACTER,
     width: SCENE.width,
     height: SCENE.height,
     alignItems: 'center',
@@ -515,7 +519,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     height: 3,
     borderRadius: 2,
-    backgroundColor: SPARK.white,
+    backgroundColor: colors.text,
     opacity: 0.8,
   },
   overflowBadge: {
@@ -525,7 +529,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 9,
-    backgroundColor: 'rgba(21,24,29,0.92)',
+    backgroundColor: colors.card,
   },
-  overflowText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  overflowText: { color: colors.text, fontSize: 12, fontWeight: '700' },
 });

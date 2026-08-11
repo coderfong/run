@@ -4,10 +4,12 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
+import { useIsFocused } from '@react-navigation/native';
 
 import { Award, ChevronRight, Flame, Medal, Trophy } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
+import { frameVariant } from '../ui/frameRegistry';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
@@ -20,12 +22,13 @@ import PortraitBorder from '../components/PortraitBorder';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
 import StreakCalendar from '../components/StreakCalendar';
 import PrivacySettings from '../components/PrivacySettings';
+import HealthSyncSettings from '../components/HealthSyncSettings';
 import RecoveryEmail from '../components/RecoveryEmail';
 import RivalCard from '../components/RivalCard';
 import { Bar, PressableScale, Reveal, haptic } from '../ui/motion';
-import { getHealthEnabled, setHealthEnabled, requestHealthPermission } from '../health';
 import { brand, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { levelBandColor } from '../config/progression';
+import { IAP_ENABLED } from '../config/releaseFeatures';
 import { COPY as PASERBY_COPY } from '../config/paserby';
 import { Screen, Card, Row, Button, StatValue, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
@@ -63,6 +66,7 @@ const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
 // Hosted on the repurposed bido-frontend site (Next.js /privacy route).
 // www resolves cleanly over HTTPS (the apex has a cert quirk).
 const PRIVACY_POLICY_URL = 'https://www.bido.live/privacy';
+const SUPPORT_URL = 'https://www.bido.live/support';
 
 // The PRO gold, shared with the first-run step's wordmark and the pass's own
 // gold track, so the three places it is sold read as one thing.
@@ -80,7 +84,20 @@ const km2Worklet = (m2) => {
 function StatTile({ label, value, unit, accent, countTo, format }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <Card style={styles.tile} padded>
+    // Drawn boxes. The stat wall is the one place on You where the same shape
+    // repeats six times, so the hand-drawn edge does the most work here: six
+    // identical rounded rects read as a spreadsheet, six drawn boxes read as
+    // a page out of a notebook.
+    //
+    // The chip group, not `panel`. A tile is about 105pt across and `panel` is
+    // a 152pt drawing whose left corner alone is 39 of those — drawn on a tile
+    // it filled a third of the width with one corner and squeezed the label
+    // into a column so narrow that "Distance" broke across two lines. The chip
+    // frames are drawn at 44pt, so at tile size their corners are corners.
+    //
+    // Dealt from the group by label, so the six tiles are not six prints of one
+    // drawing — which is the thing that gives a hand-drawn look away.
+    <Card frame={frameVariant('chip', label)} frameTint={accent} style={styles.tile} padded>
       <StatValue
         size="md"
         label={label}
@@ -102,6 +119,10 @@ export default function ProfileScreen({ navigation }) {
   const { color } = useClan();
   const { equipped } = useAvatar();
   const { trailGlow, setTrailGlow } = useSettings();
+  // The drift in the header stops when the tab is not the one you are on.
+  // This is a tab screen, so without it the leaves keep crossing for the whole
+  // session behind Home, the map and the shop.
+  const focused = useIsFocused();
   const accent = color.stroke;
 
   // The scene behind the runner — daytime kerb in light mode, lamp-lit night
@@ -146,7 +167,6 @@ export default function ProfileScreen({ navigation }) {
     select: (d) => d.rivals || [],
   });
 
-  const [healthOn, setHealthOn] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(user?.username || '');
   const [busy, setBusy] = useState(false);
@@ -182,10 +202,6 @@ export default function ProfileScreen({ navigation }) {
     if (rivals?.length) preloadRunnerAssets(rivals);
   }, [rivals]);
 
-  useEffect(() => {
-    getHealthEnabled().then(setHealthOn);
-  }, []);
-
   const togglePref = async (key) => {
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
@@ -202,13 +218,6 @@ export default function ProfileScreen({ navigation }) {
       setPaserby({ ...(paserby || {}), enabled: !next });
       toast.error('Could not change that setting');
     }
-  };
-
-  const toggleHealth = async () => {
-    const next = !healthOn;
-    setHealthOn(next);
-    await setHealthEnabled(next);
-    if (next) requestHealthPermission();
   };
 
   const saveUsername = async () => {
@@ -250,7 +259,9 @@ export default function ProfileScreen({ navigation }) {
           reserves the scene's full height so the stat wall below starts clear
           of it instead of floating over the road. */}
       <Reveal style={[styles.header, { minHeight: headerH }]}>
-        <SceneBackdrop variant="profile" minHeight={headerH} bleed />
+        {/* Wind through the scene. A no-op when the leaf art is not in the
+            build, so this line is safe whatever the asset selection says. */}
+        <SceneBackdrop variant="profile" minHeight={headerH} bleed ambient="leaves" playing={focused} />
         <PressableScale
           onPress={() => navigation.navigate('AvatarStudio')}
           accessibilityRole="button"
@@ -343,7 +354,7 @@ export default function ProfileScreen({ navigation }) {
         {energy && (
           <EnergyMeter
             status={energy}
-            onPress={() => setShopOpen(true)}
+            onPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
             style={{ alignSelf: 'stretch', marginTop: space.lg }}
           />
         )}
@@ -384,7 +395,7 @@ export default function ProfileScreen({ navigation }) {
           the dark on the left with nothing behind it. Everything about what
           PRO actually gives you is a tap away on the pass; a card on You that
           listed it was three paragraphs nobody read. */}
-      {progression && !progression.premium_active ? (
+      {IAP_ENABLED && progression && !progression.premium_active ? (
         <Reveal delay={110}>
           <PressableScale
             style={styles.proCard}
@@ -520,7 +531,7 @@ export default function ProfileScreen({ navigation }) {
       </Reveal>
 
       {/* recent runs */}
-      <SectionHeader title="Recent runs" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <SectionHeader framed frameTint={accent} title="Recent runs" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card padded={false}>
         {!runs ? (
           <View style={{ padding: space.lg }}>
@@ -550,7 +561,7 @@ export default function ProfileScreen({ navigation }) {
       </Card>
 
       {/* settings */}
-      <SectionHeader title="Settings" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <SectionHeader framed frameTint={accent} title="Settings" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card>
         <Text style={type.labelSm}>Username</Text>
         {editing ? (
@@ -614,7 +625,7 @@ export default function ProfileScreen({ navigation }) {
           on the Crossroads screen itself: somebody looking for the way out
           looks here first. Turning it off stops new encounters being made AND
           deletes the trace samples the matcher would have used. */}
-      <SectionHeader title="Crossed paths" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <SectionHeader framed frameTint={accent} title="Crossed paths" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card>
         <View style={styles.toggleRowInner}>
           <View style={{ flex: 1, paddingRight: space.md }}>
@@ -648,6 +659,9 @@ export default function ProfileScreen({ navigation }) {
       {/* route privacy — what other people see of your runs */}
       <PrivacySettings />
 
+      {/* apple health — renders nothing where there is no health store */}
+      <HealthSyncSettings />
+
       {/* appearance */}
       <SectionHeader title="Appearance" style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card>
@@ -672,18 +686,6 @@ export default function ProfileScreen({ navigation }) {
             />
           </View>
         ))}
-      </Card>
-
-      {/* health sync */}
-      <SectionHeader title="Health" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <Card>
-        <View style={styles.toggleRowInner}>
-          <View style={{ flex: 1, paddingRight: space.md }}>
-            <Text style={type.body}>Sync runs to Health</Text>
-            <Text style={type.caption}>Write each finished run to Apple Health / Health Connect. We never read your health data.</Text>
-          </View>
-          <Switch value={healthOn} onValueChange={toggleHealth} trackColor={{ true: accent }} />
-        </View>
       </Card>
 
       <Button title="Sign out" variant="secondary" onPress={signOut} style={{ marginTop: space.xl }} />
@@ -722,9 +724,18 @@ export default function ProfileScreen({ navigation }) {
       <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Privacy policy">
         <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Privacy Policy</Text>
       </TouchableOpacity>
-      <Text style={styles.legal}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
-      <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
-      <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={reloadProgression} />
+      <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(SUPPORT_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Support">
+        <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Support</Text>
+      </TouchableOpacity>
+      <Text style={styles.legal}>Pixel effects by Will Tice</Text>
+      <Text style={[styles.legal, { marginTop: space.xs }]}>Additional VFX by Pixel VFX Studio, RiaKare and Luis Zuno</Text>
+      <Text style={[styles.legal, { marginTop: space.xs }]}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
+      {IAP_ENABLED ? (
+        <>
+          <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
+          <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={reloadProgression} />
+        </>
+      ) : null}
     </Screen>
   );
 }

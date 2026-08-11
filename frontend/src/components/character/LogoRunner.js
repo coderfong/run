@@ -38,11 +38,6 @@ const HEAD_TILT_DEG = 12;
 const BODY_SCALE = 0.74;
 const HEAD_SCALE = 1.4;
 
-// Cut the head window at the CHIN — the head plate's own outline then forms the
-// bottom edge. Any lower and the rig's shoulders come through as a cream band
-// across the logo's chest.
-const CHIN_OF_BODY = (8 + 218) / 640;
-
 // Nudge down: the mark's head sat slightly proud of the shoulders, and a
 // rounder head needs to sit into them.
 const HEAD_DROP = 0.01;
@@ -73,9 +68,6 @@ export default function LogoRunner({ equipped, size = 120, color = '#FFFFFF', fl
   const rigH = rigW * BODY_RATIO;
   const headroom = HEADROOM * rigH;
 
-  // The window that shows the head and nothing below the collar. Full width,
-  // because hair and headwear reach past the skull on both sides.
-  const windowH = headroom + CHIN_OF_BODY * rigH;
   const headCentreY = headroom + HEAD_CY_OF_BODY * rigH;
 
   return (
@@ -101,23 +93,32 @@ export default function LogoRunner({ equipped, size = 120, color = '#FFFFFF', fl
         fadeDuration={0}
       />
 
+      {/* The rig in HEAD-ONLY mode, anchored so its head sits in the slot the
+          mark's own head came out of.
+
+          It used to be the whole rig behind a rectangular window cut at the
+          chin. That window was the bug: the shirt collar and the shoulders sit
+          a few pixels ABOVE the chin in the body art, so they came through as a
+          cream band under the jaw, and any hair past the jaw was sliced off in
+          the same straight line. Drawing only the head means there is nothing
+          below the neck to hide, so there is no window and nothing gets a flat
+          edge — long hair simply falls over the mark the way it falls over the
+          doll. */}
       <View
         style={{
           position: 'absolute',
           left: bodyLeft + HEAD_SLOT.cx * bodySize - rigW / 2,
           top: bodyTop + (HEAD_SLOT.cy + HEAD_DROP) * bodySize - headCentreY,
           width: rigW,
-          height: windowH,
-          overflow: 'hidden',
+          // Tilt about the head itself. Without an explicit origin the rotation
+          // pivots on the centre of this box — which is now the full height of
+          // the rig rather than the old chin-height window, and would swing the
+          // face sideways off the neck.
+          transformOrigin: [rigW / 2, headCentreY, 0],
           transform: [{ rotate: `${HEAD_TILT_DEG}deg` }],
         }}
       >
-        {/* The whole rig, offset so only the head shows through. Drawing the
-            rig rather than a head image is what keeps face, hair, headwear and
-            skin tone in step with whatever the player is wearing. */}
-        <View style={{ position: 'absolute', left: 0, top: 0 }}>
-          <CharacterRig equipped={equipped} size={rigW} animate={false} />
-        </View>
+        <CharacterRig equipped={equipped} size={rigW} animate={false} headOnly />
       </View>
     </View>
   );

@@ -15,9 +15,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import { space, toonRadius, toonSurface, type, useTheme } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
+import { framePose } from '../ui/frameRegistry';
 import { useAccent } from '../hooks/useAccent';
 import { useRecording } from '../state/recording';
 import AppIcon from '../components/AppIcon';
+import Framed from '../components/ui/Framed';
 import { preloadScreenImages } from '../config/screenAssets';
 
 const INACTIVE = '#9ca3af';
@@ -119,11 +121,14 @@ export default function TabBar({ state, navigation }) {
     // The outer view keeps the safe-area gap so screen content never runs under
     // the floating pill.
     <View style={[styles.dock, { paddingBottom: insets.bottom ? insets.bottom - 4 : space.sm }]}>
-      <View
-        style={[
-          styles.bar,
-          { backgroundColor: colors.card, ...surface.outline, ...surface.shadow },
-        ]}
+      <Framed
+        frame="panel"
+        tint={accent}
+        fill={colors.card}
+        pose={framePose('main-navigation')}
+        inset={false}
+        style={[styles.bar, surface.shadow]}
+        contentStyle={styles.barContent}
       >
         {left.map(item)}
         <RecordButton
@@ -132,7 +137,7 @@ export default function TabBar({ state, navigation }) {
           onPress={() => { haptic.light(); navigation.navigate('Record'); }}
         />
         {right.map(item)}
-      </View>
+      </Framed>
     </View>
   );
 }
@@ -140,9 +145,11 @@ export default function TabBar({ state, navigation }) {
 const styles = StyleSheet.create({
   dock: { paddingHorizontal: space.md, paddingTop: space.sm, backgroundColor: 'transparent' },
   bar: {
+    alignSelf: 'stretch',
+  },
+  barContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: toonRadius.panel,
     paddingVertical: space.sm,
     paddingHorizontal: space.xs,
   },

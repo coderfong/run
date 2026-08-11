@@ -1,0 +1,403 @@
+{
+  "schemaVersion": 2,
+  "source": "D:\\downloads\\BigFramesColored.zip",
+  "license": {
+    "package": "BigFramesColored",
+    "file": "See source pack; no licence file shipped in the download.",
+    "releaseApproved": true,
+    "note": "Terms verified by the project owner 2026-08-11."
+  },
+  "frames": {
+    "frame_note": {
+      "id": "frame_note",
+      "name": "Note",
+      "purpose": "Wide, with a rule above the bottom edge. Captions and footers.",
+      "frameWidth": 165,
+      "frameHeight": 87,
+      "frameCount": 3,
+      "insets": {
+        "left": 21,
+        "right": 13,
+        "top": 15,
+        "bottom": 28
+      },
+      "ink": {
+        "left": 19,
+        "right": 11,
+        "top": 13,
+        "bottom": 25
+      },
+      "minWidth": 34,
+      "minHeight": 43,
+      "fileSize": 2332
+    },
+    "frame_panel": {
+      "id": "frame_panel",
+      "name": "Panel",
+      "purpose": "A general box. Cards, sheets, anything squarish.",
+      "frameWidth": 152,
+      "frameHeight": 155,
+      "frameCount": 3,
+      "insets": {
+        "left": 39,
+        "right": 17,
+        "top": 35,
+        "bottom": 18
+      },
+      "ink": {
+        "left": 15,
+        "right": 13,
+        "top": 13,
+        "bottom": 16
+      },
+      "minWidth": 56,
+      "minHeight": 53,
+      "fileSize": 3271
+    },
+    "frame_label": {
+      "id": "frame_label",
+      "name": "Label",
+      "purpose": "Short and wide. A line of text, a stat, a chip.",
+      "frameWidth": 150,
+      "frameHeight": 61,
+      "frameCount": 3,
+      "insets": {
+        "left": 46,
+        "right": 32,
+        "top": 17,
+        "bottom": 16
+      },
+      "ink": {
+        "left": 12,
+        "right": 12,
+        "top": 15,
+        "bottom": 14
+      },
+      "minWidth": 78,
+      "minHeight": 33,
+      "fileSize": 1768
+    },
+    "frame_banner": {
+      "id": "frame_banner",
+      "name": "Banner",
+      "purpose": "Wide, with one corner clipped. Headers and hero rows.",
+      "frameWidth": 370,
+      "frameHeight": 136,
+      "frameCount": 3,
+      "insets": {
+        "left": 15,
+        "right": 42,
+        "top": 21,
+        "bottom": 45
+      },
+      "ink": {
+        "left": 13,
+        "right": 22,
+        "top": 19,
+        "bottom": 16
+      },
+      "minWidth": 57,
+      "minHeight": 66,
+      "fileSize": 5165
+    },
+    "frame_card": {
+      "id": "frame_card",
+      "name": "Card",
+      "purpose": "Tall and rounded. Portraits and item tiles.",
+      "frameWidth": 136,
+      "frameHeight": 230,
+      "frameCount": 3,
+      "insets": {
+        "left": 27,
+        "right": 45,
+        "top": 42,
+        "bottom": 33
+      },
+      "ink": {
+        "left": 12,
+        "right": 14,
+        "top": 14,
+        "bottom": 16
+      },
+      "minWidth": 72,
+      "minHeight": 75,
+      "fileSize": 4468
+    },
+    "frame_bubble": {
+      "id": "frame_bubble",
+      "name": "Bubble",
+      "purpose": "A speech bubble, tail at the bottom left. Quotes and tips.",
+      "frameWidth": 48,
+      "frameHeight": 52,
+      "frameCount": 3,
+      "insets": {
+        "left": 15,
+        "right": 16,
+        "top": 15,
+        "bottom": 18
+      },
+      "ink": {
+        "left": 12,
+        "right": 13,
+        "top": 12,
+        "bottom": 17
+      },
+      "minWidth": 31,
+      "minHeight": 33,
+      "fileSize": 1098
+    },
+    "frame_ticket": {
+      "id": "frame_ticket",
+      "name": "Ticket",
+      "purpose": "Tall and softly rounded. Vertical slots and list rows.",
+      "frameWidth": 71,
+      "frameHeight": 130,
+      "frameCount": 3,
+      "insets": {
+        "left": 17,
+        "right": 21,
+        "top": 17,
+        "bottom": 21
+      },
+      "ink": {
+        "left": 11,
+        "right": 12,
+        "top": 14,
+        "bottom": 14
+      },
+      "minWidth": 38,
+      "minHeight": 38,
+      "fileSize": 2407
+    },
+    "frame_badge": {
+      "id": "frame_badge",
+      "name": "Badge",
+      "purpose": "Small and square. Icons and counters.",
+      "frameWidth": 44,
+      "frameHeight": 42,
+      "frameCount": 3,
+      "insets": {
+        "left": 14,
+        "right": 14,
+        "top": 14,
+        "bottom": 14
+      },
+      "ink": {
+        "left": 12,
+        "right": 13,
+        "top": 12,
+        "bottom": 13
+      },
+      "minWidth": 28,
+      "minHeight": 28,
+      "fileSize": 934
+    },
+    "frame_stamp": {
+      "id": "frame_stamp",
+      "name": "Stamp",
+      "purpose": "Small, with a notch in the bottom left. Tags and markers.",
+      "frameWidth": 44,
+      "frameHeight": 41,
+      "frameCount": 3,
+      "insets": {
+        "left": 14,
+        "right": 15,
+        "top": 14,
+        "bottom": 14
+      },
+      "ink": {
+        "left": 11,
+        "right": 14,
+        "top": 11,
+        "bottom": 11
+      },
+      "minWidth": 29,
+      "minHeight": 28,
+      "fileSize": 950
+    },
+    "frame_bubble_right": {
+      "id": "frame_bubble_right",
+      "name": "Bubble (right)",
+      "purpose": "A speech bubble, tail at the bottom right. The other speaker.",
+      "frameWidth": 48,
+      "frameHeight": 52,
+      "frameCount": 3,
+      "insets": {
+        "left": 16,
+        "right": 15,
+        "top": 15,
+        "bottom": 18
+      },
+      "ink": {
+        "left": 13,
+        "right": 12,
+        "top": 12,
+        "bottom": 17
+      },
+      "minWidth": 31,
+      "minHeight": 33,
+      "fileSize": 1133
+    },
+    "frame_banner_left": {
+      "id": "frame_banner_left",
+      "name": "Banner (left)",
+      "purpose": "Wide, corner clipped on the left. Mirrors Banner across a row.",
+      "frameWidth": 370,
+      "frameHeight": 136,
+      "frameCount": 3,
+      "insets": {
+        "left": 42,
+        "right": 15,
+        "top": 21,
+        "bottom": 45
+      },
+      "ink": {
+        "left": 22,
+        "right": 13,
+        "top": 19,
+        "bottom": 16
+      },
+      "minWidth": 57,
+      "minHeight": 66,
+      "fileSize": 5181
+    },
+    "frame_header": {
+      "id": "frame_header",
+      "name": "Header",
+      "purpose": "Wide, with a rule below the top edge. Titled blocks.",
+      "frameWidth": 165,
+      "frameHeight": 87,
+      "frameCount": 3,
+      "insets": {
+        "left": 21,
+        "right": 13,
+        "top": 28,
+        "bottom": 15
+      },
+      "ink": {
+        "left": 19,
+        "right": 11,
+        "top": 25,
+        "bottom": 13
+      },
+      "minWidth": 34,
+      "minHeight": 43,
+      "fileSize": 2345
+    },
+    "frame_panel_right": {
+      "id": "frame_panel_right",
+      "name": "Panel (right)",
+      "purpose": "A mirrored general panel. Alternates cards in repeated layouts.",
+      "frameWidth": 152,
+      "frameHeight": 155,
+      "frameCount": 3,
+      "insets": {
+        "left": 17,
+        "right": 39,
+        "top": 35,
+        "bottom": 18
+      },
+      "ink": {
+        "left": 13,
+        "right": 15,
+        "top": 13,
+        "bottom": 16
+      },
+      "minWidth": 56,
+      "minHeight": 53,
+      "fileSize": 3122
+    },
+    "frame_card_right": {
+      "id": "frame_card_right",
+      "name": "Card (right)",
+      "purpose": "A mirrored portrait card. Alternates tiles and featured cards.",
+      "frameWidth": 136,
+      "frameHeight": 230,
+      "frameCount": 3,
+      "insets": {
+        "left": 45,
+        "right": 27,
+        "top": 42,
+        "bottom": 33
+      },
+      "ink": {
+        "left": 14,
+        "right": 12,
+        "top": 14,
+        "bottom": 16
+      },
+      "minWidth": 72,
+      "minHeight": 75,
+      "fileSize": 4484
+    },
+    "frame_ticket_right": {
+      "id": "frame_ticket_right",
+      "name": "Ticket (right)",
+      "purpose": "A mirrored ticket. Alternates rows and compact cards.",
+      "frameWidth": 71,
+      "frameHeight": 130,
+      "frameCount": 3,
+      "insets": {
+        "left": 21,
+        "right": 17,
+        "top": 17,
+        "bottom": 21
+      },
+      "ink": {
+        "left": 12,
+        "right": 11,
+        "top": 14,
+        "bottom": 14
+      },
+      "minWidth": 38,
+      "minHeight": 38,
+      "fileSize": 2414
+    },
+    "frame_label_right": {
+      "id": "frame_label_right",
+      "name": "Label (right)",
+      "purpose": "A mirrored label. Alternates headings and action buttons.",
+      "frameWidth": 150,
+      "frameHeight": 61,
+      "frameCount": 3,
+      "insets": {
+        "left": 32,
+        "right": 46,
+        "top": 17,
+        "bottom": 16
+      },
+      "ink": {
+        "left": 12,
+        "right": 12,
+        "top": 15,
+        "bottom": 14
+      },
+      "minWidth": 78,
+      "minHeight": 33,
+      "fileSize": 1778
+    },
+    "frame_stamp_right": {
+      "id": "frame_stamp_right",
+      "name": "Stamp (right)",
+      "purpose": "A small stamp with its notch on the opposite side.",
+      "frameWidth": 44,
+      "frameHeight": 41,
+      "frameCount": 3,
+      "insets": {
+        "left": 15,
+        "right": 14,
+        "top": 14,
+        "bottom": 14
+      },
+      "ink": {
+        "left": 14,
+        "right": 11,
+        "top": 11,
+        "bottom": 11
+      },
+      "minWidth": 29,
+      "minHeight": 28,
+      "fileSize": 996
+    }
+  }
+}

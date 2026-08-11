@@ -44,6 +44,7 @@ import Animated, {
 
 import { ringsPerimeter, ringsToPath, maxRadiusFromPoint } from './geometry';
 import { timingFor } from './timing';
+import { CAPTURE_LAYER } from '../../effects/layers';
 
 // How much of the view the shape is blown up to fill. Short of 1 on both axes
 // because the outline, its glow and the ripple all live OUTSIDE the polygon's
@@ -214,7 +215,10 @@ export default function TerritoryRevealCanvas({
   if (!d) return null;
 
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, heroStyle]} pointerEvents="none">
+    <Animated.View
+      style={[StyleSheet.absoluteFill, { zIndex: CAPTURE_LAYER.TERRITORY_REVEAL }, heroStyle]}
+      pointerEvents="none"
+    >
     <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
       <Defs>
         <ClipPath id={clipId}>

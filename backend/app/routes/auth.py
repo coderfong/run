@@ -19,8 +19,10 @@ Google or Apple never need this: their identity lives with the provider.
 """
 
 import json
+import logging
 import re
 import secrets
+import time
 import urllib.parse
 import urllib.request
 
@@ -32,7 +34,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import mailer, models, recovery
+from .. import content_moderation, mailer, models, recovery
 from ..config import settings
 from ..devtools import is_dev_account
 from ..database import get_db
@@ -48,6 +50,7 @@ from ..security import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 me_router = APIRouter(tags=["users"])
+log = logging.getLogger(__name__)
 
 USERNAME_RE = re.compile(r"^[a-z0-9_]{3,32}$")
 
@@ -72,6 +75,7 @@ class OAuthIn(BaseModel):
     id_token: str
     name: str | None = None
     nonce: str | None = None
+    authorization_code: str | None = None
 
 
 class RenameIn(BaseModel):
@@ -111,7 +115,7 @@ def _validate_username(username: str) -> str:
             status.HTTP_400_BAD_REQUEST,
             "username must be 3-32 chars: a-z, 0-9, underscore",
         )
-    return u
+    return content_moderation.require_allowed_text(u, "username")
 
 
 def _validate_password(password: str):
@@ -210,6 +214,8 @@ def login(request: Request, response: Response, payload: Credentials, db: Sessio
 
 APPLE_KEYS_URL = "https://appleid.apple.com/auth/keys"
 APPLE_ISSUER = "https://appleid.apple.com"
+APPLE_TOKEN_URL = "https://appleid.apple.com/auth/token"
+APPLE_REVOKE_URL = "https://appleid.apple.com/auth/revoke"
 GOOGLE_ISSUERS = {"accounts.google.com", "https://accounts.google.com"}
 
 
@@ -264,9 +270,103 @@ def _verify_apple(id_token: str) -> dict:
     return claims
 
 
+def _apple_client_id() -> str:
+    explicit = (settings.apple_client_id or "").strip()
+    if explicit:
+        return explicit
+    return next(iter(_audiences(settings.apple_client_ids)), "")
+
+
+def _apple_client_secret() -> tuple[str, str]:
+    """Return (client_id, signed client secret) without logging key material."""
+    client_id = _apple_client_id()
+    team_id = (settings.apple_team_id or "").strip()
+    key_id = (settings.apple_key_id or "").strip()
+    private_key = (settings.apple_private_key or "").replace("\\n", "\n").strip()
+    if not all((client_id, team_id, key_id, private_key)):
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Sign in with Apple token lifecycle is not configured",
+        )
+    now = int(time.time())
+    try:
+        secret = jose_jwt.encode(
+            {
+                "iss": team_id,
+                "iat": now,
+                "exp": now + 3600,
+                "aud": APPLE_ISSUER,
+                "sub": client_id,
+            },
+            private_key,
+            algorithm="ES256",
+            headers={"kid": key_id},
+        )
+    except Exception:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Sign in with Apple key is invalid",
+        )
+    return client_id, secret
+
+
+def _apple_form(url: str, values: dict) -> dict:
+    request = urllib.request.Request(
+        url,
+        data=urllib.parse.urlencode(values).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            raw = response.read()
+            return json.loads(raw) if raw else {}
+    except Exception:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Apple could not validate the authorization",
+        )
+
+
+def _exchange_apple_code(code: str) -> tuple[str, str]:
+    client_id, client_secret = _apple_client_secret()
+    result = _apple_form(
+        APPLE_TOKEN_URL,
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "grant_type": "authorization_code",
+        },
+    )
+    refresh_token = result.get("refresh_token")
+    exchanged_id_token = result.get("id_token")
+    if not refresh_token or not exchanged_id_token:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Apple did not return a revocable session",
+        )
+    return refresh_token, exchanged_id_token
+
+
+def _revoke_apple_token(refresh_token: str) -> None:
+    client_id, client_secret = _apple_client_secret()
+    _apple_form(
+        APPLE_REVOKE_URL,
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "token": refresh_token,
+            "token_type_hint": "refresh_token",
+        },
+    )
+
+
 def _unique_username(db: Session, seed: str | None) -> str:
     """A valid, unique username seeded from an email/name, else random."""
     base = re.sub(r"[^a-z0-9_]", "", (seed or "").split("@")[0].lower())[:24]
+    if not content_moderation.is_allowed(base):
+        base = "runner"
     if len(base) < 3:
         base = "runner"
     for _ in range(20):
@@ -277,7 +377,13 @@ def _unique_username(db: Session, seed: str | None) -> str:
     return f"runner_{secrets.token_hex(5)}"
 
 
-def _oauth_login(db: Session, provider: str, claims: dict, name_hint: str | None) -> TokenOut:
+def _oauth_login(
+    db: Session,
+    provider: str,
+    claims: dict,
+    name_hint: str | None,
+    refresh_token: str | None = None,
+) -> TokenOut:
     sub = claims["sub"]
     existing = (
         db.query(models.User)
@@ -285,12 +391,16 @@ def _oauth_login(db: Session, provider: str, claims: dict, name_hint: str | None
         .one_or_none()
     )
     if existing is not None:
+        if refresh_token and existing.oauth_refresh_token != refresh_token:
+            existing.oauth_refresh_token = refresh_token
+            db.commit()
         return TokenOut(access_token=token_for(existing), user=_user_dict(existing))
 
     username = _unique_username(db, name_hint or claims.get("email"))
     user = models.User(username=username, password_hash=None)
     user.oauth_provider = provider
     user.oauth_sub = sub
+    user.oauth_refresh_token = refresh_token
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -308,7 +418,13 @@ def google_auth(request: Request, response: Response, payload: OAuthIn, db: Sess
 @limiter.limit(settings.rate_limit_auth)
 def apple_auth(request: Request, response: Response, payload: OAuthIn, db: Session = Depends(get_db)):
     claims = _verify_apple(payload.id_token)
-    return _oauth_login(db, "apple", claims, payload.name)
+    if not payload.authorization_code:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Apple authorization code required")
+    refresh_token, exchanged_id_token = _exchange_apple_code(payload.authorization_code)
+    exchanged_claims = _verify_apple(exchanged_id_token)
+    if exchanged_claims.get("sub") != claims.get("sub"):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Apple authorization mismatch")
+    return _oauth_login(db, "apple", claims, payload.name, refresh_token)
 
 
 @router.post("/refresh", response_model=TokenOut)
@@ -648,7 +764,14 @@ def set_birthday(
 def delete_me(
     user: models.User = Depends(current_user), db: Session = Depends(get_db)
 ):
-    """Hard delete. Cascade in the schema removes runs + territories."""
+    """Hard delete, revoking Apple authorization first when one is stored."""
+    if user.oauth_provider == "apple" and user.oauth_refresh_token:
+        try:
+            _revoke_apple_token(user.oauth_refresh_token)
+        except HTTPException as error:
+            # Apple's guidance says account deletion must still be fulfilled if
+            # a token cannot be revoked. Never retain the account as leverage.
+            log.warning("Apple token revocation failed during account deletion: %s", error.detail)
     db.delete(user)
     db.commit()
     return {"ok": True}

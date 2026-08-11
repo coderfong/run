@@ -62,7 +62,8 @@ def feed(
                    c.tag, c.color_key,
                    (SELECT COUNT(*) FROM run_kudos k WHERE k.run_id = r.id) AS kudos_count,
                    EXISTS(SELECT 1 FROM run_kudos k WHERE k.run_id = r.id AND k.user_id = :uid) AS kudoed,
-                   (SELECT COUNT(*) FROM run_comments rc WHERE rc.run_id = r.id) AS comment_count,
+                   (SELECT COUNT(*) FROM run_comments rc
+                    WHERE rc.run_id = r.id AND NULLIF(BTRIM(rc.body), '') IS NOT NULL) AS comment_count,
                    u.avatar,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, 0.00004)) AS poly_wkt,
                    ST_AsText(ST_Simplify(r.path, 0.00004)) AS path_wkt,
@@ -81,6 +82,11 @@ def feed(
               -- A private run does not appear on anyone else's feed at all.
               -- It still records, still claims, still counts for every total.
               AND (COALESCE(r.visibility, 'public') = 'public' OR r.user_id = :uid)
+              AND NOT EXISTS (
+                    SELECT 1 FROM user_blocks b
+                    WHERE (b.blocker_id = CAST(:uid AS uuid) AND b.blocked_id = r.user_id)
+                       OR (b.blocker_id = r.user_id AND b.blocked_id = CAST(:uid AS uuid))
+              )
               AND (:cursor IS NULL OR r.ended_at < :cursor)
             ORDER BY r.ended_at DESC
             LIMIT :limit

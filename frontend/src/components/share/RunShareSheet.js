@@ -1,18 +1,25 @@
-// The post-run share flow. Pick the format and the background, see EXACTLY
-// what posts, then send it into the Instagram story composer (or anywhere else
-// via the system sheet). The preview is the same component that gets captured,
+// The post-run share flow. Tune the card, see EXACTLY what posts, then send it
+// wherever it is going. The preview is the same component that gets captured,
 // so there is no "that isn't what I saw" gap.
 //
-// The photo background is the piece that makes this read like Strava rather
-// than like a screenshot: the runner's own picture behind their numbers. It is
-// optional in every sense — `expo-image-picker` is required lazily, so a
-// binary built before it simply doesn't offer the button.
+// THE CARD IS ALWAYS TRANSPARENT. There is no background chooser: no colour
+// wash, no photo picker. Instagram gets a transparent PNG as a STICKER and the
+// runner's own story — their selfie, their photo, their plain colour — is the
+// background. That is the Strava behaviour, and it is the only one worth
+// having: a card with its own background covers the story it is posted onto,
+// and the two backgrounds then fight each other for the same 9:16.
+//
+// The preview therefore sits on a CHECKERBOARD rather than on the app's own
+// surface, because "transparent" and "dark grey" look identical against a dark
+// screen and the runner has to be able to tell which one they are getting.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
+import { Copy, Download, Instagram, Share2 } from 'lucide-react-native';
 
 import RunShareCard, {
   ACCENTS,
@@ -22,36 +29,50 @@ import RunShareCard, {
   availableStats,
 } from './RunShareCard';
 import { Segmented } from '../ui';
-import { darkColors, radius, space, type } from '../../theme';
+import { radius, space, useTheme, useThemedStyles } from '../../theme';
 import { PressableScale, haptic } from '../../ui/motion';
 import { toast } from '../../ui/toast';
 import {
+  canCopyImage,
+  canSaveToPhotos,
   canShareToInstagramStories,
+  copyImageToClipboard,
+  saveToPhotos,
   shareToInstagramStories,
   shareToSystemSheet,
 } from '../../utils/socialShare';
 
-const D = darkColors;
-
 // Instagram's own gradient, so the destination is recognisable at a glance.
 const IG_GRADIENT = ['#F9CE34', '#EE2A7B', '#6228D7'];
 
-// Lazily resolved: adding the picker means a native module, and an older
-// binary must lose the photo button rather than crash on import.
-let pickerModule;
-function imagePicker() {
-  if (pickerModule === undefined) {
-    try {
-      pickerModule = require('expo-image-picker');
-    } catch {
-      pickerModule = null;
-    }
-  }
-  return pickerModule;
+// The transparency checkerboard, in the size Photoshop and Figma use. Drawn as
+// one SVG pattern rather than a grid of Views: a 9:16 preview is a couple of
+// hundred squares, and that is a couple of hundred native views for decoration.
+const CHECKER = 12;
+
+function Checkerboard({ style }) {
+  return (
+    <Svg style={style} width="100%" height="100%">
+      <Defs>
+        <Pattern
+          id="checker"
+          width={CHECKER * 2}
+          height={CHECKER * 2}
+          patternUnits="userSpaceOnUse"
+        >
+          <Rect x={0} y={0} width={CHECKER * 2} height={CHECKER * 2} fill="#4A4A4E" />
+          <Rect x={0} y={0} width={CHECKER} height={CHECKER} fill="#38383C" />
+          <Rect x={CHECKER} y={CHECKER} width={CHECKER} height={CHECKER} fill="#38383C" />
+        </Pattern>
+      </Defs>
+      <Rect x={0} y={0} width="100%" height="100%" fill="url(#checker)" />
+    </Svg>
+  );
 }
 
 // A labelled strip of controls.
 function Row({ label, children }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -61,6 +82,7 @@ function Row({ label, children }) {
 }
 
 function Chip({ label, on, onPress }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <PressableScale
       style={[styles.chip, on && styles.chipOn]}
@@ -74,19 +96,50 @@ function Chip({ label, on, onPress }) {
   );
 }
 
+// One destination in the "Share to" row: a round target with its name under it,
+// which is the shape every share sheet in every app already uses.
+function Destination({ label, busyLabel, busy, disabled, onPress, gradient, children }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const Body = gradient ? LinearGradient : View;
+  const bodyProps = gradient
+    ? { colors: gradient, start: { x: 0, y: 1 }, end: { x: 1, y: 0 } }
+    : {};
+  return (
+    <PressableScale
+      style={styles.destination}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
+    >
+      <Body
+        {...bodyProps}
+        style={[styles.destinationDisc, !gradient && { backgroundColor: colors.cardAlt }]}
+      >
+        {children}
+      </Body>
+      <Text style={styles.destinationLabel} numberOfLines={2}>
+        {busy ? busyLabel : label}
+      </Text>
+    </PressableScale>
+  );
+}
+
 // `closeLabel` exists because this sheet is now the LAST stage of the result
 // flow, not a detour off it: closing it goes Home, so "Close" would be a lie
 // about where the button leads. Anywhere it really is a detour keeps the
 // default.
 export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', ...cardProps }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { width: screenW, height: screenH } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const cardRef = useRef(null);
   const [format, setFormat] = useState('story');
-  const [busy, setBusy] = useState(null); // 'story' | 'more' | 'photo'
+  const [busy, setBusy] = useState(null); // 'story' | 'save' | 'copy' | 'more'
   const [igReady, setIgReady] = useState(false);
-  const [background, setBackground] = useState('colour'); // 'colour' | 'photo' | 'none'
-  const [photoUri, setPhotoUri] = useState(null);
 
   // Everything the runner can change about the card. Defaults are the clan
   // colour and the run's own headline stats, so the card is already right
@@ -121,19 +174,14 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       // to be drawn.
       return keys.length >= 6 ? keys : [...keys, key];
     });
-  // The capture must not fire while the chosen photo is still decoding, or it
-  // rasterises a hole where the background should be.
-  const photoReady = useRef(true);
 
   // Ask once per open — the runner may have installed Instagram since.
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) return undefined;
     let alive = true;
     canShareToInstagramStories().then((ok) => { if (alive) setIgReady(!!ok); });
     return () => { alive = false; };
   }, [visible]);
-
-  const onPhotoReady = useCallback(() => { photoReady.current = true; }, []);
 
   const spec = SHARE_FORMATS[format];
   // The preview is the real card, just smaller: fit it to whichever axis runs
@@ -149,75 +197,47 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
     )
   );
 
-  const pickPhoto = async () => {
-    const Picker = imagePicker();
-    if (!Picker) {
-      toast.error('Photo backgrounds need a newer build of PASER.');
-      return;
-    }
-    setBusy('photo');
-    try {
-      const perm = await Picker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        toast.error('PASER needs photo access to put a picture behind your run.');
-        return;
-      }
-      const res = await Picker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality: 1,
-        // The card crops to fill, so an editor here would only fight it.
-        allowsEditing: false,
-      });
-      const uri = res?.assets?.[0]?.uri;
-      if (!res?.canceled && uri) {
-        photoReady.current = false;
-        setPhotoUri(uri);
-        setBackground('photo');
-      }
-    } catch (e) {
-      toast.error(e?.message || 'Could not open your photos');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const capture = async () => {
-    // Wait for the background photo to decode (bounded — a photo that never
-    // reports is still worth exporting over letting the button hang).
-    for (let i = 0; i < 40 && !photoReady.current; i++) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    // One more beat so the SVG route has certainly drawn — longer with the
-    // avatar up, because the rig draws through `expo-image` and a layer that is
-    // still decoding captures as nothing. In practice it has been on screen in
-    // the preview for as long as the runner has been choosing controls, so this
-    // is insurance rather than the mechanism.
+  // `result` is 'tmpfile' for anything that takes a URI and 'base64' for the
+  // clipboard, which wants the bytes rather than a path.
+  const capture = async (result = 'tmpfile') => {
+    // One beat so the SVG route has certainly drawn — longer with the avatar
+    // up, because the rig draws through `expo-image` and a layer that is still
+    // decoding captures as nothing. In practice it has been on screen in the
+    // preview for as long as the runner has been choosing controls, so this is
+    // insurance rather than the mechanism.
     // The posed runner is NINE clipped copies of the rig, so it has the most
     // images of anything on the card to get decoded and drawn.
     await new Promise((r) => setTimeout(r, showCharacter ? 400 : 60));
     return captureRef(cardRef, {
       format: 'png',
       quality: 1,
-      result: 'tmpfile',
+      result,
       fileName: `paser-run-${format}`,
       ...spec.export,
     });
   };
 
-  const toStory = async () => {
+  // Every destination is the same shape: go busy, make the image, hand it over,
+  // report whatever came back. Only the middle step differs.
+  const perform = async (key, fn) => {
     if (busy) return;
-    setBusy('story');
+    setBusy(key);
     try {
       haptic.light();
+      await fn();
+    } catch (e) {
+      toast.error(e?.message || 'Could not share your run');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toStory = () =>
+    perform('story', async () => {
       const uri = await capture();
-      // As a sticker the card goes on top of whatever the runner already has
-      // on their story; otherwise Instagram paints the canvas around the image,
-      // and handing it the card's own ink is what stops the post looking like a
-      // card floating on black.
-      const res = await shareToInstagramStories(uri, {
-        background: CARD_INK,
-        asSticker: background === 'none',
-      });
+      // Always a sticker: the card is transparent, so it goes ON TOP of the
+      // runner's own story rather than becoming the story.
+      const res = await shareToInstagramStories(uri, { background: CARD_INK, asSticker: true });
       if (res.ok) {
         if (!res.cancelled) onClose?.();
         return;
@@ -228,27 +248,30 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       toast.show('Opening the share sheet instead…');
       const fallback = await shareToSystemSheet(uri);
       if (!fallback.ok) toast.error(fallback.reason);
-    } catch (e) {
-      toast.error(e?.message || 'Could not share to Instagram');
-    } finally {
-      setBusy(null);
-    }
-  };
+    });
 
-  const toSystemSheet = async () => {
-    if (busy) return;
-    setBusy('more');
-    try {
-      haptic.light();
-      const uri = await capture();
-      const res = await shareToSystemSheet(uri);
+  const toPhotos = () =>
+    perform('save', async () => {
+      const res = await saveToPhotos(await capture());
+      if (res.ok) toast.show('Saved to your photos');
+      else toast.error(res.reason);
+    });
+
+  const toClipboard = () =>
+    perform('copy', async () => {
+      const res = await copyImageToClipboard(await capture('base64'));
+      if (res.ok) toast.show('Copied. Paste it into your story.');
+      else toast.error(res.reason);
+    });
+
+  const toSystemSheet = () =>
+    perform('more', async () => {
+      const res = await shareToSystemSheet(await capture());
       if (!res.ok) toast.error(res.reason);
-    } catch (e) {
-      toast.error(e?.message || 'Could not share');
-    } finally {
-      setBusy(null);
-    }
-  };
+    });
+
+  const canSave = canSaveToPhotos();
+  const canCopy = canCopyImage();
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
@@ -282,24 +305,15 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           showsVerticalScrollIndicator={false}
           alwaysBounceVertical={false}
         >
-          {/* The exact pixels that get posted. A transparent card is previewed
-              over a stand-in "story" so the runner can see what shows through
-              rather than judging white text on the app's own dark background. */}
+          {/* The exact pixels that get posted, on a checkerboard so the empty
+              parts read as empty rather than as dark grey. */}
           <View style={styles.previewShadow}>
-            {background === 'none' && (
-              <LinearGradient
-                colors={['#5B6472', '#39404B', '#22262E']}
-                style={StyleSheet.absoluteFill}
-              />
-            )}
+            <Checkerboard style={StyleSheet.absoluteFill} />
             <RunShareCard
               {...cardProps}
               cardRef={cardRef}
               format={format}
               width={previewW}
-              background={background}
-              photoUri={photoUri}
-              onPhotoReady={onPhotoReady}
               accent={accent}
               textColor={textColor}
               align={align}
@@ -308,7 +322,14 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               showCharacter={showCharacter}
               flip={flip}
             />
+            <View style={styles.transparentBadge} pointerEvents="none">
+              <Text style={styles.transparentText}>TRANSPARENT</Text>
+            </View>
           </View>
+
+          <Text style={styles.hint}>
+            Everything around your run stays see through, so your own story shows behind it.
+          </Text>
 
           {/* --- customise ------------------------------------------------ */}
 
@@ -396,130 +417,95 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               <Chip label="Route" on={showRoute} onPress={() => setShowRoute((v) => !v)} />
             </View>
           </Row>
-
-          <Row label="Background">
-            <View style={styles.bgRow}>
-              <PressableScale
-                style={[styles.bgBtn, background === 'none' && styles.bgBtnOn]}
-                onPress={() => {
-                  photoReady.current = true;
-                  setBackground('none');
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: background === 'none' }}
-                accessibilityLabel="No background, overlay on your story"
-              >
-                <Text style={[styles.bgText, background === 'none' && styles.bgTextOn]}>
-                  None
-                </Text>
-              </PressableScale>
-              <PressableScale
-                style={[styles.bgBtn, background === 'colour' && styles.bgBtnOn]}
-                onPress={() => {
-                  photoReady.current = true;
-                  setBackground('colour');
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: background === 'colour' }}
-                accessibilityLabel="Colour background"
-              >
-                <Text style={[styles.bgText, background === 'colour' && styles.bgTextOn]}>
-                  Colour
-                </Text>
-              </PressableScale>
-              <PressableScale
-                style={[styles.bgBtn, background === 'photo' && styles.bgBtnOn]}
-                onPress={pickPhoto}
-                disabled={busy === 'photo'}
-                accessibilityRole="button"
-                accessibilityState={{ selected: background === 'photo' }}
-                accessibilityLabel="Photo background"
-              >
-                <Text style={[styles.bgText, background === 'photo' && styles.bgTextOn]}>
-                  {busy === 'photo' ? 'Opening…' : photoUri ? 'Change' : 'Photo'}
-                </Text>
-              </PressableScale>
-            </View>
-          </Row>
-
-          {background === 'none' && (
-            <Text style={styles.hint}>
-              Instagram opens this as a sticker. Pick your own photo or selfie behind it,
-              then drag it where you want.
-            </Text>
-          )}
         </ScrollView>
 
         <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
-          {igReady && (
-            <PressableScale
-              onPress={toStory}
-              disabled={!!busy}
-              accessibilityRole="button"
-              accessibilityLabel="Share to Instagram Stories"
-            >
-              <LinearGradient
-                colors={IG_GRADIENT}
-                start={{ x: 0, y: 1 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.primaryBtn}
+          <Text style={styles.actionsLabel}>Share to</Text>
+          <View style={styles.destinations}>
+            {igReady && (
+              <Destination
+                label="Instagram Story"
+                busyLabel="Opening…"
+                busy={busy === 'story'}
+                disabled={!!busy}
+                onPress={toStory}
+                gradient={IG_GRADIENT}
               >
-                <Text style={styles.primaryText}>
-                  {busy === 'story' ? 'Opening Instagram…' : 'Share to Instagram Stories'}
-                </Text>
-              </LinearGradient>
-            </PressableScale>
-          )}
+                <Instagram size={24} color="#fff" strokeWidth={2} />
+              </Destination>
+            )}
 
-          <PressableScale
-            style={styles.secondaryBtn}
-            onPress={toSystemSheet}
-            disabled={!!busy}
-            accessibilityRole="button"
-            accessibilityLabel="Share somewhere else"
-          >
-            <Text style={styles.secondaryText}>
-              {busy === 'more' ? 'Preparing…' : igReady ? 'More options' : 'Share'}
-            </Text>
-          </PressableScale>
+            {canSave && (
+              <Destination
+                label="Save"
+                busyLabel="Saving…"
+                busy={busy === 'save'}
+                disabled={!!busy}
+                onPress={toPhotos}
+              >
+                <Download size={22} color={colors.text} strokeWidth={2} />
+              </Destination>
+            )}
 
+            {canCopy && (
+              <Destination
+                label="Copy"
+                busyLabel="Copying…"
+                busy={busy === 'copy'}
+                disabled={!!busy}
+                onPress={toClipboard}
+              >
+                <Copy size={22} color={colors.text} strokeWidth={2} />
+              </Destination>
+            )}
+
+            <Destination
+              label="More"
+              busyLabel="Preparing…"
+              busy={busy === 'more'}
+              disabled={!!busy}
+              onPress={toSystemSheet}
+            >
+              <Share2 size={22} color={colors.text} strokeWidth={2} />
+            </Destination>
+          </View>
         </View>
       </View>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: D.bg, paddingHorizontal: space.lg },
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: space.md,
   },
-  title: { ...type.title, color: D.text },
-  close: { ...type.bodySmBold, color: D.textMuted },
+  title: { ...type.title, color: colors.text },
+  close: { ...type.bodySmBold, color: colors.textMuted },
   formats: { marginBottom: space.md },
   scroller: { flex: 1, minHeight: 0 },
   previewWrap: { alignItems: 'center', paddingVertical: space.xs, paddingBottom: space.xl },
 
   row: { marginTop: space.md, alignSelf: 'stretch' },
-  rowLabel: { ...type.labelSm, color: D.textDim, marginBottom: space.sm },
+  rowLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.sm },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   controlStack: { gap: space.md },
   controlGroup: { gap: 6 },
-  controlLabel: { ...type.caption, color: D.textDim },
+  controlLabel: { ...type.caption, color: colors.textDim },
   chip: {
     paddingHorizontal: space.md,
     paddingVertical: 7,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: D.border,
+    borderColor: colors.border,
   },
-  chipOn: { backgroundColor: D.primary, borderColor: D.primary },
-  chipText: { ...type.bodySm, color: D.textMuted },
-  chipTextOn: { ...type.bodySmBold, color: D.primaryInk },
+  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { ...type.bodySm, color: colors.textMuted },
+  chipTextOn: { ...type.bodySmBold, color: colors.primaryInk },
   swatch: {
     width: 34,
     height: 34,
@@ -535,36 +521,44 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: D.border,
+    borderColor: colors.border,
   },
+  // Named on the preview the way Strava names it, so "why is my background
+  // grey squares" answers itself.
+  transparentBadge: {
+    position: 'absolute',
+    top: space.sm,
+    left: space.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  transparentText: { ...type.labelSm, fontSize: 10, letterSpacing: 1, color: '#FFFFFF' },
+  hint: { ...type.caption, color: colors.textDim, textAlign: 'center', marginTop: space.md },
+
   actions: {
     paddingTop: space.md,
-    gap: space.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: D.border,
-    backgroundColor: D.bg,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
   },
-  bgRow: { flexDirection: 'row', gap: space.sm },
-  bgBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: radius.pill,
+  actionsLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.md },
+  destinations: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
+  destination: { alignItems: 'center', width: 68 },
+  destinationDisc: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: D.border,
+    justifyContent: 'center',
   },
-  bgBtnOn: { backgroundColor: D.primary, borderColor: D.primary },
-  bgText: { ...type.buttonSm, fontSize: 13, color: D.textMuted },
-  bgTextOn: { ...type.buttonSm, fontSize: 13, color: D.primaryInk },
-  hint: { ...type.caption, color: D.textDim, textAlign: 'center' },
-  primaryBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
-  primaryText: { ...type.button, color: '#fff' },
-  secondaryBtn: {
-    paddingVertical: 16,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: D.border,
+  destinationLabel: {
+    ...type.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
   },
-  secondaryText: { ...type.button, color: D.text },
 });

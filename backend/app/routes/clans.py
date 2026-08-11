@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import content_moderation, models, schemas
 from ..clans_meta import (
     CLAN_BADGES,
     CLAN_COLORS,
@@ -289,6 +289,11 @@ def create_clan(request: Request, response: Response, payload: schemas.ClanCreat
         raise HTTPException(400, "name must be 3-24 chars")
     if not TAG_RE.match(tag):
         raise HTTPException(400, "tag must be 2-5 letters/digits")
+    name = content_moderation.require_allowed_text(name, "club name")
+    tag = content_moderation.require_allowed_text(tag, "club tag")
+    description = content_moderation.require_allowed_text(
+        payload.description or "", "club description"
+    )
     if payload.color_key not in CLAN_COLORS:
         raise HTTPException(400, "unknown color")
     if payload.badge_icon not in CLAN_BADGES:
@@ -305,7 +310,7 @@ def create_clan(request: Request, response: Response, payload: schemas.ClanCreat
     cid = db.execute(
         text("INSERT INTO clans (id, name, tag, description, color_key, badge_icon, privacy, created_by, created_at) "
              "VALUES (gen_random_uuid(), :n, :t, :d, :ck, :b, :p, :uid, now()) RETURNING id::text"),
-        {"n": name, "t": tag, "d": payload.description, "ck": payload.color_key,
+        {"n": name, "t": tag, "d": description, "ck": payload.color_key,
          "b": payload.badge_icon, "p": payload.privacy, "uid": user.id},
     ).scalar()
     db.execute(text("INSERT INTO clan_members (clan_id, user_id, role) VALUES (:cid, :uid, 'leader')"),
@@ -471,7 +476,10 @@ def update_clan(request: Request, response: Response, clan_id: str, payload: sch
     _require_role(db, clan_id, user.id, ("leader", "officer"))
     fields, params = [], {"cid": clan_id}
     if payload.description is not None:
-        fields.append("description = :d"); params["d"] = payload.description
+        fields.append("description = :d")
+        params["d"] = content_moderation.require_allowed_text(
+            payload.description, "club description"
+        )
     if payload.color_key is not None:
         if payload.color_key not in CLAN_COLORS:
             raise HTTPException(400, "unknown color")
@@ -660,11 +668,18 @@ def clan_messages(
                    m.body, m.created_at
             FROM clan_messages m LEFT JOIN users u ON u.id = m.user_id
             WHERE m.clan_id = :cid AND (CAST(:before AS timestamp) IS NULL OR m.created_at < :before)
+              AND (
+                    m.user_id IS NULL OR NOT EXISTS (
+                        SELECT 1 FROM user_blocks b
+                        WHERE (b.blocker_id = CAST(:uid AS uuid) AND b.blocked_id = m.user_id)
+                           OR (b.blocker_id = m.user_id AND b.blocked_id = CAST(:uid AS uuid))
+                    )
+              )
             ORDER BY m.created_at DESC
             LIMIT :lim
             """
         ),
-        {"cid": clan_id, "before": before, "lim": max(1, min(int(limit), 100))},
+        {"cid": clan_id, "before": before, "lim": max(1, min(int(limit), 100)), "uid": user.id},
     ).fetchall()
     return [
         schemas.ClanMessageOut(
@@ -685,17 +700,18 @@ def send_clan_message(
     db: Session = Depends(get_db),
 ):
     _require_member(db, clan_id, user.id)
+    body = content_moderation.require_allowed_text(payload.body, "message")
     row = db.execute(
         text(
             "INSERT INTO clan_messages (clan_id, user_id, body) VALUES (:cid, :uid, :b) "
             "RETURNING id::text, created_at"
         ),
-        {"cid": clan_id, "uid": user.id, "b": payload.body.strip()},
+        {"cid": clan_id, "uid": user.id, "b": body},
     ).fetchone()
     db.commit()
     return schemas.ClanMessageOut(
         id=row[0], user_id=user.id, username=user.username, is_you=True,
-        body=payload.body.strip(), created_at=row[1],
+        body=body, created_at=row[1],
     )
 
 

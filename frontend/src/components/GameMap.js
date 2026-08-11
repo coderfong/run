@@ -15,7 +15,7 @@ import Constants from 'expo-constants';
 
 import { activeCity, cityMaxBounds } from '../config/cities';
 import { MAPBOX_PUBLIC_TOKEN, MAP_READY as MAP_CONFIGURED, styleForTheme } from '../config/map';
-import { colors, space, type } from '../theme';
+import { space, useTheme, useThemedStyles } from '../theme';
 import { useReduceMotion } from '../ui/motion';
 
 // @rnmapbox/maps has NO native module in Expo Go — importing or using it there
@@ -73,10 +73,15 @@ function polygonFeature(points) {
 
 // --- the map container -----------------------------------------------------
 
+// `theme` is an OVERRIDE, not a requirement: left off, the map wears whatever
+// the app is wearing. Every screen used to hard-code theme="dark", so the one
+// surface that fills the whole screen stayed black in light mode.
 const GameMap = forwardRef(function GameMap(
-  { theme = 'light', onPress, onIdle, showsUserLocation = false, children, style, initialCenter, initialZoom, locked = false },
+  { theme, onPress, onIdle, showsUserLocation = false, children, style, initialCenter, initialZoom, locked = false },
   ref
 ) {
+  const { scheme } = useTheme();
+  const placeholderStyles = useThemedStyles(makePlaceholderStyles);
   const cameraRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -145,9 +150,9 @@ const GameMap = forwardRef(function GameMap(
   // return is safe.
   if (!MAPBOX_AVAILABLE) {
     return (
-      <View style={[styles.map, styles.placeholder, style]}>
-        <Text style={styles.placeholderTitle}>Map preview</Text>
-        <Text style={styles.placeholderBody}>
+      <View style={[styles.map, placeholderStyles.placeholder, style]}>
+        <Text style={placeholderStyles.placeholderTitle}>Map preview</Text>
+        <Text style={placeholderStyles.placeholderBody}>
           The live map needs a development build. It can’t render in Expo Go, but everything else works here.
         </Text>
       </View>
@@ -160,7 +165,7 @@ const GameMap = forwardRef(function GameMap(
     <MapView
       ref={mapRef}
       style={[styles.map, style]}
-      styleURL={styleForTheme(theme)}
+      styleURL={styleForTheme(theme || scheme)}
       onPress={locked ? undefined : onPress}
       onMapIdle={handleIdle}
       scaleBarEnabled={false}
@@ -355,6 +360,9 @@ export function ContestedOutline({ id = 'contested', featureCollection, opacity 
 
 const styles = StyleSheet.create({
   map: { flex: 1 },
+});
+
+const makePlaceholderStyles = (colors, scheme, type) => StyleSheet.create({
   placeholder: {
     alignItems: 'center',
     justifyContent: 'center',

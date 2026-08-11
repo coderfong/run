@@ -57,6 +57,11 @@ let attempts = new Map();
 // key -> Promise, so two screens asking for the same endpoint in the same frame
 // make one request (Home and You both read /me/energy on mount).
 const inFlight = new Map();
+// Mounted queries watching a key. Most writes come from that query's own
+// fetch, but root-level foreground listeners (land capture, push events) also
+// refresh cached data and the visible bell should react without a navigation
+// focus cycle.
+const subscribers = new Map();
 let owner = null;
 let hydrated = false;
 let persistTimer = null;
@@ -177,7 +182,19 @@ export function setCached(key, data) {
   }
   if (size > MAX_ENTRY_BYTES) return;
   store.set(key, { data, at: Date.now() });
+  subscribers.get(key)?.forEach((listener) => listener(data));
   schedulePersist();
+}
+
+export function subscribeCached(key, listener) {
+  if (!key || typeof listener !== 'function') return () => {};
+  const listeners = subscribers.get(key) || new Set();
+  listeners.add(listener);
+  subscribers.set(key, listeners);
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size === 0) subscribers.delete(key);
+  };
 }
 
 // Drop cached entries. `prefix` matches from the start of the key, so
@@ -232,6 +249,15 @@ const AFTER_CLAIM = [
   'clan:',
   'season:',
 ];
+const AFTER_LAND_LOSS = [
+  'feed',
+  'me:stats',
+  'me:rivals',
+  'leaderboard:',
+  'me:clan',
+  'clan:',
+  'season:',
+];
 
 export function invalidateAfterRun() {
   AFTER_RUN.forEach((prefix) => invalidate(prefix));
@@ -239,6 +265,13 @@ export function invalidateAfterRun() {
 
 export function invalidateAfterClaim() {
   AFTER_CLAIM.forEach((prefix) => invalidate(prefix));
+}
+
+// Another runner just changed this account's territory from a different
+// device. Keep the newly fetched notification cached, but drop every board and
+// profile surface whose numbers changed behind the foreground alert.
+export function invalidateAfterLandLoss() {
+  AFTER_LAND_LOSS.forEach((prefix) => invalidate(prefix));
 }
 
 // Run `fetcher` for `key`, sharing a single request between concurrent callers.

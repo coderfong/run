@@ -16,6 +16,7 @@
  */
 
 import { buildSimulatedRun, SIM_PRESETS, FALLBACK_ORIGIN } from '../src/run/simulatedRun';
+import { api } from '../src/api/client';
 
 // backend/app/config.py
 const MIN_CLAIM_DISTANCE_M = 1000;
@@ -150,5 +151,32 @@ describe('buildSimulatedRun', () => {
   it('defaults to a real place when the phone has no fix', () => {
     const sim = buildSimulatedRun({ seed: 5 });
     expect(Math.abs(sim.points[0].latitude - FALLBACK_ORIGIN.latitude)).toBeLessThan(0.02);
+  });
+});
+
+describe('simulated run submission', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('marks only the simulator end-run request for server-side dev handling', async () => {
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    }));
+
+    await api.endRun('run-1', [], 1234, true);
+
+    const [url, init] = global.fetch.mock.calls[0];
+    expect(url).toMatch(/\/end-run$/);
+    expect(JSON.parse(init.body)).toEqual({
+      run_id: 'run-1',
+      points: [],
+      step_count: 1234,
+      simulated: true,
+    });
   });
 });

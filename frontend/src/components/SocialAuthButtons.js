@@ -22,8 +22,10 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../auth/AuthContext';
-import { radius, space, useTheme, useThemedType } from '../theme';
+import { space } from '../theme';
+import { framePose, frameVariant } from '../ui/frameRegistry';
 import { toast } from '../ui/toast';
+import Framed from './ui/Framed';
 
 // Lets the auth popup hand control back to the app.
 WebBrowser.maybeCompleteAuthSession();
@@ -44,15 +46,26 @@ const HAS_GOOGLE = !!(
 function Row({ bg, glyph, glyphStyle, label, fg, onPress, disabled }) {
   return (
     <TouchableOpacity
-      style={[styles.btn, { backgroundColor: bg }]}
+      style={styles.btn}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
     >
-      <Text style={[styles.glyph, glyphStyle, { color: fg }]}>{glyph}</Text>
-      <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+      <Framed
+        frame={frameVariant('action', label)}
+        tint={fg}
+        fill={bg}
+        pose={framePose(label)}
+        inset={false}
+        style={styles.btnFrame}
+        contentStyle={styles.btnContent}
+      >
+        <Text style={[styles.glyph, glyphStyle, { color: fg }]}>{glyph}</Text>
+        <Text style={[styles.btnText, { color: fg }]}>{label}</Text>
+      </Framed>
     </TouchableOpacity>
   );
 }
@@ -130,7 +143,11 @@ export default function SocialAuthButtons() {
       const name = cred.fullName
         ? [cred.fullName.givenName, cred.fullName.familyName].filter(Boolean).join(' ')
         : undefined;
-      await signInWithProvider('apple', cred.identityToken, { name });
+      if (!cred.authorizationCode) throw new Error('No authorization code from Apple');
+      await signInWithProvider('apple', cred.identityToken, {
+        name,
+        authorization_code: cred.authorizationCode,
+      });
     } catch (e) {
       if (e?.code === 'ERR_REQUEST_CANCELED') return; // user backed out — not an error
       toast.error(e.message || 'Could not sign in with Apple');
@@ -182,7 +199,10 @@ const styles = StyleSheet.create({
   orText: { color: 'rgba(255,255,255,0.6)', marginHorizontal: space.md, fontSize: 12 },
   btn: {
     height: 52,
-    borderRadius: radius.md,
+  },
+  btnFrame: { flex: 1 },
+  btnContent: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

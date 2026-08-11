@@ -26,7 +26,7 @@ services:
       - key: CORS_ORIGINS
         value: "https://coderfong.github.io"
       - key: APP_VERSION
-        value: "2.0.0"
+        value: "2.1.0"
       # In-app purchases. Without these the purchase endpoints hand over the
       # premium pass to anyone who calls them — see app/iap.py. `sync: false`
       # means Render prompts for the value instead of reading it from git, so
@@ -34,6 +34,18 @@ services:
       - key: IAP_VERIFY_RECEIPTS
         value: "true"
       - key: APPLE_SHARED_SECRET
+        sync: false
+      # Sign in with Apple: exchange each native authorization code for a
+      # refresh token, then revoke it when the user deletes their account.
+      - key: APPLE_CLIENT_ID
+        value: "com.pacerrun.app"
+      - key: APPLE_CLIENT_IDS
+        value: "com.pacerrun.app"
+      - key: APPLE_TEAM_ID
+        value: "D3HU96BTMY"
+      - key: APPLE_KEY_ID
+        sync: false
+      - key: APPLE_PRIVATE_KEY
         sync: false
       # Gate for /admin/*. Unset, those endpoints return 404 and the
       # maintenance surface simply does not exist — which is the safe default,

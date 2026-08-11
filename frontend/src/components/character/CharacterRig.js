@@ -8,6 +8,7 @@
 // Props: equipped, size (px width of the body), animate (idle bob),
 // animateSwaps (the WHOLE runner springs whenever a changed part finishes
 // loading — for the screens where somebody is dressing them, see SwapLayer),
+// headOnly (draw the head and what is worn on it, nothing below the jaw),
 // clanColor (accepted for API compat; the art is not tinted).
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
@@ -242,7 +243,7 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, ...rest }) {
 }
 
 const CharacterRig = forwardRef(function CharacterRig(
-  { equipped, size = 120, animate = false, animateSwaps = false, clanColor, style },
+  { equipped, size = 120, animate = false, animateSwaps = false, headOnly = false, clanColor, style },
   ref
 ) {
   const reduced = useReduceMotion();
@@ -386,36 +387,54 @@ const CharacterRig = forwardRef(function CharacterRig(
       ]}
     >
       <View style={{ position: 'absolute', top: headroom, width: bodyW, height: bodyH }}>
-        <Layer img={accBack} slot="accessory" layout={it.accessory.layout} {...layerBox} />
-        <Layer img={accBackHalf} slot="accessory" layout={it.accessory.layout} {...layerBox} />
-        <Layer img={hatBackHalf} slot="headwear" layout={it.headwear.layout} {...layerBox} />
-        {/* The far rim of the shoe's collar, behind the leg. See Feet. */}
-        <Feet item={it.footwear} equipped={equipped} back {...layerBox} />
-        <Image
-          source={BODY_IMG}
-          style={{ position: 'absolute', width: bodyW, height: bodyH }}
-          resizeMode="contain"
-          fadeDuration={0}
-          crisp
-        />
-        {/* Shoes under the trouser hem, the way a hem falls over a shoe: a
-            trouser leg ends ON the foot, so drawing the shoe over it cuts the
-            hem off in a straight line and the leg reads as tucked into the
-            shoe. Under the top as well, so a long one-piece covers boots the
-            way it does in the source art. */}
-        <Feet item={it.footwear} equipped={equipped} {...layerBox} />
-        {/* A one-piece (robe, jumpsuit, armour) IS the legs — drawing a
-            separate bottom under it only pokes trouser cuffs out of the hem. */}
-        {!it.top.hidesBottom && (
-          <Layer img={itemImage('bottom', it.bottom, equipped)} slot="bottom" layout={it.bottom.layout} {...layerBox} />
+        {/* `headOnly` draws the head and only the head — the plate, the face,
+            the hair, the glasses and the hat. Everything below the jaw is
+            skipped at the SOURCE rather than clipped away by the caller: a
+            rectangular window over the whole rig cuts the shoulders and the
+            shirt collar off in a straight line (they sit at y=214 of 640,
+            ABOVE the chin at 226, so even a window cut exactly at the chin
+            still shows a band of them) and cuts long hair off flat with it.
+            See LogoRunner, which wears the player's head on the brand mark. */}
+        {!headOnly && (
+          <>
+            <Layer img={accBack} slot="accessory" layout={it.accessory.layout} {...layerBox} />
+            <Layer img={accBackHalf} slot="accessory" layout={it.accessory.layout} {...layerBox} />
+          </>
         )}
-        <Layer img={itemImage('top', it.top, equipped)} slot="top" fit={it.top.fit} layout={it.top.layout} {...layerBox} />
-        {/* Everything worn below the jaw — vests, sashes, bags, and all the
-            neckwear. These go UNDER the head plate, so the jaw is in front of
-            them. Their art was also nudged down in cosmetics.js to start at
-            the chin line: clipping alone left a bow tie as a sliver, because
-            most of it had been sitting ON the jaw rather than below it. */}
-        <Layer img={it.accessory.atNeck ? null : accFront} slot="accessory" layout={it.accessory.layout} {...layerBox} />
+        <Layer img={hatBackHalf} slot="headwear" layout={it.headwear.layout} {...layerBox} />
+        {!headOnly && (
+          <>
+            {/* The far rim of the shoe's collar, behind the leg. See Feet. */}
+            <Feet item={it.footwear} equipped={equipped} back {...layerBox} />
+            <Image
+              source={BODY_IMG}
+              style={{ position: 'absolute', width: bodyW, height: bodyH }}
+              resizeMode="contain"
+              fadeDuration={0}
+              crisp
+            />
+            {/* Shoes under the trouser hem, the way a hem falls over a shoe: a
+                trouser leg ends ON the foot, so drawing the shoe over it cuts
+                the hem off in a straight line and the leg reads as tucked into
+                the shoe. Under the top as well, so a long one-piece covers
+                boots the way it does in the source art. */}
+            <Feet item={it.footwear} equipped={equipped} {...layerBox} />
+            {/* A one-piece (robe, jumpsuit, armour) IS the legs — drawing a
+                separate bottom under it only pokes trouser cuffs out of the
+                hem. */}
+            {!it.top.hidesBottom && (
+              <Layer img={itemImage('bottom', it.bottom, equipped)} slot="bottom" layout={it.bottom.layout} {...layerBox} />
+            )}
+            <Layer img={itemImage('top', it.top, equipped)} slot="top" fit={it.top.fit} layout={it.top.layout} {...layerBox} />
+            {/* Everything worn below the jaw — vests, sashes, bags, and all the
+                neckwear. These go UNDER the head plate, so the jaw is in front
+                of them. Their art was also nudged down in cosmetics.js to start
+                at the chin line: clipping alone left a bow tie as a sliver,
+                because most of it had been sitting ON the jaw rather than below
+                it. */}
+            <Layer img={it.accessory.atNeck ? null : accFront} slot="accessory" layout={it.accessory.layout} {...layerBox} />
+          </>
+        )}
         {/* Replay the exact transparent head after every below-jaw layer. A
             rectangular crop of BODY_IMG stopped at the shoulder join and
             lost the bottom 13px of the chin; extending that crop also pulled

@@ -22,7 +22,7 @@ from app.geospatial import (
     route_claim_polygon_wgs,
     route_corridor,
 )
-from app.routes.runs import _attached_at, _claim_grid, _is_attached
+from app.routes.runs import _claim_grid, _grid_pick
 
 FAILURES = []
 PASSES = []
@@ -116,8 +116,8 @@ def test_compact_loop():
     )
 
 
-def test_grid_and_snapping():
-    print("\n[3] the grid marks them, and a detached index snaps back")
+def test_grid_and_fallback():
+    print("\n[3] the sample grid is rectangular, and invalid legacy indices fall back")
     route = straight(4000)
     area = claim_area_m2(4000)
     grid = _claim_grid(route, area)
@@ -128,25 +128,17 @@ def test_grid_and_snapping():
     n_rot = max(g[1] for g in grid) + 1
     n_pos = max(g[0] for g in grid) + 1
     check("the grid stays rectangular", len(grid) == n_pos * n_rot, f"{len(grid)} vs {n_pos}x{n_rot}")
-    check("heading 0 is always attached", all(g[5] == 1.0 for g in grid if g[1] == 0))
+    check("heading 0 exists at every sampled position", sum(g[1] == 0 for g in grid) == n_pos)
 
-    detached = [g for g in grid if not _is_attached(g)]
-    check(
-        "a straight run has headings that are closed off",
-        bool(detached),
-        f"{len(detached)} of {len(grid)}",
-    )
-    check("...but not all of them", len(detached) < len(grid))
+    exact = _grid_pick(grid, 0, min(1, n_rot - 1))
+    check("a valid legacy index keeps its requested pose", exact[:2] == (0, min(1, n_rot - 1)))
 
-    if detached:
-        d = detached[0]
-        snapped = _attached_at(grid, d[0], d[1])
-        check("a detached selection snaps to an attached one", _is_attached(snapped))
-        check("...at the same position along the route", snapped[0] == d[0], f"{snapped[0]} vs {d[0]}")
-
-    # An out-of-range index must still land somewhere legal.
-    wild = _attached_at(grid, 999, 999)
-    check("a made-up index still lands on the route", wild is not None and _is_attached(wild))
+    # Old clients send grid indices. Anything out of range must still land on
+    # the documented middle-position, unturned fallback.
+    wild = _grid_pick(grid, 999, 999)
+    check("a made-up index falls back safely", wild is not None)
+    check("fallback is the middle position", wild[0] == n_pos // 2, wild[0])
+    check("fallback is unturned", wild[1] == 0, wild[1])
 
 
 def main():
@@ -156,7 +148,7 @@ def main():
     )
     test_straight_route()
     test_compact_loop()
-    test_grid_and_snapping()
+    test_grid_and_fallback()
     print(f"\n{len(PASSES)} passed, {len(FAILURES)} failed")
     if FAILURES:
         sys.exit(1)

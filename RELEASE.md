@@ -1,4 +1,11 @@
-# PACER — Release Runbook
+# Legacy infrastructure runbook
+
+> This file contains historical infrastructure notes. For the current PASER
+> 2.1.0 App Store release, use [`docs/APP_STORE.md`](docs/APP_STORE.md). That
+> checklist is authoritative for versions, privacy disclosures, store metadata,
+> Sign in with Apple deletion, screenshots, and submission gates.
+
+# PASER release infrastructure reference
 
 ## Environment variables
 
@@ -92,12 +99,24 @@ eas submit --profile production --platform android   # Play internal track
 Bump `version` / `buildNumber` / `versionCode` in `app.json` per submission
 (currently 2.0.0 / 1 / 1 — counters reset with the com.pacerrun.app identity).
 
-### Health sync native modules (optional)
+### Apple Health sync (iOS, live)
 
-Health write is scaffolded but the native modules aren't installed. To
-activate: `npx expo install react-native-health` (iOS) and
-`react-native-health-connect` (Android), add their config plugins, then
-rebuild the dev client. Purpose strings are already in `app.json`.
+`@kingstinct/react-native-healthkit` is installed and write-only sync ships in
+the binary: `ios.entitlements["com.apple.developer.healthkit"]` plus
+`NSHealthUpdateUsageDescription` in `app.json`, the adapter in
+`frontend/src/health.js`, and the opt-in switch in
+`frontend/src/components/HealthSyncSettings.js`.
+
+There is deliberately **no** `NSHealthShareUsageDescription` and **no**
+background-delivery entitlement: PASER never reads Health and never needs to
+wake for it. Do not add the package's own config plugin, which would add both.
+
+The HealthKit capability must exist on the App ID. `eas build` syncs it from
+the entitlements file on the first production build; if it fails, enable
+HealthKit for `com.pacerrun.app` in the Apple Developer portal and rebuild.
+This is a native change: OTA updates cannot deliver it.
+
+Android Health Connect is not wired. `src/health.js` no-ops off iOS.
 
 ## Local development (this machine — native Postgres, no Docker)
 
@@ -124,3 +143,5 @@ cloudflared tunnel --url http://localhost:8000   # -> app.json extra.apiBase
 - [ ] Privacy policy hosted + linked from You
 - [ ] Store listings: screenshots, description, privacy questionnaire
       (location "linked to user"; motion/health "not linked" / health write-only)
+- [ ] Apple Health: switch on in You > Settings, finish a run, confirm the
+      workout appears in the Health app and that no read prompt was ever shown

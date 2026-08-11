@@ -35,9 +35,10 @@ import BuyEnergySheet from '../components/BuyEnergySheet';
 import ClaimPayoff from '../components/ClaimPayoff';
 import GameAnimation from '../components/GameAnimation';
 import CaptureEncounter from '../components/claim/CaptureEncounter';
+import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import { CAPTURE_LAYER } from '../effects/layers';
 import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
-import DevSequenceControls from '../components/claim/DevSequenceControls';
 import LeaderboardTransition from '../components/claim/LeaderboardTransition';
 import TerritoryRevealCanvas from '../components/claim/TerritoryRevealCanvas';
 import TerritoryVictoryBeat, { victoryLabel } from '../components/claim/TerritoryVictoryBeat';
@@ -45,6 +46,7 @@ import useClaimSequence from '../components/claim/useClaimSequence';
 import PaserbyReveal from '../components/paserby/PaserbyReveal';
 import RunShareSheet from '../components/share/RunShareSheet';
 import XpProgress from '../components/XpProgress';
+import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useAvatar } from '../state/avatar';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../api/client';
@@ -52,7 +54,7 @@ import { fetchAndCache, invalidate, invalidateAfterClaim } from '../api/cache';
 import { shouldReveal } from '../config/paserby';
 import { preloadScreenImages } from '../config/screenAssets';
 import { RUN_TIER } from '../config/economy';
-import { brand, darkColors, radius, shadow, space, toon, toonRadius, toonType, type, withAlpha } from '../theme';
+import { brand, radius, shadow, space, toon, toonRadius, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
 import { OutlinedText, ToonButton } from '../components/ui';
 import { useClan } from '../state/clan';
 import { useSettings } from '../state/settings';
@@ -62,7 +64,9 @@ import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
 import { rivalPopup } from '../components/RivalPopup';
 
-const D = darkColors;
+const DevSequenceControls = __DEV__
+  ? require('../components/claim/DevSequenceControls').default
+  : null;
 
 // The three jobs this screen does, in order. Claiming is a map decision and
 // takes the whole screen; the recap scrolls; sharing is outward-facing and
@@ -237,6 +241,7 @@ function formatDuration(durationS) {
 }
 
 function QuietStat({ label, value, unit, accent }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.quietStat}>
       <Text style={styles.quietLabel}>{label}</Text>
@@ -249,6 +254,7 @@ function QuietStat({ label, value, unit, accent }) {
 }
 
 function Splits({ splits, accent }) {
+  const styles = useThemedStyles(makeStyles);
   if (!splits.length) return null;
   const slowest = Math.max(...splits.map((s) => s.seconds));
   return (
@@ -268,6 +274,9 @@ function Splits({ splits, accent }) {
 }
 
 export default function ResultScreen({ navigation, route }) {
+  const { colors, scheme } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
   const { result } = route.params;
   const { color, clan } = useClan();
   const { equipped } = useAvatar();
@@ -353,6 +362,16 @@ export default function ResultScreen({ navigation, route }) {
   // ground taken, the victory beat, then the payoff and standings.
   const mapRef = useRef(null);
   const seq = useClaimSequence({ mapRef, userId: user.id });
+  const captureCharacterRect = useMemo(() => {
+    const point = seq.projection?.claimPoint;
+    return point ? { x: point.x - 30, y: point.y - 84, width: 60, height: 84 } : null;
+  }, [seq.projection?.claimPoint?.x, seq.projection?.claimPoint?.y]);
+  const captureSafeInsets = useMemo(() => ({
+    top: insets.top + 116,
+    right: 20,
+    bottom: Math.max(20, insets.bottom),
+    left: 20,
+  }), [insets.bottom, insets.top]);
   const reducedMotion = seq.reducedMotion;
   // The encounter and victory beats are laid out in the map's own pixel space,
   // so they need its box to keep characters inside the card.
@@ -741,7 +760,7 @@ export default function ResultScreen({ navigation, route }) {
         // Out of energy — send them straight to the refill shop.
         refreshEnergy();
         toast.error(e.message || 'Not enough energy to claim.');
-        setShopOpen(true);
+        if (IAP_ENABLED) setShopOpen(true);
       } else {
         // Unmissable — a silent failure here looks like a dead button.
         Alert.alert('Could not place your claim', e.message || 'Check your connection and try again.');
@@ -841,7 +860,7 @@ export default function ResultScreen({ navigation, route }) {
   // ---------------------------------------------------------------------
   if (stage === STAGE.CLAIM) {
     return (
-      <View style={{ flex: 1, backgroundColor: D.bg }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
         <View
           style={{ flex: 1 }}
           onLayout={(e) => {
@@ -854,14 +873,15 @@ export default function ResultScreen({ navigation, route }) {
           {MAP_READY ? (
             <GameMap
               ref={mapRef}
-              theme="dark"
               initialCenter={center || path[0]}
               initialZoom={13}
               locked={seq.mapLocked}
               onIdle={fitToNeighbourhood}
             >
               {/* everyone's nearby land, painted underneath the run */}
-              <TerritoryLayer id="r-board" featureCollection={boardFC} dark />
+              {/* `dark` is the soft glow under each border — it reads as
+                  neon on the night style and as smudge on the day one. */}
+              <TerritoryLayer id="r-board" featureCollection={boardFC} dark={scheme === 'dark'} />
               {/* the exact ground about to change hands — the reveal takes
                   over from here */}
               {claimPoints && canPlace && (
@@ -910,13 +930,13 @@ export default function ResultScreen({ navigation, route }) {
                   hold even after a slice is taken (largest-ring centroid) */}
               {boardPortraits.map((m) => (
                 <UserMarker key={m.id} point={m.at}>
-                  <CharacterBust equipped={m.avatar} size={28} ring={m.ring} bg="rgba(21,24,29,0.9)" />
+                  <CharacterBust equipped={m.avatar} size={28} ring={m.ring} bg={colors.cardAlt} />
                 </UserMarker>
               ))}
               {/* your portrait marks the centre of the claim */}
               {center && (
                 <UserMarker point={center}>
-                  <CharacterBust equipped={equipped} size={36} ring={team.glow} bg="rgba(21,24,29,0.9)" />
+                  <CharacterBust equipped={equipped} size={36} ring={team.glow} bg={colors.cardAlt} />
                 </UserMarker>
               )}
             </GameMap>
@@ -964,6 +984,23 @@ export default function ResultScreen({ navigation, route }) {
             />
           )}
 
+          {/* Optional visual building blocks. Capture success and the SVG
+              territory reveal do not depend on this layer; an asset failure
+              removes only its own player and the claim continues. */}
+          {seq.showCaptureStyle && (
+            <CaptureStylePlayer
+              style={seq.captureStyle}
+              playToken={seq.playToken}
+              bounds={mapBox}
+              claimPoint={seq.projection?.claimPoint}
+              territoryRings={seq.projection?.rings}
+              characterRect={captureCharacterRect}
+              safeInsets={captureSafeInsets}
+              reducedMotion={seq.reducedMotion}
+              onTerritoryReveal={seq.onCaptureRevealCue}
+            />
+          )}
+
           {/* standing on the ground they just took */}
           {seq.showVictory && (
             <TerritoryVictoryBeat
@@ -986,15 +1023,15 @@ export default function ResultScreen({ navigation, route }) {
             pointerEvents="box-none"
           >
             <LinearGradient
-              colors={['rgba(11,13,16,0.92)', 'transparent']}
+              colors={[scheme === 'dark' ? 'rgba(11,13,16,0.92)' : 'rgba(255,255,255,0.94)', 'transparent']}
               style={StyleSheet.absoluteFill}
               pointerEvents="none"
             />
             <View style={styles.claimHeadRow} pointerEvents="box-none">
               <View pointerEvents="none" style={{ flex: 1 }}>
-                <View style={[styles.stepChip, { borderColor: team.glow }]}>
-                  <View style={[styles.stepDot, { backgroundColor: team.glow }]} />
-                  <Text style={[styles.stepChipText, { color: team.glow }]}>
+                <View style={[styles.stepChip, { borderColor: team.stroke }]}>
+                  <View style={[styles.stepDot, { backgroundColor: team.stroke }]} />
+                  <Text style={[styles.stepChipText, { color: team.stroke }]}>
                     {!canPlace ? 'GROUND TAKEN' : 'PLACE YOUR TERRITORY'}
                   </Text>
                 </View>
@@ -1083,7 +1120,7 @@ export default function ResultScreen({ navigation, route }) {
                     </Text>
                     {claimingFrom.slice(0, 4).map((r) => (
                       <View key={r.id} style={styles.takeRow}>
-                        <CharacterBust equipped={r.avatar} size={26} ring={r.ring} bg="rgba(21,24,29,0.9)" />
+                        <CharacterBust equipped={r.avatar} size={26} ring={r.ring} bg={colors.cardAlt} />
                         <Text style={styles.takeName} numberOfLines={1}>
                           {r.username}{r.clanTag ? ` · ${r.clanTag}` : ''}
                         </Text>
@@ -1091,7 +1128,7 @@ export default function ResultScreen({ navigation, route }) {
                       </View>
                     ))}
                     {claimingFrom.length > 4 && (
-                      <Text style={[type.caption, { color: D.textDim, marginTop: 4 }]}>
+                      <Text style={[type.caption, { color: colors.textDim, marginTop: 4 }]}>
                         +{claimingFrom.length - 4} more
                       </Text>
                     )}
@@ -1105,7 +1142,10 @@ export default function ResultScreen({ navigation, route }) {
                     it costs is a fact about the account, not about the move. */}
                 {energyStatus && (
                   <View style={{ marginBottom: space.md }}>
-                    <EnergyMeter status={energyStatus} onPress={() => setShopOpen(true)} />
+                      <EnergyMeter
+                        status={energyStatus}
+                        onPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
+                      />
                   </View>
                 )}
 
@@ -1121,7 +1161,9 @@ export default function ResultScreen({ navigation, route }) {
           </ScrollView>
         </View>
 
-        <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={refreshEnergy} />
+        {IAP_ENABLED ? (
+          <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={refreshEnergy} />
+        ) : null}
 
         {/* the payoff: who you took it from, the XP, the level bar. Opens on
             the sequence's payoff phase — after the victory beat, not straight
@@ -1177,9 +1219,9 @@ export default function ResultScreen({ navigation, route }) {
   // a full-screen sheet so the last thing before Home is the share card.
   // ---------------------------------------------------------------------
   return (
-    <View style={{ flex: 1, backgroundColor: D.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
     <ScrollView
-      style={{ flex: 1, backgroundColor: D.bg }}
+      style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={[styles.scroll, { paddingTop: insets.top + space.md }]}
     >
 
@@ -1294,7 +1336,7 @@ export default function ResultScreen({ navigation, route }) {
         )}
 
         <View style={styles.watermark}>
-          <PaserMark size={18} color={D.textDim} />
+          <PaserMark size={18} color={colors.textDim} />
           <Text style={styles.watermarkText}>PASER</Text>
         </View>
       </View>
@@ -1321,7 +1363,7 @@ export default function ResultScreen({ navigation, route }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.prKicker}>NEW RECORD</Text>
-                  <Text style={[styles.prText, { color: D.text }]} numberOfLines={1}>
+                  <Text style={[styles.prText, { color: colors.text }]} numberOfLines={1}>
                     {a}
                   </Text>
                 </View>
@@ -1400,23 +1442,23 @@ export default function ResultScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   scroll: { padding: space.lg, paddingBottom: space.xxl },
 
   gateCard: {
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
     borderRadius: toonRadius.cell,
     borderLeftWidth: 4,
-    borderLeftColor: D.textDim,
+    borderLeftColor: colors.textDim,
     padding: space.md,
     marginBottom: space.md,
   },
-  gateTitle: { ...type.bodySmBold, color: D.text, marginBottom: 2 },
-  gateText: { ...type.bodySm, color: D.textMuted },
+  gateTitle: { ...type.bodySmBold, color: colors.text, marginBottom: 2 },
+  gateText: { ...type.bodySm, color: colors.textMuted },
 
   earnRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.md },
-  earnItem: { ...type.bodySmBold, color: D.textMuted },
-  earnCapped: { ...type.caption, color: D.textDim },
+  earnItem: { ...type.bodySmBold, color: colors.textMuted },
+  earnCapped: { ...type.caption, color: colors.textDim },
 
   // The claim card is the centrepiece of the whole post-run screen, so it wears
   // the game's own surface (ink outline, hard shadow, outlined display type)
@@ -1431,13 +1473,14 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    zIndex: CAPTURE_LAYER.UI,
     paddingHorizontal: space.lg,
     paddingBottom: space.lg,
   },
   claimHeadRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  claimLater: { ...type.bodySmBold, color: D.textMuted, paddingTop: 6 },
+  claimLater: { ...type.bodySmBold, color: colors.textMuted, paddingTop: 6 },
   claimSheet: {
-    backgroundColor: D.card,
+    backgroundColor: colors.card,
     borderTopWidth: 2.5,
     borderTopColor: toon.ink,
   },
@@ -1447,9 +1490,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: space.xl,
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
   },
-  mapMissingText: { ...type.bodySm, color: D.textMuted, textAlign: 'center' },
+  mapMissingText: { ...type.bodySm, color: colors.textMuted, textAlign: 'center' },
   stepChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1460,14 +1503,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: 4,
     marginBottom: space.sm,
+    backgroundColor: withAlpha(colors.card, 0.92),
   },
   stepDot: { width: 7, height: 7, borderRadius: 4 },
   stepChipText: { ...type.captionMedium, letterSpacing: 0.8 },
-  placeTitle: { color: D.text, marginBottom: 4 },
-  placeHint: { ...type.bodySm, color: D.textMuted, marginBottom: space.md },
+  // White fill plus the fixed ink outline remains readable over both the light
+  // street map and the dark map. Theme text in light mode was black-on-black
+  // once OutlinedText added its ink stroke, which produced the blob seen on
+  // the claim-complete screen.
+  placeTitle: { color: '#FFFFFF', marginBottom: 4 },
+  placeHint: { ...type.bodySm, color: colors.textMuted, marginBottom: space.md },
 
   takeCard: {
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
     borderRadius: toonRadius.cell,
     borderLeftWidth: 4,
     padding: space.md,
@@ -1475,20 +1523,20 @@ const styles = StyleSheet.create({
   },
   takeEyebrow: {
     ...type.captionMedium,
-    color: D.textDim,
+    color: colors.textDim,
     letterSpacing: 1,
     marginBottom: 3,
   },
-  takeTitle: { ...type.bodySmBold, color: D.text, marginBottom: space.sm },
+  takeTitle: { ...type.bodySmBold, color: colors.text, marginBottom: space.sm },
   takeRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: 6 },
-  takeName: { ...type.bodySm, color: D.textMuted, flex: 1 },
+  takeName: { ...type.bodySm, color: colors.textMuted, flex: 1 },
   takeArea: { ...type.bodySmBold },
 
   card: {
-    backgroundColor: D.card,
+    backgroundColor: colors.card,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: D.border,
+    borderColor: colors.border,
     padding: space.xl,
     alignItems: 'center',
   },
@@ -1502,32 +1550,32 @@ const styles = StyleSheet.create({
   polyWrap: { marginVertical: space.sm },
   heroRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: space.sm },
   heroArea: { ...type.statHero },
-  heroUnit: { ...type.statMd, color: D.textMuted, marginBottom: 6 },
-  heroCaption: { ...type.caption, color: D.textDim, marginTop: 2, textAlign: 'center' },
+  heroUnit: { ...type.statMd, color: colors.textMuted, marginBottom: 6 },
+  heroCaption: { ...type.caption, color: colors.textDim, marginTop: 2, textAlign: 'center' },
   quietRow: {
     flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'space-between',
-    marginTop: space.xl, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: D.border,
+    marginTop: space.xl, paddingTop: space.lg, borderTopWidth: 1, borderTopColor: colors.border,
   },
   // The second metric row hangs off the first, so the six read as one block
   // rather than as two bordered sections.
   quietRowTight: { marginTop: space.lg, paddingTop: 0, borderTopWidth: 0 },
   quietStat: { flex: 1, alignItems: 'center' },
-  quietLabel: { ...type.labelSm, color: D.textDim, marginBottom: 4 },
+  quietLabel: { ...type.labelSm, color: colors.textDim, marginBottom: 4 },
   quietValueRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  quietValue: { ...type.statSm, color: D.text },
-  quietUnit: { ...type.caption, color: D.textDim, marginLeft: 2, marginBottom: 1 },
+  quietValue: { ...type.statSm, color: colors.text },
+  quietUnit: { ...type.caption, color: colors.textDim, marginLeft: 2, marginBottom: 1 },
   deltaRow: { marginTop: space.lg },
   deltaText: { ...type.bodySmBold, textAlign: 'center' },
   watermark: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: space.lg },
-  watermarkText: { ...type.labelSm, color: D.textDim, letterSpacing: 2 },
+  watermarkText: { ...type.labelSm, color: colors.textDim, letterSpacing: 2 },
 
   section: { marginTop: space.xl },
-  sectionTitle: { ...type.label, color: D.textMuted, marginBottom: space.md },
+  sectionTitle: { ...type.label, color: colors.textMuted, marginBottom: space.md },
   splitRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
-  splitKm: { ...type.statSm, color: D.text, width: 52 },
-  splitBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: D.cardAlt, overflow: 'hidden' },
+  splitKm: { ...type.statSm, color: colors.text, width: 52 },
+  splitBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden' },
   splitBar: { height: '100%', borderRadius: 4 },
-  splitPace: { ...type.statSm, color: D.textMuted, width: 52, textAlign: 'right' },
+  splitPace: { ...type.statSm, color: colors.textMuted, width: 52, textAlign: 'right' },
 
   prWrap: { gap: space.sm },
   prHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs },
@@ -1539,7 +1587,7 @@ const styles = StyleSheet.create({
     gap: space.md,
     borderWidth: 1.5,
     borderRadius: toonRadius.cell,
-    backgroundColor: D.cardAlt,
+    backgroundColor: colors.cardAlt,
     paddingHorizontal: space.md,
     paddingVertical: space.md,
     overflow: 'hidden',
@@ -1551,7 +1599,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  prKicker: { ...type.labelSm, fontSize: 10, color: D.textDim, letterSpacing: 1.1, marginBottom: 1 },
+  prKicker: { ...type.labelSm, fontSize: 10, color: colors.textDim, letterSpacing: 1.1, marginBottom: 1 },
   prText: { ...type.bodyBold },
 
   actions: { marginTop: space.xl, gap: space.md },
