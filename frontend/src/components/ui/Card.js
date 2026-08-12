@@ -21,6 +21,7 @@ import { darkColors, radius, shadow, space, useTheme } from '../../theme';
 import { PressableScale } from '../../ui/motion';
 import ArtFrame from '../../ui/ArtFrame';
 import { INK, framePadding, getFrame, weightScale } from '../../ui/frameRegistry';
+import { frameInkFor } from './Framed';
 
 export default function Card({
   children,
@@ -79,7 +80,10 @@ export default function Card({
       layer={layer}
       width={size.width}
       height={size.height}
-      tint={frameTint || colors.textMuted}
+      // Judged against the card's own paper, so a clan tint that would vanish
+      // on white (or the muted line that would vanish on a dark card) is
+      // swapped for an ink that shows. See `frameInkFor`.
+      tint={frameInkFor({ tint: frameTint || colors.textMuted, surface: fill, scheme })}
       fill={fill}
       scale={drawScale}
       opacity={0.9}

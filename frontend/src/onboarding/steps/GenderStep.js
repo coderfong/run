@@ -23,7 +23,7 @@ import { haptic, PressableScale } from '../../ui/motion';
 import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
 import { CharacterBust } from '../../components/character/CharacterRig';
 import { useAvatar } from '../../state/avatar';
-import { FIRST_RUN_HAIR, StepHeadline } from '../ui';
+import { FIRST_RUN_HAIR, FIRST_RUN_SKY, StepHeadline } from '../ui';
 import { toonType } from '../toon';
 
 // `seed` is applied to the avatar the moment the option is tapped, so the
@@ -79,6 +79,10 @@ export default function GenderStep({ value, onChange, onContinue }) {
                 >
                   <Framed
                     frame={frameVariant('box', `gender:${opt.key}`)}
+                    // The card's fill is a translucent white, so left to judge
+                    // itself the frame would read the surface as WHITE and pick
+                    // dark ink. What the line is really over is the scene.
+                    on={FIRST_RUN_SKY}
                     tint={on ? '#ffffff' : 'rgba(255,255,255,0.45)'}
                     fill={on ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)'}
                     weight={on ? INK.bold : INK.thin}

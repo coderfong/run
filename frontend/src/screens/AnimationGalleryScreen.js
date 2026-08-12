@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -10,11 +10,15 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
+import Animated from 'react-native-reanimated';
 
 import { CharacterBust } from '../components/character/CharacterRig';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import ClaimActor from '../effects/ClaimActor';
+import useCaptureStage from '../effects/useCaptureStage';
 import EffectPlayer from '../effects/EffectPlayer';
 import { CAPTURE_STYLES } from '../effects/captureStyles';
+import { choreographySignature } from '../effects/choreography';
 import { EFFECT_CATEGORY_LABELS } from '../effects/effectCategories';
 import { getAllEffects } from '../effects/effectRegistry';
 import { useAvatar } from '../state/avatar';
@@ -226,12 +230,18 @@ function CaptureStyleLab() {
   const [reduced, setReduced] = useState(false);
   const [playToken, setPlayToken] = useState(1);
   const [stage, setStage] = useState({ width: 320, height: 430 });
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useState(null);
+  // The lab drives the same scene and the same body the live claim does, so a
+  // style watched here is the style that ships. Without these the gallery
+  // would preview only the sprite track — which is exactly the partial view
+  // that let fifteen "different" styles look fine in isolation.
+  const captureStage = useCaptureStage(reduced);
+  const actorRef = useRef(null);
   const replay = useCallback(() => {
-    setRevealed(false);
+    setRevealed(null);
     setPlayToken((value) => value + 1);
   }, []);
-  const reveal = useCallback(() => setRevealed(true), []);
+  const reveal = useCallback((spec) => setRevealed(spec || {}), []);
   const center = useMemo(() => ({ x: stage.width / 2, y: stage.height * 0.58 }), [stage.height, stage.width]);
   const ring = useMemo(() => [
     { x: center.x - 105, y: center.y - 52 }, { x: center.x - 44, y: center.y - 105 },
@@ -244,6 +254,7 @@ function CaptureStyleLab() {
     () => ({ x: center.x - 29, y: center.y - 29, width: 58, height: 58 }),
     [center]
   );
+  const selected = useMemo(() => CAPTURE_STYLES.find((item) => item.id === styleId), [styleId]);
 
   return (
     <ScrollView contentContainerStyle={styles.lab}>
@@ -261,8 +272,12 @@ function CaptureStyleLab() {
         mode="map"
         style={styles.labStage}
       >
-        <View
-          style={StyleSheet.absoluteFill}
+        {/* One stage, exactly as ResultScreen mounts it: the ground, the body
+            and the art all take the camera cues together. `onLayout` reports
+            pre-transform layout, so a zoom cannot feed back into the bounds
+            the style is laid out against. */}
+        <Animated.View
+          style={[StyleSheet.absoluteFill, captureStage.style]}
           onLayout={(event) => setStage(event.nativeEvent.layout)}
         >
           <Svg style={StyleSheet.absoluteFill}>
@@ -277,11 +292,12 @@ function CaptureStyleLab() {
               style={{ position: 'absolute', left: center.x + 52 + index * 18, top: center.y - 24 - index * 36 }}
             />
           ))}
-          <CharacterBust
+          <ClaimActor
+            ref={actorRef}
             equipped={equipped}
-            size={58}
-            ring="#54E7A5"
-            style={{ position: 'absolute', left: center.x - 29, top: center.y - 29 }}
+            anchor={center}
+            bounds={stage}
+            reducedMotion={reduced}
           />
           <CaptureStylePlayer
             style={styleId}
@@ -292,11 +308,23 @@ function CaptureStyleLab() {
             characterRect={characterRect}
             reducedMotion={reduced}
             onTerritoryReveal={reveal}
+            stage={captureStage}
+            actor={actorRef}
           />
-        </View>
+        </Animated.View>
       </PreviewBackground>
-      <Text style={[type.bodySmBold, { color: colors.text }]}>{CAPTURE_STYLES.find((item) => item.id === styleId)?.name}</Text>
-      <Text style={[type.bodySm, { color: colors.textMuted }]}>{CAPTURE_STYLES.find((item) => item.id === styleId)?.description}</Text>
+      <Text style={[type.bodySmBold, { color: colors.text }]}>{selected?.name}</Text>
+      <Text style={[type.bodySm, { color: colors.textMuted }]}>{selected?.description}</Text>
+      {/* The movement, with the art taken out of it — the same string the
+          uniqueness test compares. Reading two of these side by side is the
+          fastest way to tell whether a new style is actually a new style or
+          a repaint of one that already ships. */}
+      <Text style={[type.bodySm, { color: colors.textMuted, marginTop: space.xs }]}>
+        {selected?.archetype}
+      </Text>
+      <Text style={[type.caption, { color: colors.textMuted }]}>
+        {selected ? choreographySignature(selected) : null}
+      </Text>
     </ScrollView>
   );
 }

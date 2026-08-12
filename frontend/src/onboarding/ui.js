@@ -25,6 +25,16 @@ import { toon, toonRadius, toonType } from './toon';
 // swapping the scene is a one-line change rather than a sweep.
 const FIRST_RUN_SCENE = 'nature5';
 
+/**
+ * The colour anything drawn over the first-run stage is sitting on.
+ *
+ * Exported for the drawn frames: they choose their ink by contrast, and a card
+ * with a translucent white fill would otherwise be judged against WHITE and
+ * given dark ink — when what it is really over is the scene. Read off the art
+ * by the installer, so swapping the scene moves this with it.
+ */
+export const FIRST_RUN_SKY = SCENES[FIRST_RUN_SCENE]?.sky || '#03091C';
+
 // ---------------------------------------------------------------------------
 // Step chrome — circular back button, progress track, right-hand text action.
 // ---------------------------------------------------------------------------

@@ -23,13 +23,12 @@
 // actor steps overlap instead of letting a beat silently disappear.
 
 import React, { useCallback, useEffect, useImperativeHandle, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withSequence,
   withSpring,
   withTiming,
@@ -54,10 +53,11 @@ const SOFT_SETTLE = { damping: 14, stiffness: 180, mass: 0.6 };
 const ease = {
   out: Easing.out(Easing.quad),
   outCubic: Easing.out(Easing.cubic),
-  in: Easing.in(Easing.quad),
   inCubic: Easing.in(Easing.cubic),
   inOut: Easing.inOut(Easing.quad),
-  back: Easing.out(Easing.back(2)),
+  // Wind-ups use this rather than a plain ease-out: a body gathering itself
+  // starts slowly AND arrives slowly at the top of the wind-up, and the pause
+  // implied by that second half is what makes the release read as a release.
   anticipate: Easing.inOut(Easing.quad),
 };
 

@@ -119,6 +119,10 @@ function RouteThumb({ item, color, reactions = [], onReact }) {
     // a second surface colour to do it.
     <Framed
       frame={frameVariant('box', `route:${item.id}`)}
+      // Drawn straight onto the card, with no paper of its own, so the card's
+      // surface is what the line has to read against — a pale clan colour on a
+      // white card is a box you cannot see.
+      on={colors.card}
       tint={withAlpha(color, 0.55)}
       weight={INK.thin}
       pose={framePose(`route:${item.id}`)}

@@ -11,7 +11,16 @@ import {
   weightScale,
 } from '../src/ui/frameRegistry';
 import { fillFor } from '../src/components/ui/Button';
-import { brand } from '../src/theme';
+import { frameInkFor } from '../src/components/ui/Framed';
+import {
+  INK_MIN_CONTRAST,
+  brand,
+  contrastRatio,
+  darkColors,
+  lightColors,
+  luminance,
+  readableInk,
+} from '../src/theme';
 import { applyReaction } from '../src/hooks/useRunReactions';
 import {
   REACTIONS,
@@ -192,6 +201,68 @@ describe('a framed button never paints its own background', () => {
     // stops are the same pink anyway.
     expect(fillFor('gradient', 'anything')).toBe(brand.gradient[0]);
     expect(typeof fillFor('gradient', 'anything')).toBe('string');
+  });
+});
+
+describe('a drawn line has to be visible on what it is drawn on', () => {
+  // The hole this closes: with no tint at all a frame drew its art's own
+  // near-black blue, so every unstyled box vanished the moment the app went
+  // dark. And a tint chosen once at a call site is right for exactly one
+  // surface — a pale clan accent on a white card, or the theme's muted line on
+  // a dark one, is a box you cannot see.
+  const LIGHT = '#ffffff';
+  const DARK = '#0b0d10';
+
+  test('no surface and no tint falls back to the theme, both ways', () => {
+    expect(frameInkFor({ scheme: 'dark' })).not.toBe(frameInkFor({ scheme: 'light' }));
+    // Light ink on dark, dark ink on light — not the reverse.
+    expect(contrastRatio(frameInkFor({ scheme: 'dark' }), DARK)).toBeGreaterThan(4);
+    expect(contrastRatio(frameInkFor({ scheme: 'light' }), LIGHT)).toBeGreaterThan(4);
+  });
+
+  test('a legible tint is kept, whatever it is', () => {
+    // The app would flatten to two colours if this overrode everything.
+    expect(frameInkFor({ tint: brand.pink, surface: LIGHT })).toBe(brand.pink);
+    expect(frameInkFor({ tint: '#0C0C10', surface: LIGHT })).toBe('#0C0C10');
+    expect(frameInkFor({ tint: '#ffffff', surface: '#026493' })).toBe('#ffffff');
+  });
+
+  test('an invisible tint is replaced by one that shows', () => {
+    const onWhite = frameInkFor({ tint: '#fdfdfd', surface: LIGHT });
+    expect(onWhite).not.toBe('#fdfdfd');
+    expect(contrastRatio(onWhite, LIGHT)).toBeGreaterThanOrEqual(INK_MIN_CONTRAST);
+
+    const onDark = frameInkFor({ tint: '#111318', surface: DARK });
+    expect(onDark).not.toBe('#111318');
+    expect(contrastRatio(onDark, DARK)).toBeGreaterThanOrEqual(INK_MIN_CONTRAST);
+  });
+
+  test('every surface in the app gets an ink that shows on it', () => {
+    const surfaces = [
+      lightColors.card, lightColors.bg, lightColors.cardAlt,
+      darkColors.card, darkColors.bg, darkColors.cardAlt,
+      brand.pink, brand.purple, brand.teal,
+      '#026493', // the first-run meadow's sky
+      '#000000', '#ffffff',
+    ];
+    for (const surface of surfaces) {
+      for (const tint of [undefined, brand.pink, '#0C0C10', '#ffffff', lightColors.textMuted]) {
+        const ink = frameInkFor({ tint, surface, scheme: 'light' });
+        expect(contrastRatio(ink, surface)).toBeGreaterThanOrEqual(INK_MIN_CONTRAST);
+      }
+    }
+  });
+
+  test('an unparseable surface leaves the caller alone rather than guessing', () => {
+    expect(frameInkFor({ tint: brand.pink, surface: 'not-a-colour' })).toBe(brand.pink);
+    expect(readableInk(undefined, { prefer: brand.teal })).toBe(brand.teal);
+  });
+
+  test('translucent colours are understood, not treated as opaque black', () => {
+    // GenderStep's cards fill with rgba white over the scene; a parser that
+    // failed here would report the surface as unknown and skip the check.
+    expect(luminance('rgba(255,255,255,0.16)')).toBeCloseTo(luminance('#ffffff'), 5);
+    expect(luminance('#F4F4F7')).toBeGreaterThan(luminance('#0C0C10'));
   });
 });
 
