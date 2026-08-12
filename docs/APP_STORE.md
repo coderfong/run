@@ -201,8 +201,11 @@ make sure every screenshot reflects the submitted binary.
       already states that PASER writes finished runs to Apple Health and reads
       nothing, which is exactly what the binary now does.
 - [ ] Create a real, stable reviewer account and paste it into Review Notes.
-- [ ] Create a fresh EAS production build; the latest existing build (23) does
-      not contain this audit's fixes.
+- [x] Build 25 (2.1.0) built and uploaded to App Store Connect on 2026-08-12.
+      EAS build id `c57ede84-3644-4f75-98c1-f37bd0b86aa1`. This is the first
+      build with the HealthKit module actually linked, and the first since
+      App Store Connect rejected build 24 for error 90683. Do not submit build
+      23 or 24.
 - [ ] Test the fresh build on a physical iPhone through TestFlight: password,
       Apple, and Google sign-in; permissions; foreground/background run; claim;
       map; notifications; share/save; report; block; and account deletion.
