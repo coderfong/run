@@ -13,8 +13,10 @@ This is an implementation inventory, not legal advice. Preserve the source archi
 | Tiny RPG Emoji Pack I | README identifies the pack as CC0 1.0 | approved; CC0 needs no attribution, and the credit is recorded in `animation-selection.json` |
 | explosion pack 1 (ansimuz) | bundled `public-license.pdf` states CC0: any personal or commercial project, no attribution required, modification and redistribution unrestricted | approved; Luis Zuno is credited in Profile |
 | ELR-WindyLeafs | no license file shipped in the download; terms verified by the project owner 2026-08-11 | approved on the owner's verification, recorded in `animation-selection.json` |
+| BigFramesColored | no license file shipped in the download; terms verified by the project owner 2026-08-11 | approved on the owner's verification, recorded in `assets/frames/frame-manifest.json`; the nine-slice cuts are derived, the source sheets are not shipped |
+| Nature Landscapes Free Pixel Art (CraftPix) | `License.txt` points at craftpix.net/file-licenses; the free licence permits commercial use and restricts redistribution of the packs themselves | approved on the owner's direction 2026-08-13 (they supplied the pack and named the scene); CraftPix is credited in Profile. **The terms have not been read line by line** — do that before the store release, and note it is the only row here approved on a direction rather than on a reading. One scene of eight ships, as five layers |
 
-The release importer copies 44 assets from these packages. They are registered with `releaseApproved: true`; the two existing PASER Lotties are also explicitly approved.
+The release importer copies 44 assets from these packages. They are registered with `releaseApproved: true`; the two existing PASER Lotties are also explicitly approved. The frame and landscape packs sit outside the effect importer and carry their provenance in their own manifests (`assets/frames/frame-manifest.json`, `assets/art/scenes/scene-manifest.json`), written by their install scripts so it cannot drift from the art.
 
 ## Blocked candidates requiring verification
 

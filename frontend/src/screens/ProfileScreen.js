@@ -735,6 +735,11 @@ export default function ProfileScreen({ navigation }) {
       </TouchableOpacity>
       <Text style={styles.legal}>Pixel effects by Will Tice</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>Additional VFX by Pixel VFX Studio, RiaKare and Luis Zuno</Text>
+      {/* The first run plays against a CraftPix landscape. Their free licence
+          allows commercial use and asks for a credit where one is practical;
+          this is where every other pack in the app is credited, so it costs a
+          line and removes a content rights question at review. */}
+      <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
       {IAP_ENABLED ? (
         <>
