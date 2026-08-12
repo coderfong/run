@@ -217,9 +217,16 @@ make sure every screenshot reflects the submitted binary.
       and Done on the share card opened the crossed-paths modal on top of the
       share modal — the app's only opaque full-screen Modal, which is a native
       present-on-a-presenting-controller. Do not submit build 25.
-      Cut from commit `45e3e78`. The CraftPix credit line in Profile landed in
-      `ed5c2dc`, after the archive, so it is in the NEXT build rather than this
-      one.
+      Cut from commit `45e3e78`, on branch `ui/frames-and-claim-pass`. EAS
+      build id `8ae97286-fd8e-489c-adf2-d0ebacf662f9`. The CraftPix credit line
+      in Profile landed in `ed5c2dc`, after the archive, so it is in the NEXT
+      build rather than this one.
+
+      Housekeeping while you are here: the uploaded archive is **378 MB**,
+      which is most of a minute of upload on every build. `.easignore` is
+      worth writing — `frontend/.history`, `frontend/dist`, and the three
+      `.expo-export-check*` directories are all in the tarball and none of
+      them is needed to build.
 - [ ] Test the fresh build on a physical iPhone through TestFlight: password,
       Apple, and Google sign-in; permissions; foreground/background run; claim;
       map; notifications; share/save; report; block; and account deletion.
