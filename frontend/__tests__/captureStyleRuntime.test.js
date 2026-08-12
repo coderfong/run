@@ -2,7 +2,7 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
 import CaptureStylePlayer, { validateCaptureStyle } from '../src/effects/CaptureStylePlayer';
-import { CAPTURE_STYLES, captureStyleShape } from '../src/effects/captureStyles';
+import { REVEAL_ORIGIN, REVEAL_TRANSITION, effect, reveal } from '../src/effects/choreography';
 
 jest.mock('../src/effects/EffectPlayer', () => () => null);
 jest.mock('../src/effects/ReactionEffect', () => () => null);
@@ -18,59 +18,10 @@ const common = {
   safeInsets: { top: 120, right: 20, bottom: 24, left: 20 },
 };
 
-describe('every claim celebration is its own celebration', () => {
-  // The pack used to be fifteen sprite playlists sharing one piece of
-  // choreography: three sheets on the territory's visual centre, a sideways
-  // rattle, a radial reveal. Different art, identical event — which is what
-  // "sure I see different animations, but the action is the same" meant.
-  //
-  // `captureStyleShape` strips the art out and leaves the movement, so these
-  // assert the thing that was actually wrong.
-  test('no two styles share a movement shape', () => {
-    const shapes = new Map();
-    for (const style of CAPTURE_STYLES) {
-      const shape = captureStyleShape(style);
-      expect(shapes.has(shape)).toBe(false);
-      shapes.set(shape, style.id);
-    }
-    expect(shapes.size).toBe(CAPTURE_STYLES.length);
-  });
-
-  test('the pack uses the whole anchor vocabulary, not just the centre', () => {
-    const anchors = new Set();
-    for (const style of CAPTURE_STYLES) {
-      for (const step of style.sequence) {
-        if (!step.action) anchors.add(step.anchor || 'territoryVisualCenter');
-      }
-    }
-    // Centre-only is the state this pass existed to leave behind. Eight is
-    // comfortably more than "a couple of styles happen to differ".
-    expect(anchors.size).toBeGreaterThanOrEqual(8);
-  });
-
-  test('stage movement is not one gesture repeated', () => {
-    const cues = new Set();
-    for (const style of CAPTURE_STYLES) {
-      for (const step of style.sequence) {
-        if (step.action === 'screenShake') cues.add(`shake:${step.axis || 'x'}`);
-        if (step.action === 'cameraPunch') cues.add('punch');
-      }
-    }
-    // Sideways, vertical, both, and the camera push.
-    expect(cues).toEqual(new Set(['shake:x', 'shake:y', 'shake:both', 'punch']));
-  });
-
-  test('some styles reveal the ground before the impact and some after', () => {
-    const order = CAPTURE_STYLES.map((style) => {
-      const reveal = style.sequence.find((s) => s.action === 'territoryReveal');
-      const impact = style.sequence.find((s) => s.action === 'haptic');
-      return reveal.start < impact.start ? 'before' : 'after';
-    });
-    // Whether the land arrives and is then struck, or the strike is what puts
-    // it there, is the biggest single difference between two celebrations.
-    expect(new Set(order)).toEqual(new Set(['before', 'after']));
-  });
-});
+// The pack's own identity rules moved to choreography.test.js when the
+// styles became archetypes plus paint: `choreographySignature` is the thing
+// that knows what a movement IS, and duplicating a weaker version of it here
+// would only ever go stale. What stays in this file is the PLAYER.
 
 describe('CaptureStylePlayer lifecycle', () => {
   beforeEach(() => jest.useFakeTimers());
@@ -144,18 +95,135 @@ describe('CaptureStylePlayer lifecycle', () => {
     act(() => tree.unmount());
   });
 
+  test('the reveal cue carries how and from where, not just when', () => {
+    // The controller starts the territory transition on this callback. It used
+    // to be an argumentless "now", so the canvas had no way to know which of
+    // fifteen styles had asked and played a radial wipe for all of them.
+    const onTerritoryReveal = jest.fn();
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <CaptureStylePlayer {...common} style="earthshaker" onTerritoryReveal={onTerritoryReveal} />
+      );
+    });
+    act(() => jest.advanceTimersByTime(3000));
+    expect(onTerritoryReveal).toHaveBeenCalledTimes(1);
+    expect(onTerritoryReveal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transition: REVEAL_TRANSITION.CRACK,
+        origin: REVEAL_ORIGIN.CHARACTER_FEET,
+      })
+    );
+    act(() => tree.unmount());
+  });
+
+  test('every body beat reaches the actor, in order', () => {
+    const play = jest.fn();
+    const actor = { current: { play, reset: jest.fn() } };
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <CaptureStylePlayer {...common} style="earthshaker" actor={actor} />
+      );
+    });
+    act(() => jest.advanceTimersByTime(3000));
+    expect(play.mock.calls.map(([step]) => step.name)).toEqual(['jump', 'slam']);
+    act(() => tree.unmount());
+  });
+
+  test('camera cues reach the stage, and the stage is handed back at rest', () => {
+    const runCamera = jest.fn();
+    const stage = { runCamera, runShake: jest.fn(), reset: jest.fn(), stop: jest.fn(), style: {} };
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <CaptureStylePlayer {...common} style="void_collapse" stage={stage} />
+      );
+    });
+    act(() => jest.advanceTimersByTime(3000));
+    const cues = runCamera.mock.calls.map(([step]) => step.name);
+    expect(cues).toContain('zoomIn');
+    expect(cues).toContain('freeze');
+    // Whatever a style does to the scene, the victory beat must not inherit
+    // it — a claim that ended zoomed would frame the payoff wrong.
+    expect(cues[cues.length - 1]).toBe('release');
+    act(() => tree.unmount());
+  });
+
+  test('a style with no stage and no actor still reveals and still completes', () => {
+    // Both are optional on purpose: the animation gallery mounts the player
+    // bare, and a missing scene must never cost the claim its reveal.
+    const onComplete = jest.fn();
+    const onTerritoryReveal = jest.fn();
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <CaptureStylePlayer
+          {...common}
+          style="inferno"
+          onComplete={onComplete}
+          onTerritoryReveal={onTerritoryReveal}
+        />
+      );
+    });
+    act(() => jest.advanceTimersByTime(3000));
+    expect(onTerritoryReveal).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  test('reduced motion keeps the turnover and drops the choreography', () => {
+    const onTerritoryReveal = jest.fn();
+    const play = jest.fn();
+    const runCamera = jest.fn();
+    const actor = { current: { play, reset: jest.fn() } };
+    const stage = { runCamera, runShake: jest.fn(), reset: jest.fn(), stop: jest.fn(), style: {} };
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <CaptureStylePlayer
+          {...common}
+          style="earthshaker"
+          reducedMotion
+          actor={actor}
+          stage={stage}
+          onTerritoryReveal={onTerritoryReveal}
+        />
+      );
+    });
+    act(() => jest.advanceTimersByTime(220));
+    // The ground still changes hands, and it still changes hands the way this
+    // style changes it — a freeze and a shatter are different events, not
+    // different amounts of motion.
+    expect(onTerritoryReveal).toHaveBeenCalledWith(
+      expect.objectContaining({ transition: REVEAL_TRANSITION.CRACK })
+    );
+    // No jumping, no slamming, no camera.
+    expect(play).not.toHaveBeenCalled();
+    expect(runCamera.mock.calls.filter(([s]) => s.name !== 'release')).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+
   test('invalid capture-style effects are reported while missing optional effects are allowed', () => {
+    // A reveal now has to say HOW the ground turns over and from where — a
+    // freeze and a shatter are different events, not different art over the
+    // same wipe — so the fixture states one rather than leaving it undefined.
     const actions = [
-      { action: 'territoryReveal', start: 10 },
+      reveal(10, {
+        transition: REVEAL_TRANSITION.RADIAL,
+        origin: REVEAL_ORIGIN.CLAIM_POINT,
+      }),
       { action: 'haptic', start: 10, style: 'light' },
     ];
     expect(validateCaptureStyle({
       id: 'broken', duration: 900,
-      sequence: [{ effect: 'not-registered', start: 0 }, ...actions],
+      // Built through `effect()` so it carries `track: 'effect'` — the
+      // validator only inspects that track, and a bare object slips past it.
+      sequence: [effect(0, 'not-registered'), ...actions],
     })).toEqual(expect.arrayContaining([expect.stringContaining('missing effect')]));
     expect(validateCaptureStyle({
       id: 'optional', duration: 900,
-      sequence: [{ effect: 'not-registered', start: 0, optional: true }, ...actions],
+      sequence: [effect(0, 'not-registered', { optional: true }), ...actions],
     })).toEqual([]);
   });
 });

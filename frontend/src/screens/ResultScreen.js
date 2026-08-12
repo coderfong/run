@@ -23,6 +23,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,6 +37,9 @@ import ClaimPayoff from '../components/ClaimPayoff';
 import GameAnimation from '../components/GameAnimation';
 import CaptureEncounter from '../components/claim/CaptureEncounter';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import ClaimActor from '../effects/ClaimActor';
+import useCaptureStage from '../effects/useCaptureStage';
+import { buildTerritoryAnchorModel, resolveRevealOrigin } from '../effects/anchors';
 import { CAPTURE_LAYER } from '../effects/layers';
 import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
@@ -373,9 +377,44 @@ export default function ResultScreen({ navigation, route }) {
     left: 20,
   }), [insets.bottom, insets.top]);
   const reducedMotion = seq.reducedMotion;
+  // The scene the whole claim overlay lives on, and the one body on it.
+  //
+  // NOT `stage`. This screen already has one: the CLAIM / SUMMARY / SHARE
+  // step machine declared above. Two `const stage` in one component body is
+  // a parse error, so the camera's stage carries the longer name.
+  const captureStage = useCaptureStage(reducedMotion);
+  const actorRef = useRef(null);
   // The encounter and victory beats are laid out in the map's own pixel space,
   // so they need its box to keep characters inside the card.
   const [mapBox, setMapBox] = useState(null);
+
+  // Where this style's wipe opens from.
+  //
+  // Resolved with the SAME anchor resolver the effects use, against the same
+  // context, so "the ground cracks from the fist that hit it" is literally the
+  // same point the impact sprite was drawn on. Resolving it here rather than
+  // inside the canvas keeps the canvas ignorant of the anchor vocabulary and
+  // means the reveal cannot disagree with the effect that caused it.
+  const revealOrigin = useMemo(() => {
+    const rings = seq.reveal?.rings;
+    const claimPoint = seq.reveal?.claimPoint;
+    if (!rings || !claimPoint) return null;
+    const context = {
+      bounds: mapBox,
+      claimPoint,
+      territoryCenter: claimPoint,
+      territoryRings: rings,
+      characterRect: captureCharacterRect,
+      safeInsets: captureSafeInsets,
+      anchorModel: buildTerritoryAnchorModel({
+        rings, bounds: mapBox, insets: captureSafeInsets, preferred: claimPoint,
+      }),
+    };
+    return resolveRevealOrigin(seq.revealSpec?.origin, context, `reveal:${seq.playToken}`);
+  }, [
+    captureCharacterRect, captureSafeInsets, mapBox,
+    seq.playToken, seq.reveal, seq.revealSpec?.origin,
+  ]);
   // The rail and dial live inside a vertically scrolling sheet. Freeze their
   // parent while either control owns the gesture so turning the claim cannot
   // drag the whole screen under the runner's finger.
@@ -958,56 +997,97 @@ export default function ResultScreen({ navigation, route }) {
 
           {/* Everything below is screen-space, pinned exactly over the map it
               was projected against, and all of it is pointerEvents none — the
-              map must never gain an invisible lid. */}
+              map must never gain an invisible lid.
 
-          {/* the ground changing hands */}
-          {seq.showEncounter && (
-            <CaptureEncounter
-              visible
-              variant={seq.variant}
-              attacker={equipped}
-              defenders={seq.defenders}
-              claimScreenPoint={seq.projection?.claimPoint}
-              bounds={mapBox}
-              onImpact={seq.onImpact}
-              onComplete={seq.onEncounterComplete}
-              reducedMotion={reducedMotion}
-              playToken={seq.playToken}
-            />
-          )}
+              It is also all inside ONE stage. A capture style's camera cues
+              (zoom, whip, tilt) and its shakes transform this wrapper, so the
+              reveal, the actor and the sprites move together. When the shake
+              lived inside the effects player instead, an impact rattled the
+              art while the ground it was standing on held perfectly still.
 
-          {/* the radial reveal */}
-          {seq.reveal && (
-            <TerritoryRevealCanvas
-              rings={seq.reveal.rings}
-              claimPoint={seq.reveal.claimPoint}
-              fillColor={team.stroke}
-              strokeColor={team.glow}
-              // The map's own box, so the reveal can blow the shape up to fill
-              // it and centre it — the same pixel space the capture encounter
-              // and the victory beat are laid out in.
-              bounds={mapBox}
-              reduced={reducedMotion}
-              playToken={seq.playToken}
-            />
-          )}
+              The real Mapbox camera is deliberately NOT what moves: the reveal
+              is screen-space, projected once from a levelled, stopped camera,
+              and moving the camera after that invalidates every pixel of it —
+              see useCaptureStage for the full note. */}
+          <Animated.View
+            style={[StyleSheet.absoluteFill, captureStage.style]}
+            pointerEvents="none"
+          >
+            {/* the ground changing hands */}
+            {seq.showEncounter && (
+              <CaptureEncounter
+                visible
+                variant={seq.variant}
+                attacker={equipped}
+                defenders={seq.defenders}
+                claimScreenPoint={seq.projection?.claimPoint}
+                bounds={mapBox}
+                onImpact={seq.onImpact}
+                onComplete={seq.onEncounterComplete}
+                reducedMotion={reducedMotion}
+                playToken={seq.playToken}
+                // The encounter's attacker hands over to the capture style's
+                // actor at impact — one rig on screen, not two.
+                retireAttacker={seq.showCaptureStyle}
+              />
+            )}
 
-          {/* Optional visual building blocks. Capture success and the SVG
-              territory reveal do not depend on this layer; an asset failure
-              removes only its own player and the claim continues. */}
-          {seq.showCaptureStyle && (
-            <CaptureStylePlayer
-              style={seq.captureStyle}
-              playToken={seq.playToken}
-              bounds={mapBox}
-              claimPoint={seq.projection?.claimPoint}
-              territoryRings={seq.projection?.rings}
-              characterRect={captureCharacterRect}
-              safeInsets={captureSafeInsets}
-              reducedMotion={seq.reducedMotion}
-              onTerritoryReveal={seq.onCaptureRevealCue}
-            />
-          )}
+            {/* the ground turning over, however this style turns it over */}
+            {seq.reveal && (
+              <TerritoryRevealCanvas
+                rings={seq.reveal.rings}
+                claimPoint={seq.reveal.claimPoint}
+                fillColor={team.stroke}
+                strokeColor={team.glow}
+                // The map's own box, so the reveal can blow the shape up to
+                // fill it and centre it — the same pixel space the capture
+                // encounter and the victory beat are laid out in.
+                bounds={mapBox}
+                reduced={reducedMotion}
+                playToken={seq.playToken}
+                transition={seq.revealSpec?.transition}
+                origin={revealOrigin}
+                duration={seq.revealSpec?.duration}
+              />
+            )}
+
+            {/* The runner, doing the thing that takes the ground. Owned here
+                rather than inside the player so it can sit between the reveal
+                and the foreground art: the effect a character causes should
+                read as being in front of them, and the ground under both. */}
+            {seq.showCaptureStyle && seq.projection?.claimPoint && (
+              <ClaimActor
+                ref={actorRef}
+                equipped={equipped}
+                anchor={seq.projection.claimPoint}
+                bounds={mapBox}
+                reducedMotion={reducedMotion}
+                // Crossfades with the encounter's own attacker, which is at
+                // the same point and the same size, so the handover is not
+                // visible.
+                fadeIn={reducedMotion ? 0 : 140}
+              />
+            )}
+
+            {/* Optional visual building blocks. Capture success and the SVG
+                territory reveal do not depend on this layer; an asset failure
+                removes only its own player and the claim continues. */}
+            {seq.showCaptureStyle && (
+              <CaptureStylePlayer
+                style={seq.captureStyle}
+                playToken={seq.playToken}
+                bounds={mapBox}
+                claimPoint={seq.projection?.claimPoint}
+                territoryRings={seq.projection?.rings}
+                characterRect={captureCharacterRect}
+                safeInsets={captureSafeInsets}
+                reducedMotion={seq.reducedMotion}
+                onTerritoryReveal={seq.onCaptureRevealCue}
+                stage={captureStage}
+                actor={actorRef}
+              />
+            )}
+          </Animated.View>
 
           {/* standing on the ground they just took */}
           {seq.showVictory && (

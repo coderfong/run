@@ -141,12 +141,20 @@ export function framePose(seed, frameCount = 3) {
 // and everything else — the corners, the padding — follows from that. The
 // corners shrink with the line, which is right: a fine line drawn round a big
 // box has small corners, exactly as it would on paper.
+// The numbers are POINTS OF DRAWN LINE, so they read directly: `base` is a
+// 5pt stroke, whichever of the pack's drawings is behind it.
+//
+// The first pass at this set was a third finer (2 / 2.75 / 3.5 / 4.5 / 6) and
+// it was too timid — normalising the weights fixed the mismatch but left every
+// box looking like a hairline sketch of itself rather than the confident marker
+// line the art was drawn with. These are the drawn line's own proportions on a
+// phone: a chip carries 3.5pt, a button 5, a hero 6.5.
 export const INK = Object.freeze({
-  hairline: 2,
-  thin: 2.75,
-  base: 3.5,
-  bold: 4.5,
-  heavy: 6,
+  hairline: 3,
+  thin: 3.75,
+  base: 5,
+  bold: 6.5,
+  heavy: 8.5,
 });
 
 function inkMean(name) {

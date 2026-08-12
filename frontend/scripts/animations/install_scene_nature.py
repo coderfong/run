@@ -42,11 +42,31 @@ LAYER_COUNT = 5
 # noticeable than no parallax at all.
 DRIFT = [
     {"amplitude": 0.000, "seconds": 0, "role": "sky"},
-    {"amplitude": 0.030, "seconds": 26, "role": "clouds"},
-    {"amplitude": 0.006, "seconds": 19, "role": "far ground"},
-    {"amplitude": 0.012, "seconds": 15, "role": "trees"},
-    {"amplitude": 0.045, "seconds": 11, "role": "birds"},
+    {"amplitude": 0.030, "seconds": 9, "role": "clouds"},
+    {"amplitude": 0.008, "seconds": 7, "role": "far ground"},
+    {"amplitude": 0.016, "seconds": 5, "role": "trees"},
+    {"amplitude": 0.050, "seconds": 3.5, "role": "birds"},
 ]
+
+# How much of the box's HEIGHT the landscape should fill, and where the
+# horizontal crop is taken from.
+#
+# The art is 16:9 and a phone is about 9:19.5, so a scene pinned to the bottom
+# at its own aspect covers barely a quarter of the screen and the rest is a
+# flat slab of sky — which is exactly what "too zoomed out, too much sky"
+# means. Filling more height means cropping width; there is no third option.
+#
+# `focus` is which part of the frame survives that crop, 0 = left edge. This
+# scene's trees are at roughly a fifth to a third of the way across, and they
+# are the only thing in it with any silhouette, so the crop is taken left of
+# centre to keep them rather than centring on an empty field.
+# Chosen by rendering the crop against the picker sheet's top edge rather than
+# by taste: at 0.58 the treeline sat entirely BELOW the sheet, so every
+# character step showed a flat blue slab and nothing else. At 0.85 the trees
+# cross the sheet line, which is the only part of the scene most steps can
+# show. Past that the crop is tight enough to lose the second tree.
+COVER = 0.85
+FOCUS_X = 0.20
 
 
 def find_source() -> Path:
@@ -122,6 +142,8 @@ def main() -> int:
                 "name": "Meadow",
                 "sky": "#%02X%02X%02X" % sky,
                 "aspect": round(layers[0]["width"] / layers[0]["height"], 4),
+                "cover": COVER,
+                "focusX": FOCUS_X,
                 "layers": layers,
             }
         },

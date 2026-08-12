@@ -1,11 +1,28 @@
+// Plays a choreography.
+//
+// The old player understood two things: put a sprite here, rattle the stage.
+// Everything a style could say was therefore a variation on "some art appeared
+// somewhere", which is why fifteen styles were one animation. It now runs five
+// tracks (see choreography.js):
+//
+//   actor      forwarded to ClaimActor, which owns the transform chains
+//   camera     forwarded to the shared stage, which carries the reveal too
+//   effect     a sprite in a place, or a sprite that TRAVELS between two
+//   territory  the reveal cue, now carrying HOW and FROM WHERE
+//   feel       haptics, and pauses that exist only to be silent
+//
+// The player owns scheduling, cancellation and safety. Every visual step is
+// optional presentation: a blocked licence, a bad import or a typo drops that
+// step and nothing else. The reveal cue is the one step that matters, and it
+// has a fallback in the controller so even a player that never mounts cannot
+// strand a claim.
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
-  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -17,6 +34,8 @@ import {
   resolveEffectAnchor,
 } from './anchors';
 import { resolveCaptureStyle } from './captureStyles';
+import { CAMERA_ACTION, validateChoreography } from './choreography';
+import ClaimActor from './ClaimActor';
 import EffectPlayer from './EffectPlayer';
 import { getEffect } from './effectRegistry';
 import { CAPTURE_LAYER } from './layers';
@@ -32,6 +51,14 @@ export function effectIdForCaptureStep(step) {
   return null;
 }
 
+/**
+ * Reduced motion keeps the INFORMATION and drops the movement.
+ *
+ * The ground still changes hands and the impact is still felt; there is no
+ * travel, no shake, no camera and no sprite. Unchanged in intent from the
+ * original — but it now also has to strip actor and camera steps, which are
+ * exactly the large-field movement the setting exists to suppress.
+ */
 export function buildCapturePlan(captureStyle, reducedMotion = false) {
   if (!reducedMotion) return { duration: captureStyle.duration, sequence: captureStyle.sequence };
   const reveal = captureStyle.sequence.find((step) => step.action === 'territoryReveal');
@@ -39,30 +66,95 @@ export function buildCapturePlan(captureStyle, reducedMotion = false) {
   return {
     duration: REDUCED_CAPTURE_DURATION,
     sequence: [
+      // The transition survives even here: a claim that freezes over and a
+      // claim that shatters are different EVENTS, not different amounts of
+      // motion, and the canvas plays every transition in a reduced form.
       ...(reveal ? [{ ...reveal, start: 0 }] : []),
       ...(impact ? [{ ...impact, start: 40, style: 'light' }] : []),
     ],
   };
 }
 
+/**
+ * Kept under its original name because the whole test suite and the animation
+ * gallery call it. The rules it enforces now live with the vocabulary; the
+ * art-availability check stays here, because only the player knows what the
+ * registry actually holds.
+ */
 export function validateCaptureStyle(captureStyle) {
-  const errors = [];
   if (!captureStyle || !Array.isArray(captureStyle.sequence)) return ['missing capture style sequence'];
-  if (!(captureStyle.duration > 0)) errors.push('duration must be positive');
-  if (captureStyle.sequence.filter((step) => step.action === 'territoryReveal').length !== 1) {
-    errors.push('capture style must contain exactly one territory reveal cue');
-  }
-  if (captureStyle.sequence.filter((step) => step.action === 'haptic').length !== 1) {
-    errors.push('capture style must contain exactly one primary haptic');
-  }
+  const errors = validateChoreography(captureStyle);
   captureStyle.sequence.forEach((step, index) => {
-    if (!Number.isFinite(step.start) || step.start < 0) errors.push(`step ${index} has an invalid start`);
-    if (!step.action && !effectIdForCaptureStep(step) && !step.optional) errors.push(`step ${index} has no playable effect`);
+    if (step.track !== 'effect') return;
     const id = effectIdForCaptureStep(step);
+    if (!id && !step.optional) errors.push(`step ${index} has no playable effect`);
     if (id && !getEffect(id) && !step.optional) errors.push(`step ${index} references missing effect ${id}`);
   });
   return errors;
 }
+
+// ---------------------------------------------------------------------------
+// A sprite that travels
+// ---------------------------------------------------------------------------
+
+/**
+ * The single biggest thing the old vocabulary could not say.
+ *
+ * A bolt at the top of the screen and an impact in the middle were two
+ * unrelated flashes; nothing ever crossed the gap, so a strike from the sky
+ * had no strike in it. This tweens an effect between two resolved points, with
+ * an optional arc (a lobbed charge falls, it does not slide) and spin.
+ *
+ * The tween is on a plain RN Animated.View wrapping the player rather than on
+ * the sprite itself: the sprite is already animating its own frames, and
+ * driving position from the same component would re-render it every frame.
+ */
+function TravellingEffect({ step, from, to, size, playToken, onDone }) {
+  const progress = useSharedValue(0);
+
+  useEffect(() => {
+    progress.value = 0;
+    progress.value = withTiming(1, {
+      duration: Math.max(60, step.duration || 260),
+      // A thrown thing accelerates; a beam does not.
+      easing: step.arc ? Easing.in(Easing.quad) : Easing.inOut(Easing.quad),
+    });
+  }, [playToken, progress, step.arc, step.duration]);
+
+  const style = useAnimatedStyle(() => {
+    const t = progress.value;
+    // Straight line plus a parabolic lift. `arc` is the height of the hump in
+    // pixels, negative for an overhand lob.
+    const lift = step.arc ? step.arc * 4 * t * (1 - t) : 0;
+    return {
+      transform: [
+        { translateX: from.x + (to.x - from.x) * t - size / 2 },
+        { translateY: from.y + (to.y - from.y) * t + lift - size / 2 },
+        { rotate: `${(step.spin || 0) * t}deg` },
+      ],
+      opacity: step.opacity == null ? 1 : step.opacity,
+    };
+  });
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.travelling, { width: size, height: size }, style]}
+    >
+      <EffectPlayer
+        effect={step.spec}
+        size={size}
+        speed={step.speed}
+        loop
+        playToken={playToken}
+        reducedMotion={false}
+        onComplete={onDone}
+      />
+    </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 export default function CaptureStylePlayer({
   style: styleId,
@@ -79,21 +171,23 @@ export default function CaptureStylePlayer({
   onScreenShake,
   onComplete,
   stageStyle,
+  // The shared stage. Optional: without one the player still runs, it just has
+  // no scene movement — which is what the animation gallery wants.
+  stage,
+  // The actor. Optional for the same reason, and absent by design in tests.
+  actor,
+  actorEquipped,
 }) {
   const captureStyle = resolveCaptureStyle(styleId);
   const plan = useMemo(() => buildCapturePlan(captureStyle, reducedMotion), [captureStyle, reducedMotion]);
   const [active, setActive] = useState([]);
-  // The stage's own movement, kept apart from the sprites so a style's
-  // choreography is a property of the SEQUENCE rather than of which sheets it
-  // happens to play. A claim that only ever shook sideways read as the same
-  // celebration however different the art on top of it was.
-  const shakeX = useSharedValue(0);
-  const shakeY = useSharedValue(0);
-  const punch = useSharedValue(1);
   const mounted = useRef(true);
   const generation = useRef(0);
   const callbacks = useRef({});
   callbacks.current = { onTerritoryReveal, onCharacterAction, onSound, onScreenShake, onComplete };
+
+  const ownActor = useRef(null);
+  const actorRef = actor || ownActor;
 
   const points = useMemo(() => flattenTerritoryRings(territoryRings), [territoryRings]);
   const anchorModel = useMemo(() => buildTerritoryAnchorModel({
@@ -120,62 +214,98 @@ export default function CaptureStylePlayer({
     setActive((items) => items.filter((item) => item.key !== key));
   }, []);
 
+  const anchorPoint = useCallback(
+    (name, key) => resolveEffectAnchor(name, anchorContext, key),
+    [anchorContext]
+  );
+
   const runAction = useCallback((step) => {
-    if (step.action === 'territoryReveal') callbacks.current.onTerritoryReveal?.(step.style || 'radial');
-    if (step.action === 'character') callbacks.current.onCharacterAction?.(step.name);
-    if (step.action === 'sound') callbacks.current.onSound?.(step.name);
-    if (step.action === 'haptic') haptic[reducedMotion ? 'light' : step.style]?.();
-    if (step.action === 'screenShake' && !reducedMotion) {
-      const amount = 7 * (step.intensity || 1);
-      // A rattle, on whichever axis the style asked for. Sideways reads as an
-      // impact from the side, up-and-down as something landing, both as a
-      // detonation — three different events out of one primitive, which is the
-      // point: the sequence chooses, the player does not decide for it.
-      const rattle = (scale) => withSequence(
-        withTiming(-amount * scale, { duration: 42, easing: Easing.linear }),
-        withTiming(amount * scale, { duration: 55, easing: Easing.linear }),
-        withTiming(-amount * 0.45 * scale, { duration: 50, easing: Easing.linear }),
-        withTiming(0, { duration: 65, easing: Easing.out(Easing.quad) })
-      );
-      const axis = step.axis || 'x';
-      if (axis === 'x' || axis === 'both') shakeX.value = rattle(1);
-      if (axis === 'y' || axis === 'both') shakeY.value = rattle(axis === 'both' ? 0.7 : 1);
-      callbacks.current.onScreenShake?.(step.intensity || 1);
+    switch (step.action) {
+      case 'territoryReveal':
+        // The style says HOW and FROM WHERE; the controller owns the state
+        // change and the canvas owns the drawing.
+        callbacks.current.onTerritoryReveal?.({
+          transition: step.transition,
+          origin: step.origin,
+          duration: step.duration,
+        });
+        break;
+      case 'actor':
+        actorRef.current?.play({
+          ...step,
+          targetPoint: step.toward || step.lookAt
+            ? anchorPoint(step.toward || step.lookAt, `actor:${step.start}`)
+            : null,
+        });
+        callbacks.current.onCharacterAction?.(step.name);
+        break;
+      case 'camera':
+        stage?.runCamera(step);
+        break;
+      case 'screenShake':
+        stage?.runShake(step);
+        callbacks.current.onScreenShake?.(step.intensity || 1);
+        break;
+      case 'haptic':
+        haptic[reducedMotion ? 'light' : step.style]?.();
+        break;
+      case 'sound':
+        callbacks.current.onSound?.(step.name);
+        break;
+      case 'pause':
+        // Deliberately nothing. A pause is a promise that the tracks above are
+        // empty here, and it is load-bearing in the signature — the silence
+        // before a detonation is what makes it a detonation.
+        break;
+      default:
+        break;
     }
-    if (step.action === 'cameraPunch' && !reducedMotion) {
-      // The stage lunges towards the viewer and settles. Nothing else in the
-      // pack moves the whole scene in depth, so a style that uses this cannot
-      // be mistaken for one that shakes.
-      const to = 1 + 0.06 * (step.intensity || 1);
-      punch.value = withSequence(
-        withTiming(to, { duration: 90, easing: Easing.out(Easing.quad) }),
-        withTiming(1 - (to - 1) * 0.35, { duration: 130, easing: Easing.inOut(Easing.quad) }),
-        withTiming(1, { duration: 160, easing: Easing.out(Easing.quad) })
-      );
-    }
-  }, [reducedMotion]); // Reanimated shared values are stable; the Jest mock is not.
+  }, [actorRef, anchorPoint, reducedMotion, stage]);
 
   useEffect(() => {
     const run = generation.current + 1;
     generation.current = run;
     const timers = new Set();
     setActive([]);
+    stage?.reset();
+    actorRef.current?.reset();
 
     plan.sequence.forEach((step, index) => {
       const id = setTimeout(() => {
         timers.delete(id);
         if (!mounted.current || generation.current !== run) return;
-        if (step.action) {
+
+        if (step.action && step.action !== 'projectile') {
           runAction(step);
           return;
         }
+
         const effectId = effectIdForCaptureStep(step);
         const spec = effectId ? getEffect(effectId) : null;
-        // Every visual step is optional presentation. A blocked license,
+        // Every visual step is optional presentation. A blocked licence,
         // corrupt import or typo drops only that step and never the claim.
         if (!spec) return;
         const key = `${playToken}:${index}`;
-        const rawAnchor = resolveEffectAnchor(step.anchor, anchorContext, key);
+
+        if (step.action === 'projectile') {
+          const from = anchorPoint(step.from, `${key}:from`);
+          const to = anchorPoint(step.to, `${key}:to`);
+          const size = step.size || 150;
+          setActive((items) => [
+            ...items.slice(-(MAX_CAPTURE_EFFECTS - 1)),
+            { ...step, effectId, spec, key, run, travelling: true, from, to, size },
+          ]);
+          // A projectile is gone the moment it arrives — it must not linger on
+          // the impact it caused.
+          const arrive = setTimeout(() => {
+            timers.delete(arrive);
+            remove(key, run);
+          }, Math.max(60, step.duration || 260) + 40);
+          timers.add(arrive);
+          return;
+        }
+
+        const rawAnchor = anchorPoint(step.anchor, key);
         const visualExtent = (spec.visualScale || 1) + 2 * Math.max(
           Math.abs(spec.visualOffsetX || 0), Math.abs(spec.visualOffsetY || 0)
         );
@@ -199,6 +329,10 @@ export default function CaptureStylePlayer({
       timers.delete(done);
       if (!mounted.current || generation.current !== run) return;
       setActive([]);
+      // Nothing may outlive a style: an unreleased zoom would hand the victory
+      // beat a scaled stage, and a half-finished actor chain would hand it a
+      // character mid-lunge.
+      stage?.runCamera({ name: CAMERA_ACTION.RELEASE, duration: 260 });
       callbacks.current.onComplete?.();
     }, plan.duration);
     timers.add(done);
@@ -206,40 +340,45 @@ export default function CaptureStylePlayer({
     return () => {
       timers.forEach(clearTimeout);
       timers.clear();
-      cancelAnimation(shakeX);
-      cancelAnimation(shakeY);
-      cancelAnimation(punch);
-      shakeX.value = 0;
-      shakeY.value = 0;
-      punch.value = 1;
+      stage?.reset();
     };
-  }, [anchorContext, plan, playToken, remove, runAction]);
-
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: shakeX.value },
-      { translateY: shakeY.value },
-      { scale: punch.value },
-    ],
-  }));
+  }, [anchorContext, plan, playToken, remove, runAction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <Animated.View
+    <View
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[StyleSheet.absoluteFill, styles.stage, shakeStyle, stageStyle]}
+      style={[StyleSheet.absoluteFill, styles.stage, stageStyle]}
     >
+      {/* The actor sits UNDER the foreground art: the effect a character
+          causes should read as being in front of them, not behind. Only
+          rendered when the player owns the actor; ResultScreen passes its own
+          ref in and places the rig itself so the reveal can sit between. */}
+      {!actor && actorEquipped ? (
+        <ClaimActor
+          ref={ownActor}
+          equipped={actorEquipped}
+          anchor={claimPoint}
+          bounds={bounds}
+          reducedMotion={reducedMotion}
+        />
+      ) : null}
+
       {active.map((item) => {
-        const wrapper = {
-          position: 'absolute',
-          left: item.anchor.x - item.size / 2,
-          top: item.anchor.y - item.size / 2,
-          width: item.size,
-          height: item.size,
-          alignItems: 'center',
-          justifyContent: 'center',
-        };
+        if (item.travelling) {
+          return (
+            <TravellingEffect
+              key={item.key}
+              step={item}
+              from={item.from}
+              to={item.to}
+              size={item.size}
+              playToken={playToken}
+              onDone={() => remove(item.key, item.run)}
+            />
+          );
+        }
         if (item.reaction) {
           return (
             <ReactionEffect
@@ -254,7 +393,18 @@ export default function CaptureStylePlayer({
           );
         }
         return (
-          <View key={item.key} style={wrapper}>
+          <View
+            key={item.key}
+            style={{
+              position: 'absolute',
+              left: item.anchor.x - item.size / 2,
+              top: item.anchor.y - item.size / 2,
+              width: item.size,
+              height: item.size,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <EffectPlayer
               effect={item.spec}
               size={item.size}
@@ -268,8 +418,11 @@ export default function CaptureStylePlayer({
           </View>
         );
       })}
-    </Animated.View>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({ stage: { zIndex: CAPTURE_LAYER.FOREGROUND_FX } });
+const styles = StyleSheet.create({
+  stage: { zIndex: CAPTURE_LAYER.FOREGROUND_FX },
+  travelling: { position: 'absolute', left: 0, top: 0, alignItems: 'center', justifyContent: 'center' },
+});

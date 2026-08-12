@@ -87,10 +87,17 @@ export default function CharacterStep({
         onSelect={pick}
         isUnlocked={isUnlocked}
         renderThumb={(item, size) => (
-          <PartThumb slot={slotKey} item={item} size={size} />
+          // Wearing the runner's own colour. Without `equipped` the grid drew
+          // every hair tile at palette index 0 — near-black on a near-black
+          // sheet — while the runner above it was blonde, so the grid read as
+          // a row of empty cells and picking a style was guesswork.
+          <PartThumb slot={slotKey} item={item} size={size} equipped={equipped} />
         )}
         palette={slot?.palette}
         colorIndex={slot?.colorKey ? equipped[slot.colorKey] ?? 0 : 0}
+        // Only items shipping ten pre-rendered variants can take a swatch. The
+        // row stays visible either way; see PickerSheet.
+        colorable={!!items.find((item) => item.id === equipped[slotKey])?.art}
         onPickColor={(i) => slot?.colorKey && setPart({ [slot.colorKey]: i })}
         maxHeight="58%"
         footer={

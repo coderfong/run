@@ -13,6 +13,8 @@
       "name": "Meadow",
       "sky": "#026493",
       "aspect": 1.7778,
+      "cover": 0.85,
+      "focusX": 0.2,
       "layers": [
         {
           "index": 1,
@@ -33,7 +35,7 @@
           "top": 10,
           "opaque": false,
           "amplitude": 0.03,
-          "seconds": 26,
+          "seconds": 9,
           "role": "clouds"
         },
         {
@@ -43,8 +45,8 @@
           "coverage": 0.2918,
           "top": 224,
           "opaque": false,
-          "amplitude": 0.006,
-          "seconds": 19,
+          "amplitude": 0.008,
+          "seconds": 7,
           "role": "far ground"
         },
         {
@@ -54,8 +56,8 @@
           "coverage": 0.2283,
           "top": 97,
           "opaque": false,
-          "amplitude": 0.012,
-          "seconds": 15,
+          "amplitude": 0.016,
+          "seconds": 5,
           "role": "trees"
         },
         {
@@ -65,8 +67,8 @@
           "coverage": 0.0,
           "top": 75,
           "opaque": false,
-          "amplitude": 0.045,
-          "seconds": 11,
+          "amplitude": 0.05,
+          "seconds": 3.5,
           "role": "birds"
         }
       ]

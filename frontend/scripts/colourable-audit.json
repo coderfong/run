@@ -1,0 +1,421 @@
+{
+  "footwear": [],
+  "accessory": [
+    {
+      "id": "angelwings",
+      "hues": 0.0,
+      "coloured": 0.05871165072661781,
+      "verdict": "neutral"
+    },
+    {
+      "id": "boombox",
+      "hues": 0.2922407591740945,
+      "coloured": 0.2870541611624835,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "bowtie",
+      "hues": 0.31686564586634564,
+      "coloured": 0.1464088397790055,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "candyscarf",
+      "hues": 0.6370384599629998,
+      "coloured": 0.644970731969282,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "cape",
+      "hues": 0.801741260150822,
+      "coloured": 0.9094380539317367,
+      "verdict": "one hue"
+    },
+    {
+      "id": "charmchain",
+      "hues": 0.41077366907152785,
+      "coloured": 0.4654663976408505,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "dogtags",
+      "hues": 0.7133713772984662,
+      "coloured": 0.6703643655602014,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "dragonwings",
+      "hues": 0.29951601555037516,
+      "coloured": 0.729642180803349,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "fairywings",
+      "hues": 0.39404491859666946,
+      "coloured": 0.6641103655232776,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "flowerchain",
+      "hues": 0.3575038440788756,
+      "coloured": 0.5,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "gaiter",
+      "hues": 0.0,
+      "coloured": 0.05490405117270789,
+      "verdict": "neutral"
+    },
+    {
+      "id": "goldmedal",
+      "hues": 0.7595908866143875,
+      "coloured": 0.8605673256487861,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "greenscarf",
+      "hues": 0.9325677321056857,
+      "coloured": 0.9026256398965157,
+      "verdict": "one hue"
+    },
+    {
+      "id": "handbag",
+      "hues": 0.7286477054400599,
+      "coloured": 0.7640048435408833,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "harness",
+      "hues": 0.2120922647292557,
+      "coloured": 0.3142958748221906,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "hydrovest",
+      "hues": 0.7683942498110206,
+      "coloured": 0.1618751031182973,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "jetpack",
+      "hues": 0.6318605177106916,
+      "coloured": 0.5489773641273125,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "katanas",
+      "hues": 0.2861703423256533,
+      "coloured": 0.2857689574107485,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "lacebib",
+      "hues": 0.0,
+      "coloured": 0.08265808868439269,
+      "verdict": "neutral"
+    },
+    {
+      "id": "lacecollar",
+      "hues": 0.30741014325908816,
+      "coloured": 0.1290336459857155,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "lei",
+      "hues": 0.7262257988532885,
+      "coloured": 0.6400518341307815,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "medallion",
+      "hues": 0.6953085674743473,
+      "coloured": 0.9500867553499133,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "messengerbag",
+      "hues": 0.38947132954549535,
+      "coloured": 0.2410914098812188,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "neckerchief",
+      "hues": 0.7243996864740558,
+      "coloured": 0.8874172185430463,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "necktie",
+      "hues": 0.784292446237061,
+      "coloured": 0.9762617621899059,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "neonwings",
+      "hues": 0.9445533548654391,
+      "coloured": 0.9285518301048126,
+      "verdict": "one hue"
+    },
+    {
+      "id": "pageantsash",
+      "hues": 0.4321136054478588,
+      "coloured": 0.495000714183688,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "pearlcollar",
+      "hues": 0.45038688506347646,
+      "coloured": 0.3545658923027513,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "pearls",
+      "hues": 0.3050083117732213,
+      "coloured": 0.24913778945639678,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "racesash",
+      "hues": 0.7446414396131574,
+      "coloured": 0.7429028922173666,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "redcape",
+      "hues": 0.9423697412415203,
+      "coloured": 0.9392087690563186,
+      "verdict": "one hue"
+    },
+    {
+      "id": "redscarf",
+      "hues": 0.8254862264860667,
+      "coloured": 0.9811360656431078,
+      "verdict": "one hue"
+    },
+    {
+      "id": "royalrobe",
+      "hues": 0.7558181456604631,
+      "coloured": 0.46167317304535005,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "sailorcollar",
+      "hues": 0.764927583243842,
+      "coloured": 0.8209277238403452,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "scarf",
+      "hues": 0.8510434562815851,
+      "coloured": 0.21466943181250311,
+      "verdict": "one hue"
+    },
+    {
+      "id": "sheriffstar",
+      "hues": 0.8567046651874507,
+      "coloured": 0.9151081239041496,
+      "verdict": "one hue"
+    },
+    {
+      "id": "silvermedal",
+      "hues": 0.6999702878496072,
+      "coloured": 0.7451256499133448,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "starnecklace",
+      "hues": 0.7273531467026058,
+      "coloured": 0.7956597727934751,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "tealscarf",
+      "hues": 0.8748501260898224,
+      "coloured": 0.9059631736021172,
+      "verdict": "one hue"
+    },
+    {
+      "id": "trophychain",
+      "hues": 0.7809841666661504,
+      "coloured": 0.9265347686936282,
+      "verdict": "multi hue"
+    },
+    {
+      "id": "wintscarf",
+      "hues": 0.3682476970259886,
+      "coloured": 0.14754098360655737,
+      "verdict": "multi hue"
+    }
+  ],
+  "face": [
+    {
+      "id": "angry",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "beam",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "blush",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "chill",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "content",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "deadpan",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "determined",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "exhausted",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "gasp",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "glum",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "grump",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "hearteyes",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "joy",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "laugh",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "neutral",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "rage",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "sad",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "sleepy",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "sly",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "smiley",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "smirk",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "sob",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "stareyes",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "tongueout",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "uneasy",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "whoa",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "wink",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    },
+    {
+      "id": "worried",
+      "hues": 0.0,
+      "coloured": 0.0,
+      "verdict": "neutral"
+    }
+  ]
+}

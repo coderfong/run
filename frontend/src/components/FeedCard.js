@@ -17,6 +17,8 @@ import { useAvatar } from '../state/avatar';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import { PressableScale, haptic } from '../ui/motion';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
+import Framed from './ui/Framed';
 import { Card, Row, StatValue } from './ui';
 import { fmtArea } from './RivalCard';
 import GameLottie from './GameLottie';
@@ -108,7 +110,21 @@ function RouteThumb({ item, color, reactions = [], onReact }) {
   const start = slotOffset(item.id);
   const stickers = reactions.slice(0, STICKER_SLOTS.length);
   return (
-    <View style={styles.thumb}>
+    // A DRAWN BOX, not a grey plate. The plate was `colors.bg` (#f7f8fa) inside
+    // a `colors.card` (#ffffff) card, with the steal bar's `colors.cardAlt`
+    // (#eef0f4) under it — three off-whites within four points of each other,
+    // stacked. That is not depth, it is a card that looks like it is made of
+    // two different whites, and it is what "two different colours inside the
+    // cards" is pointing at. The frame gives the route an edge without needing
+    // a second surface colour to do it.
+    <Framed
+      frame={frameVariant('box', `route:${item.id}`)}
+      tint={withAlpha(color, 0.55)}
+      weight={INK.thin}
+      pose={framePose(`route:${item.id}`)}
+      inset={false}
+      style={styles.thumb}
+    >
       <Svg width="100%" height={THUMB_H} viewBox={`0 0 ${THUMB_W} ${THUMB_H}`}>
         {rings.map((ring, i) => (
           <Polygon
@@ -175,7 +191,7 @@ function RouteThumb({ item, color, reactions = [], onReact }) {
           </PressableScale>
         );
       })}
-    </View>
+    </Framed>
   );
 }
 
@@ -389,14 +405,13 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
 
 const makeStyles = (colors) =>
   StyleSheet.create({
+    // No background and no radius: the drawn box is the edge, and the card
+    // underneath is the surface. NOT clipped either — the stickers sit on the
+    // perimeter and a couple of them deliberately hang over it, the way a
+    // sticker stuck near the corner of a photo does.
     thumb: {
       marginTop: space.md,
       height: THUMB_H,
-      borderRadius: radius.md,
-      backgroundColor: colors.bg,
-      // NOT clipped. The stickers sit on the perimeter and a couple of them
-      // deliberately hang over the edge, the way a sticker stuck near the
-      // corner of a photo does.
       justifyContent: 'center',
     },
     sticker: {

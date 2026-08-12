@@ -247,6 +247,14 @@ export default function CaptureEncounter({
   onComplete,
   reducedMotion = false,
   playToken = 0,
+  // The capture style now has an actor of its own, standing on the same point
+  // at the same size. Once it takes over there must be exactly one rig on
+  // screen, so this one fades out as that one fades in. Both crossfades are
+  // 140ms over an identical character in an identical place, which is to say
+  // invisible — the alternative was giving the style's choreography to this
+  // component, which owns defenders and a fixed schedule and has no business
+  // knowing what a capture style is.
+  retireAttacker = false,
 }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -417,6 +425,15 @@ export default function CaptureEncounter({
 
     return clearTimers;
   }, [visible, playToken, variant, isLanding, reducedMotion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The handover. Deliberately a separate effect rather than another link in
+  // the timeline chain above: that chain is one assignment per shared value
+  // computed from fixed durations, and splicing a conditional tail onto it
+  // would put the whole schedule at the mercy of a prop.
+  useEffect(() => {
+    if (!retireAttacker) return;
+    opacity.value = withTiming(0, { duration: reducedMotion ? 0 : 140 });
+  }, [opacity, reducedMotion, retireAttacker]);
 
   const attackerStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
