@@ -107,9 +107,16 @@ the binary: `ios.entitlements["com.apple.developer.healthkit"]` plus
 `frontend/src/health.js`, and the opt-in switch in
 `frontend/src/components/HealthSyncSettings.js`.
 
-There is deliberately **no** `NSHealthShareUsageDescription` and **no**
-background-delivery entitlement: PASER never reads Health and never needs to
-wake for it. Do not add the package's own config plugin, which would add both.
+Both `NSHealthUpdateUsageDescription` and `NSHealthShareUsageDescription` are
+required, and the share string must stay even though PASER never reads. App
+Store Connect rejected build 24 with error 90683 for omitting it: the static
+analyzer keys off the HealthKit entitlement and the read APIs the library
+references, not off what the app actually calls. The string says plainly that
+PASER does not read, and no read is ever requested, so the permission sheet
+still only ever asks to write.
+
+There is deliberately **no** background-delivery entitlement, and the package's
+own config plugin stays unused because it would add one.
 
 The HealthKit capability must exist on the App ID. `eas build` syncs it from
 the entitlements file on the first production build; if it fails, enable

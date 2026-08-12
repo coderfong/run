@@ -24,6 +24,7 @@
         "NSMotionUsageDescription": "Motion data verifies your runs are on foot.",
         "NSPhotoLibraryAddUsageDescription": "PASER saves your run card to your photos when you tap Save on the share screen.",
         "NSHealthUpdateUsageDescription": "PASER saves your finished runs to Apple Health as running workouts when you turn on Health sync. PASER never reads your health data.",
+        "NSHealthShareUsageDescription": "PASER never reads your Apple Health data. Health access is used only to save the runs you finish as workouts.",
         "UIBackgroundModes": [
           "location"
         ]
@@ -71,13 +72,19 @@
         {
           "locationWhenInUsePermission": "PASER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
           "locationAlwaysAndWhenInUsePermission": "PASER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
+          "locationAlwaysPermission": "PASER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-notifications",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       "expo-font",
       "expo-web-browser",
       "expo-apple-authentication",
