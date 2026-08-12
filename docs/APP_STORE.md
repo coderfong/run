@@ -206,6 +206,14 @@ make sure every screenshot reflects the submitted binary.
       build with the HealthKit module actually linked, and the first since
       App Store Connect rejected build 24 for error 90683. Do not submit build
       23 or 24.
+- [x] **Build 27 (2.1.0) uploaded to App Store Connect 2026-08-13.** Submission
+      `34c2eeb5-687d-440f-9bbf-1d4e22912d4a`, API key `Y76YNKLKFB` from the EAS
+      servers, so no Apple password was handled. Apple processes it in about
+      ten minutes and then it appears in TestFlight:
+      `https://appstoreconnect.apple.com/apps/6788529145/testflight/ios`.
+      **This is an upload, not a submission for review.** Everything unchecked
+      below still has to happen in the App Store Connect web UI or on a
+      physical device before the Submit for Review button is worth pressing.
 - [ ] **Build 27 supersedes build 25 and is the one to test.** EAS's remote
       build counter was already at 26, so this build took 27 — do not read the
       gap as a missing build. Build 25 predates
