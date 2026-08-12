@@ -167,14 +167,34 @@ make sure every screenshot reflects the submitted binary.
       `{"ok": true, "db": true}`, and `/me/reports`, `/me/blocks` and
       `/auth/apple` are in the served OpenAPI. The service boots by running
       Alembic, so revisions `0030`–`0032` ran with it.
-- [ ] Set Render `ENV=production`. Still `development` as of the deploy above,
-      and it is the last thing `/version` gets wrong. `APP_VERSION` now tracks
-      the code and already reads `2.1.0`.
-- [ ] Configure `APPLE_CLIENT_IDS`, `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`,
-      `APPLE_KEY_ID`, and `APPLE_PRIVATE_KEY`; test Apple sign-in and deletion.
-      This is also the real proof that `0032` landed: token revocation reads
-      the column it added.
-- [ ] Configure and test Google sign-in with the same client id used by the app.
+- [x] Render environment set 2026-08-12. `/version` reports `production`,
+      `/health` is green, so the service booted through both production guards.
+- [x] **Session tokens were forgeable and are not any more.** Until 2026-08-12
+      the live API validated sessions with `dev-only-change-me-in-prod`, the
+      committed dev default: a token signed with it and sent to `/me` returned
+      `user not found`, which is only reachable after the signature verifies.
+      That is also why `ENV` had been left at `development` — the boot guard in
+      `app/main.py` exists to reject exactly this, so turning it on would have
+      failed. `JWT_SECRET` is now a real random value (old secret → `invalid
+      token`, new secret → `user not found`) and `CORS_ORIGINS` is
+      `https://www.bido.live`, so a foreign `Origin` gets no
+      `Access-Control-Allow-Origin` at all. Rotate `JWT_SECRET` once more after
+      launch: the value was pasted into a chat transcript.
+- [x] `APPLE_KEY_ID` (`78L7WYZJ67`) and `APPLE_PRIVATE_KEY` set. The key was
+      confirmed to be a Sign in with Apple key, not one of the other Apple key
+      types, by signing a client secret and having Apple's token endpoint reply
+      `invalid_grant` rather than `invalid_client`. Nothing reachable from
+      outside exercises `_apple_client_secret()` without deleting an account,
+      so the paste itself is proven only by the deletion test below.
+- [x] Google and Apple sign-in are configured server-side: both endpoints
+      return `401` on a bad token rather than the `501` they return when their
+      client-id lists are empty. Whether Render's `GOOGLE_CLIENT_IDS` contains
+      the same id the app sends is only provable at a real sign-in, because the
+      audience check runs after Google validates the token.
+- [ ] Account recovery is honestly unavailable: `/auth/forgot` now returns 501
+      and the app handles that code with a real message. It was returning a
+      hollow 200 before, mailing reset codes into the server log. Set
+      `RESEND_API_KEY` and `MAIL_FROM` to actually deliver them.
 - [ ] Remove seeded/fabricated production runs and rotate any credential that
       has previously been shared outside the secrets manager.
 - [x] Live privacy page covers Apple Health correctly. Checked 2026-08-12: it
