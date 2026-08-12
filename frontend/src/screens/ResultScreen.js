@@ -824,8 +824,16 @@ export default function ResultScreen({ navigation, route }) {
 
   // Leaving the result screen: the crossed-paths beat is owed to the runner
   // even when they never claimed, so it plays before the screen closes.
+  //
+  // ONE OVERLAY AT A TIME. This used to open the plaza while leaving `stage` on
+  // SHARE, so the crossed-paths modal was presented on top of the share modal —
+  // and the share sheet is the one opaque, full-screen Modal in the app, which
+  // makes that stack a native present-on-a-presenting-controller rather than
+  // two views. Dropping back to the recap first means the plaza always has the
+  // screen to itself.
   const leaveResult = () => {
     if (!crossedDone && shouldReveal(crossed)) {
+      setStage(STAGE.SUMMARY);
       setCrossedOpen(true);
       return;
     }
@@ -1406,7 +1414,12 @@ export default function ResultScreen({ navigation, route }) {
         Instagram rather than cropped out of this screen. The last thing
         before Home: its Done goes back, sharing or not. */}
     <RunShareSheet
-      visible={stage === STAGE.SHARE}
+      // `&& !crossedOpen` for the same reason `leaveResult` drops the stage:
+      // the plaza and the share card must never both be presented. The
+      // condition is stated at BOTH ends because they are reached by different
+      // routes — Done on the share card goes through leaveResult, but the
+      // celebration can also finish straight into the plaza.
+      visible={stage === STAGE.SHARE && !crossedOpen}
       onClose={leaveResult}
       closeLabel="Done"
       team={team}

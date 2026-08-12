@@ -534,12 +534,26 @@ export default function TerritoryStealBanner({
 // (Android clips children of a bounded parent): the bar sits at the bottom,
 // and the bomb's peak — the highest thing here — is 131px above it.
 const ROOT_H = 136;
+const BAR_H = 46;
+
+/**
+ * The transparent stage above the bar, in points.
+ *
+ * It is real layout — it has to be, or Android clips the fireball — but it is
+ * EMPTY, so anything stacking this under something else has to pay for it and
+ * gets nothing back. On a feed card that was 90pt of white between the route
+ * and the bar, which read as the card having forgotten to draw something.
+ *
+ * Pull the banner up by this much and the blast plays over whatever is above
+ * it instead of over a reserved hole. The bar itself does not move.
+ */
+export const STEAL_HEADROOM = ROOT_H - BAR_H;
 
 const styles = StyleSheet.create({
   root: { height: ROOT_H, justifyContent: 'flex-end', overflow: 'visible' },
 
   bar: {
-    height: 46,
+    height: BAR_H,
     borderRadius: 11,
     borderWidth: 1,
     overflow: 'hidden',

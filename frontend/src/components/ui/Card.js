@@ -20,7 +20,7 @@ import { View } from 'react-native';
 import { darkColors, radius, shadow, space, useTheme } from '../../theme';
 import { PressableScale } from '../../ui/motion';
 import ArtFrame from '../../ui/ArtFrame';
-import { framePadding, getFrame } from '../../ui/frameRegistry';
+import { INK, framePadding, getFrame, weightScale } from '../../ui/frameRegistry';
 
 export default function Card({
   children,
@@ -29,6 +29,9 @@ export default function Card({
   onPress,
   frame,
   frameTint,
+  // Points of line, not a multiplier on whichever drawing turned up — see
+  // `weightScale`. A card and the button under it are the same pen now.
+  frameWeight = INK.base,
   frameScale = 1,
   framePose = 0,
   frameBoil = false,
@@ -40,6 +43,7 @@ export default function Card({
   const isDark = dark || scheme === 'dark';
   const spec = frame ? getFrame(frame) : null;
   const fill = dark ? darkColors.card : colors.card;
+  const drawScale = frame ? frameScale * weightScale(frame, frameWeight) : frameScale;
 
   const surface = spec ? {
     // No background and no radius: the frame's paper is the fill, and it is
@@ -49,7 +53,7 @@ export default function Card({
     // Padded to clear the LINE, per side, which is not the same number as the
     // nine slice inset — see `framePadding`. The extra is small because a drawn
     // box is already visually generous: the ink itself reads as padding.
-    ...(padded ? framePadding(frame, space.xs, frameScale) : null),
+    ...(padded ? framePadding(frame, space.sm, drawScale) : null),
   } : {
     backgroundColor: fill,
     borderRadius: radius.card,
@@ -77,7 +81,7 @@ export default function Card({
       height={size.height}
       tint={frameTint || colors.textMuted}
       fill={fill}
-      scale={frameScale}
+      scale={drawScale}
       opacity={0.9}
       pose={framePose}
       boil={frameBoil}

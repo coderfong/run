@@ -21,11 +21,11 @@
 // if the scale then decided the padding the layout would never settle. Erring
 // on the generous side costs a few points of air and cannot overlap.
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import ArtFrame from '../../ui/ArtFrame';
-import { framePadding } from '../../ui/frameRegistry';
+import { INK, framePadding, weightScale } from '../../ui/frameRegistry';
 
 /**
  * `frame`   which box: 'panel', 'card', 'label', 'banner', 'badge', 'bubble'…
@@ -34,7 +34,13 @@ import { framePadding } from '../../ui/frameRegistry';
  * `tint`    ink colour. Defaults to the art's own flat blue.
  * `fill`    paints the inside of the box. Off by default, so a framed heading
  *           sits on the page rather than on a card of its own.
- * `scale`   line weight; see ArtFrame.
+ * `weight`  how thick the line comes out, IN POINTS, whichever drawing is
+ *           behind it. This is the knob to reach for: the pack's nine boxes
+ *           were drawn at wildly different sizes, so asking for a scale means
+ *           asking for a different line on every frame. See `weightScale`.
+ *           Pass `weight={false}` for the art at its own size.
+ * `scale`   a multiplier ON TOP of the weight, for the rare caller that wants
+ *           one box heavier than its neighbours without restating the number.
  * `pose`    one of the three hand-redrawn still poses.
  * `boil`    animate the three drawings. Off by default; see ArtFrame.
  */
@@ -42,6 +48,7 @@ export default function Framed({
   frame = 'panel',
   tint,
   fill,
+  weight = INK.base,
   scale = 1,
   opacity = 1,
   pose = 0,
@@ -53,9 +60,18 @@ export default function Framed({
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
+  // Weight is a property of the DRAWING, not of the box, so resolving it here
+  // cannot feed back into layout the way a size-derived scale would: padding
+  // decides the size, the size decides how far ArtFrame has to fit the frame
+  // DOWN, and none of that changes the number below.
+  const drawScale = useMemo(
+    () => scale * weightScale(frame, weight),
+    [frame, scale, weight]
+  );
+
   const pad = inset === false
     ? null
-    : framePadding(frame, typeof inset === 'number' ? inset : 2, scale);
+    : framePadding(frame, typeof inset === 'number' ? inset : 2, drawScale);
 
   return (
     <View
@@ -76,7 +92,7 @@ export default function Framed({
           width={size.width}
           height={size.height}
           fill={fill}
-          scale={scale}
+          scale={drawScale}
           opacity={opacity}
           pose={pose}
           boil={boil}
@@ -88,7 +104,7 @@ export default function Framed({
         width={size.width}
         height={size.height}
         tint={tint}
-        scale={scale}
+        scale={drawScale}
         opacity={opacity}
         pose={pose}
         boil={boil}

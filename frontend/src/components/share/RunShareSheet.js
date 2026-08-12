@@ -13,8 +13,9 @@
 // surface, because "transparent" and "dark grey" look identical against a dark
 // screen and the runner has to be able to tell which one they are getting.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Component, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import * as Sentry from '@sentry/react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -68,6 +69,39 @@ function Checkerboard({ style }) {
       <Rect x={0} y={0} width="100%" height="100%" fill="url(#checker)" />
     </Svg>
   );
+}
+
+// The card, or a stand-in the same size as it.
+//
+// Deliberately its own tiny boundary rather than the app-wide one: this is a
+// preview inside a working sheet, and replacing the whole screen with "try
+// again" would take the destinations, the format switch and the way home with
+// it. Reported to Sentry either way, because a card that will not draw is a
+// card that will not export.
+class ShareBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    try {
+      Sentry.captureException(error);
+    } catch {}
+  }
+
+  render() {
+    const { width, height, styles, children } = this.props;
+    if (!this.state.failed) return children;
+    return (
+      <View style={[styles.cardFallback, { width, height }]}>
+        <Text style={styles.cardFallbackText}>
+          This run could not be drawn as a card.
+        </Text>
+      </View>
+    );
+  }
 }
 
 // A labelled strip of controls.
@@ -309,19 +343,31 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               parts read as empty rather than as dark grey. */}
           <View style={styles.previewShadow}>
             <Checkerboard style={StyleSheet.absoluteFill} />
-            <RunShareCard
-              {...cardProps}
-              cardRef={cardRef}
-              format={format}
+            {/* Boundaried. The card composites a runner's whole avatar over a
+                projected route, and it is the LAST thing between a finished run
+                and the way home — a throw in here used to take the result
+                screen down with it, losing the recap the runner was looking at.
+                Now the card is the only thing lost, and everything else on the
+                sheet still works. */}
+            <ShareBoundary
               width={previewW}
-              accent={accent}
-              textColor={textColor}
-              align={align}
-              stats={statKeys}
-              showRoute={showRoute}
-              showCharacter={showCharacter}
-              flip={flip}
-            />
+              height={previewW * spec.ratio}
+              styles={styles}
+            >
+              <RunShareCard
+                {...cardProps}
+                cardRef={cardRef}
+                format={format}
+                width={previewW}
+                accent={accent}
+                textColor={textColor}
+                align={align}
+                stats={statKeys}
+                showRoute={showRoute}
+                showCharacter={showCharacter}
+                flip={flip}
+              />
+            </ShareBoundary>
             <View style={styles.transparentBadge} pointerEvents="none">
               <Text style={styles.transparentText}>TRANSPARENT</Text>
             </View>
@@ -537,6 +583,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   transparentText: { ...type.labelSm, fontSize: 10, letterSpacing: 1, color: '#FFFFFF' },
+  cardFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+  },
+  cardFallbackText: { ...type.bodySm, color: '#FFFFFF', textAlign: 'center' },
   hint: { ...type.caption, color: colors.textDim, textAlign: 'center', marginTop: space.md },
 
   actions: {

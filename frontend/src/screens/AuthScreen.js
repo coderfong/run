@@ -143,13 +143,16 @@ function Welcome({ onSignIn, onCreate }) {
 
 // --- step 2: the form ---------------------------------------------------------
 
-function AuthForm({ onBack, onForgot }) {
+function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
   const { signIn, signUp } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const s = formStyles(colors);
 
-  const [mode, setMode] = useState('signin');
+  // Which side of the form you land on is decided by the button you pressed on
+  // the way in. It used to always be 'signin', so Create account walked you to
+  // a screen headed "Welcome back" asking for a password you had never set.
+  const [mode, setMode] = useState(initialMode);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
@@ -323,6 +326,7 @@ function AuthForm({ onBack, onForgot }) {
 
 export default function AuthScreen() {
   const [step, setStep] = useState('welcome'); // 'welcome' | 'form' | 'forgot'
+  const [intent, setIntent] = useState('signin'); // which button opened the form
   const reduced = useReduceMotion();
 
   useEffect(() => preloadScreenImagesAfterInteractions('Onboarding'), []);
@@ -334,7 +338,10 @@ export default function AuthScreen() {
     <View style={{ flex: 1, backgroundColor: '#000' }}>
       {step === 'welcome' ? (
         <Animated.View key="welcome" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
-          <Welcome onSignIn={() => setStep('form')} onCreate={() => setStep('form')} />
+          <Welcome
+            onSignIn={() => { setIntent('signin'); setStep('form'); }}
+            onCreate={() => { setIntent('signup'); setStep('form'); }}
+          />
         </Animated.View>
       ) : step === 'forgot' ? (
         <Animated.View key="forgot" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
@@ -342,7 +349,14 @@ export default function AuthScreen() {
         </Animated.View>
       ) : (
         <Animated.View key="form" style={StyleSheet.absoluteFill} entering={enter} exiting={exit}>
-          <AuthForm onBack={() => setStep('welcome')} onForgot={() => setStep('forgot')} />
+          {/* Keyed on the intent so switching sides remounts with the right
+              mode rather than leaving a stale `useState` initial value. */}
+          <AuthForm
+            key={intent}
+            initialMode={intent}
+            onBack={() => setStep('welcome')}
+            onForgot={() => setStep('forgot')}
+          />
         </Animated.View>
       )}
     </View>

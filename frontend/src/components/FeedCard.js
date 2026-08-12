@@ -6,7 +6,8 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Polygon, Polyline } from 'react-native-svg';
 import AppIcon from './AppIcon';
-import TerritoryStealBanner from './TerritoryStealBanner';
+import TerritoryStealBanner, { STEAL_HEADROOM } from './TerritoryStealBanner';
+import EmoteIcon from '../effects/EmoteIcon';
 
 import { api } from '../api/client';
 import { updateCached } from '../api/cache';
@@ -61,15 +62,51 @@ function makeProjection(layers, pad = 10) {
       .join(' ');
 }
 
+// Where a reaction sticker can land on the thumbnail without covering the run.
+//
+// The projection above fits the claim into the box with 10 units of padding and
+// CENTRES it, so the shape always sits in the middle and the perimeter is the
+// part that is reliably free. These are fractions of the thumbnail, dealt out
+// in order, with a tilt each so a row of them reads as stuck on rather than as
+// laid out. Corners first: they are furthest from the shape whichever way its
+// aspect ratio went.
+const STICKER_SLOTS = [
+  { x: 0.085, y: 0.20, tilt: -11 },
+  { x: 0.915, y: 0.19, tilt: 9 },
+  { x: 0.115, y: 0.80, tilt: 7 },
+  { x: 0.885, y: 0.81, tilt: -8 },
+  { x: 0.045, y: 0.51, tilt: 13 },
+  { x: 0.955, y: 0.49, tilt: -13 },
+];
+const STICKER = 30;
+
+// Deterministic, so a card does not reshuffle its stickers as the feed
+// re-renders or scrolls — the same rule the frame variants follow.
+function slotOffset(seed) {
+  const key = String(seed ?? '');
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(hash) % STICKER_SLOTS.length;
+}
+
 // The claim, as the card sees it: the territory the run grew, with the route
 // drawn INSIDE it. That pairing is the whole point of the new claim model —
 // the land is the shape of the run, and the card is where you can tell.
-function RouteThumb({ item, color }) {
+//
+// The reactions live in here too, as STICKERS round the edge of the drawing.
+// They used to be a row of bordered chips between the header and the map, which
+// bought a whole line of card for a thing that is a decoration on the run — and
+// on a card with two reactions on it, that line was mostly empty. A sticker
+// costs no layout at all.
+function RouteThumb({ item, color, reactions = [], onReact }) {
   const styles = useThemedStyles(makeStyles);
+  const type = useThemedType();
   const rings = (item.rings || []).filter((r) => r?.length >= 3);
   const line = item.path?.length >= 2 ? item.path : null;
   if (!rings.length && !line) return null;
   const project = makeProjection([...rings, ...(line ? [line] : [])]);
+  const start = slotOffset(item.id);
+  const stickers = reactions.slice(0, STICKER_SLOTS.length);
   return (
     <View style={styles.thumb}>
       <Svg width="100%" height={THUMB_H} viewBox={`0 0 ${THUMB_W} ${THUMB_H}`}>
@@ -96,6 +133,48 @@ function RouteThumb({ item, color }) {
           />
         )}
       </Svg>
+
+      {stickers.map((row, i) => {
+        const slot = STICKER_SLOTS[(start + i) % STICKER_SLOTS.length];
+        return (
+          <PressableScale
+            key={row.emote}
+            onPress={() => { haptic.light(); onReact?.(row.emote); }}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !!row.mine }}
+            accessibilityLabel={`${row.emote}, ${row.count}`}
+            style={[
+              styles.sticker,
+              {
+                left: `${slot.x * 100}%`,
+                top: `${slot.y * 100}%`,
+                transform: [
+                  { translateX: -STICKER / 2 },
+                  { translateY: -STICKER / 2 },
+                  { rotate: `${slot.tilt}deg` },
+                ],
+              },
+            ]}
+          >
+            {/* No chip, no border, no plate. A sticker is the art and nothing
+                else; the count rides its shoulder only when more than one
+                person left the same one. */}
+            <EmoteIcon reaction={row.emote} size={STICKER} />
+            {row.count > 1 ? (
+              <Text
+                style={[
+                  type.captionMedium,
+                  styles.stickerCount,
+                  { color: row.mine ? color : undefined },
+                ]}
+              >
+                {row.count}
+              </Text>
+            ) : null}
+          </PressableScale>
+        );
+      })}
     </View>
   );
 }
@@ -253,12 +332,37 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         </Row>
       </Row>
 
-      {/* Under the header, above the map thumb: the chips belong to the person
-          and the run, not to the stats. Draws nothing at all until the run has
-          a reaction on it or the picker is open, so a quiet feed is unchanged. */}
+      {/* The reactions ride ON the route now — see RouteThumb — so nothing
+          between the header and the map costs a row. */}
+      <RouteThumb item={item} color={c.stroke} reactions={reactions} onReact={react} />
+
+      {/* The steal, on the card. It starts SETTLED — heads on the bar pulling
+          a face, the amount stamped on — and detonates when tapped, because a
+          feed that blows itself up as you scroll is noise rather than a
+          payoff. The newest steal on the page is the one that plays itself.
+
+          Pulled up by its own headroom: the banner reserves 90pt of empty stage
+          above the bar for the fireball to have somewhere to go, and stacked
+          normally that stage was a blank white gap between the route and the
+          STOLEN bar. Negative margin puts the bar directly under the map and
+          lets the blast play OVER it, which is where an explosion should be
+          anyway. */}
+      {victims.length > 0 && (
+        <TerritoryStealBanner
+          trigger={item.id}
+          victims={victims}
+          amount={fmtArea(item.stolen_m2 || 0)}
+          autoPlay={autoPlaySteal}
+          haptics={autoPlaySteal}
+          style={{ marginTop: space.sm - STEAL_HEADROOM }}
+        />
+      )}
+
+      {/* The picker only. It is transient and it has to be big enough to hit,
+          so it takes a row while it is open and none at all when it is not. */}
       <ReactionBar
         compact
-        reactions={reactions}
+        reactions={[]}
         mine={mine}
         burst={burst}
         color={c.stroke}
@@ -267,23 +371,6 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         inlinePicker
         onRequestClose={() => setPickerOpen(false)}
       />
-
-      <RouteThumb item={item} color={c.stroke} />
-
-      {/* The steal, on the card. It starts SETTLED — heads on the bar pulling
-          a face, the amount stamped on — and detonates when tapped, because a
-          feed that blows itself up as you scroll is noise rather than a
-          payoff. The newest steal on the page is the one that plays itself. */}
-      {victims.length > 0 && (
-        <TerritoryStealBanner
-          trigger={item.id}
-          victims={victims}
-          amount={fmtArea(item.stolen_m2 || 0)}
-          autoPlay={autoPlaySteal}
-          haptics={autoPlaySteal}
-          style={{ marginTop: space.sm }}
-        />
-      )}
 
       <Row between style={{ marginTop: space.md }}>
         <StatValue size="sm" label="Distance" value={`${(item.distance_m / 1000).toFixed(2)}`} unit="km" />
@@ -307,8 +394,25 @@ const makeStyles = (colors) =>
       height: THUMB_H,
       borderRadius: radius.md,
       backgroundColor: colors.bg,
-      overflow: 'hidden',
+      // NOT clipped. The stickers sit on the perimeter and a couple of them
+      // deliberately hang over the edge, the way a sticker stuck near the
+      // corner of a photo does.
       justifyContent: 'center',
+    },
+    sticker: {
+      position: 'absolute',
+      width: STICKER,
+      height: STICKER,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // Rides the sticker's shoulder rather than sitting beside it, so a count
+    // never widens the thing it belongs to.
+    stickerCount: {
+      position: 'absolute',
+      right: -7,
+      bottom: -5,
+      fontSize: 11,
     },
     kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
     kudosFx: { position: 'absolute', zIndex: 4 },

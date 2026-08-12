@@ -14,7 +14,7 @@ import { useQuery } from '../hooks/useQuery';
 import { brand, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { useReduceMotion, PressableScale } from '../ui/motion';
 import { EmptyState, Framed, OutlinedText, Skeleton } from '../components/ui';
-import { framePose, frameVariant } from '../ui/frameRegistry';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
@@ -54,10 +54,17 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
       accessibilityRole="button"
       accessibilityLabel={title}
     >
+      {/* `weight` in points, so the hero's line is the same pen as the chip
+          inside it and as the buttons further down the page. Drawn at the art's
+          own size — which is what this used to do — the banner is a 370px
+          drawing with a 19px stroke, so a full width hero wore a 19pt line, the
+          corner bands swallowed a third of the card, and the eyebrow's first
+          letters sat underneath the ink. */}
       <Framed
         frame={frameVariant('featured', `${eyebrow}:${title}`)}
         tint={toon.ink}
         fill={bg}
+        weight={INK.bold}
         pose={framePose(`${eyebrow}:${title}`)}
         inset={false}
         style={styles.hero}
@@ -81,6 +88,7 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
             frame={frameVariant('chip', cta)}
             tint={toon.ink}
             fill="#ffffff"
+            weight={INK.thin}
             pose={framePose(cta)}
             inset={false}
             style={styles.heroBtn}

@@ -2,6 +2,7 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
 import CaptureStylePlayer, { validateCaptureStyle } from '../src/effects/CaptureStylePlayer';
+import { CAPTURE_STYLES, captureStyleShape } from '../src/effects/captureStyles';
 
 jest.mock('../src/effects/EffectPlayer', () => () => null);
 jest.mock('../src/effects/ReactionEffect', () => () => null);
@@ -16,6 +17,60 @@ const common = {
   claimPoint: { x: 195, y: 350 },
   safeInsets: { top: 120, right: 20, bottom: 24, left: 20 },
 };
+
+describe('every claim celebration is its own celebration', () => {
+  // The pack used to be fifteen sprite playlists sharing one piece of
+  // choreography: three sheets on the territory's visual centre, a sideways
+  // rattle, a radial reveal. Different art, identical event — which is what
+  // "sure I see different animations, but the action is the same" meant.
+  //
+  // `captureStyleShape` strips the art out and leaves the movement, so these
+  // assert the thing that was actually wrong.
+  test('no two styles share a movement shape', () => {
+    const shapes = new Map();
+    for (const style of CAPTURE_STYLES) {
+      const shape = captureStyleShape(style);
+      expect(shapes.has(shape)).toBe(false);
+      shapes.set(shape, style.id);
+    }
+    expect(shapes.size).toBe(CAPTURE_STYLES.length);
+  });
+
+  test('the pack uses the whole anchor vocabulary, not just the centre', () => {
+    const anchors = new Set();
+    for (const style of CAPTURE_STYLES) {
+      for (const step of style.sequence) {
+        if (!step.action) anchors.add(step.anchor || 'territoryVisualCenter');
+      }
+    }
+    // Centre-only is the state this pass existed to leave behind. Eight is
+    // comfortably more than "a couple of styles happen to differ".
+    expect(anchors.size).toBeGreaterThanOrEqual(8);
+  });
+
+  test('stage movement is not one gesture repeated', () => {
+    const cues = new Set();
+    for (const style of CAPTURE_STYLES) {
+      for (const step of style.sequence) {
+        if (step.action === 'screenShake') cues.add(`shake:${step.axis || 'x'}`);
+        if (step.action === 'cameraPunch') cues.add('punch');
+      }
+    }
+    // Sideways, vertical, both, and the camera push.
+    expect(cues).toEqual(new Set(['shake:x', 'shake:y', 'shake:both', 'punch']));
+  });
+
+  test('some styles reveal the ground before the impact and some after', () => {
+    const order = CAPTURE_STYLES.map((style) => {
+      const reveal = style.sequence.find((s) => s.action === 'territoryReveal');
+      const impact = style.sequence.find((s) => s.action === 'haptic');
+      return reveal.start < impact.start ? 'before' : 'after';
+    });
+    // Whether the land arrives and is then struck, or the strike is what puts
+    // it there, is the biggest single difference between two celebrations.
+    expect(new Set(order)).toEqual(new Set(['before', 'after']));
+  });
+});
 
 describe('CaptureStylePlayer lifecycle', () => {
   beforeEach(() => jest.useFakeTimers());

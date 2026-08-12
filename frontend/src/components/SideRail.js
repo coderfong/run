@@ -5,9 +5,11 @@
 // shows on a tile is a REAL state — claimable pass tiers, unseen crossed paths
 // — never decoration.
 //
-// EACH TILE IS A SOLID BLOCK OF ITS OWN COLOUR, ink-outlined, with the sticker
-// on top. The gradient used to paint a 3px frame around a card-coloured middle,
-// which read as four empty outlines in a row rather than four buttons.
+// EACH TILE IS A SOLID BLOCK OF ITS OWN COLOUR, inside a hand-drawn box, with
+// the sticker on top. It has been through two wrong answers: a gradient ring
+// around a card-coloured middle (four empty outlines in a row rather than four
+// buttons), then a full-bleed gradient inside a 2.5px rounded border, which was
+// the only square-cornered chrome left on a page of drawn boxes.
 //
 // TILES ARE ART ONLY: no caption under them, matching the cosmetic and border
 // grids. The label is still passed for the accessibility name.
@@ -27,12 +29,13 @@ import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from '../ui/image';
 import { useFocusEffect } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { brand, space, toon, toonRadius } from '../theme';
+import { brand, space, toon } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
+import Framed from './ui/Framed';
 import { art } from '../config/onboardingArt';
 import { badgeLabel } from '../config/paserby';
 import AppIcon from './AppIcon';
@@ -49,25 +52,32 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
         accessibilityLabel={label ? `${label}${badge ? `, ${badge}` : ''}` : 'Open'}
         style={[styles.tileWrap, inline && styles.inlineTileWrap]}
       >
-        <LinearGradient
-          colors={tint}
-          start={{ x: 0.2, y: 0 }}
-          end={{ x: 0.8, y: 1 }}
+        {/* A drawn box, like everything else on this page — not a rounded
+            rectangle with a 2.5px border pretending to be one.
+            The fill is FLAT, and it has to be: the frame's paper is the tile's
+            shape, and a gradient cannot be painted into a wobbly silhouette
+            without a mask layer this app does not ship. Behind the frame it
+            would simply be a square of colour showing at every corner, which is
+            the bleed this pass exists to remove. The middle stop of each tile's
+            ramp is the colour the ramp reads as anyway.
+            Each tile is dealt its own drawing and pose off its label, so four in
+            a row are four boxes rather than one box copied four times. */}
+        <Framed
+          frame={frameVariant('chip', label)}
+          tint={toon.ink}
+          fill={tint[1]}
+          weight={INK.thin}
+          pose={framePose(`rail:${label}`)}
+          inset={false}
           style={[styles.tile, inline && styles.inlineTile]}
+          contentStyle={styles.tileInner}
         >
-          {/* The gradient fills the WHOLE tile. It used to be a 3px ring around
-              a card-coloured middle, which read as an empty frame with a sticker
-              floating in it — four hollow outlines in a row. The art carries its
-              own ink outline, so it sits on a saturated fill without needing a
-              light plate behind it. */}
-          <View style={styles.tileInner}>
-            {src ? (
-              <Image source={src} style={styles.tileArt} resizeMode="contain" />
-            ) : (
-              <AppIcon name={icon} style={styles.tileIcon} />
-            )}
-          </View>
-        </LinearGradient>
+          {src ? (
+            <Image source={src} style={styles.tileArt} resizeMode="contain" />
+          ) : (
+            <AppIcon name={icon} style={styles.tileIcon} />
+          )}
+        </Framed>
         {badge ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText} numberOfLines={1}>{badge}</Text>
@@ -163,23 +173,18 @@ const styles = StyleSheet.create({
   inlineSlot: { flex: 1, width: 'auto' },
   tileWrap: { width: 56, height: 56 },
   inlineTileWrap: { width: 64, height: 64 },
+  // No radius and no border: the frame is both. `overflow` stays visible too —
+  // clipping the sticker to a rectangle would cut the corners the drawn box is
+  // supposed to round off.
   tile: {
     width: 56,
     height: 56,
-    borderRadius: toonRadius.cell,
-    borderWidth: 2.5,
-    borderColor: toon.ink,
-    // Was 3, which is what drew the ring. With the fill going edge to edge the
-    // padding is only breathing room for the sticker inside it.
-    padding: 2,
   },
   inlineTile: { width: 64, height: 64 },
   tileInner: {
     flex: 1,
-    borderRadius: toonRadius.cell - 4,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   // Inset from the frame rather than filling it — the art reads as sitting in
   // the tile instead of being cropped by its rounded corners.

@@ -695,7 +695,13 @@ export default function ProfileScreen({ navigation }) {
           title="Delete account"
           variant="destructive"
           onPress={() => { setConfirmingDelete(true); setDeleteDraft(''); }}
-          style={{ marginTop: space.md, backgroundColor: colors.dangerSoft }}
+          // No `backgroundColor` here. The soft red used to be painted on the
+          // button's own root as a way of toning the destructive red down, and
+          // with a hand-drawn frame on top that rectangle showed all round the
+          // wobble — a pale red box with a darker red box inside it, which is
+          // what "two shades of red" was. The frame's paper is the fill now,
+          // and it is the only one.
+          style={{ marginTop: space.md }}
         />
       ) : (
         <Card style={{ marginTop: space.md, borderWidth: 1, borderColor: '#f5c2c2' }}>

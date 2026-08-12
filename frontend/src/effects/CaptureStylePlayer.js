@@ -83,7 +83,13 @@ export default function CaptureStylePlayer({
   const captureStyle = resolveCaptureStyle(styleId);
   const plan = useMemo(() => buildCapturePlan(captureStyle, reducedMotion), [captureStyle, reducedMotion]);
   const [active, setActive] = useState([]);
+  // The stage's own movement, kept apart from the sprites so a style's
+  // choreography is a property of the SEQUENCE rather than of which sheets it
+  // happens to play. A claim that only ever shook sideways read as the same
+  // celebration however different the art on top of it was.
   const shakeX = useSharedValue(0);
+  const shakeY = useSharedValue(0);
+  const punch = useSharedValue(1);
   const mounted = useRef(true);
   const generation = useRef(0);
   const callbacks = useRef({});
@@ -121,13 +127,31 @@ export default function CaptureStylePlayer({
     if (step.action === 'haptic') haptic[reducedMotion ? 'light' : step.style]?.();
     if (step.action === 'screenShake' && !reducedMotion) {
       const amount = 7 * (step.intensity || 1);
-      shakeX.value = withSequence(
-        withTiming(-amount, { duration: 42, easing: Easing.linear }),
-        withTiming(amount, { duration: 55, easing: Easing.linear }),
-        withTiming(-amount * 0.45, { duration: 50, easing: Easing.linear }),
+      // A rattle, on whichever axis the style asked for. Sideways reads as an
+      // impact from the side, up-and-down as something landing, both as a
+      // detonation — three different events out of one primitive, which is the
+      // point: the sequence chooses, the player does not decide for it.
+      const rattle = (scale) => withSequence(
+        withTiming(-amount * scale, { duration: 42, easing: Easing.linear }),
+        withTiming(amount * scale, { duration: 55, easing: Easing.linear }),
+        withTiming(-amount * 0.45 * scale, { duration: 50, easing: Easing.linear }),
         withTiming(0, { duration: 65, easing: Easing.out(Easing.quad) })
       );
+      const axis = step.axis || 'x';
+      if (axis === 'x' || axis === 'both') shakeX.value = rattle(1);
+      if (axis === 'y' || axis === 'both') shakeY.value = rattle(axis === 'both' ? 0.7 : 1);
       callbacks.current.onScreenShake?.(step.intensity || 1);
+    }
+    if (step.action === 'cameraPunch' && !reducedMotion) {
+      // The stage lunges towards the viewer and settles. Nothing else in the
+      // pack moves the whole scene in depth, so a style that uses this cannot
+      // be mistaken for one that shakes.
+      const to = 1 + 0.06 * (step.intensity || 1);
+      punch.value = withSequence(
+        withTiming(to, { duration: 90, easing: Easing.out(Easing.quad) }),
+        withTiming(1 - (to - 1) * 0.35, { duration: 130, easing: Easing.inOut(Easing.quad) }),
+        withTiming(1, { duration: 160, easing: Easing.out(Easing.quad) })
+      );
     }
   }, [reducedMotion]); // Reanimated shared values are stable; the Jest mock is not.
 
@@ -183,11 +207,21 @@ export default function CaptureStylePlayer({
       timers.forEach(clearTimeout);
       timers.clear();
       cancelAnimation(shakeX);
+      cancelAnimation(shakeY);
+      cancelAnimation(punch);
       shakeX.value = 0;
+      shakeY.value = 0;
+      punch.value = 1;
     };
   }, [anchorContext, plan, playToken, remove, runAction]);
 
-  const shakeStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shakeX.value }] }));
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: shakeX.value },
+      { translateY: shakeY.value },
+      { scale: punch.value },
+    ],
+  }));
 
   return (
     <Animated.View

@@ -206,6 +206,15 @@ make sure every screenshot reflects the submitted binary.
       build with the HealthKit module actually linked, and the first since
       App Store Connect rejected build 24 for error 90683. Do not submit build
       23 or 24.
+- [ ] **Build 26 supersedes build 25 and is the one to test.** Build 25 predates
+      the 2026-08-13 UI pass: the hand-drawn frames were drawn at each
+      drawing's own size (so a full-width hero wore a 17pt line and a 52pt
+      button wore the banner's clipped corner as a rule struck through its
+      label), framed controls painted their own rounded-rectangle backgrounds
+      underneath the wobbly outline, Create account opened the sign-in form,
+      and Done on the share card opened the crossed-paths modal on top of the
+      share modal — the app's only opaque full-screen Modal, which is a native
+      present-on-a-presenting-controller. Do not submit build 25.
 - [ ] Test the fresh build on a physical iPhone through TestFlight: password,
       Apple, and Google sign-in; permissions; foreground/background run; claim;
       map; notifications; share/save; report; block; and account deletion.

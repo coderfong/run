@@ -16,6 +16,7 @@ import { art } from '../config/onboardingArt';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, EmptyState } from '../components/ui';
 import ClanBadge from '../components/ClanBadge';
 import { toast } from '../ui/toast';
+import { framePose, frameVariant } from '../ui/frameRegistry';
 import { Bar } from '../ui/motion';
 import GameLottie from '../components/GameLottie';
 
@@ -105,7 +106,17 @@ function Directory({ navigation }) {
           />
         ) : (
           results.map((c) => (
-            <Card key={c.id} onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })} style={{ marginBottom: space.sm }}>
+            // Dealt a drawn box off the club's own id, so a directory of them
+            // is a stack of hand-drawn cards rather than one card repeated —
+            // the same rule the feed's frames follow.
+            <Card
+              key={c.id}
+              frame={frameVariant('box', `club:${c.id}`)}
+              framePose={framePose(`club:${c.id}`)}
+              frameTint={c.color.stroke}
+              onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })}
+              style={{ marginBottom: space.sm }}
+            >
               <Row between>
                 <Row gap={12}>
                   <View style={[styles.badgeChip, { backgroundColor: c.color.fill }]}>

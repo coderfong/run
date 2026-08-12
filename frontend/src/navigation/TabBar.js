@@ -121,12 +121,22 @@ export default function TabBar({ state, navigation }) {
     // The outer view keeps the safe-area gap so screen content never runs under
     // the floating pill.
     <View style={[styles.dock, { paddingBottom: insets.bottom ? insets.bottom - 4 : space.sm }]}>
+      {/* `label` and not `panel`. The panel is a SQUARISH drawing: stretched
+          across a bar four times wider than it is tall, its corners kept their
+          drawn size, which ate most of the height and left the bottom right —
+          where that drawing's line curves in and stops — reading as a cropped
+          corner rather than as a corner. The label is the pack's wide box and
+          holds its shape at this ratio.
+
+          The frame is the bar's own edge now, not a decal over it: `inset` is a
+          real number, so the tabs are laid out INSIDE the measured line rather
+          than underneath it. */}
       <Framed
-        frame="panel"
+        frame="label"
         tint={accent}
         fill={colors.card}
         pose={framePose('main-navigation')}
-        inset={false}
+        inset={space.xs}
         style={[styles.bar, surface.shadow]}
         contentStyle={styles.barContent}
       >
@@ -147,11 +157,12 @@ const styles = StyleSheet.create({
   bar: {
     alignSelf: 'stretch',
   },
+  // No padding of its own: the frame's ink clearance (Framed's `inset`) is the
+  // padding now, so the two cannot disagree about where the inside of the bar
+  // starts.
   barContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: space.sm,
-    paddingHorizontal: space.xs,
   },
   slot: { flex: 1 },
   item: {
