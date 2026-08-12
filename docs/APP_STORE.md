@@ -228,7 +228,15 @@ make sure every screenshot reflects the submitted binary.
 - [ ] Capture final 6.9-inch screenshots from that exact build.
 - [ ] Complete App Privacy, age rating, content-rights, export-compliance, and
       regulated-medical-device questions in App Store Connect.
-- [ ] Confirm the support and privacy URLs work without authentication.
+- [x] Support and privacy URLs load without authentication. Checked 2026-08-13:
+      `https://www.bido.live/privacy` serves the policy and states the Apple
+      Health position in the words the binary needs — "If you turn on Health
+      sync, PASER writes your finished runs to Apple Health. PASER does not
+      read any health data from your device." `https://www.bido.live/support`
+      serves a real support page with a contact address. Note the contact on
+      both pages is `jonfong78@gmail.com` while the App Store Connect account
+      in `eas.json` is `constanceow@gmail.com`; that is fine, but the support
+      address is what reviewers and users will write to.
 
 Build and submit only after those gates are complete:
 

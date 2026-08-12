@@ -10,6 +10,8 @@ import {
   getFrame,
   weightScale,
 } from '../src/ui/frameRegistry';
+import { fillFor } from '../src/components/ui/Button';
+import { brand } from '../src/theme';
 import { applyReaction } from '../src/hooks/useRunReactions';
 import {
   REACTIONS,
@@ -164,6 +166,32 @@ describe('hand-drawn frame registry', () => {
     const dealt = new Set(Array.from({ length: 60 }, (_, i) => framePose(`surface-${i}`)));
     expect(dealt).toEqual(new Set([0, 1, 2]));
     expect(framePose('anything', 1)).toBe(0);
+  });
+});
+
+describe('a framed button never paints its own background', () => {
+  // The bleed this pass exists for: the frame's paper IS the fill — the
+  // outline's own wobbly silhouette — so anything underneath it that paints a
+  // rounded rectangle shows at every place the drawn line wanders inward.
+  test('a hollow variant asks for no paper at all', () => {
+    // 'transparent' is a truthy string, which is exactly the trap: it would
+    // switch the paper layer on and tint eight Images with it.
+    expect(fillFor('outline', 'transparent')).toBeUndefined();
+    expect(fillFor('ghost', 'transparent')).toBeUndefined();
+    expect(fillFor('primary', undefined)).toBeUndefined();
+  });
+
+  test('a filled variant hands its own colour to the paper', () => {
+    expect(fillFor('secondary', '#eef0f4')).toBe('#eef0f4');
+    expect(fillFor('destructive', '#c8544f')).toBe('#c8544f');
+  });
+
+  test('the brand CTA resolves to a flat colour, not a gradient', () => {
+    // A gradient cannot be painted into a wobbly silhouette without a mask
+    // layer this app does not ship, so the paper takes the first stop. Both
+    // stops are the same pink anyway.
+    expect(fillFor('gradient', 'anything')).toBe(brand.gradient[0]);
+    expect(typeof fillFor('gradient', 'anything')).toBe('string');
   });
 });
 

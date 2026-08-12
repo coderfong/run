@@ -28,6 +28,19 @@ function withoutBackground(flat) {
   return rest;
 }
 
+// The colour the frame's paper should be painted, or nothing at all.
+//
+// `Framed` switches its paper layer on when `fill` is truthy, and the string
+// 'transparent' is truthy — so an outline button would draw eight tinted paper
+// slices with `tintColor: 'transparent'`, which is not a documented way to
+// erase an Image and would leave a white silhouette behind a control whose
+// whole point is being hollow. Undefined is how you say "no paper".
+export function fillFor(variant, bg) {
+  if (variant === 'gradient') return brand.gradient[0];
+  if (!bg || bg === 'transparent') return undefined;
+  return bg;
+}
+
 export default function Button({
   title,
   onPress,
@@ -141,7 +154,15 @@ export default function Button({
           // same colour), so nothing is lost by letting the paper carry it —
           // and a gradient cannot be painted into a wobbly silhouette without
           // a mask layer this app does not ship.
-          fill={variant === 'gradient' ? brand.gradient[0] : bg}
+          //
+          // `outline` has no fill at all, and that has to reach Framed as
+          // undefined rather than as the string 'transparent': the string is
+          // truthy, so it would switch the paper layer on and hand
+          // `tintColor: 'transparent'` to eight Images — which is not
+          // guaranteed to erase them, and the failure mode is a white
+          // silhouette sitting behind a button that is supposed to be a
+          // hollow outline.
+          fill={fillFor(variant, bg)}
           weight={size === 'sm' ? INK.thin : INK.base}
           pose={pose}
           boil={frameBoil}
