@@ -24,7 +24,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { BODY_IMG, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
+import { BODY_IMG, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
 import { useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
 
@@ -42,6 +42,11 @@ export const HEADROOM = 0.14;
 // Face proportions, measured off the reference head, as fractions of the HEAD
 // (not the body). Everything that draws a face derives from these, so the
 // body and the picker chip cannot drift apart.
+// The hair swatch a thumbnail falls back to on a dark surface, looked up by
+// value rather than written as the index it happens to sit at. Palette 0 is
+// #26282B, which on a dark sheet is a drawing of nothing.
+const LEGIBLE_HAIR_ON_DARK = Math.max(0, HAIR_COLORS.indexOf('#E8D06B'));
+
 const FACE_W_OF_HEAD = 0.59;    // outer brow to outer brow / head width
 const FACE_TOP_OF_HEAD = 0.34;  // top of the eyebrows / head height
 // Smiley is the approved proportion reference. Tall expressions keep their
@@ -501,23 +506,48 @@ export function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,25
 }
 
 // ---------------------------------------------------------------------------
-// PartThumb — a single item preview for the customizer grid: the art in its
-// OWN colour, contained in a square. 'None' items render an empty slot ring.
+// PartThumb — a single item preview for the customizer grid, contained in a
+// square. 'None' items render an empty slot ring.
 //
-// Deliberately ignores the equipped colour. Tinting every swatch-driven item
-// to the current selection turned the whole grid one colour — a wall of teal
-// glasses, a wall of yellow hats — so nothing could be told apart while
-// browsing. The colour picker previews on the CHARACTER, which is the thing
-// you are actually colouring; the grid stays a catalogue.
+// IT WEARS THE RUNNER'S OWN COLOUR when the caller knows it (`equipped`).
+//
+// This used to refuse to, on the reasoning below — and the reasoning is not
+// wrong about clothes, but it was wrong about the thing people actually
+// noticed. Palette index 0 for hair is #26282B, so every hair tile was drawn
+// near-black on a near-black sheet: the grid read as a row of empty cells while
+// the character above it was blonde, and picking a style meant guessing at
+// silhouettes you could not see. The studio already had a `contrastHair` patch
+// for exactly this, and onboarding never passed it.
+//
+// Showing the chosen colour is also simply the truth: the tile is what you will
+// get if you tap it. Shape still separates the items — a bob and a mohawk do
+// not become the same drawing because they are the same colour.
+//
+// The old note, kept because it is the reason to be careful here:
+//
+// > Deliberately ignores the equipped colour. Tinting every swatch-driven item
+// > to the current selection turned the whole grid one colour — a wall of teal
+// > glasses, a wall of yellow hats — so nothing could be told apart while
+// > browsing. The colour picker previews on the CHARACTER, which is the thing
+// > you are actually colouring; the grid stays a catalogue.
 // ---------------------------------------------------------------------------
 
-export function PartThumb({ slot, item, size = 56, clanColor, contrastHair = false }) {
+/**
+ * `equipped`     the runner's loadout. Only the colour index for THIS slot is
+ *                read, so a caller can pass the whole thing.
+ * `contrastHair` what to draw when there is no loadout to read — a shop shelf,
+ *                a reward tile. Hair's palette index 0 is near-black, which is
+ *                invisible on a dark card, so the fallback picks a legible
+ *                stand-in instead. On by default: every caller without a
+ *                loadout wants it, and the one that had it was patching this
+ *                same hole by hand.
+ */
+export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, contrastHair = true }) {
   const { scheme } = useTheme();
-  // Contrast hair against the studio cards without changing the saved loadout:
-  // blonde in dark mode, dark in light mode.
-  const previewEquipped = slot === 'hair' && contrastHair
-    ? { hairColor: scheme === 'dark' ? 4 : 0 }
-    : null;
+  const previewEquipped = equipped
+    || (slot === 'hair' && contrastHair
+      ? { hairColor: scheme === 'dark' ? LEGIBLE_HAIR_ON_DARK : 0 }
+      : null);
   const img = item
     ? (previewEquipped ? itemImage(slot, item, previewEquipped) : itemPreviewImage(slot, item))
     : null;

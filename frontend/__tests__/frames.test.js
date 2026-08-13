@@ -3,11 +3,24 @@ import {
   FRAME,
   FRAMES,
   FRAME_GROUP,
+  INK,
   framePadding,
   framePose,
   frameVariant,
   getFrame,
+  weightScale,
 } from '../src/ui/frameRegistry';
+import { fillFor } from '../src/components/ui/Button';
+import { frameInkFor } from '../src/components/ui/Framed';
+import {
+  INK_MIN_CONTRAST,
+  brand,
+  contrastRatio,
+  darkColors,
+  lightColors,
+  luminance,
+  readableInk,
+} from '../src/theme';
 import { applyReaction } from '../src/hooks/useRunReactions';
 import {
   REACTIONS,
@@ -78,6 +91,71 @@ describe('hand-drawn frame registry', () => {
     expect(banner.insets.bottom).toBeGreaterThan(banner.ink.bottom * 2);
   });
 
+  test('one weight draws the same line on every drawing in the pack', () => {
+    // THE BUG THIS EXISTS FOR. Every box in the pack was drawn at its own size,
+    // so at scale 1 they disagree wildly about how thick a line is: the banner
+    // is a 370px drawing with a ~17px stroke, the badge a 44px drawing with a
+    // ~12px one. Drawn at their natural sizes, a full-width hero wore a 17pt
+    // line and the chip beside it a 12pt one — "the frame weight doesn't match
+    // the buttons", and on a 52pt button the banner's bottom band was over half
+    // the button's height with the clipped corner smeared across it as a rule.
+    //
+    // A weight is a request in POINTS, and it has to come out the same on all
+    // seventeen or the whole idea does not work.
+    for (const name of Object.keys(FRAME)) {
+      const ink = getFrame(name).ink;
+      const scale = weightScale(name, INK.base);
+      const mean = (ink.left + ink.right + ink.top + ink.bottom) / 4;
+      expect(mean * scale).toBeCloseTo(INK.base, 5);
+    }
+  });
+
+  test('the drawn line spread across the pack collapses under one weight', () => {
+    const at = (weight) => Object.keys(FRAME).map((name) => {
+      const ink = getFrame(name).ink;
+      const mean = (ink.left + ink.right + ink.top + ink.bottom) / 4;
+      return mean * weightScale(name, weight);
+    });
+    const natural = Object.keys(FRAME).map((name) => {
+      const ink = getFrame(name).ink;
+      return (ink.left + ink.right + ink.top + ink.bottom) / 4;
+    });
+    const spread = (xs) => Math.max(...xs) - Math.min(...xs);
+    // Natural sizes differ by points; normalised they are one number.
+    expect(spread(natural)).toBeGreaterThan(3);
+    expect(spread(at(INK.base))).toBeCloseTo(0, 5);
+  });
+
+  test('no weight means the art at its own size', () => {
+    expect(weightScale('panel', 0)).toBe(1);
+    expect(weightScale('panel', undefined)).toBe(1);
+    // An unknown frame cannot be measured, so it is left alone rather than
+    // scaled to zero — a caller naming a frame that is not in the build should
+    // draw nothing, not draw something wrong.
+    expect(weightScale('not-a-frame', INK.base)).toBe(1);
+  });
+
+  test('heavier weights ask for bigger frames, in proportion', () => {
+    expect(weightScale('banner', INK.bold) / weightScale('banner', INK.thin))
+      .toBeCloseTo(INK.bold / INK.thin, 5);
+  });
+
+  test('padding follows the weight, so content clears the line it actually got', () => {
+    // Padding is computed at the resolved scale by Framed. If the two ever
+    // disagree, either the text sits on the ink or there is a band of dead air
+    // round every framed thing in the app — both have shipped before.
+    for (const name of Object.keys(FRAME)) {
+      const scale = weightScale(name, INK.base);
+      const pad = framePadding(name, 0, scale);
+      for (const side of ['Left', 'Right', 'Top', 'Bottom']) {
+        expect(pad[`padding${side}`]).toBeGreaterThan(0);
+        // Nothing needs more than a few points of clearance at this weight;
+        // the 30pt banner gutters are what the old inset-based padding gave.
+        expect(pad[`padding${side}`]).toBeLessThanOrEqual(Math.ceil(INK.base * 2));
+      }
+    }
+  });
+
   test('a group deals the same frame for the same seed, and spreads them out', () => {
     expect(frameVariant('chip', 'Runs')).toBe(frameVariant('chip', 'Runs'));
     for (const [group, names] of Object.entries(FRAME_GROUP)) {
@@ -97,6 +175,94 @@ describe('hand-drawn frame registry', () => {
     const dealt = new Set(Array.from({ length: 60 }, (_, i) => framePose(`surface-${i}`)));
     expect(dealt).toEqual(new Set([0, 1, 2]));
     expect(framePose('anything', 1)).toBe(0);
+  });
+});
+
+describe('a framed button never paints its own background', () => {
+  // The bleed this pass exists for: the frame's paper IS the fill — the
+  // outline's own wobbly silhouette — so anything underneath it that paints a
+  // rounded rectangle shows at every place the drawn line wanders inward.
+  test('a hollow variant asks for no paper at all', () => {
+    // 'transparent' is a truthy string, which is exactly the trap: it would
+    // switch the paper layer on and tint eight Images with it.
+    expect(fillFor('outline', 'transparent')).toBeUndefined();
+    expect(fillFor('ghost', 'transparent')).toBeUndefined();
+    expect(fillFor('primary', undefined)).toBeUndefined();
+  });
+
+  test('a filled variant hands its own colour to the paper', () => {
+    expect(fillFor('secondary', '#eef0f4')).toBe('#eef0f4');
+    expect(fillFor('destructive', '#c8544f')).toBe('#c8544f');
+  });
+
+  test('the brand CTA resolves to a flat colour, not a gradient', () => {
+    // A gradient cannot be painted into a wobbly silhouette without a mask
+    // layer this app does not ship, so the paper takes the first stop. Both
+    // stops are the same pink anyway.
+    expect(fillFor('gradient', 'anything')).toBe(brand.gradient[0]);
+    expect(typeof fillFor('gradient', 'anything')).toBe('string');
+  });
+});
+
+describe('a drawn line has to be visible on what it is drawn on', () => {
+  // The hole this closes: with no tint at all a frame drew its art's own
+  // near-black blue, so every unstyled box vanished the moment the app went
+  // dark. And a tint chosen once at a call site is right for exactly one
+  // surface — a pale clan accent on a white card, or the theme's muted line on
+  // a dark one, is a box you cannot see.
+  const LIGHT = '#ffffff';
+  const DARK = '#0b0d10';
+
+  test('no surface and no tint falls back to the theme, both ways', () => {
+    expect(frameInkFor({ scheme: 'dark' })).not.toBe(frameInkFor({ scheme: 'light' }));
+    // Light ink on dark, dark ink on light — not the reverse.
+    expect(contrastRatio(frameInkFor({ scheme: 'dark' }), DARK)).toBeGreaterThan(4);
+    expect(contrastRatio(frameInkFor({ scheme: 'light' }), LIGHT)).toBeGreaterThan(4);
+  });
+
+  test('a legible tint is kept, whatever it is', () => {
+    // The app would flatten to two colours if this overrode everything.
+    expect(frameInkFor({ tint: brand.pink, surface: LIGHT })).toBe(brand.pink);
+    expect(frameInkFor({ tint: '#0C0C10', surface: LIGHT })).toBe('#0C0C10');
+    expect(frameInkFor({ tint: '#ffffff', surface: '#026493' })).toBe('#ffffff');
+  });
+
+  test('an invisible tint is replaced by one that shows', () => {
+    const onWhite = frameInkFor({ tint: '#fdfdfd', surface: LIGHT });
+    expect(onWhite).not.toBe('#fdfdfd');
+    expect(contrastRatio(onWhite, LIGHT)).toBeGreaterThanOrEqual(INK_MIN_CONTRAST);
+
+    const onDark = frameInkFor({ tint: '#111318', surface: DARK });
+    expect(onDark).not.toBe('#111318');
+    expect(contrastRatio(onDark, DARK)).toBeGreaterThanOrEqual(INK_MIN_CONTRAST);
+  });
+
+  test('every surface in the app gets an ink that shows on it', () => {
+    const surfaces = [
+      lightColors.card, lightColors.bg, lightColors.cardAlt,
+      darkColors.card, darkColors.bg, darkColors.cardAlt,
+      brand.pink, brand.purple, brand.teal,
+      '#026493', // the first-run meadow's sky
+      '#000000', '#ffffff',
+    ];
+    for (const surface of surfaces) {
+      for (const tint of [undefined, brand.pink, '#0C0C10', '#ffffff', lightColors.textMuted]) {
+        const ink = frameInkFor({ tint, surface, scheme: 'light' });
+        expect(contrastRatio(ink, surface)).toBeGreaterThanOrEqual(INK_MIN_CONTRAST);
+      }
+    }
+  });
+
+  test('an unparseable surface leaves the caller alone rather than guessing', () => {
+    expect(frameInkFor({ tint: brand.pink, surface: 'not-a-colour' })).toBe(brand.pink);
+    expect(readableInk(undefined, { prefer: brand.teal })).toBe(brand.teal);
+  });
+
+  test('translucent colours are understood, not treated as opaque black', () => {
+    // GenderStep's cards fill with rgba white over the scene; a parser that
+    // failed here would report the surface as unknown and skip the check.
+    expect(luminance('rgba(255,255,255,0.16)')).toBeCloseTo(luminance('#ffffff'), 5);
+    expect(luminance('#F4F4F7')).toBeGreaterThan(luminance('#0C0C10'));
   });
 });
 

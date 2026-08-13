@@ -221,7 +221,7 @@ def rival_takes_mine(
         [str(user.id)],
         "stolen",
         "Your land was captured",
-        f"{rival.username} took {round(taken_from_me):,} m² of your territory.",
+        f"{rival.username} took {taken_from_me / 1_000_000:.3f} km² of your territory.",
         event_data,
         str(rival.id),
     )

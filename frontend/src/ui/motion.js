@@ -188,6 +188,7 @@ export function MascotLoader({ source, size = 132 }) {
 export function PressableScale({
   children,
   style,
+  containerStyle,
   onPress,
   onPressIn,
   onPressOut,
@@ -206,6 +207,7 @@ export function PressableScale({
 
   return (
     <Pressable
+      style={containerStyle}
       onPressIn={(event) => {
         if (!reduced) scale.value = withSpring(scaleTo, { damping: 20, stiffness: 300 });
         onPressIn?.(event);

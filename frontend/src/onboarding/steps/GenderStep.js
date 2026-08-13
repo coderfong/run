@@ -18,21 +18,22 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { space } from '../../theme';
-import { ToonButton } from '../../components/ui';
+import { Framed, ToonButton } from '../../components/ui';
 import { haptic, PressableScale } from '../../ui/motion';
+import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
 import { CharacterBust } from '../../components/character/CharacterRig';
 import { useAvatar } from '../../state/avatar';
-import { NIGHT_HAIR, StepHeadline } from '../ui';
-import { toonRadius, toonType } from '../toon';
+import { FIRST_RUN_HAIR, FIRST_RUN_SKY, StepHeadline } from '../ui';
+import { toonType } from '../toon';
 
 // `seed` is applied to the avatar the moment the option is tapped, so the
 // runner carried into the next step IS the one that was picked. Every id here
 // is a free item — a seed that lands on a locked piece would be dropped by the
-// creator's own filter and leave the slot empty. The colour is NIGHT_HAIR
-// because this whole flow plays against a night sky.
+// creator's own filter and leave the slot empty. The colour is FIRST_RUN_HAIR,
+// so both previews open on the same blonde the flow starts everyone at.
 export const GENDER_OPTIONS = [
-  { key: 'man', label: 'Man', seed: { hair: 'twoblock', hairColor: NIGHT_HAIR } },
-  { key: 'woman', label: 'Woman', seed: { hair: 'sleeklong', hairColor: NIGHT_HAIR } },
+  { key: 'man', label: 'Man', seed: { hair: 'twoblock', hairColor: FIRST_RUN_HAIR } },
+  { key: 'woman', label: 'Woman', seed: { hair: 'sleeklong', hairColor: FIRST_RUN_HAIR } },
 ];
 
 const BUST = 132;
@@ -61,24 +62,46 @@ export default function GenderStep({ value, onChange, onContinue }) {
           {GENDER_OPTIONS.map((opt) => {
             const on = opt.key === value;
             return (
-              <PressableScale
-                key={opt.key}
-                onPress={() => pick(opt)}
-                accessibilityRole="button"
-                accessibilityLabel={opt.label}
-                accessibilityState={{ selected: on }}
-                style={[styles.option, on && styles.optionOn]}
-              >
-                {/* The runner's OWN loadout wearing this seed, not a stock
-                    portrait — whatever they change later, these two stay a
-                    preview of the same person. */}
-                <CharacterBust
-                  equipped={{ ...equipped, ...opt.seed }}
-                  size={BUST}
-                  bg="rgba(255,255,255,0.07)"
-                />
-                <Text style={[toonType.sub, styles.optionLabel]}>{opt.label}</Text>
-              </PressableScale>
+              // The `flex: 1` lives on this wrapper, NOT on PressableScale.
+              // PressableScale forwards its style prop to an inner
+              // Animated.View, so flex there stretches the box INSIDE the
+              // pressable and leaves the pressable itself at content width —
+              // which is why the pair sat squashed against the left gutter
+              // with a third of the row empty beside it instead of splitting
+              // the width evenly. TabBar.js documents the same trap.
+              <View key={opt.key} style={styles.slot}>
+                <PressableScale
+                  onPress={() => pick(opt)}
+                  accessibilityRole="button"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: on }}
+                  style={styles.option}
+                >
+                  <Framed
+                    frame={frameVariant('box', `gender:${opt.key}`)}
+                    // The card's fill is a translucent white, so left to judge
+                    // itself the frame would read the surface as WHITE and pick
+                    // dark ink. What the line is really over is the scene.
+                    on={FIRST_RUN_SKY}
+                    tint={on ? '#ffffff' : 'rgba(255,255,255,0.45)'}
+                    fill={on ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.06)'}
+                    weight={on ? INK.bold : INK.thin}
+                    pose={framePose(`gender:${opt.key}`)}
+                    inset={space.sm}
+                    contentStyle={styles.optionInner}
+                  >
+                    {/* The runner's OWN loadout wearing this seed, not a stock
+                        portrait — whatever they change later, these two stay a
+                        preview of the same person. */}
+                    <CharacterBust
+                      equipped={{ ...equipped, ...opt.seed }}
+                      size={BUST}
+                      bg="transparent"
+                    />
+                    <Text style={[toonType.sub, styles.optionLabel]}>{opt.label}</Text>
+                  </Framed>
+                </PressableScale>
+              </View>
             );
           })}
         </View>
@@ -104,19 +127,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.gutter,
   },
   // Side by side: two choices read as a pair to compare, where a stacked list
-  // reads as a form to work down.
+  // reads as a form to work down. Equal halves of the row, so the pair is
+  // centred on the step by construction rather than by a margin someone has to
+  // keep in step with the gutter.
   options: { flexDirection: 'row', gap: space.md, marginTop: space.xl },
-  option: {
-    flex: 1,
-    borderRadius: toonRadius.cell,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 2.5,
-    borderColor: 'rgba(255,255,255,0.10)',
-    alignItems: 'center',
-    gap: space.sm,
-    paddingVertical: space.lg,
-  },
-  optionOn: { borderColor: '#fff', backgroundColor: '#3A3B47' },
+  slot: { flex: 1 },
+  // No radius, no border, no fill: the drawn box brings all three, and the
+  // selected state is the same box with a heavier, whiter line. A rounded
+  // rectangle behind the frame would show at every corner the wobble turns in.
+  option: { alignSelf: 'stretch' },
+  optionInner: { alignItems: 'center', gap: space.sm, paddingVertical: space.md },
   optionLabel: { color: '#fff' },
   cta: { marginTop: space.xl },
 });

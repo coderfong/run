@@ -15,7 +15,8 @@ import { ShieldOff, Swords } from 'lucide-react-native';
 
 import { brand, space, toon, toonType, useTheme, useThemedType } from '../theme';
 import { Confetti, haptic } from '../ui/motion';
-import { OutlinedText, ProgressTrack, ToonButton, ToonGhostButton } from './ui';
+import { Framed, OutlinedText, ProgressTrack, ToonButton, ToonGhostButton } from './ui';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import CharacterRig, { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import TerritoryStealBanner from './TerritoryStealBanner';
@@ -64,21 +65,43 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
           ]}
           showsVerticalScrollIndicator={false}
         >
-          <OutlinedText style={[toonType.hero, { color: '#fff' }]} outline={toon.ink} width={3}>
-            {headline(claim)}
-          </OutlinedText>
+          <Framed
+            frame={frameVariant('featured', headline(claim))}
+            tint={toon.ink}
+            fill={brand.pink}
+            weight={INK.bold}
+            pose={framePose(headline(claim))}
+            inset={false}
+            style={styles.headlineFrame}
+            contentStyle={styles.headlineInner}
+          >
+            <OutlinedText style={[toonType.hero, styles.headline]} outline={toon.ink} width={3} fit minimumFontScale={0.62}>
+              {headline(claim)}
+            </OutlinedText>
+          </Framed>
 
           <View style={styles.stage}>
             <CharacterRig ref={rigRef} equipped={myAvatar} size={104} animate />
           </View>
 
-          <OutlinedText
-            style={[toonType.hero, { color: brand.teal, fontSize: 40, lineHeight: 48 }]}
-            outline={toon.ink}
-            width={3}
+          <Framed
+            frame={frameVariant('heading', 'claimed-area')}
+            tint={toon.ink}
+            fill={colors.card}
+            weight={INK.base}
+            pose={framePose('claimed-area')}
+            inset={false}
+            style={styles.areaFrame}
+            contentStyle={styles.areaInner}
           >
-            {`+${fmtArea(area)}`}
-          </OutlinedText>
+            <OutlinedText
+              style={[toonType.hero, { color: brand.teal, fontSize: 40, lineHeight: 48 }]}
+              outline={toon.ink}
+              width={3}
+            >
+              {`+${fmtArea(area)}`}
+            </OutlinedText>
+          </Framed>
 
           {/* the steal itself, played out: bomb, blast, their heads thrown
               out of it and landing back in a row pulling a sad face */}
@@ -93,14 +116,23 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
 
           {/* the faces — the whole point of the rebuild */}
           {taken.length > 0 && (
-            <View style={styles.block}>
+            <Framed
+              frame={frameVariant('box', 'people-you-took-land-from')}
+              tint={brand.pink}
+              fill={colors.card}
+              weight={INK.thin}
+              pose={framePose('people-you-took-land-from')}
+              inset={false}
+              style={styles.block}
+              contentStyle={styles.peopleCard}
+            >
               <OutlinedText
                 style={[toonType.label, { color: brand.pink }]}
                 outline={toon.ink}
                 width={1.5}
               >
                 {taken.length === 1
-                  ? `YOU TOOK LAND FROM ${taken[0].username.toUpperCase()}`
+                  ? `YOU TOOK LAND FROM ${String(taken[0].username || 'A RUNNER').toUpperCase()}`
                   : `YOU TOOK LAND FROM ${taken.length} RUNNERS`}
               </OutlinedText>
               {taken.map((v) => (
@@ -128,7 +160,7 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
                   </Text>
                 </View>
               ))}
-            </View>
+            </Framed>
           )}
 
           {/* attacks that bounced — honest, and it sets up the rematch */}
@@ -216,10 +248,22 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { paddingHorizontal: space.gutter, alignItems: 'stretch' },
-  stage: { alignItems: 'center', marginVertical: space.lg },
+  headlineFrame: { minHeight: 92 },
+  headlineInner: { flex: 1, justifyContent: 'center', paddingHorizontal: space.md, paddingVertical: space.sm },
+  headline: { color: '#fff', textAlign: 'center' },
+  stage: {
+    alignItems: 'center',
+    marginTop: space.lg,
+    // The rig's shoes visually overhang its layout box. A deliberate floor
+    // keeps the area plaque from looking glued to the character's feet.
+    marginBottom: space.xxl + space.sm,
+  },
+  areaFrame: { alignSelf: 'center', minWidth: 230 },
+  areaInner: { alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.xs },
   // The banner throws heads outside its own bounds, so it never clips.
   stealBanner: { marginTop: space.md, overflow: 'visible' },
   block: { marginTop: space.xl },
+  peopleCard: { padding: space.lg },
   levelFxRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: -8 },
   levelTrophy: { marginLeft: -34 },
   row: {

@@ -26,7 +26,7 @@ import Animated, {
 
 import { toon, toonType } from '../../theme';
 import { CAPTURE_LAYER } from '../../effects/layers';
-import AppIcon from '../AppIcon';
+import AppIcon, { STEAL_ICON_SIZE } from '../AppIcon';
 import { AnimationStack } from '../GameAnimation';
 import CharacterRig from '../character/CharacterRig';
 import { OutlinedText } from '../ui';
@@ -36,8 +36,8 @@ import { timingFor } from './timing';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
-const RIG_SIZE = 54;
-const FX_SIZE = 170;
+const RIG_SIZE = 78;
+const FX_SIZE = 250;
 // The rig draws its body plus headroom for tall hair.
 const RIG_HEIGHT = RIG_SIZE * 2.58 * 1.14;
 
@@ -195,9 +195,10 @@ export default function TerritoryVictoryBeat({
   // Stand on the front (lower) portion of the territory, clamped so the
   // character and the label never leave the map card.
   const maxY = bounds?.height ? bounds.height - 12 : Infinity;
-  const maxX = bounds?.width ? bounds.width - 70 : Infinity;
+  const sideClearance = Math.max(90, RIG_SIZE / 2 + 12);
+  const maxX = bounds?.width ? bounds.width - sideClearance : Infinity;
   const footY = Math.min(claimScreenPoint.y + 34, maxY);
-  const centerX = Math.min(Math.max(claimScreenPoint.x, 70), maxX);
+  const centerX = Math.min(Math.max(claimScreenPoint.x, sideClearance), maxX);
   const fxLeft = Math.max(0, Math.min(centerX - FX_SIZE / 2, (bounds?.width || FX_SIZE) - FX_SIZE));
   const fxTop = Math.max(0, footY - FX_SIZE + 20);
 
@@ -237,12 +238,12 @@ export default function TerritoryVictoryBeat({
 
       <Animated.View
         pointerEvents="none"
-        style={[styles.label, { top: Math.max(8, footY - RIG_HEIGHT - 34) }, labelStyle]}
+        style={[styles.label, { top: Math.max(8, footY - RIG_HEIGHT - 46) }, labelStyle]}
       >
         <OutlinedText style={[toonType.label, styles.labelText]} outline={toon.ink} width={2}>
           {label}
         </OutlinedText>
-        {label === 'TERRITORY STOLEN' && <AppIcon name="steal" size={15} style={styles.labelIcon} />}
+        {label === 'TERRITORY STOLEN' && <AppIcon name="steal" size={STEAL_ICON_SIZE} style={styles.labelIcon} />}
       </Animated.View>
     </View>
   );
@@ -253,10 +254,12 @@ const styles = StyleSheet.create({
   rigAnchor: { position: 'absolute' },
   label: {
     position: 'absolute',
-    alignSelf: 'center',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  labelText: { color: '#fff' },
-  labelIcon: { marginLeft: 6 },
+  labelText: { color: '#fff', fontSize: 18, lineHeight: 23, letterSpacing: 0.7 },
+  labelIcon: { marginLeft: 8 },
 });

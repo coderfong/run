@@ -16,7 +16,24 @@ import { brand, space } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
 import { art } from '../config/onboardingArt';
 import OutlinedText from '../components/ui/OutlinedText';
+import ParallaxScene from '../components/ParallaxScene';
+import { HAIR_COLORS } from '../config/cosmetics';
+import { SCENES } from '../config/scenes';
 import { toon, toonRadius, toonType } from './toon';
+
+// Which landscape the first run is played against. One name, in one place, so
+// swapping the scene is a one-line change rather than a sweep.
+const FIRST_RUN_SCENE = 'nature5';
+
+/**
+ * The colour anything drawn over the first-run stage is sitting on.
+ *
+ * Exported for the drawn frames: they choose their ink by contrast, and a card
+ * with a translucent white fill would otherwise be judged against WHITE and
+ * given dark ink — when what it is really over is the scene. Read off the art
+ * by the installer, so swapping the scene moves this with it.
+ */
+export const FIRST_RUN_SKY = SCENES[FIRST_RUN_SCENE]?.sky || '#03091C';
 
 // ---------------------------------------------------------------------------
 // Step chrome — circular back button, progress track, right-hand text action.
@@ -87,27 +104,54 @@ export function StepChrome({ step, total, onBack, onSkip, skipLabel = 'Skip', to
 const STAGE_ASPECT = 1170 / 1400;
 const STAGE_SKY = '#010F27';
 
-// The hair colour the first run starts on: index 4 of HAIR_COLORS, the light
-// blonde. A PROPERTY OF THE STAGE, which is why it lives here — the default
-// loadout's black (#26282B) is all but the sky's own colour, so the runner you
-// are building spent the whole flow looking bald against a night gradient.
-// Seeded once by OnboardingFlow and re-applied by each gender option; the hair
-// step's own swatches override it the moment they are touched, and nothing
-// outside this flow reads it.
-export const NIGHT_HAIR = 4;
+// The hair colour the first run starts on: the light blonde.
+//
+// Looked up by VALUE rather than written as the index it happens to sit at.
+// This used to be a bare `4`, which is correct only for as long as nobody
+// inserts a swatch above it — and the failure is silent and cosmetic, so it
+// would ship. HAIR_COLORS is the source of truth; this is a question asked of
+// it, and the fallback is the first swatch rather than an index that may no
+// longer exist.
+//
+// It started as a property of the NIGHT stage — the default loadout's near
+// black (#26282B) was all but the old sky's own colour, so the runner being
+// built read as bald. The stage is a daylight meadow now and the reason is
+// simply that blonde is the friendlier starting point; the seed is applied by
+// OnboardingFlow and re-applied by each gender option, and the hair step's own
+// swatches override it the moment they are touched.
+const BLONDE = '#E8D06B';
+export const FIRST_RUN_HAIR = Math.max(0, HAIR_COLORS.indexOf(BLONDE));
 
 export function StageBackdrop({ children, style }) {
   const bg = art('stage');
-  const [width, setWidth] = React.useState(0);
+  const [size, setSize] = React.useState({ width: 0, height: 0 });
+  const { width } = size;
+  const scene = SCENES[FIRST_RUN_SCENE];
   return (
     <View
       style={[styles.stage, style]}
       onLayout={(e) => {
-        const w = e.nativeEvent.layout.width;
-        setWidth((prev) => (Math.abs(prev - w) < 1 ? prev : w));
+        const { width: w, height: h } = e.nativeEvent.layout;
+        setSize((prev) => (
+          Math.abs(prev.width - w) < 1 && Math.abs(prev.height - h) < 1
+            ? prev
+            : { width: w, height: h }
+        ));
       }}
     >
-      {bg ? (
+      {scene ? (
+        // The meadow, drawn as its own layers so the clouds and the trees move
+        // independently of each other. It replaces the hand-drawn night street:
+        // the flow reads as somewhere you would go for a run rather than as a
+        // dark room, and it is the one screen in the app with the time to earn
+        // a moving backdrop.
+        <ParallaxScene
+          scene={FIRST_RUN_SCENE}
+          width={size.width}
+          height={size.height}
+          style={styles.fillAbs}
+        />
+      ) : bg ? (
         <>
           {/* sky continued above the art — it ends on the art's own top
               colour, so the join reads as one continuous night */}

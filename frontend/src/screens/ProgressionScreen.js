@@ -15,8 +15,8 @@ import AppIcon from '../components/AppIcon';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
-import { brand, fonts, radius, space, toon, toonSurface, toonType, useTheme, useThemedType, withAlpha } from '../theme';
-import { Card, Row, Skeleton, Screen, OutlinedText, ToonButton } from '../components/ui';
+import { brand, fonts, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { Card, Framed, Row, Skeleton, Screen, OutlinedText, ToonButton } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
 import GameAnimation from '../components/GameAnimation';
@@ -29,6 +29,7 @@ import { getItem, ITEMS } from '../config/cosmetics';
 import { toast } from '../ui/toast';
 import { Bar, Pulse, useReduceMotion } from '../ui/motion';
 import { IAP_ENABLED } from '../config/releaseFeatures';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 
 // Roll an unowned shop/stat cosmetic of the box's actual rarity. Pass rewards
 // are never in the pool: a lootbox must not bypass either reward track.
@@ -66,9 +67,8 @@ function rollCosmetic(rarity, isUnlocked) {
 // down the page was a column of the same word; the pulse says it instead, and
 // the tile gets that space back for the artwork.
 function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, equipped, isPro }) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const type = useThemedType();
-  const surface = toonSurface(colors, scheme);
   const claimable = unlocked && !claimed && !gated;
   const dim = !unlocked || claimed;
   const shown = rewards.slice(0, 2);
@@ -90,9 +90,8 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
   return (
     <TouchableOpacity
       style={[
-        styles.tile,
-        { backgroundColor: colors.card, opacity: dim ? 0.5 : 1, ...surface.outline },
-        claimable && { borderWidth: 2.5, borderColor: accent },
+        styles.tilePress,
+        { opacity: dim ? 0.5 : 1 },
       ]}
       onPress={onPress}
       disabled={!unlocked || claimed || busy}
@@ -101,6 +100,16 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
       accessibilityLabel={rewards.map((r) => r.label).join(', ')}
       accessibilityState={{ disabled: !unlocked || claimed }}
     >
+      <Framed
+        frame={frameVariant('card', `${isPro ? 'pro' : 'free'}:${rewards.map((r) => r.key).join(':')}`)}
+        tint={claimable ? accent : colors.border}
+        fill={claimable ? withAlpha(accent, 0.13) : colors.card}
+        weight={claimable ? INK.medium : INK.thin}
+        pose={framePose(rewards.map((r) => r.key).join(':'))}
+        inset={false}
+        style={styles.tile}
+        contentStyle={styles.tileContent}
+      >
       {/* Every kind of reward now draws to the same box at the same size, so
           the ladder reads as one grid instead of a jumble of big chests and
           small stickers. Two-reward tiers step down only enough to fit. */}
@@ -169,6 +178,7 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
       {claimed && stampArt && (
         <Image source={stampArt} style={styles.stamp} resizeMode="contain" fadeDuration={0} pointerEvents="none" />
       )}
+      </Framed>
     </TouchableOpacity>
   );
 }
@@ -437,7 +447,15 @@ export default function ProgressionScreen() {
           strip above a plain card, so the screen opened with two stacked
           blocks saying the same thing; now the card sits ON the art and the
           portrait has something to sit against. */}
-      <View style={styles.header}>
+      <Framed
+        frame={frameVariant('header', 'levels-and-rewards')}
+        tint={brand.pink}
+        weight={INK.medium}
+        pose={framePose('levels-and-rewards')}
+        inset={false}
+        style={styles.header}
+        contentStyle={styles.headerClip}
+      >
         {art('passBanner') && (
           <Image
             source={art('passBanner')}
@@ -481,7 +499,7 @@ export default function ProgressionScreen() {
               : `${xp_into_level.toLocaleString()} / ${xp_for_next.toLocaleString()} XP to level ${level + 1}`}
           </Text>
         </View>
-      </View>
+      </Framed>
 
       {/* What there is to collect, and one button that collects it. This used
           to be a small pill under the portrait, which is a strange way to
@@ -656,11 +674,9 @@ const styles = StyleSheet.create({
   // The banner art is the card. `overflow: hidden` is what lets a cover image
   // sit under the rounded corners instead of squaring them off.
   header: {
-    borderRadius: radius.card,
-    borderWidth: 2.5,
-    borderColor: toon.ink,
-    overflow: 'hidden',
+    minHeight: 248,
   },
+  headerClip: { flex: 1, borderRadius: radius.card, overflow: 'hidden' },
   headerScrim: { backgroundColor: 'rgba(14,10,28,0.52)' },
   headerInner: { alignItems: 'center', padding: space.lg },
   // Always white: the panel underneath is the purple art plus a dark scrim in
@@ -708,12 +724,13 @@ const styles = StyleSheet.create({
 
   tierRow: { flexDirection: 'row', alignItems: 'stretch' },
   singleTierRow: { paddingRight: SPINE_W },
-  tile: {
+  tilePress: { flex: 1, marginVertical: space.xs },
+  tile: { flex: 1, minHeight: 144 },
+  tileContent: {
     flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderRadius: radius.card, padding: space.md, paddingBottom: space.lg + 6,
+    padding: space.md, paddingBottom: space.lg + 6,
     // Grown with the artwork. The bottom padding still belongs to the
     // locked/claimed chip, which is the only thing that sits down there now.
-    marginVertical: space.xs, minHeight: 144,
   },
   artRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: ART_SIZE + 4 },
   rewardNameRow: {

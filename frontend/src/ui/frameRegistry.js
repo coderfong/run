@@ -128,6 +128,54 @@ export function framePose(seed, frameCount = 3) {
   return seedHash(`pose:${seed ?? ''}`) % count;
 }
 
+// INK WEIGHT.
+//
+// Every drawing in the pack was made at its own size, so at scale 1 they do not
+// agree about how thick a line is: the banner is a 370px drawing with a 19px
+// stroke, the badge a 44px drawing with a 12px one. Drawn at their natural size
+// side by side, a full width hero wears a 19pt line and the chip next to it a
+// 12pt one, and nothing on the screen looks like it came from the same pen.
+//
+// So a frame is scaled to a LINE WEIGHT rather than to a size. `weightScale`
+// works out what scale makes a given drawing come out at `weight` points thick,
+// and everything else — the corners, the padding — follows from that. The
+// corners shrink with the line, which is right: a fine line drawn round a big
+// box has small corners, exactly as it would on paper.
+// The numbers are POINTS OF DRAWN LINE, so they read directly: `base` is a
+// 5pt stroke, whichever of the pack's drawings is behind it.
+//
+// The first pass at this set was a third finer (2 / 2.75 / 3.5 / 4.5 / 6) and
+// it was too timid — normalising the weights fixed the mismatch but left every
+// box looking like a hairline sketch of itself rather than the confident marker
+// line the art was drawn with. These are the drawn line's own proportions on a
+// phone: a chip carries 3.5pt, a button 5, a hero 6.5.
+export const INK = Object.freeze({
+  hairline: 3,
+  thin: 3.75,
+  base: 5,
+  bold: 6.5,
+  heavy: 8.5,
+});
+
+function inkMean(name) {
+  const ink = getFrame(name)?.ink;
+  if (!ink) return 0;
+  return (ink.left + ink.right + ink.top + ink.bottom) / 4;
+}
+
+/**
+ * The scale at which `name` draws a line `weight` points thick.
+ *
+ * Returns 1 for an unknown frame or a falsy weight, so a caller that wants the
+ * art at its own size just leaves `weight` off.
+ */
+export function weightScale(name, weight) {
+  if (!weight) return 1;
+  const mean = inkMean(name);
+  if (!mean) return 1;
+  return weight / mean;
+}
+
 /**
  * How far content has to sit from each edge to clear the drawn line.
  *

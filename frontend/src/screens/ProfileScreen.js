@@ -588,11 +588,11 @@ export default function ProfileScreen({ navigation }) {
         )}
       </Card>
 
-      {/* trail glow colour — how your live route lights up on the run map */}
+      {/* Player colour — trail, own-land outline and colourable game chrome. */}
       <Card style={{ marginTop: space.md }}>
-        <Text style={type.labelSm}>Trail glow</Text>
+        <Text style={type.labelSm}>Runner colour</Text>
         <Text style={[type.caption, { marginTop: 2 }]}>
-          The colour your route glows while you run. Club follows your club colour.
+          Colours your trail, map outline and runner highlights. Club follows your club colour.
         </Text>
         <View style={styles.swatchRow}>
           {TRAIL_GLOW_COLORS.map(({ key, label, value }) => {
@@ -695,7 +695,13 @@ export default function ProfileScreen({ navigation }) {
           title="Delete account"
           variant="destructive"
           onPress={() => { setConfirmingDelete(true); setDeleteDraft(''); }}
-          style={{ marginTop: space.md, backgroundColor: colors.dangerSoft }}
+          // No `backgroundColor` here. The soft red used to be painted on the
+          // button's own root as a way of toning the destructive red down, and
+          // with a hand-drawn frame on top that rectangle showed all round the
+          // wobble — a pale red box with a darker red box inside it, which is
+          // what "two shades of red" was. The frame's paper is the fill now,
+          // and it is the only one.
+          style={{ marginTop: space.md }}
         />
       ) : (
         <Card style={{ marginTop: space.md, borderWidth: 1, borderColor: '#f5c2c2' }}>
@@ -729,6 +735,11 @@ export default function ProfileScreen({ navigation }) {
       </TouchableOpacity>
       <Text style={styles.legal}>Pixel effects by Will Tice</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>Additional VFX by Pixel VFX Studio, RiaKare and Luis Zuno</Text>
+      {/* The first run plays against a CraftPix landscape. Their free licence
+          allows commercial use and asks for a credit where one is practical;
+          this is where every other pack in the app is credited, so it costs a
+          line and removes a content rights question at review. */}
+      <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
       {IAP_ENABLED ? (
         <>

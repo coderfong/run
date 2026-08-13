@@ -1,6 +1,7 @@
 """Run detail, kudos, push-token registration, notification prefs, and the
 weekly-recap cron."""
 
+import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
@@ -32,7 +33,8 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
             SELECT r.id::text, r.user_id::text, u.username, r.distance_m, r.duration_s, r.ended_at,
                    r.verified, COALESCE(t.area_m2, 0), (t.id IS NOT NULL),
                    ST_AsText(r.path), ST_AsText(t.polygon), c.tag, c.color_key,
-                   COALESCE(r.visibility, 'public')
+                   COALESCE(r.visibility, 'public'), r.caption,
+                   COALESCE(r.post_media, '[]'::jsonb)
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -100,6 +102,7 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         comment_count=int(ccount or 0),
         reactions=[schemas.RunReaction(**x) for x in summary.get(run_id, [])],
         my_reaction=mine.get(run_id),
+        caption=r[14], media=list(r[15] or []),
     )
 
 
@@ -113,6 +116,46 @@ def _run_visible_to(db, run_id, user):
     if r[0] != user.id and paserby.is_blocked(db, user.id, r[0]):
         raise HTTPException(404, "run not found")
     return r[0]
+
+
+@router.put("/runs/{run_id}/post", response_model=schemas.RunPostOut)
+@limiter.limit(settings.rate_limit_default)
+def update_run_post(
+    request: Request,
+    response: Response,
+    run_id: str,
+    payload: schemas.RunPostIn,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Edit the caption and photos attached to the owner's Home feed card."""
+    run = db.execute(
+        text("SELECT user_id::text, ended_at FROM runs WHERE id = :rid"),
+        {"rid": run_id},
+    ).fetchone()
+    if not run or run[0] != user.id:
+        raise HTTPException(404, "run not found")
+    if run[1] is None:
+        raise HTTPException(409, "finish the run before editing its post")
+
+    caption = payload.caption
+    if caption:
+        caption = content_moderation.require_allowed_text(caption, "caption")
+    media = list(payload.media or [])
+    db.execute(
+        text(
+            "UPDATE runs SET caption = :caption, post_media = CAST(:media AS jsonb) "
+            "WHERE id = :rid AND user_id = :uid"
+        ),
+        {
+            "caption": caption,
+            "media": json.dumps(media),
+            "rid": run_id,
+            "uid": user.id,
+        },
+    )
+    db.commit()
+    return schemas.RunPostOut(run_id=run_id, caption=caption, media=media)
 
 
 @router.get("/runs/{run_id}/comments", response_model=list[schemas.RunCommentOut])

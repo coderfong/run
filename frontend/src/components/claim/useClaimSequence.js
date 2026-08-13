@@ -22,9 +22,55 @@ import { loadClaimLeaderboard } from './leaderboardData';
 import { flyRun, levelCamera } from './runFlyover';
 import { timingFor } from './timing';
 import useClaimReveal from './useClaimReveal';
-import { DEFAULT_CAPTURE_STYLE_ID, pickCaptureStyle } from '../../effects/captureStyles';
+import {
+  DEFAULT_CAPTURE_STYLE_ID,
+  ENCOUNTER_MODE,
+  pickCaptureStyle,
+  resolveCaptureStyle,
+} from '../../effects/captureStyles';
+
+// How long the controller is willing to wait for a style to cue the reveal.
+//
+// This used to be a flat 500-700ms, which was correct when every style put its
+// reveal within the first half second of a sprite stack. A choreography earns
+// its reveal: Warm Detonation throws a charge, waits for it to land, waits
+// again for the fuse, and only then turns the ground over at 1460ms. A fixed
+// deadline would fire first every time and the styles would silently lose
+// their own climax — the exact failure mode that made `capture_style` a dead
+// field for a year.
+//
+// So the deadline is derived from the style that is actually playing, plus
+// slack. It exists only to rescue a player that never mounts or never calls
+// back; it is not a schedule.
+const REVEAL_CUE_SLACK = 600;
+
+function revealCueDeadline(styleId, reduced, fallback) {
+  if (reduced) return fallback;
+  const captureStyle = resolveCaptureStyle(styleId);
+  const cue = captureStyle?.sequence?.find((step) => step.action === 'territoryReveal');
+  if (!cue) return fallback;
+  return Math.max(fallback, cue.start + REVEAL_CUE_SLACK);
+}
 
 export const CAPTURE_VARIANTS = ['grin-knock', 'bonk', 'chomp'];
+
+// The collision used to be hard-coded to grin-knock by ResultScreen, so the
+// large capture-style library still opened with the same knock every time.
+// Pick the encounter from the final territory id: stable when a replay is
+// viewed again, varied between claims, and random only for a synthetic dev
+// replay that has no persisted identity.
+export function pickCaptureVariant(seed) {
+  if (seed == null) {
+    return CAPTURE_VARIANTS[Math.floor(Math.random() * CAPTURE_VARIANTS.length)];
+  }
+  let hash = 0x811c9dc5;
+  const text = String(seed);
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return CAPTURE_VARIANTS[hash % CAPTURE_VARIANTS.length];
+}
 
 // Who the attacker actually ran into. Only runners who LOST land are
 // defenders — if everyone held, there is nobody to knock over and the empty
@@ -49,6 +95,11 @@ export default function useClaimSequence({ mapRef, userId }) {
 
   const [phase, setPhase] = useState(CLAIM_PHASE.IDLE);
   const [projection, setProjection] = useState(null);
+  // The style's territory cue: which transition, and the anchor NAME the wipe
+  // should start from. The screen resolves that name to a point with the same
+  // resolver the effects use, so the ground opens exactly where the strike
+  // that caused it landed.
+  const [revealSpec, setRevealSpec] = useState(null);
   const [leaderboard, setLeaderboard] = useState(null);
   const [playToken, setPlayToken] = useState(0);
   // Encounter mounts on intro and unmounts when it says it's finished — that
@@ -147,27 +198,29 @@ export default function useClaimSequence({ mapRef, userId }) {
     impactResolver.current?.();
   }, []);
 
+  // Resolves WITH the style's cue — the transition and origin it asked for —
+  // or with null when the deadline rescued a player that never called back.
   const waitForRevealCue = useCallback((timeoutMs) => {
     return new Promise((resolve) => {
       let settled = false;
       const timer = { id: null, cancel: null };
-      const done = () => {
+      const done = (spec) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer.id);
         timers.current.delete(timer);
         if (revealCueResolver.current === done) revealCueResolver.current = null;
-        resolve();
+        resolve(spec || null);
       };
       revealCueResolver.current = done;
-      timer.cancel = done;
-      timer.id = setTimeout(done, Math.max(0, timeoutMs));
+      timer.cancel = () => done(null);
+      timer.id = setTimeout(() => done(null), Math.max(0, timeoutMs));
       timers.current.add(timer);
     });
   }, []);
 
-  const handleCaptureRevealCue = useCallback(() => {
-    revealCueResolver.current?.();
+  const handleCaptureRevealCue = useCallback((spec) => {
+    revealCueResolver.current?.(spec);
   }, []);
 
   const handleEncounterComplete = useCallback(() => setEncounterLive(false), []);
@@ -188,6 +241,7 @@ export default function useClaimSequence({ mapRef, userId }) {
     revealCueResolver.current = null;
     revealApi.reset();
     setProjection(null);
+    setRevealSpec(null);
     setEncounterLive(false);
     levelCamera(mapRef, 0);
     setReplayProgress(0);
@@ -205,10 +259,11 @@ export default function useClaimSequence({ mapRef, userId }) {
       revealCueResolver.current = null;
       revealApi.reset();
       setProjection(null);
+      setRevealSpec(null);
       setEncounterLive(false);
       setPlayToken((t) => t + 1);
 
-      const variant = opts.variant || 'grin-knock';
+      const variant = opts.variant || pickCaptureVariant(claim?.territory?.id);
       // Seeded off the claim so a given claim always plays the same way, and
       // two different claims almost never play the same way. `capture_style`
       // is honoured if the server ever starts sending one; today it does not,
@@ -222,6 +277,8 @@ export default function useClaimSequence({ mapRef, userId }) {
       // An explicit [] (dev "empty" scenario) must survive — only a missing
       // list falls back to the claim's real victims.
       const defenders = opts.defenders ?? resolveDefenders(claim);
+      const captureMeta = resolveCaptureStyle(captureStyle);
+      const playsDuel = captureMeta.encounterMode === ENCOUNTER_MODE.DUEL && defenders.length > 0;
       const reduced = opts.reducedOverride == null ? systemReduced : opts.reducedOverride;
       const T = timingFor(reduced);
       setCast({ defenders, variant, captureStyle });
@@ -280,32 +337,42 @@ export default function useClaimSequence({ mapRef, userId }) {
       }
 
       // --- encounter (or the empty-ground landing) ------------------------
-      setEncounterLive(true);
       setPhase(CLAIM_PHASE.ENCOUNTER_INTRO);
 
-      if (defenders.length > 0) {
+      let cue;
+      if (playsDuel) {
+        // Only an explicitly authored duel mounts the contact choreography.
+        // Its style player begins at impact, where it can dress or replace the
+        // exit without creating a second attacker during the face-off.
+        setEncounterLive(true);
         const dashAt = T.encounterIntro + T.grinHold + T.attackAnticipation;
         schedule(() => {
           if (alive()) setPhase(CLAIM_PHASE.ENCOUNTER_ATTACK);
         }, dashAt);
+
+        await waitForImpact(T.impactTimeout);
+        if (!alive()) return;
+        setPhase(CLAIM_PHASE.ENCOUNTER_EXIT);
+        const revealFallback = reduced
+          ? Math.max(40, T.defenderExitOverlap)
+          : Math.max(0, T.defenderExit - T.defenderExitOverlap);
+        cue = await waitForRevealCue(
+          revealCueDeadline(captureStyle, reduced, revealFallback)
+        );
+      } else {
+        // Projectile, attacker-only, summoned and terrain scenes start NOW,
+        // instead of being forced to wait for a fake collision to finish.
+        setEncounterLive(false);
+        cue = await waitForRevealCue(
+          revealCueDeadline(captureStyle, reduced, reduced ? 80 : 700)
+        );
       }
-
-      await waitForImpact(T.impactTimeout);
       if (!alive()) return;
 
-      // --- capture FX and reveal, overlapping the encounter exit ----------
-      setPhase(CLAIM_PHASE.ENCOUNTER_EXIT);
-      // CaptureStylePlayer owns the visual cue; this controller owns the
-      // territory state transition. The tracked fallback preserves the old
-      // safe path if an optional player never calls back.
-      const revealFallback = reduced
-        ? Math.max(40, T.defenderExitOverlap)
-        : defenders.length
-          ? Math.max(0, T.defenderExit - T.defenderExitOverlap)
-          : 500;
-      await waitForRevealCue(revealFallback);
-      if (!alive()) return;
-
+      // How the ground turns over, and from where. The style decides; a
+      // timeout that beat the style to it falls back to the plain radial wipe
+      // this component has always played.
+      setRevealSpec(cue || null);
       revealApi.startReveal(proj);
       setPhase(CLAIM_PHASE.TERRITORY_REVEAL);
       await wait(T.reveal);
@@ -390,6 +457,8 @@ export default function useClaimSequence({ mapRef, userId }) {
   }, [clearTimers]);
 
   const index = phaseIndex(phase);
+  const captureStyleMeta = resolveCaptureStyle(cast.captureStyle);
+  const captureUsesDuel = captureStyleMeta.encounterMode === ENCOUNTER_MODE.DUEL;
 
   const derived = useMemo(
     () => ({
@@ -404,12 +473,14 @@ export default function useClaimSequence({ mapRef, userId }) {
       // The run is being flown right now, so the trail should be unrolling
       // rather than sitting on the map complete.
       showRunReplay: phase === CLAIM_PHASE.RUN_REPLAY,
-      showEncounter: encounterLive && !!projection,
+      showEncounter: encounterLive && captureUsesDuel && !!projection,
       // FX are presentation-only. They start at contact and disappear before
       // victory; the independent SVG reveal below still owns territory state.
       showCaptureStyle:
         !!projection &&
-        index >= phaseIndex(CLAIM_PHASE.ENCOUNTER_EXIT) &&
+        index >= phaseIndex(
+          captureUsesDuel ? CLAIM_PHASE.ENCOUNTER_EXIT : CLAIM_PHASE.ENCOUNTER_INTRO
+        ) &&
         index <= phaseIndex(CLAIM_PHASE.TERRITORY_HANDOFF),
       showReveal: !!revealApi.reveal,
       showPermanentTerritory: revealApi.finalVisible,
@@ -419,7 +490,7 @@ export default function useClaimSequence({ mapRef, userId }) {
         phase === CLAIM_PHASE.LEADERBOARD_TRANSITION || phase === CLAIM_PHASE.LEADERBOARD,
       isRunning: phase !== CLAIM_PHASE.IDLE && phase !== CLAIM_PHASE.COMPLETE,
     }),
-    [encounterLive, index, phase, projection, revealApi.finalVisible, revealApi.reveal]
+    [captureUsesDuel, encounterLive, index, phase, projection, revealApi.finalVisible, revealApi.reveal]
   );
 
   return {
@@ -436,12 +507,14 @@ export default function useClaimSequence({ mapRef, userId }) {
     defenders: cast.defenders,
     variant: cast.variant,
     captureStyle: cast.captureStyle,
+    captureStyleMeta,
     // 0..1 along the route while the 3D replay flies; 1 once it is done, so a
     // screen can draw `path.slice(0, n * progress)` and get the whole trail
     // for free everywhere else in the sequence.
     replayProgress,
     projection,
     reveal: revealApi.reveal,
+    revealSpec,
     leaderboard,
     playToken,
     reducedMotion,

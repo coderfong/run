@@ -48,6 +48,15 @@ describe('land capture alert normalisation', () => {
     expect(alert.lon).toBeNull();
   });
 
+  it('reads the new km²-only notification copy back into square metres', () => {
+    const alert = normaliseLandCaptureAlert({
+      category: 'stolen',
+      actor_username: 'NeonFox',
+      body: 'NeonFox took 0.013 km² of your territory.',
+    });
+    expect(alert.takenM2).toBe(13000);
+  });
+
   it('ignores other notification categories', () => {
     expect(normaliseLandCaptureAlert({ category: 'kudos' })).toBeNull();
   });

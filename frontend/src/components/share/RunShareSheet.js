@@ -13,10 +13,18 @@
 // surface, because "transparent" and "dark grey" look identical against a dark
 // screen and the runner has to be able to tell which one they are getting.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { Component, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  InteractionManager,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import * as Sentry from '@sentry/react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { Copy, Download, Instagram, Share2 } from 'lucide-react-native';
@@ -28,19 +36,11 @@ import RunShareCard, {
   SHARE_FORMATS,
   availableStats,
 } from './RunShareCard';
+import RunPostEditor from '../RunPostEditor';
 import { Segmented } from '../ui';
 import { radius, space, useTheme, useThemedStyles } from '../../theme';
 import { PressableScale, haptic } from '../../ui/motion';
 import { toast } from '../../ui/toast';
-import {
-  canCopyImage,
-  canSaveToPhotos,
-  canShareToInstagramStories,
-  copyImageToClipboard,
-  saveToPhotos,
-  shareToInstagramStories,
-  shareToSystemSheet,
-} from '../../utils/socialShare';
 
 // Instagram's own gradient, so the destination is recognisable at a glance.
 const IG_GRADIENT = ['#F9CE34', '#EE2A7B', '#6228D7'];
@@ -49,6 +49,11 @@ const IG_GRADIENT = ['#F9CE34', '#EE2A7B', '#6228D7'];
 // one SVG pattern rather than a grid of Views: a 9:16 preview is a couple of
 // hundred squares, and that is a couple of hundred native views for decoration.
 const CHECKER = 12;
+
+// Keep optional native sharing code out of the initial render. This screen can
+// be delivered over the air to older binaries that do not contain every
+// native module yet.
+const socialShare = () => require('../../utils/socialShare');
 
 function Checkerboard({ style }) {
   return (
@@ -68,6 +73,39 @@ function Checkerboard({ style }) {
       <Rect x={0} y={0} width="100%" height="100%" fill="url(#checker)" />
     </Svg>
   );
+}
+
+// The card, or a stand-in the same size as it.
+//
+// Deliberately its own tiny boundary rather than the app-wide one: this is a
+// preview inside a working sheet, and replacing the whole screen with "try
+// again" would take the destinations, the format switch and the way home with
+// it. Reported to Sentry either way, because a card that will not draw is a
+// card that will not export.
+class ShareBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    try {
+      Sentry.captureException(error);
+    } catch {}
+  }
+
+  render() {
+    const { width, height, styles, children } = this.props;
+    if (!this.state.failed) return children;
+    return (
+      <View style={[styles.cardFallback, { width, height }]}>
+        <Text style={styles.cardFallbackText}>
+          This run could not be drawn as a card.
+        </Text>
+      </View>
+    );
+  }
 }
 
 // A labelled strip of controls.
@@ -139,7 +177,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   const cardRef = useRef(null);
   const [format, setFormat] = useState('story');
   const [busy, setBusy] = useState(null); // 'story' | 'save' | 'copy' | 'more'
-  const [igReady, setIgReady] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
 
   // Everything the runner can change about the card. Defaults are the clan
   // colour and the run's own headline stats, so the card is already right
@@ -177,10 +215,22 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
   // Ask once per open — the runner may have installed Instagram since.
   useEffect(() => {
-    if (!visible) return undefined;
+    if (!visible) {
+      setEditorReady(false);
+      return undefined;
+    }
     let alive = true;
-    canShareToInstagramStories().then((ok) => { if (alive) setIgReady(!!ok); });
-    return () => { alive = false; };
+    let timer;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        if (alive) setEditorReady(true);
+      }, 80);
+    });
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+      task?.cancel?.();
+    };
   }, [visible]);
 
   const spec = SHARE_FORMATS[format];
@@ -208,7 +258,10 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
     // The posed runner is NINE clipped copies of the rig, so it has the most
     // images of anything on the card to get decoded and drawn.
     await new Promise((r) => setTimeout(r, showCharacter ? 400 : 60));
-    return captureRef(cardRef, {
+    const viewShot = require('react-native-view-shot');
+    const captureView = viewShot.captureRef || viewShot.default?.captureRef;
+    if (!captureView) throw new Error('Sharing needs a newer build of PASER.');
+    return captureView(cardRef, {
       format: 'png',
       quality: 1,
       result,
@@ -234,6 +287,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
   const toStory = () =>
     perform('story', async () => {
+      const { shareToInstagramStories, shareToSystemSheet } = socialShare();
       const uri = await capture();
       // Always a sticker: the card is transparent, so it goes ON TOP of the
       // runner's own story rather than becoming the story.
@@ -252,6 +306,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
   const toPhotos = () =>
     perform('save', async () => {
+      const { saveToPhotos } = socialShare();
       const res = await saveToPhotos(await capture());
       if (res.ok) toast.show('Saved to your photos');
       else toast.error(res.reason);
@@ -259,6 +314,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
   const toClipboard = () =>
     perform('copy', async () => {
+      const { copyImageToClipboard } = socialShare();
       const res = await copyImageToClipboard(await capture('base64'));
       if (res.ok) toast.show('Copied. Paste it into your story.');
       else toast.error(res.reason);
@@ -266,16 +322,19 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
   const toSystemSheet = () =>
     perform('more', async () => {
+      const { shareToSystemSheet } = socialShare();
       const res = await shareToSystemSheet(await capture());
       if (!res.ok) toast.error(res.reason);
     });
 
-  const canSave = canSaveToPhotos();
-  const canCopy = canCopyImage();
+  const shareCapabilities = editorReady ? socialShare() : null;
+  const canSave = !!shareCapabilities?.canSaveToPhotos?.();
+  const canCopy = !!shareCapabilities?.canCopyImage?.();
+
+  if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <View style={[styles.screen, { paddingTop: insets.top + space.sm }]}>
+    <View style={[styles.screen, styles.fullScreen, { paddingTop: insets.top + space.sm }]}>
         <View style={styles.head}>
           <Text style={styles.title}>Share your run</Text>
           <PressableScale
@@ -288,7 +347,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           </PressableScale>
         </View>
 
-        <Segmented
+        {editorReady ? <Segmented
           style={styles.formats}
           value={format}
           onChange={setFormat}
@@ -297,9 +356,9 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             { key: 'story', label: 'Story  9:16' },
             { key: 'square', label: 'Post  1:1' },
           ]}
-        />
+        /> : null}
 
-        <ScrollView
+        {editorReady ? <ScrollView
           style={styles.scroller}
           contentContainerStyle={styles.previewWrap}
           showsVerticalScrollIndicator={false}
@@ -309,19 +368,31 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               parts read as empty rather than as dark grey. */}
           <View style={styles.previewShadow}>
             <Checkerboard style={StyleSheet.absoluteFill} />
-            <RunShareCard
-              {...cardProps}
-              cardRef={cardRef}
-              format={format}
+            {/* Boundaried. The card composites a runner's whole avatar over a
+                projected route, and it is the LAST thing between a finished run
+                and the way home — a throw in here used to take the result
+                screen down with it, losing the recap the runner was looking at.
+                Now the card is the only thing lost, and everything else on the
+                sheet still works. */}
+            <ShareBoundary
               width={previewW}
-              accent={accent}
-              textColor={textColor}
-              align={align}
-              stats={statKeys}
-              showRoute={showRoute}
-              showCharacter={showCharacter}
-              flip={flip}
-            />
+              height={previewW * spec.ratio}
+              styles={styles}
+            >
+              <RunShareCard
+                {...cardProps}
+                cardRef={cardRef}
+                format={format}
+                width={previewW}
+                accent={accent}
+                textColor={textColor}
+                align={align}
+                stats={statKeys}
+                showRoute={showRoute}
+                showCharacter={showCharacter}
+                flip={flip}
+              />
+            </ShareBoundary>
             <View style={styles.transparentBadge} pointerEvents="none">
               <Text style={styles.transparentText}>TRANSPARENT</Text>
             </View>
@@ -417,13 +488,25 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               <Chip label="Route" on={showRoute} onPress={() => setShowRoute((v) => !v)} />
             </View>
           </Row>
-        </ScrollView>
 
-        <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
+          <Row label="Home post">
+            <RunPostEditor
+              runId={cardProps.run?.runId}
+              initialCaption={cardProps.run?.caption}
+              initialMedia={cardProps.run?.media}
+            />
+          </Row>
+        </ScrollView> : (
+          <View style={styles.preparing}>
+            <ActivityIndicator color={colors.primary} size="large" />
+            <Text style={styles.preparingText}>Preparing your run card…</Text>
+          </View>
+        )}
+
+        {editorReady ? <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
           <Text style={styles.actionsLabel}>Share to</Text>
           <View style={styles.destinations}>
-            {igReady && (
-              <Destination
+            <Destination
                 label="Instagram Story"
                 busyLabel="Opening…"
                 busy={busy === 'story'}
@@ -433,7 +516,6 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               >
                 <Instagram size={24} color="#fff" strokeWidth={2} />
               </Destination>
-            )}
 
             {canSave && (
               <Destination
@@ -469,14 +551,14 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               <Share2 size={22} color={colors.text} strokeWidth={2} />
             </Destination>
           </View>
-        </View>
+        </View> : null}
       </View>
-    </Modal>
   );
 }
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg },
+  fullScreen: { ...StyleSheet.absoluteFillObject, zIndex: 1000, elevation: 30 },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -487,6 +569,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   close: { ...type.bodySmBold, color: colors.textMuted },
   formats: { marginBottom: space.md },
   scroller: { flex: 1, minHeight: 0 },
+  preparing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
+  preparingText: { ...type.bodySm, color: colors.textMuted },
   previewWrap: { alignItems: 'center', paddingVertical: space.xs, paddingBottom: space.xl },
 
   row: { marginTop: space.md, alignSelf: 'stretch' },
@@ -537,6 +621,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   transparentText: { ...type.labelSm, fontSize: 10, letterSpacing: 1, color: '#FFFFFF' },
+  cardFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+  },
+  cardFallbackText: { ...type.bodySm, color: '#FFFFFF', textAlign: 'center' },
   hint: { ...type.caption, color: colors.textDim, textAlign: 'center', marginTop: space.md },
 
   actions: {

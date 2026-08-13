@@ -28,6 +28,93 @@ export function withAlpha(hex, alpha) {
 }
 
 // ---------------------------------------------------------------------------
+// Contrast
+// ---------------------------------------------------------------------------
+//
+// A drawn line has to be VISIBLE against whatever it is drawn on, and in this
+// app that is not knowable from the theme alone: the hand-drawn frames sit on
+// clan colours, on saturated shortcut tiles, on a pixel-art meadow and on both
+// theme surfaces. A tint chosen once at the call site is right for exactly one
+// of those and silently invisible on the rest — near-black ink on a dark
+// surface, a pale clan colour on a white card.
+//
+// So the frames ask these instead of guessing. See `readableInk`.
+
+/** rgb triplet from '#rgb', '#rrggbb', '#rrggbbaa' or 'rgb()/rgba()'. */
+export function toRgb(color) {
+  if (typeof color !== 'string') return null;
+  const text = color.trim();
+  const fn = text.match(/^rgba?\(([^)]+)\)$/i);
+  if (fn) {
+    const parts = fn[1].split(',').map((p) => parseFloat(p));
+    if (parts.length < 3 || parts.some((p) => !Number.isFinite(p))) return null;
+    return { r: parts[0], g: parts[1], b: parts[2], a: parts.length > 3 ? parts[3] : 1 };
+  }
+  let hex = text.replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  if (hex.length !== 6 && hex.length !== 8) return null;
+  const n = parseInt(hex.slice(0, 6), 16);
+  if (!Number.isFinite(n)) return null;
+  return {
+    r: (n >> 16) & 255,
+    g: (n >> 8) & 255,
+    b: n & 255,
+    a: hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : 1,
+  };
+}
+
+/** WCAG relative luminance, 0 (black) to 1 (white). */
+export function luminance(color) {
+  const rgb = toRgb(color);
+  if (!rgb) return null;
+  const channel = (v) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(rgb.r) + 0.7152 * channel(rgb.g) + 0.0722 * channel(rgb.b);
+}
+
+/** WCAG contrast ratio, 1 (identical) to 21 (black on white). */
+export function contrastRatio(a, b) {
+  const la = luminance(a);
+  const lb = luminance(b);
+  if (la == null || lb == null) return null;
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+// A LINE is not text. Text needs 4.5:1 to be readable; a border only has to be
+// seen, and holding a drawn frame to a text ratio would rule out every mid-tone
+// clan colour the app has. 2.4 is about where a 5pt stroke stops disappearing.
+export const INK_MIN_CONTRAST = 2.4;
+
+/**
+ * An ink colour that will actually show up on `surface`.
+ *
+ * `prefer` is the caller's choice and is KEPT whenever it is legible — a clan
+ * accent, a brand pink, a theme's muted line all survive on most surfaces, and
+ * overriding them would flatten the app to two colours. It is only replaced
+ * when it would be invisible, and then by whichever of `dark`/`light` the
+ * surface can carry.
+ *
+ * A null/unparseable surface means "no idea what this is on", and the honest
+ * answer there is to leave the caller's choice alone.
+ */
+export function readableInk(surface, {
+  prefer,
+  dark = '#0C0C10',
+  light = '#F4F4F7',
+  min = INK_MIN_CONTRAST,
+} = {}) {
+  const surfaceLuma = luminance(surface);
+  if (surfaceLuma == null) return prefer || dark;
+  const fallback = surfaceLuma > 0.42 ? dark : light;
+  if (!prefer) return fallback;
+  const ratio = contrastRatio(prefer, surface);
+  if (ratio == null) return fallback;
+  return ratio >= min ? prefer : fallback;
+}
+
+// ---------------------------------------------------------------------------
 // Radius + spacing scales. Spacing is the ONLY source of padding/margin in
 // screens (constitution). Gutter 20, card padding 16, section gap 24.
 // ---------------------------------------------------------------------------

@@ -38,7 +38,12 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
           // `colors.text` the way the rest of the empty state does: in dark
           // mode that is near white, and the frame would vanish into the very
           // thing it is drawn around.
-          tint={accent || '#1f2937'}
+          //
+          // Said to the frame now instead of hoped for: `on` makes it check,
+          // so a pale clan accent gets swapped for an ink that shows rather
+          // than drawing white on white.
+          on="#ffffff"
+          tint={accent}
           boil
           inset={false}
           style={{ marginBottom: space.lg }}

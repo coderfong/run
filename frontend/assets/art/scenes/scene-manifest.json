@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "source": "D:\\downloads\\Nature Landscapes Free Pixel Art.zip",
+  "license": {
+    "package": "Nature Landscapes Free Pixel Art (CraftPix)",
+    "file": "License.txt in the pack: https://craftpix.net/file-licenses/",
+    "releaseApproved": true,
+    "note": "Owner supplied the pack and directed its use 2026-08-12. Free-licence terms at craftpix.net/file-licenses not yet read line by line; confirm before the store release."
+  },
+  "scenes": {
+    "nature5": {
+      "id": "nature5",
+      "name": "Meadow",
+      "sky": "#026493",
+      "aspect": 1.7778,
+      "cover": 0.85,
+      "focusX": 0.2,
+      "layers": [
+        {
+          "index": 1,
+          "width": 576,
+          "height": 324,
+          "coverage": 1.0,
+          "top": 0,
+          "opaque": true,
+          "amplitude": 0.0,
+          "seconds": 0,
+          "role": "sky"
+        },
+        {
+          "index": 2,
+          "width": 576,
+          "height": 324,
+          "coverage": 0.5665,
+          "top": 10,
+          "opaque": false,
+          "amplitude": 0.03,
+          "seconds": 9,
+          "role": "clouds"
+        },
+        {
+          "index": 3,
+          "width": 576,
+          "height": 324,
+          "coverage": 0.2918,
+          "top": 224,
+          "opaque": false,
+          "amplitude": 0.008,
+          "seconds": 7,
+          "role": "far ground"
+        },
+        {
+          "index": 4,
+          "width": 576,
+          "height": 324,
+          "coverage": 0.2283,
+          "top": 97,
+          "opaque": false,
+          "amplitude": 0.016,
+          "seconds": 5,
+          "role": "trees"
+        },
+        {
+          "index": 5,
+          "width": 576,
+          "height": 324,
+          "coverage": 0.0,
+          "top": 75,
+          "opaque": false,
+          "amplitude": 0.05,
+          "seconds": 3.5,
+          "role": "birds"
+        }
+      ]
+    }
+  }
+}

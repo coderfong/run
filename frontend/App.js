@@ -231,7 +231,7 @@ function ClubStack() {
       <ClubStackNav.Screen
         name="ClubCreate"
         component={ClubCreateScreen}
-        options={{ headerShown: true, title: 'Create club', presentation: 'modal' }}
+        options={{ headerShown: false, presentation: 'modal' }}
       />
       <ClubStackNav.Screen
         name="ClubJoin"

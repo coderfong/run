@@ -239,7 +239,8 @@ def me_runs(
         text(
             """
             SELECT r.id::text, r.distance_m, r.duration_s, r.ended_at,
-                   COALESCE(t.area_m2, 0), (t.id IS NOT NULL)
+                   COALESCE(t.area_m2, 0), (t.id IS NOT NULL),
+                   r.caption, COALESCE(r.post_media, '[]'::jsonb)
             FROM runs r
             LEFT JOIN territories t ON t.run_id = r.id
             WHERE r.user_id = :uid AND r.ended_at IS NOT NULL
@@ -257,6 +258,8 @@ def me_runs(
             created_at=r[3],
             area_m2=float(r[4] or 0),
             closed_loop=bool(r[5]),
+            caption=r[6],
+            media=list(r[7] or []),
         )
         for r in rows
     ]

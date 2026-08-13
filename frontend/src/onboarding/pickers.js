@@ -36,6 +36,9 @@ export function PickerSheet({
   palette,
   colorIndex = 0,
   onPickColor,
+  // Whether the WORN item can take the slot's palette. Most of the authored
+  // catalogue cannot: those pieces ship one image rather than ten.
+  colorable = true,
   footer,
   maxHeight,
 }) {
@@ -53,25 +56,35 @@ export function PickerSheet({
         <Text style={[toonType.sub, { color: '#fff' }]}>{title}</Text>
       </View>
 
+      {/* Shown whenever the SLOT takes colour, greyed when the worn item does
+          not. Removing it per item made the row flicker in and out as you
+          moved along the grid, which reads as the feature being broken rather
+          than as this piece having its own colours. */}
       {palette ? (
-        <View style={styles.swatchRow}>
-          {palette.map((hex, i) => {
-            const on = i === colorIndex;
-            const light = ['#F4F4F5', '#E8D06B', '#EAB308'].includes(hex);
-            return (
-              <PressableScale
-                key={hex}
-                onPress={() => { haptic.light(); onPickColor?.(i); }}
-                accessibilityRole="button"
-                accessibilityLabel={`Colour ${i + 1}`}
-                accessibilityState={{ selected: on }}
-                style={[styles.swatch, { backgroundColor: hex }, on && styles.swatchOn]}
-              >
-                {on ? <Check size={14} color={light ? toon.ink : '#fff'} strokeWidth={3.5} /> : null}
-              </PressableScale>
-            );
-          })}
-        </View>
+        <>
+          <View style={[styles.swatchRow, !colorable && styles.swatchRowOff]}>
+            {palette.map((hex, i) => {
+              const on = colorable && i === colorIndex;
+              const light = ['#F4F4F5', '#E8D06B', '#EAB308'].includes(hex);
+              return (
+                <PressableScale
+                  key={hex}
+                  onPress={() => { if (!colorable) return; haptic.light(); onPickColor?.(i); }}
+                  disabled={!colorable}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Colour ${i + 1}`}
+                  accessibilityState={{ selected: on, disabled: !colorable }}
+                  style={[styles.swatch, { backgroundColor: hex }, on && styles.swatchOn]}
+                >
+                  {on ? <Check size={14} color={light ? toon.ink : '#fff'} strokeWidth={3.5} /> : null}
+                </PressableScale>
+              );
+            })}
+          </View>
+          {!colorable ? (
+            <Text style={styles.swatchNote}>This one comes in its own colours.</Text>
+          ) : null}
+        </>
       ) : null}
 
       <ScrollView
@@ -252,6 +265,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(0,0,0,0.35)',
   },
   swatchOn: { borderColor: '#fff', borderWidth: 3 },
+  swatchRowOff: { opacity: 0.35 },
+  swatchNote: {
+    ...toonType.label,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
+    marginTop: space.sm,
+    paddingHorizontal: space.gutter,
+  },
 
   gridFade: { position: 'absolute', left: 0, right: 0, top: -30, height: 30 },
   grid: {

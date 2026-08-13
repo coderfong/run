@@ -78,7 +78,7 @@ def sync_level_rewards(db: Session, user_id: str) -> dict:
 # ---------------------------------------------------------------------------
 @router.get("/me/energy")
 def my_energy(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
-    st = energy_mod.status(db, user.id)
+    st = energy_mod.status_for_user(db, user)
     db.commit()  # persist any lazy regen
     return st
 
@@ -94,7 +94,7 @@ def my_progression(user: models.User = Depends(current_user), db: Session = Depe
     level = level_from_xp(xp)
     base = xp_for_level(level)
     nxt = xp_for_level(level + 1)
-    st = energy_mod.status(db, user.id)
+    st = energy_mod.status_for_user(db, user)
 
     pending = db.execute(
         text("SELECT id::text, item_id FROM user_unlocks "
@@ -169,7 +169,7 @@ def claim_reward(request: Request, response: Response, body: dict,
 
     rewards = rewards_for_level(tier) if track == "free" else premium_rewards_for_level(tier)
     _grant_rewards(db, user.id, rewards)
-    st = energy_mod.status(db, user.id)
+    st = energy_mod.status_for_user(db, user)
     db.commit()
     return {"ok": True, "level": tier, "track": track, "rewards": rewards, "energy": st}
 
@@ -219,7 +219,7 @@ def claim_all_rewards(request: Request, response: Response,
     level = level_from_xp(int(row[0]))
     premium = bool(row[1])
     if level < 1:
-        return {"ok": True, "claimed": 0, "rewards": [], "energy": energy_mod.status(db, user.id)}
+        return {"ok": True, "claimed": 0, "rewards": [], "energy": energy_mod.status_for_user(db, user)}
 
     tracks = ["free"] + (["premium"] if premium else [])
     pairs = [(lvl, tr) for lvl in range(1, min(level, MAX_LEVEL) + 1) for tr in tracks]
@@ -240,7 +240,7 @@ def claim_all_rewards(request: Request, response: Response,
         tier = rewards_for_level(int(lvl)) if track == "free" else premium_rewards_for_level(int(lvl))
         _grant_rewards(db, user.id, tier)
         rewards.extend(tier)
-    st = energy_mod.status(db, user.id)
+    st = energy_mod.status_for_user(db, user)
     db.commit()
     return {"ok": True, "claimed": len(won), "rewards": rewards, "energy": st}
 
@@ -354,6 +354,6 @@ def purchase_energy(request: Request, response: Response, body: dict,
     if txn and not _claim_txn(db, user.id, txn, product_id):
         raise HTTPException(409, "receipt already redeemed")
     energy_mod.grant(db, user.id, amount)
-    st = energy_mod.status(db, user.id)
+    st = energy_mod.status_for_user(db, user)
     db.commit()
     return {"ok": True, "product_id": product_id, "energy": st}

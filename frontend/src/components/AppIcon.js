@@ -61,6 +61,11 @@ export const ICONS = {
   verified: require('../../assets/icons/verified.png'),
 };
 
+// The steal sticker contains a hand, gem and motion marks. At the generic
+// 14–17pt status-icon size those three shapes collapse into one pink speck, so
+// payoff surfaces share one larger optical size.
+export const STEAL_ICON_SIZE = 26;
+
 export function hasIcon(name) {
   return !!ICONS[name];
 }

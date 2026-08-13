@@ -49,7 +49,13 @@ const MAX_DRAW_POINTS = 480;
 // Project every group through ONE shared bounding box, so the route and the
 // territory it grew stay registered against each other.
 function projectGroups(groups, w, h, pad) {
-  const all = groups.flatMap((g) => g.points || []);
+  const cleanGroups = groups.map((g) => ({
+    ...g,
+    points: (g.points || []).filter(
+      (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
+    ),
+  }));
+  const all = cleanGroups.flatMap((g) => g.points);
   if (all.length < 2) return groups.map(() => null);
   let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
   all.forEach(([lon, lat]) => {
@@ -70,7 +76,7 @@ function projectGroups(groups, w, h, pad) {
     ox + (lon - minLon) * kx * scale,
     h - (oy + (lat - minLat) * scale),
   ];
-  return groups.map((g) => {
+  return cleanGroups.map((g) => {
     const pts = g.points || [];
     if (pts.length < 2) return null;
     const drawPts = pts.length <= MAX_DRAW_POINTS
@@ -122,6 +128,18 @@ function paceStr(seconds) {
 // is also why the sheet's chips are built from this list: you cannot switch on
 // an elevation the recorder never captured.
 export function availableStats(run = {}) {
+  // Result data may come back as numeric strings, and old persisted runs can
+  // contain nulls. Normalise before formatting so the share stage can never
+  // call a number method on an unexpected wire value.
+  run = {
+    ...run,
+    distanceM: Number.isFinite(Number(run.distanceM)) ? Number(run.distanceM) : 0,
+    durationS: Number.isFinite(Number(run.durationS)) ? Number(run.durationS) : 0,
+    elevationM: Number.isFinite(Number(run.elevationM)) ? Number(run.elevationM) : 0,
+    bestKmSeconds: Number.isFinite(Number(run.bestKmSeconds)) ? Number(run.bestKmSeconds) : 0,
+    avgSpeedKmh: Number.isFinite(Number(run.avgSpeedKmh)) ? Number(run.avgSpeedKmh) : 0,
+    areaM2: Number.isFinite(Number(run.areaM2)) ? Number(run.areaM2) : 0,
+  };
   const out = [
     { key: 'distance', label: 'Distance', value: ((run.distanceM || 0) / 1000).toFixed(2), unit: 'km' },
   ];
@@ -311,11 +329,16 @@ export default function RunShareCard({
   const artH = Math.max(height * 0.18, height - padTop - headH - bottomBlock - 16 * u);
   const shapes = useMemo(() => {
     const groups = [];
-    const outer = rings?.[0];
-    if (outer?.length >= 3) groups.push({ points: outer, close: true, kind: 'territory' });
-    if (path.length >= 2) {
+    const outer = (rings?.[0] || []).filter(
+      (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
+    );
+    if (outer.length >= 3) groups.push({ points: outer, close: true, kind: 'territory' });
+    const routePoints = (path || [])
+      .map((p) => [Number(p?.longitude), Number(p?.latitude)])
+      .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    if (routePoints.length >= 2) {
       groups.push({
-        points: path.map((p) => [p.longitude, p.latitude]),
+        points: routePoints,
         close: false,
         kind: 'route',
       });

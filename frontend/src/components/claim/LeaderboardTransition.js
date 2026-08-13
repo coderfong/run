@@ -217,7 +217,7 @@ export default function LeaderboardTransition({
           {/* 9. the score that just moved */}
           {data?.playerRow ? (
             <Text style={[type.caption, styles.scoreLine, { color: brand.teal }]}>
-              {`${Math.round(data.playerRow.total_area_m2).toLocaleString()} m² held · ${data.playerRow.territory_count} territories`}
+              {`${((data.playerRow.total_area_m2 || 0) / 1e6).toFixed(3)} km² held · ${data.playerRow.territory_count} territories`}
             </Text>
           ) : null}
 

@@ -95,7 +95,7 @@ export function LeaderboardRow({ item, isMe = false, board = 'land', celebrateDe
       <Text style={[styles.area, { color: c.stroke }]}>
         {board === 'rank'
           ? `${(item.rank_points || 0).toLocaleString()} pts · ${item.rank_label || ''}`
-          : `${Math.round(item.total_area_m2).toLocaleString()} m²`}
+          : `${((item.total_area_m2 || 0) / 1e6).toFixed(3)} km²`}
       </Text>
     </View>
   );
@@ -306,7 +306,7 @@ export default function LeaderboardView({ board = 'land' }) {
           <Text style={[styles.area, { color: (myRow.clan_color || NEUTRAL).stroke }]}>
             {board === 'rank'
               ? `${(myRow.rank_points || 0).toLocaleString()} pts`
-              : `${Math.round(myRow.total_area_m2).toLocaleString()} m²`}
+              : `${((myRow.total_area_m2 || 0) / 1e6).toFixed(3)} km²`}
           </Text>
         </View>
       )}

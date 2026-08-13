@@ -104,21 +104,35 @@ function SlotChips({ active, onChange, onWarm }) {
 
 // Color swatches — `value` is the selected palette INDEX (variants are
 // pre-rendered per index, so the index is what gets stored/persisted).
-function Swatches({ palette, value, onPick }) {
+/**
+ * `enabled` false keeps the row ON SCREEN but greys it out.
+ *
+ * It used to be removed entirely whenever the worn item had no colour variants
+ * — which is most of the catalogue, because the authored multicolour pieces
+ * only carry one image. The reasoning was sound (ten swatches that do nothing
+ * are worse than none) and the result was not: the colour row appeared and
+ * vanished as you moved along the grid, with nothing said, so the honest
+ * reading from the outside was "I can't change the colours of anything".
+ *
+ * Shown and disabled says the true thing instead: this slot takes colour, this
+ * particular item does not.
+ */
+function Swatches({ palette, value, onPick, enabled = true }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.swatchRow}>
+    <View style={[styles.swatchRow, !enabled && { opacity: 0.35 }]}>
       {palette.map((hex, i) => {
-        const on = i === value;
+        const on = enabled && i === value;
         const light = hex === '#F4F4F5' || hex === '#E8D06B' || hex === '#EAB308';
         return (
           <PressableScale
             key={hex}
-            onPress={() => onPick(i)}
+            onPress={() => enabled && onPick(i)}
+            disabled={!enabled}
             accessibilityRole="button"
             accessibilityLabel={`Color ${i + 1}`}
-            accessibilityState={{ selected: on }}
+            accessibilityState={{ selected: on, disabled: !enabled }}
             style={[
               styles.swatch,
               { backgroundColor: hex },
@@ -158,7 +172,10 @@ function ItemGrid({ slot, equipped, isUnlocked, onEquip, clanColor }) {
                   locked items, and tapping one toasts how to earn it, so the
                   text is available on demand instead of under every tile. */}
               <View style={{ opacity: unlocked ? 1 : 0.28 }}>
-                <PartThumb slot={slot.key} item={item} size={56} clanColor={clanColor} contrastHair />
+                {/* `equipped` replaces the old `contrastHair` patch: the tile
+                    wears the colour the runner actually chose, so the grid
+                    agrees with the character standing above it. */}
+                <PartThumb slot={slot.key} item={item} size={56} clanColor={clanColor} equipped={equipped} />
               </View>
               {!unlocked && (
                 <View style={styles.lockWrap}>
@@ -305,11 +322,21 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xl }}
         showsVerticalScrollIndicator={false}
       >
-        {slot.palette && colorable && (
+        {slot.palette && (
           <>
             <Text style={[type.labelSm, { marginBottom: space.sm }]}>Color</Text>
-            <Swatches palette={slot.palette} value={equipped[slot.colorKey] ?? 0} onPick={pickColor} />
-            <View style={{ height: space.lg }} />
+            <Swatches
+              palette={slot.palette}
+              value={equipped[slot.colorKey] ?? 0}
+              onPick={pickColor}
+              enabled={colorable}
+            />
+            {/* Says why, rather than leaving a dead row. No dashes in copy. */}
+            {!colorable ? (
+              <Text style={[type.caption, { marginTop: space.sm }]}>
+                This one comes in its own colours. Pick another to recolour it.
+              </Text>
+            ) : null}
           </>
         )}
         <ItemGrid
@@ -355,7 +382,7 @@ const makeStyles = (colors) => StyleSheet.create({
   chipRail: {
     gap: space.sm,
     paddingHorizontal: space.gutter,
-    paddingVertical: space.md,
+    paddingVertical: space.sm,
   },
   chip: {
     width: 72,
@@ -383,7 +410,7 @@ const makeStyles = (colors) => StyleSheet.create({
   chipLabel: { color: colors.textMuted, fontSize: 12 },
   chipLabelActive: { color: colors.bg },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: space.sm },
   cellWrap: { width: '31%' },
   cell: {
     width: '100%',
@@ -394,7 +421,7 @@ const makeStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 2,
     borderColor: 'transparent',
-    minHeight: 96,
+    minHeight: 88,
   },
   lockWrap: { alignItems: 'center', marginTop: 2, gap: 1 },
 

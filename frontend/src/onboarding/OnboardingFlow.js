@@ -22,7 +22,7 @@ import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useReduceMotion } from '../ui/motion';
-import { NIGHT_HAIR, StageBackdrop, StepChrome } from './ui';
+import { FIRST_RUN_HAIR, StageBackdrop, StepChrome } from './ui';
 import NameStep from './steps/NameStep';
 import BirthdayStep from './steps/BirthdayStep';
 import GenderStep from './steps/GenderStep';
@@ -77,15 +77,14 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
   const { save: saveAvatar, setPart } = useAvatar();
   const { profile, saveProfile, completeIntro } = useProfile();
 
-  // Light the runner's hair for the night stage, ONCE, before the first step
-  // draws. Everything here happens against a dark sky and the default loadout's
-  // hair is near-black, so the character being built read as a bald head until
-  // the hair step. Mount-only on purpose: from the hair step onward the swatch
-  // the runner picks is the one that sticks, whatever it is. App.js does not
-  // render this flow until the saved loadout has hydrated, so there is nothing
-  // in flight for it to race.
+  // Start the runner blonde, ONCE, before the first step draws — the default
+  // loadout's hair is near-black, which reads as a bald head at bust size.
+  // Mount-only on purpose: from the hair step onward the swatch the runner
+  // picks is the one that sticks, whatever it is. App.js does not render this
+  // flow until the saved loadout has hydrated, so there is nothing in flight
+  // for it to race.
   useEffect(() => {
-    setPart({ hairColor: NIGHT_HAIR });
+    setPart({ hairColor: FIRST_RUN_HAIR });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

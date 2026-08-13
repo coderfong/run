@@ -275,6 +275,9 @@ function BoilingSlice({ spec, source, frame, rect, box, tint, opacity }) {
  *              'both'  paper then ink, for decoration with nothing inside it.
  * `scale`    line weight. 1 draws the art at its own size; the frame reduces
  *            this on its own when the box is too small to hold the corners.
+ *            Callers normally arrive here through `Framed`, which resolves a
+ *            point-valued ink weight into this number — see `weightScale`.
+ * `opacity`  applies to the INK only. See the paper note below.
  * `pose`     which of the three hand-redrawn poses a still frame uses.
  * `boil`     cycle the three drawings.
  */
@@ -331,7 +334,7 @@ export default function ArtFrame({
   const boiling = boil && !reduced;
   const SliceView = boiling ? BoilingSlice : StillSlice;
 
-  const slices = (source, slotTint) => layout.map(({ key, rect, box }) => (
+  const slices = (source, slotTint, slotOpacity) => layout.map(({ key, rect, box }) => (
     <SliceView
       key={key}
       spec={spec}
@@ -341,7 +344,7 @@ export default function ArtFrame({
       rect={rect}
       box={box}
       tint={slotTint}
-      opacity={opacity}
+      opacity={slotOpacity}
     />
   ));
 
@@ -352,14 +355,23 @@ export default function ArtFrame({
           what leaves the fill sitting exactly inside the box. Drawn in the same
           eight slices as the ink, because it has to boil in step: hold the
           paper still under a crawling line and white creeps out from under it
-          every third frame. */}
+          every third frame.
+
+          The paper is drawn at FULL alpha, whatever `opacity` says. That prop
+          softens the LINE, and it used to reach the paper's eight slices while
+          the middle rectangle — a plain coloured View — kept its full strength.
+          The result was a card whose centre was one colour and whose border
+          band was a slightly paler version of it: two shades of the same fill
+          inside one box, with a visible rectangle where they met. A surface is
+          a surface; if a caller wants a translucent one it can put the alpha in
+          `fill`, where it applies to both halves at once. */}
       {middle ? (
         <>
           <View style={[styles.middle, middle, { backgroundColor: fill }]} />
-          {slices(spec.paper, fill)}
+          {slices(spec.paper, fill, 1)}
         </>
       ) : null}
-      {layer === 'paper' ? null : slices(spec.source, tint)}
+      {layer === 'paper' ? null : slices(spec.source, tint, opacity)}
     </View>
   );
 }

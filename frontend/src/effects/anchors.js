@@ -239,6 +239,33 @@ export function resolveEffectAnchor(anchor, context = {}, seed = '') {
   return clampPoint(resolved, rect);
 }
 
+/**
+ * Where a reveal's wipe starts from.
+ *
+ * Mostly the effect anchors, so a capture style can open the ground on exactly
+ * the point its strike landed on — that shared vocabulary is the reason a
+ * slam's cracks radiate from the fist rather than from the middle of the
+ * claim. Two origins are not effect anchors and need translating:
+ *
+ *   claimPoint  the runner's own chosen point, which is not in the effect
+ *               vocabulary because effects are placed relative to the shape
+ *               rather than to the pin.
+ *   perimeter   not a point at all — the inward wipe grows from the whole
+ *               border. Its closing hole is still centred, so the visual
+ *               centre is the honest answer rather than a fallback.
+ *
+ * Anything unresolvable lands on the claim point, which is always safe: it is
+ * the one screen coordinate the sequence is guaranteed to have.
+ */
+export function resolveRevealOrigin(name, context = {}, seed = 'reveal') {
+  const claimPoint = context.claimPoint;
+  if (!name || name === 'claimPoint') return claimPoint || null;
+  if (name === 'perimeter') {
+    return resolveEffectAnchor(EFFECT_ANCHOR.TERRITORY_VISUAL_CENTER, context, seed);
+  }
+  return resolveEffectAnchor(name, context, seed);
+}
+
 export function fitEffectInBounds(anchor, requestedSize, bounds, safeInsets, visualScale = 1) {
   const rect = safeRect(bounds, safeInsets);
   const scale = Number.isFinite(visualScale) && visualScale > 0 ? visualScale : 1;

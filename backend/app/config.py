@@ -148,10 +148,9 @@ class Settings(BaseSettings):
 
     # ---- development harness ---------------------------------------------
     # Comma-separated user ids or usernames allowed to use the in-app run
-    # simulator (see app/devtools.py). EMPTY BY DEFAULT, and it must stay that
-    # way in the file: the harness submits runs the server cannot tell from
-    # real ones, so this is the difference between a testing tool and a cheat
-    # button in everybody's build.
+    # simulator and its unlimited testing energy (see app/devtools.py). This is
+    # empty by default; the owner's exact account is pinned in devtools.py and
+    # all additional testers must be explicitly named here.
     dev_run_accounts: str = ""
 
     # ---- rate limiting ---------------------------------------------------

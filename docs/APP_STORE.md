@@ -206,6 +206,35 @@ make sure every screenshot reflects the submitted binary.
       build with the HealthKit module actually linked, and the first since
       App Store Connect rejected build 24 for error 90683. Do not submit build
       23 or 24.
+- [x] **Build 27 (2.1.0) uploaded to App Store Connect 2026-08-13.** Submission
+      `34c2eeb5-687d-440f-9bbf-1d4e22912d4a`, API key `Y76YNKLKFB` from the EAS
+      servers, so no Apple password was handled. Apple processes it in about
+      ten minutes and then it appears in TestFlight:
+      `https://appstoreconnect.apple.com/apps/6788529145/testflight/ios`.
+      **This is an upload, not a submission for review.** Everything unchecked
+      below still has to happen in the App Store Connect web UI or on a
+      physical device before the Submit for Review button is worth pressing.
+- [ ] **Build 27 supersedes build 25 and is the one to test.** EAS's remote
+      build counter was already at 26, so this build took 27 — do not read the
+      gap as a missing build. Build 25 predates
+      the 2026-08-13 UI pass: the hand-drawn frames were drawn at each
+      drawing's own size (so a full-width hero wore a 17pt line and a 52pt
+      button wore the banner's clipped corner as a rule struck through its
+      label), framed controls painted their own rounded-rectangle backgrounds
+      underneath the wobbly outline, Create account opened the sign-in form,
+      and Done on the share card opened the crossed-paths modal on top of the
+      share modal — the app's only opaque full-screen Modal, which is a native
+      present-on-a-presenting-controller. Do not submit build 25.
+      Cut from commit `45e3e78`, on branch `ui/frames-and-claim-pass`. EAS
+      build id `8ae97286-fd8e-489c-adf2-d0ebacf662f9`. The CraftPix credit line
+      in Profile landed in `ed5c2dc`, after the archive, so it is in the NEXT
+      build rather than this one.
+
+      Housekeeping while you are here: the uploaded archive is **378 MB**,
+      which is most of a minute of upload on every build. `.easignore` is
+      worth writing — `frontend/.history`, `frontend/dist`, and the three
+      `.expo-export-check*` directories are all in the tarball and none of
+      them is needed to build.
 - [ ] Test the fresh build on a physical iPhone through TestFlight: password,
       Apple, and Google sign-in; permissions; foreground/background run; claim;
       map; notifications; share/save; report; block; and account deletion.
@@ -219,7 +248,15 @@ make sure every screenshot reflects the submitted binary.
 - [ ] Capture final 6.9-inch screenshots from that exact build.
 - [ ] Complete App Privacy, age rating, content-rights, export-compliance, and
       regulated-medical-device questions in App Store Connect.
-- [ ] Confirm the support and privacy URLs work without authentication.
+- [x] Support and privacy URLs load without authentication. Checked 2026-08-13:
+      `https://www.bido.live/privacy` serves the policy and states the Apple
+      Health position in the words the binary needs — "If you turn on Health
+      sync, PASER writes your finished runs to Apple Health. PASER does not
+      read any health data from your device." `https://www.bido.live/support`
+      serves a real support page with a contact address. Note the contact on
+      both pages is `jonfong78@gmail.com` while the App Store Connect account
+      in `eas.json` is `constanceow@gmail.com`; that is fine, but the support
+      address is what reviewers and users will write to.
 
 Build and submit only after those gates are complete:
 

@@ -17,11 +17,11 @@ import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import { useAvatar } from '../state/avatar';
 
-// m² reads as noise past a point; km² reads as nothing below one.
+// Territory uses one unit throughout the app. Small claims receive a third
+// decimal instead of switching the player into a different unit.
 export function fmtArea(m2) {
-  const v = Math.max(0, m2 || 0);
-  if (v >= 10000) return `${(v / 1e6).toFixed(2)} km²`;
-  return `${Math.round(v).toLocaleString()} m²`;
+  const km2 = Math.max(0, Number(m2) || 0) / 1e6;
+  return `${km2.toFixed(km2 >= 0.1 ? 2 : 3)} km²`;
 }
 
 export function ago(iso) {
