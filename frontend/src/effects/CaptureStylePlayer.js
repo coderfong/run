@@ -34,7 +34,7 @@ import {
   resolveEffectAnchor,
 } from './anchors';
 import { resolveCaptureStyle } from './captureStyles';
-import { CAMERA_ACTION, validateChoreography } from './choreography';
+import { ACTOR_ACTION, CAMERA_ACTION, REVEAL_TRANSITION, validateChoreography } from './choreography';
 import ClaimActor from './ClaimActor';
 import EffectPlayer from './EffectPlayer';
 import { getEffect } from './effectRegistry';
@@ -44,6 +44,22 @@ import { getReactionEffect } from './reactionRegistry';
 
 export const MAX_CAPTURE_EFFECTS = 3;
 export const REDUCED_CAPTURE_DURATION = 220;
+
+export function defenderReactionForTransition(transition) {
+  switch (transition) {
+    case REVEAL_TRANSITION.SHOCKWAVE:
+    case REVEAL_TRANSITION.CRACK_GLOW:
+      return { name: ACTOR_ACTION.KNOCKBACK };
+    case REVEAL_TRANSITION.DISSOLVE:
+    case REVEAL_TRANSITION.PIXEL_REFORM:
+    case REVEAL_TRANSITION.TEAR_REVEAL:
+      return { name: ACTOR_ACTION.PULLED };
+    case REVEAL_TRANSITION.ELECTRIFY:
+      return { name: ACTOR_ACTION.RECOIL, jitter: true };
+    default:
+      return { name: ACTOR_ACTION.RECOIL };
+  }
+}
 
 export function effectIdForCaptureStep(step) {
   if (step.effect) return step.effect;
@@ -177,6 +193,9 @@ export default function CaptureStylePlayer({
   // The actor. Optional for the same reason, and absent by design in tests.
   actor,
   actorEquipped,
+  // A captured runner may react to the thing taking their ground without
+  // entering CaptureEncounter. Only explicit duel styles use contact.
+  defender,
 }) {
   const captureStyle = resolveCaptureStyle(styleId);
   const plan = useMemo(() => buildCapturePlan(captureStyle, reducedMotion), [captureStyle, reducedMotion]);
@@ -229,6 +248,11 @@ export default function CaptureStylePlayer({
           origin: step.origin,
           duration: step.duration,
         });
+        defender?.current?.play({
+          ...defenderReactionForTransition(step.transition),
+          targetPoint: claimPoint,
+          duration: reducedMotion ? REDUCED_CAPTURE_DURATION : undefined,
+        });
         break;
       case 'actor':
         actorRef.current?.play({
@@ -260,7 +284,7 @@ export default function CaptureStylePlayer({
       default:
         break;
     }
-  }, [actorRef, anchorPoint, reducedMotion, stage]);
+  }, [actorRef, anchorPoint, claimPoint, defender, reducedMotion, stage]);
 
   useEffect(() => {
     const run = generation.current + 1;
@@ -269,6 +293,7 @@ export default function CaptureStylePlayer({
     setActive([]);
     stage?.reset();
     actorRef.current?.reset();
+    defender?.current?.reset();
 
     plan.sequence.forEach((step, index) => {
       const id = setTimeout(() => {

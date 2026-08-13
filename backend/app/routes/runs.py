@@ -915,6 +915,13 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float, s
     return cells, breakdowns
 
 
+def _claim_energy_cost(user, action: str, first_of_day: bool) -> int:
+    """Authoritative claim price, including the server-owned dev exception."""
+    if is_dev_account(user):
+        return 0
+    return economy.claim_cost(action, first_of_day)
+
+
 def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlacement]):
     """Fill in the action, the price and the expected reward for each entry.
 
@@ -928,7 +935,8 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
     meter is worse than a slow one.
     """
     first_of_day = economy.claims_today(db, user.id) == 0
-    est = energy_mod.status(db, user.id)
+    unlimited_energy = is_dev_account(user)
+    est = energy_mod.status_for_user(db, user)
     neutral_left = economy.neutral_claims_remaining(db, user.id)
     xp_left = economy.claim_xp_allowance(db, user.id)
     rank_left = economy.neutral_rank_allowance(db, user.id)
@@ -936,9 +944,12 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
 
     for p in placements:
         p.action = economy.claim_action(p.area_m2, p.enemy_m2, p.defended_m2, p.mine_m2)
-        p.base_energy_cost = economy.claim_cost(p.action, first_of_day=False)
-        p.energy_cost = economy.claim_cost(p.action, first_of_day)
-        p.applied_discounts = ["first_claim_of_day"] if first_of_day else []
+        p.base_energy_cost = _claim_energy_cost(user, p.action, first_of_day=False)
+        p.energy_cost = _claim_energy_cost(user, p.action, first_of_day)
+        p.applied_discounts = (
+            ["dev_account"] if unlimited_energy
+            else (["first_claim_of_day"] if first_of_day else [])
+        )
         p.energy_before = est["energy"]
         p.energy_after = max(0, est["energy"] - p.energy_cost)
 
@@ -972,7 +983,7 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
         if economy.neutral_limit_active() and p.action == economy.ACTION_EMPTY and neutral_left <= 0:
             p.available = False
             p.unavailable_reason = economy.REASON_NEUTRAL_LIMIT
-        elif est["energy"] < p.energy_cost:
+        elif not unlimited_energy and est["energy"] < p.energy_cost:
             short = p.energy_cost - est["energy"]
             p.available = False
             p.unavailable_reason = f"You need {short} more Energy for this attack."
@@ -1082,10 +1093,15 @@ def claim_options(
         top = max(out, key=rank(key))
         return top.index if key(top) > minimum else None
 
-    # Prefer a move the player can actually make: recommending a border storm
-    # they cannot afford, or an expansion the day has no room for, is worse
-    # than recommending nothing.
-    most_land = best(lambda p: (p.new_m2 + p.enemy_m2) if p.available else 0.0)
+    # Recommendations describe the BOARD, not the current meter. Running out
+    # of Energy used to erase Most land and Best defence from the picker even
+    # though those poses were still the useful answers the runner wanted to
+    # inspect (and would become available after a refill). Keep them visible;
+    # only the automatic default prefers a move that can be claimed now.
+    most_land = best(lambda p: p.new_m2 + p.enemy_m2)
+    available_most_land = best(
+        lambda p: (p.new_m2 + p.enemy_m2) if p.available else 0.0
+    )
     # The shape itself, at rest and unturned, plus the pivot it turns about and
     # the route it slides along. This is what makes the control continuous: the
     # client transforms these three locally at gesture speed and only asks the
@@ -1114,13 +1130,13 @@ def claim_options(
         placements=out,
         # Land grabbed is the sane default — the recommendations are there to
         # be chosen, not to be defaulted into a fight nobody asked for.
-        default_index=most_land if most_land is not None else plain,
+        default_index=available_most_land if available_most_land is not None else plain,
         most_land_index=most_land,
         biggest_steal_index=best(
-            lambda p: p.enemy_m2 if p.available else 0.0, PLACEMENT_MIN_M2
+            lambda p: p.enemy_m2, PLACEMENT_MIN_M2
         ),
         best_defence_index=best(
-            lambda p: p.mine_m2 if p.available else 0.0, PLACEMENT_MIN_M2
+            lambda p: p.mine_m2, PLACEMENT_MIN_M2
         ),
         energy=est["energy"],
         energy_max=est["energy_max"],
@@ -1242,7 +1258,13 @@ def claim_territory(
     # run is spent either way; what a retry needs is the answer, not an error.
     if run.claimed_at is not None:
         if run.claim_result:
-            return schemas.ClaimOut(**run.claim_result)
+            replay = schemas.ClaimOut(**run.claim_result)
+            if is_dev_account(user):
+                est = energy_mod.status_for_user(db, user)
+                replay.energy = est["energy"]
+                replay.energy_max = est["energy_max"]
+                replay.energy_cost = 0
+            return replay
         raise HTTPException(409, economy.REASON_ALREADY_CLAIMED)
 
     # The route, as stored. Everything about the claim's SHAPE comes from here.
@@ -1337,8 +1359,9 @@ def claim_territory(
     ):
         raise HTTPException(409, economy.REASON_NEUTRAL_LIMIT)
 
-    cost = economy.claim_cost(action, first_of_day)
-    if not energy_mod.can_afford(db, user.id, cost):
+    unlimited_energy = is_dev_account(user)
+    cost = _claim_energy_cost(user, action, first_of_day)
+    if not unlimited_energy and not energy_mod.can_afford(db, user.id, cost):
         st = energy_mod.status(db, user.id)
         db.commit()
         short = cost - st["energy"]
@@ -1416,7 +1439,7 @@ def claim_territory(
     # The claim landed — deduct the price of the move it actually made. The
     # spend is conditional in SQL, so if two claims raced for the last of the
     # meter only one of them can have got here with the energy still present.
-    if not energy_mod.spend(db, user.id, cost):
+    if not unlimited_energy and not energy_mod.spend(db, user.id, cost):
         db.rollback()
         raise HTTPException(402, "Not enough Energy for this move.")
 
@@ -1493,7 +1516,7 @@ def claim_territory(
     new_xp = xp_before + xp_gain
     level_before, new_level = level_from_xp(xp_before), level_from_xp(new_xp)
 
-    est = energy_mod.status(db, user.id)
+    est = energy_mod.status_for_user(db, user)
     out = schemas.ClaimOut(
         territory=territory_out,
         stolen_m2=stolen_m2,
@@ -1544,7 +1567,7 @@ def claim_territory(
             [victim_id],
             "stolen",
             "Your land was captured",
-            f"{user.username} took {round(taken_m2):,} m² of your territory.",
+            f"{user.username} took {taken_m2 / 1_000_000:.3f} km² of your territory.",
             {
                 "capture_id": capture_id,
                 "taken_m2": taken_m2,
@@ -1560,7 +1583,7 @@ def claim_territory(
         from_str = f" from {stolen_from}" if stolen_from else ""
         background.add_task(
             notify, [str(user.id)], "captured", "Territory captured",
-            f"You took {round(stolen_m2):,} m²{from_str} · +{xp_gain} XP.",
+            f"You took {stolen_m2 / 1_000_000:.3f} km²{from_str} · +{xp_gain} XP.",
         )
     if goal_reached and clan_id:
         background.add_task(

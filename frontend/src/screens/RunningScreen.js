@@ -252,7 +252,7 @@ export default function RunningScreen({ navigation }) {
   const { color } = useClan();
   const { equipped } = useAvatar();
   const { trailGlowColor } = useSettings();
-  const accent = color.stroke;
+  const accent = trailGlowColor || color.stroke;
 
   const mapRef = useRef(null);
   const watchRef = useRef(null);
@@ -989,9 +989,7 @@ export default function RunningScreen({ navigation }) {
                 lat: result.lat,
                 lon: result.lon,
                 title: 'Your land was captured',
-                body: `${result.rival_username} took ${Math.round(
-                  result.taken_m2 || 0
-                ).toLocaleString()} m² of your territory.`,
+                body: `${result.rival_username} took ${((result.taken_m2 || 0) / 1e6).toFixed(3)} km² of your territory.`,
               });
             } catch (error) {
               toast.error(error.message || 'Could not run the rival capture scenario');
@@ -1096,7 +1094,7 @@ export default function RunningScreen({ navigation }) {
         {/* the signature: the route glows in the colour picked in Settings
             (defaults to the club colour) — no start↔runner preview line */}
         {path.length > 1 && (
-          <Trail id="route" points={path} color={trailGlowColor || accent} width={5} glow />
+          <Trail id="route" points={path} color={accent} width={5} glow />
         )}
 
         {path.length > 0 && <MapPoint id="start" point={path[0]} color={accent} />}

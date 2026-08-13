@@ -1,7 +1,10 @@
 import React, { useRef } from 'react';
 import renderer, { act } from 'react-test-renderer';
 
-import useClaimSequence from '../src/components/claim/useClaimSequence';
+import useClaimSequence, {
+  CAPTURE_VARIANTS,
+  pickCaptureVariant,
+} from '../src/components/claim/useClaimSequence';
 
 jest.mock('../src/components/claim/useClaimReveal', () => {
   const React2 = require('react');
@@ -114,5 +117,55 @@ describe('claim sequence cancellation and skip safety', () => {
     act(() => latest.skip());
     await act(async () => { await run; });
     act(() => tree.unmount());
+  });
+
+  test('a non-duel style starts instead of the collision encounter', async () => {
+    let tree;
+    let run;
+    await act(async () => { tree = renderer.create(<Harness />); });
+    await act(async () => {
+      run = latest.start(claim, center, { captureStyle: 'meteor_claim' });
+      await flush();
+    });
+    expect(latest.captureStyleMeta.encounterMode).toBe('projectile');
+    expect(latest.showCaptureStyle).toBe(true);
+    expect(latest.showEncounter).toBe(false);
+    act(() => latest.skip());
+    await act(async () => { await run; });
+    act(() => tree.unmount());
+  });
+
+  test('an explicit duel owns collision and starts its style at impact', async () => {
+    let tree;
+    let run;
+    await act(async () => { tree = renderer.create(<Harness />); });
+    await act(async () => {
+      run = latest.start(claim, center, { captureStyle: 'sword_slash' });
+      await flush();
+    });
+    expect(latest.showEncounter).toBe(true);
+    expect(latest.showCaptureStyle).toBe(false);
+    await act(async () => {
+      latest.onImpact();
+      await flush();
+    });
+    expect(latest.showCaptureStyle).toBe(true);
+    act(() => latest.skip());
+    await act(async () => { await run; });
+    act(() => tree.unmount());
+  });
+});
+
+describe('capture encounter variation', () => {
+  test('uses the territory identity to choose a stable encounter', () => {
+    expect(pickCaptureVariant('territory-123')).toBe(pickCaptureVariant('territory-123'));
+    expect(CAPTURE_VARIANTS).toContain(pickCaptureVariant('territory-123'));
+  });
+
+  test('the selector reaches every shipped encounter across claims', () => {
+    const selected = new Set(
+      Array.from({ length: 100 }, (_, index) => pickCaptureVariant(`territory-${index}`))
+    );
+    expect(selected).toEqual(new Set(CAPTURE_VARIANTS));
   });
 });

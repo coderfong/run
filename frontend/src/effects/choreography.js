@@ -167,6 +167,14 @@ export const isHoldingCamera = (action) => HOLDING_CAMERA_ACTIONS.has(action);
 export const REVEAL_TRANSITION = Object.freeze({
   RADIAL: 'radial',
   SHOCKWAVE: 'shockwave',
+  TILE_CONVERT: 'tile_convert',
+  SPREAD_FROM_CENTER: 'spread_from_center',
+  SPREAD_FROM_EDGE: 'spread_from_edge',
+  CRACK_GLOW: 'crack_glow',
+  PIXEL_REFORM: 'pixel_reform',
+  TEAR_REVEAL: 'tear_reveal',
+  FLIP_REVEAL: 'flip_reveal',
+  ELECTRIFY: 'electrify',
   CRACK: 'crack',
   FREEZE_SPREAD: 'freezeSpread',
   BURN_SPREAD: 'burnSpread',
@@ -176,6 +184,18 @@ export const REVEAL_TRANSITION = Object.freeze({
   BLOOM: 'bloom',
   LIGHT_SWEEP: 'lightSweep',
   CORRUPTION_SPREAD: 'corruptionSpread',
+});
+
+// The encounter is a style decision. Only DUEL asks CaptureEncounter to run
+// its attacker/defender contact animation; every other mode is free to start a
+// one-character, projectile, summoned-object or ground-only scene instead.
+export const ENCOUNTER_MODE = Object.freeze({
+  DUEL: 'duel',
+  ATTACKER_ONLY: 'attacker_only',
+  TERRITORY_ONLY: 'territory_only',
+  SUMMON_ONLY: 'summon_only',
+  PROJECTILE: 'projectile',
+  TERRAIN_TRANSFORM: 'terrain_transform',
 });
 
 // Where a wipe starts from. Reuses the effect anchor vocabulary so a style can
@@ -836,6 +856,12 @@ export function validateChoreography(style) {
   const steps = style?.sequence;
   if (!Array.isArray(steps)) return ['missing sequence'];
   if (!(style.duration > 0)) errors.push('duration must be positive');
+  if (!Object.values(ENCOUNTER_MODE).includes(style.encounterMode)) {
+    errors.push(`unknown encounter mode ${style.encounterMode}`);
+  }
+  if (typeof style.showAttacker !== 'boolean') errors.push('showAttacker metadata is required');
+  if (typeof style.showDefender !== 'boolean') errors.push('showDefender metadata is required');
+  if (typeof style.usesProjectile !== 'boolean') errors.push('usesProjectile metadata is required');
 
   const reveals = steps.filter((s) => s.action === 'territoryReveal');
   if (reveals.length !== 1) errors.push('exactly one territory reveal is required');
@@ -844,6 +870,15 @@ export function validateChoreography(style) {
       errors.push(`unknown reveal transition ${step.transition}`);
     }
   });
+  if (reveals[0] && style.territoryTransition !== reveals[0].transition) {
+    errors.push('territoryTransition metadata does not match the reveal');
+  }
+  if (reveals[0] && style.revealOrigin !== reveals[0].origin) {
+    errors.push('revealOrigin metadata does not match the reveal');
+  }
+  if (style.usesProjectile !== steps.some((s) => s.action === 'projectile')) {
+    errors.push('usesProjectile metadata does not match the sequence');
+  }
 
   // Exactly one, not "at least one". Haptics in this app are deliberately
   // restrained (see theme/haptics.js) and a claim already spends its budget:

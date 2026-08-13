@@ -10,10 +10,11 @@
 
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
-import { ctaFills, toon, toonRadius, toonType } from '../../onboarding/toon';
+import { ctaFills, toon, toonType } from '../../onboarding/toon';
 import { haptic, PressableScale } from '../../ui/motion';
+import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
+import Framed from './Framed';
 import OutlinedText from './OutlinedText';
 
 export default function ToonButton({
@@ -25,6 +26,7 @@ export default function ToonButton({
   disabled = false,
   icon = null,
   style,
+  containerStyle,
   labelColor = '#FFFFFF',
   // Escape hatch for buttons that have to wear a colour the app decides at
   // runtime rather than one of the four brand variants — the claim CTA is
@@ -32,6 +34,9 @@ export default function ToonButton({
   fill: fillOverride,
 }) {
   const fill = fillOverride || ctaFills[variant] || ctaFills.primary;
+  // One flat fill. The frame and hard shadow already supply the depth; the old
+  // gradient, top sheen and highlight blob read as multiple button colours.
+  const fillColor = fill.color || fill.colors?.[1] || fill.colors?.[0] || '#EC4899';
   const height = size === 'sm' ? 48 : 60;
   // A small button is usually also a NARROW one — it shares a row with a ghost
   // action rather than spanning the card. Starting it a couple of points down
@@ -54,20 +59,19 @@ export default function ToonButton({
       accessibilityRole="button"
       accessibilityLabel={title}
       accessibilityState={{ disabled: off }}
+      containerStyle={containerStyle}
       style={[styles.shadow, { opacity: disabled ? 0.55 : 1 }, style]}
     >
-      <View style={[styles.clip, { height, borderColor: fill.border }]}>
-        <LinearGradient
-          colors={fill.colors}
-          locations={[0, 0.5, 1]}
-          start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 1 }}
-          style={styles.fill}
-        >
-          {/* specular sheen across the top half + a soft highlight blob */}
-          <View pointerEvents="none" style={[styles.sheen, { height: height * 0.46 }]} />
-          <View pointerEvents="none" style={styles.blob} />
-
+      <Framed
+        frame={frameVariant('action', title)}
+        tint={fill.border || toon.ink}
+        fill={fillColor}
+        weight={size === 'sm' ? INK.thin : INK.base}
+        pose={framePose(title)}
+        inset={false}
+        style={{ height }}
+        contentStyle={styles.fill}
+      >
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -89,8 +93,7 @@ export default function ToonButton({
               </OutlinedText>
             </View>
           )}
-        </LinearGradient>
-      </View>
+      </Framed>
     </PressableScale>
   );
 }
@@ -117,11 +120,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  clip: {
-    borderRadius: toonRadius.pill,
-    borderWidth: 2.5,
-    overflow: 'hidden',
-  },
   fill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   // maxWidth is what makes the label shrinkable at all: without it the row
   // sizes to its content and simply overflows the pill it sits in.
@@ -133,23 +131,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
   },
   label: { flexShrink: 1 },
-  sheen: {
-    position: 'absolute',
-    top: 2,
-    left: 6,
-    right: 6,
-    borderRadius: toonRadius.pill,
-    backgroundColor: 'rgba(255,255,255,0.26)',
-  },
-  blob: {
-    position: 'absolute',
-    top: 6,
-    left: 18,
-    width: 26,
-    height: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    transform: [{ rotate: '-8deg' }],
-  },
   ghost: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16 },
 });

@@ -5,14 +5,14 @@
 // stealable, so there's nothing to be rivals about.
 
 import React, { useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swords } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { radius, space, useTheme, useThemedType } from '../theme';
-import { Screen, Skeleton, EmptyState, PANEL_INK, ToonHeader } from '../components/ui';
+import { Screen, Skeleton, EmptyState, ToonHeader } from '../components/ui';
 import RivalCard, { fmtArea } from '../components/RivalCard';
 import { art } from '../config/onboardingArt';
 import { useAvatar } from '../state/avatar';
@@ -47,10 +47,14 @@ export default function RivalsScreen({ navigation }) {
 
   // Career score across every rivalry — the one-line "how am I doing".
   const net = (rivals || []).reduce((sum, r) => sum + (r.net_m2 || 0), 0);
+  const score = rivals?.length
+    ? `${net >= 0 ? "You're up" : "You're down"} ${fmtArea(Math.abs(net))} · ${rivals.length} ${rivals.length === 1 ? 'rival' : 'rivals'}`
+    : undefined;
 
   const header = (
     <ToonHeader
       panel
+      compact
       eyebrow="Head to head"
       title="Rivals"
       // Home's hero-card format, shared with Season standings and Pasers: two
@@ -67,7 +71,7 @@ export default function RivalsScreen({ navigation }) {
       // is; this page had a bare word and the art. The sentence also gives the
       // text column something to fill, which is what pulls the cut-out in
       // beside the copy.
-      subtitle="Everyone you've traded land with, newest beat first."
+      subtitle={score}
       solid={PANEL_TEAL}
       top={insets.top}
       // These screens are reachable straight from another tab, where there
@@ -76,15 +80,7 @@ export default function RivalsScreen({ navigation }) {
       onBack={() =>
         (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('YouMain'))
       }
-    >
-      {rivals?.length ? (
-        <Text style={[type.bodySm, styles.score]}>
-          {net >= 0
-            ? `You're up ${fmtArea(net)} across ${rivals.length} ${rivals.length === 1 ? 'rivalry' : 'rivalries'}`
-            : `You're down ${fmtArea(-net)} across ${rivals.length} ${rivals.length === 1 ? 'rivalry' : 'rivalries'}`}
-        </Text>
-      ) : null}
-    </ToonHeader>
+    />
   );
 
   if (loading) {
@@ -154,7 +150,3 @@ export default function RivalsScreen({ navigation }) {
 // a property of the artwork rather than a brand token, so it moves when the art
 // does; the ORIGINAL #04776E is too dark to put black type on.
 const PANEL_TEAL = '#008E78';
-
-const styles = StyleSheet.create({
-  score: { color: PANEL_INK, opacity: 0.78, marginTop: space.sm },
-});

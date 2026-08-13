@@ -3,8 +3,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from '../ui/image';
-import { ArrowRight, MessageCircle, UserPlus } from 'lucide-react-native';
+import { ArrowRight, MessageCircle, Trophy, UserPlus, Users } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
@@ -13,15 +14,53 @@ import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { art } from '../config/onboardingArt';
-import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, EmptyState } from '../components/ui';
+import { Screen, Card, Framed, Row, Button, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClanBadge from '../components/ClanBadge';
 import { toast } from '../ui/toast';
 import { framePose, frameVariant } from '../ui/frameRegistry';
 import { Bar } from '../ui/motion';
 import GameLottie from '../components/GameLottie';
+import { INK } from '../ui/frameRegistry';
 
 const km = (m) => (m / 1000).toFixed(1);
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
+
+const CLUB_INTRO_KEY = 'tr.clubIntro.v1';
+
+function ClubIntroOverlay({ step, onNext, accent }) {
+  const styles = useThemedStyles(makeStyles);
+  if (step == null) return null;
+  const ranking = step === 1;
+  const Icon = ranking ? Trophy : Users;
+  return (
+    <View style={styles.introOverlay} accessibilityViewIsModal>
+      <View style={styles.introScrim} />
+      <Framed
+        frame={ranking ? 'bubble' : 'panel'}
+        tint={accent}
+        fill={ranking ? '#2A1743' : '#132F39'}
+        weight={INK.medium}
+        inset={false}
+        style={styles.introCard}
+        contentStyle={styles.introInner}
+      >
+        <View style={[styles.introIcon, { backgroundColor: accent }]}>
+          <Icon size={42} color="#FFFFFF" strokeWidth={2.4} />
+        </View>
+        <View style={styles.introDots}>
+          {[0, 1].map((i) => <View key={i} style={[styles.introDot, i === step && { backgroundColor: accent, width: 20 }]} />)}
+        </View>
+        <Text style={styles.introTitle}>{ranking ? 'Club rankings' : 'Club view'}</Text>
+        <Text style={styles.introBody}>
+          {ranking
+            ? 'Switch here to see where every club stands this season. Tap a club to meet its crew.'
+            : 'This is your crew home: weekly goals, members, chat and invites all live in Club view.'}
+        </Text>
+        <ToonButton title={ranking ? 'Got it' : 'Show me rankings'} onPress={onNext} fill={{ color: accent, border: '#FFFFFF' }} />
+      </Framed>
+    </View>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Clanless directory
@@ -165,6 +204,12 @@ function MemberHub({ clanId, navigation }) {
     { enabled: canSeeRequests, fallback: [] }
   );
   const [pulling, setPulling] = useState(false);
+  const [clubView, setClubView] = useState('view');
+  const { data: clubRanks, loading: ranksLoading, refresh: reloadRanks } = useQuery(
+    'leaderboard:clans',
+    api.clanLeaderboard,
+    { enabled: clubView === 'rankings', fallback: [] }
+  );
 
   const onRefresh = async () => {
     setPulling(true);
@@ -237,12 +282,66 @@ function MemberHub({ clanId, navigation }) {
     } catch (e) { toast.error(e.message || 'Action failed'); }
   };
 
+  const tabs = (
+    <Segmented
+      options={[
+        { key: 'view', label: 'Club view' },
+        { key: 'rankings', label: 'Club rankings' },
+      ]}
+      value={clubView}
+      onChange={setClubView}
+    />
+  );
+
+  if (clubView === 'rankings') {
+    return (
+      <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
+        {tabs}
+        <View style={styles.rankHero}>
+          <Trophy size={30} color="#F5B32C" />
+          <View style={{ flex: 1 }}>
+            <Text style={type.title}>Season standings</Text>
+            <Text style={type.caption}>How every club’s claimed ground stacks up.</Text>
+          </View>
+        </View>
+        {ranksLoading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} width="100%" height={72} style={{ borderRadius: 16, marginTop: space.sm }} />
+          ))
+        ) : (clubRanks || []).map((entry, index) => (
+          <Card
+            key={entry.clan_id}
+            frame={frameVariant('box', `club-rank:${entry.clan_id}`)}
+            framePose={framePose(`club-rank:${entry.clan_id}`)}
+            frameTint={entry.color?.stroke || accent}
+            onPress={() => navigation.navigate('ClubDetail', { clanId: entry.clan_id })}
+            style={{ marginTop: space.sm }}
+          >
+            <Row gap={space.md}>
+              <Text style={[type.statSm, { width: 28, color: index < 3 ? '#F5B32C' : colors.textDim }]}>#{index + 1}</Text>
+              <View style={[styles.badgeChip, { backgroundColor: entry.color?.fill || colors.cardAlt }]}>
+                <ClanBadge icon={entry.badge_icon} size={23} color={entry.color?.stroke || accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={type.bodyBold}>[{entry.tag}] {entry.name}</Text>
+                <Text style={type.caption}>{entry.member_count} members{entry.league ? ` · ${LEAGUE_LABEL[entry.league]}` : ''}</Text>
+              </View>
+              <Text style={[type.bodySmBold, { color: entry.color?.stroke || accent }]}>{(entry.total_area_m2 / 1e6).toFixed(2)} km²</Text>
+            </Row>
+          </Card>
+        ))}
+        <Button title="Refresh rankings" variant="secondary" onPress={reloadRanks} style={{ marginTop: space.lg }} />
+      </Screen>
+    );
+  }
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
       refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={accent} />}
     >
+      {tabs}
       {/* header — crew-standoff art sits behind the crest, faded so the
           club's own colour and text stay dominant */}
       <View style={[styles.header, { backgroundColor: withAlpha(accent, 0.1) }]}>
@@ -398,6 +497,29 @@ function GoalBar({ label, pct, mine, accent }) {
 
 export default function ClubScreen({ navigation }) {
   const { clan, loading } = useClan();
+  const [introStep, setIntroStep] = useState(null);
+
+  useEffect(() => {
+    if (!clan?.clan_id) {
+      setIntroStep(null);
+      return undefined;
+    }
+    let alive = true;
+    AsyncStorage.getItem(`${CLUB_INTRO_KEY}:${clan.clan_id}`)
+      .then((seen) => { if (alive && !seen) setIntroStep(0); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [clan?.clan_id]);
+
+  const advanceIntro = () => {
+    if (introStep === 0) {
+      setIntroStep(1);
+      return;
+    }
+    setIntroStep(null);
+    if (clan?.clan_id) AsyncStorage.setItem(`${CLUB_INTRO_KEY}:${clan.clan_id}`, '1').catch(() => {});
+  };
+
   if (loading) {
     return (
       <Screen>
@@ -406,7 +528,13 @@ export default function ClubScreen({ navigation }) {
       </Screen>
     );
   }
-  return clan?.clan_id ? <MemberHub clanId={clan.clan_id} navigation={navigation} /> : <Directory navigation={navigation} />;
+  if (!clan?.clan_id) return <Directory navigation={navigation} />;
+  return (
+    <View style={{ flex: 1 }}>
+      <MemberHub clanId={clan.clan_id} navigation={navigation} />
+      <ClubIntroOverlay step={introStep} onNext={advanceIntro} accent={clan.color?.stroke || '#2DD4BF'} />
+    </View>
+  );
 }
 
 const makeStyles = (colors, _scheme, type) => StyleSheet.create({
@@ -419,7 +547,12 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: 12,
   },
   badgeChip: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl, overflow: 'hidden' },
+  header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl, overflow: 'hidden', marginTop: space.md },
+  rankHero: {
+    flexDirection: 'row', alignItems: 'center', gap: space.md,
+    marginTop: space.md, padding: space.md,
+    borderRadius: radius.card, backgroundColor: colors.cardAlt,
+  },
   headerArt: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.22 },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.bgElevated, overflow: 'hidden' },
   goalBarStage: { position: 'relative', justifyContent: 'center' },
@@ -448,4 +581,16 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     paddingVertical: 7,
     backgroundColor: colors.card,
   },
+  introOverlay: {
+    ...StyleSheet.absoluteFillObject, zIndex: 100, elevation: 30,
+    alignItems: 'center', justifyContent: 'center', padding: space.gutter,
+  },
+  introScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(5,6,10,0.72)' },
+  introCard: { width: '100%', maxWidth: 420, minHeight: 350 },
+  introInner: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.md },
+  introIcon: { width: 86, height: 86, borderRadius: 43, alignItems: 'center', justifyContent: 'center' },
+  introDots: { flexDirection: 'row', gap: 6 },
+  introDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.3)' },
+  introTitle: { ...type.title, color: '#FFFFFF', textAlign: 'center' },
+  introBody: { ...type.body, color: 'rgba(255,255,255,0.82)', textAlign: 'center', lineHeight: 22 },
 });

@@ -7,7 +7,7 @@ import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { brand, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Skeleton, EmptyState } from '../components/ui';
-import AppIcon from '../components/AppIcon';
+import AppIcon, { STEAL_ICON_SIZE } from '../components/AppIcon';
 import PortraitBorder from '../components/PortraitBorder';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { PressableScale, shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
@@ -34,7 +34,7 @@ function Actor({ item, styles }) {
   if (!item.actor_avatar) {
     return (
       <View style={styles.icon}>
-        <AppIcon name={iconName} size={22} faded={item.read} />
+        <AppIcon name={iconName} size={iconName === 'steal' ? STEAL_ICON_SIZE : 22} faded={item.read} />
       </View>
     );
   }
@@ -47,8 +47,8 @@ function Actor({ item, styles }) {
           bg={item.actor_clan_color?.fill}
         />
       </PortraitBorder>
-      <View style={styles.actorBadge}>
-        <AppIcon name={iconName} size={14} />
+      <View style={[styles.actorBadge, iconName === 'steal' && styles.stealActorBadge]}>
+        <AppIcon name={iconName} size={iconName === 'steal' ? 19 : 14} />
       </View>
     </View>
   );
@@ -204,6 +204,7 @@ const makeStyles = (colors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
+    stealActorBadge: { width: 25, height: 25, borderRadius: 13, right: -7, bottom: -5 },
     icon: {
       width: 38,
       height: 38,

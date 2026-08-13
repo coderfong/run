@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import text
 
 from .config import settings
+from .devtools import is_dev_account
 from .progression import energy_max, level_from_xp
 
 
@@ -55,15 +56,29 @@ def _persist(db, user_id, energy, updated_at):
     )
 
 
-def status(db, user_id) -> dict:
+def status(db, user_id, *, unlimited: bool = False) -> dict:
     """Current energy after lazy regen (also persists the regen). Returns the
-    shape the API/UI need: energy, cap, cost, and seconds until +1."""
+    shape the API/UI need: energy, cap, cost, and seconds until +1.
+
+    `unlimited` is deliberately supplied by an authenticated route, never by
+    request data. It projects a full, free meter without overwriting the
+    stored balance, so removing an account from the development allowlist
+    immediately restores its ordinary energy state.
+    """
     energy, updated_at, xp = _read(db, user_id)
     level = level_from_xp(xp)
+    cap = energy_max(level)
+    if unlimited:
+        return {
+            "energy": cap,
+            "energy_max": cap,
+            "regen_seconds": settings.energy_regen_seconds,
+            "seconds_to_next": 0,
+            "claim_cost": 0,
+        }
     eff, eff_t = _regen(energy, updated_at, level)
     if eff != energy or eff_t != updated_at:
         _persist(db, user_id, eff, eff_t)
-    cap = energy_max(level)
     if eff >= cap:
         secs_next = 0
     else:
@@ -76,6 +91,11 @@ def status(db, user_id) -> dict:
         "seconds_to_next": secs_next,
         "claim_cost": settings.energy_cost_claim,
     }
+
+
+def status_for_user(db, user) -> dict:
+    """Energy status with the server-owned dev allowlist applied."""
+    return status(db, user.id, unlimited=is_dev_account(user))
 
 
 def can_afford(db, user_id, amount: int) -> bool:

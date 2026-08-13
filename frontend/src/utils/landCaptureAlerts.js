@@ -6,8 +6,10 @@ function finiteNumber(value) {
 
 function areaFromBody(body) {
   if (typeof body !== 'string') return null;
-  const match = body.replace(/,/g, '').match(/took\s+([\d.]+)\s*m²/i);
-  return match ? finiteNumber(match[1]) : null;
+  const match = body.replace(/,/g, '').match(/took\s+([\d.]+)\s*(km²|m²)/i);
+  if (!match) return null;
+  const value = finiteNumber(match[1]);
+  return value == null ? null : value * (match[2].toLowerCase().startsWith('km') ? 1e6 : 1);
 }
 
 /**

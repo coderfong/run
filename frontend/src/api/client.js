@@ -222,6 +222,12 @@ export const api = {
 
   // ----- run detail + social -------------------------------------------
   runDetail: (runId) => request(`/runs/${runId}`),
+  updateRunPost: (runId, caption, media) =>
+    request(`/runs/${runId}/post`, {
+      method: 'PUT',
+      timeoutMs: 60000,
+      body: JSON.stringify({ caption: caption || null, media: media || [] }),
+    }),
   toggleKudos: (runId) => request(`/runs/${runId}/kudos`, { method: 'POST', body: '{}' }),
   runComments: (runId) => request(`/runs/${runId}/comments`),
   // Comments are text. Emoji live in the run-reaction endpoint so reactions

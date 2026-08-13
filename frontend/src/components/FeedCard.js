@@ -3,11 +3,13 @@
 // somebody — the steal itself, played out on the card.
 
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Svg, { Polygon, Polyline } from 'react-native-svg';
+import { Pencil } from 'lucide-react-native';
 import AppIcon from './AppIcon';
 import TerritoryStealBanner, { STEAL_HEADROOM } from './TerritoryStealBanner';
 import EmoteIcon from '../effects/EmoteIcon';
+import ReactionEffect from '../effects/ReactionEffect';
 
 import { api } from '../api/client';
 import { updateCached } from '../api/cache';
@@ -24,6 +26,11 @@ import { fmtArea } from './RivalCard';
 import GameLottie from './GameLottie';
 import ReactionBar, { ReactionTrigger } from './ReactionBar';
 import { useRunReactions } from '../hooks/useRunReactions';
+import {
+  expandReactionStickers,
+  scatterReactionStickers,
+} from './feedReactionStickers';
+import { RunPostEditorModal } from './RunPostEditor';
 
 // Virtual drawing box; the <Svg> scales it to the card width, aspect preserved.
 // Taller than it was: a claim is now the shape of the RUN rather than a disc,
@@ -36,6 +43,7 @@ const THUMB_H = 110;
 // tell whose it is at a glance down the feed, and the rank border it wears had
 // no room to read at all.
 const PORTRAIT = 46;
+const POST_PHOTO_W = 272;
 
 // What a stat shows when there is nothing to show. A dash is the usual glyph
 // for this and the usual glyph is exactly the problem — the app has no dashes
@@ -57,40 +65,23 @@ function makeProjection(layers, pad = 10) {
   const scale = Math.min((THUMB_W - pad * 2) / spanX, (THUMB_H - pad * 2) / spanY);
   const offX = (THUMB_W - spanX * scale) / 2;
   const offY = (THUMB_H - spanY * scale) / 2;
-  return (points) =>
-    points
-      .map(([lon, lat]) =>
-        `${(offX + (lon - minX) * scale).toFixed(1)},${(THUMB_H - (offY + (lat - minY) * scale)).toFixed(1)}`)
-      .join(' ');
+  return (points) => points.map(([lon, lat]) => [
+    offX + (lon - minX) * scale,
+    THUMB_H - (offY + (lat - minY) * scale),
+  ]);
 }
 
-// Where a reaction sticker can land on the thumbnail without covering the run.
-//
-// The projection above fits the claim into the box with 10 units of padding and
-// CENTRES it, so the shape always sits in the middle and the perimeter is the
-// part that is reliably free. These are fractions of the thumbnail, dealt out
-// in order, with a tilt each so a row of them reads as stuck on rather than as
-// laid out. Corners first: they are furthest from the shape whichever way its
-// aspect ratio went.
-const STICKER_SLOTS = [
-  { x: 0.085, y: 0.20, tilt: -11 },
-  { x: 0.915, y: 0.19, tilt: 9 },
-  { x: 0.115, y: 0.80, tilt: 7 },
-  { x: 0.885, y: 0.81, tilt: -8 },
-  { x: 0.045, y: 0.51, tilt: 13 },
-  { x: 0.955, y: 0.49, tilt: -13 },
-];
-const STICKER = 30;
+// Sticker coordinates are chosen from the projected route itself in
+// feedReactionStickers, then converted back to percentages here so they remain
+// registered with the SVG when a card is wider than its 300-unit viewBox.
+const STICKER = 28;
+
+const svgPoints = (points) => points
+  .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+  .join(' ');
 
 // Deterministic, so a card does not reshuffle its stickers as the feed
 // re-renders or scrolls — the same rule the frame variants follow.
-function slotOffset(seed) {
-  const key = String(seed ?? '');
-  let hash = 0;
-  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
-  return Math.abs(hash) % STICKER_SLOTS.length;
-}
-
 // The claim, as the card sees it: the territory the run grew, with the route
 // drawn INSIDE it. That pairing is the whole point of the new claim model —
 // the land is the shape of the run, and the card is where you can tell.
@@ -100,15 +91,24 @@ function slotOffset(seed) {
 // bought a whole line of card for a thing that is a decoration on the run — and
 // on a card with two reactions on it, that line was mostly empty. A sticker
 // costs no layout at all.
-function RouteThumb({ item, color, reactions = [], onReact }) {
+function RouteThumb({ item, color, reactions = [], mine, burst = 0, onReact }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const type = useThemedType();
   const rings = (item.rings || []).filter((r) => r?.length >= 3);
   const line = item.path?.length >= 2 ? item.path : null;
   if (!rings.length && !line) return null;
   const project = makeProjection([...rings, ...(line ? [line] : [])]);
-  const start = slotOffset(item.id);
-  const stickers = reactions.slice(0, STICKER_SLOTS.length);
+  const projectedRings = rings.map(project);
+  const projectedLine = line ? project(line) : null;
+  // A count is people, not a number stamped on one icon. Expand it into
+  // individual emoji, then place them furthest from the projected route.
+  const stickers = scatterReactionStickers(
+    expandReactionStickers(reactions),
+    projectedLine ? [projectedLine] : projectedRings,
+    item.id,
+    { width: THUMB_W, height: THUMB_H, size: STICKER }
+  );
+  const activeSticker = [...stickers].reverse().find((row) => row.emote === mine);
   return (
     // A DRAWN BOX, not a grey plate. The plate was `colors.bg` (#f7f8fa) inside
     // a `colors.card` (#ffffff) card, with the steal bar's `colors.cardAlt`
@@ -130,10 +130,10 @@ function RouteThumb({ item, color, reactions = [], onReact }) {
       style={styles.thumb}
     >
       <Svg width="100%" height={THUMB_H} viewBox={`0 0 ${THUMB_W} ${THUMB_H}`}>
-        {rings.map((ring, i) => (
+        {projectedRings.map((ring, i) => (
           <Polygon
             key={i}
-            points={project(ring)}
+            points={svgPoints(ring)}
             fill={withAlpha(color, 0.22)}
             stroke={color}
             strokeWidth={2.5}
@@ -142,7 +142,7 @@ function RouteThumb({ item, color, reactions = [], onReact }) {
         ))}
         {line && (
           <Polyline
-            points={project(line)}
+            points={svgPoints(projectedLine)}
             fill="none"
             // Lighter than the territory outline so the route reads as the
             // thing inside the land, not as a second border around it.
@@ -154,43 +154,41 @@ function RouteThumb({ item, color, reactions = [], onReact }) {
         )}
       </Svg>
 
-      {stickers.map((row, i) => {
-        const slot = STICKER_SLOTS[(start + i) % STICKER_SLOTS.length];
+      {stickers.map((row) => {
+        const active = burst > 0 && row.key === activeSticker?.key;
         return (
           <PressableScale
-            key={row.emote}
+            key={row.key}
             onPress={() => { haptic.light(); onReact?.(row.emote); }}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityState={{ selected: !!row.mine }}
-            accessibilityLabel={`${row.emote}, ${row.count}`}
+            accessibilityState={{ selected: row.emote === mine }}
+            accessibilityLabel={row.emote}
             style={[
               styles.sticker,
               {
-                left: `${slot.x * 100}%`,
-                top: `${slot.y * 100}%`,
+                left: `${(row.x / THUMB_W) * 100}%`,
+                top: `${(row.y / THUMB_H) * 100}%`,
                 transform: [
                   { translateX: -STICKER / 2 },
                   { translateY: -STICKER / 2 },
-                  { rotate: `${slot.tilt}deg` },
+                  { rotate: `${row.tilt}deg` },
                 ],
               },
             ]}
           >
-            {/* No chip, no border, no plate. A sticker is the art and nothing
-                else; the count rides its shoulder only when more than one
-                person left the same one. */}
+            {/* Three reactions are three scattered emoji, not one emoji with
+                a number attached to it. */}
             <EmoteIcon reaction={row.emote} size={STICKER} />
-            {row.count > 1 ? (
-              <Text
-                style={[
-                  type.captionMedium,
-                  styles.stickerCount,
-                  { color: row.mine ? color : undefined },
-                ]}
-              >
-                {row.count}
-              </Text>
+            {active ? (
+              <ReactionEffect
+                reaction={mine}
+                point={{ x: STICKER / 2, y: STICKER / 2 }}
+                centered
+                size={58}
+                playToken={burst}
+                style={styles.reactionFx}
+              />
             ) : null}
           </PressableScale>
         );
@@ -236,6 +234,12 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
   const [count, setCount] = useState(item.kudos_count || 0);
   const [kudosFx, setKudosFx] = useState(0);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [post, setPost] = useState({
+    caption: item.caption || '',
+    media: item.media || [],
+  });
+  const [photoPage, setPhotoPage] = useState(0);
   const victims = item.victims || [];
   // Seeded from the row the feed already handed us, so the chips are on the
   // card at first paint rather than a fetch later.
@@ -270,6 +274,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
   };
 
   return (
+    <>
     <Card
       onPress={() => {
         setPickerOpen(false);
@@ -313,6 +318,16 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           </View>
         </Row>
         <Row gap={2}>
+          {item.is_you ? (
+            <PressableScale
+              onPress={() => { setPickerOpen(false); setEditOpen(true); }}
+              style={styles.action}
+              accessibilityRole="button"
+              accessibilityLabel="Edit run post"
+            >
+              <Pencil size={22} color={colors.text} strokeWidth={2.3} />
+            </PressableScale>
+          ) : null}
           {/* Reactions sit LEFT of comment and kudos: those two are the actions
               that have always been here, and the new one should not displace
               the muscle memory for either. */}
@@ -352,9 +367,53 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         </Row>
       </Row>
 
+      {post.caption ? <Text style={[type.body, styles.caption]}>{post.caption}</Text> : null}
+
+      {post.media.length > 0 ? (
+        <View style={styles.postPhotoWrap}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={POST_PHOTO_W + space.sm}
+            decelerationRate="fast"
+            contentContainerStyle={styles.postPhotoRow}
+            onMomentumScrollEnd={(event) => {
+              const page = Math.round(
+                event.nativeEvent.contentOffset.x / (POST_PHOTO_W + space.sm)
+              );
+              setPhotoPage(Math.max(0, Math.min(post.media.length - 1, page)));
+            }}
+          >
+            {post.media.map((uri, index) => (
+              <Image
+                key={`${index}:${uri.length}`}
+                source={{ uri }}
+                style={styles.postPhoto}
+                resizeMode="cover"
+                accessibilityLabel={`Run post photo ${index + 1} of ${post.media.length}`}
+              />
+            ))}
+          </ScrollView>
+          {post.media.length > 1 ? (
+            <View style={styles.photoCount}>
+              <Text style={[type.captionMedium, { color: '#FFFFFF' }]}>
+                {photoPage + 1}/{post.media.length}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* The reactions ride ON the route now — see RouteThumb — so nothing
           between the header and the map costs a row. */}
-      <RouteThumb item={item} color={c.stroke} reactions={reactions} onReact={react} />
+      <RouteThumb
+        item={item}
+        color={c.stroke}
+        reactions={reactions}
+        mine={mine}
+        burst={burst}
+        onReact={react}
+      />
 
       {/* The steal, on the card. It starts SETTLED — heads on the bar pulling
           a face, the amount stamped on — and detonates when tapped, because a
@@ -384,7 +443,6 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         compact
         reactions={[]}
         mine={mine}
-        burst={burst}
         color={c.stroke}
         onReact={react}
         open={pickerOpen}
@@ -404,6 +462,15 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         />
       </Row>
     </Card>
+    <RunPostEditorModal
+      visible={editOpen}
+      onClose={() => setEditOpen(false)}
+      runId={item.id}
+      initialCaption={post.caption}
+      initialMedia={post.media}
+      onSaved={(next) => setPost({ caption: next.caption || '', media: next.media || [] })}
+    />
+    </>
   );
 }
 
@@ -424,15 +491,9 @@ const makeStyles = (colors) =>
       height: STICKER,
       alignItems: 'center',
       justifyContent: 'center',
+      zIndex: 3,
     },
-    // Rides the sticker's shoulder rather than sitting beside it, so a count
-    // never widens the thing it belongs to.
-    stickerCount: {
-      position: 'absolute',
-      right: -7,
-      bottom: -5,
-      fontSize: 11,
-    },
+    reactionFx: { zIndex: 5 },
     kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
     kudosFx: { position: 'absolute', zIndex: 4 },
     action: {
@@ -443,5 +504,29 @@ const makeStyles = (colors) =>
       justifyContent: 'center',
       gap: 5,
       padding: 4,
+    },
+    caption: { color: colors.text, marginTop: space.md },
+    postPhotoWrap: {
+      height: 190,
+      marginTop: space.md,
+    },
+    postPhotoRow: { gap: space.sm, paddingRight: space.md },
+    postPhoto: {
+      width: POST_PHOTO_W,
+      height: 190,
+      borderRadius: radius.md,
+      backgroundColor: colors.cardAlt,
+    },
+    photoCount: {
+      position: 'absolute',
+      right: 10,
+      bottom: 10,
+      minWidth: 34,
+      height: 30,
+      paddingHorizontal: 8,
+      borderRadius: 15,
+      backgroundColor: 'rgba(0,0,0,0.72)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });

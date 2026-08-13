@@ -40,7 +40,7 @@ import Animated, {
 import { brand, toon, toonType, useTheme, withAlpha } from '../theme';
 import EffectPlayer from '../effects/EffectPlayer';
 import { haptic, useReduceMotion } from '../ui/motion';
-import AppIcon from './AppIcon';
+import AppIcon, { STEAL_ICON_SIZE } from './AppIcon';
 import { CharacterBust } from './character/CharacterRig';
 import { OutlinedText } from './ui';
 
@@ -498,7 +498,7 @@ export default function TerritoryStealBanner({
           <OutlinedText style={[toonType.label, styles.labelText]} outline={toon.ink} width={1.5}>
             {label}
           </OutlinedText>
-          <AppIcon name="steal" size={17} style={styles.labelIcon} />
+          <AppIcon name="steal" size={STEAL_ICON_SIZE} style={styles.labelIcon} />
           {amount != null ? (
             <OutlinedText
               style={[toonType.sub, styles.labelAmount]}
@@ -599,7 +599,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   labelText: { color: '#fff' },
-  labelIcon: { marginLeft: 7 },
+  labelIcon: { marginLeft: 8, marginVertical: -4 },
   labelAmount: { color: '#fff', marginLeft: 6 },
 
   bombAnchor: {

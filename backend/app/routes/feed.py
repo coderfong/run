@@ -71,7 +71,8 @@ def feed(
                    -- Privacy, selected alongside rather than looked up per row:
                    -- a page can carry fifty runs from fifty different runners.
                    COALESCE(r.visibility, 'public'),
-                   u.route_trim_m, u.privacy_zones, u.route_publish_delay_h, u.birthday
+                   u.route_trim_m, u.privacy_zones, u.route_publish_delay_h, u.birthday,
+                   r.caption, COALESCE(r.post_media, '[]'::jsonb)
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -177,6 +178,8 @@ def feed(
             stolen_m2=stolen_by_run.get(r[0], 0.0),
             reactions=[schemas.RunReaction(**x) for x in reactions_by_run.get(r[0], [])],
             my_reaction=my_reaction_by_run.get(r[0]),
+            caption=r[23],
+            media=list(r[24] or []),
         )
         for r in rows
     ]

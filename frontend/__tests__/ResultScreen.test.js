@@ -127,7 +127,7 @@ jest.mock('../src/state/settings', () => ({
   useSettings: () => ({ trailGlowColor: null }),
 }));
 
-import ResultScreen from '../src/screens/ResultScreen';
+import ResultScreen, { mapRootResetState, payoffMapCenter } from '../src/screens/ResultScreen';
 
 const navigation = { navigate: jest.fn(), getParent: () => ({ goBack: jest.fn() }) };
 
@@ -159,6 +159,32 @@ const path = [
 ];
 
 describe('ResultScreen', () => {
+  it('resets See the map to one root Tabs route', () => {
+    expect(mapRootResetState({ latitude: 1.30, longitude: 103.80 })).toEqual({
+      index: 0,
+      routes: [{
+        name: 'Tabs',
+        params: {
+          screen: 'Map',
+          params: {
+            screen: 'MapMain',
+            params: { focus: { lat: 1.30, lon: 103.80 } },
+          },
+        },
+      }],
+    });
+  });
+
+  it('focuses the final claimed shape when its centre differs from placement', () => {
+    const center = payoffMapCenter({
+      territory: {
+        polygon: [[103.8, 1.3], [103.82, 1.3], [103.82, 1.32], [103.8, 1.32]],
+      },
+    });
+    expect(center.latitude).toBeCloseTo(1.31, 5);
+    expect(center.longitude).toBeCloseTo(103.81, 5);
+  });
+
   it('renders the first frame with no claim options and no energy status', () => {
     let tree;
     expect(() => {

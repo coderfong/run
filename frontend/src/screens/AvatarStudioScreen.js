@@ -337,7 +337,6 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
                 This one comes in its own colours. Pick another to recolour it.
               </Text>
             ) : null}
-            <View style={{ height: space.lg }} />
           </>
         )}
         <ItemGrid
@@ -383,7 +382,7 @@ const makeStyles = (colors) => StyleSheet.create({
   chipRail: {
     gap: space.sm,
     paddingHorizontal: space.gutter,
-    paddingVertical: space.md,
+    paddingVertical: space.sm,
   },
   chip: {
     width: 72,
@@ -411,7 +410,7 @@ const makeStyles = (colors) => StyleSheet.create({
   chipLabel: { color: colors.textMuted, fontSize: 12 },
   chipLabelActive: { color: colors.bg },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: space.sm },
   cellWrap: { width: '31%' },
   cell: {
     width: '100%',
@@ -422,7 +421,7 @@ const makeStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.card,
     borderWidth: 2,
     borderColor: 'transparent',
-    minHeight: 96,
+    minHeight: 88,
   },
   lockWrap: { alignItems: 'center', marginTop: 2, gap: 1 },
 

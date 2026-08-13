@@ -141,6 +141,12 @@ class Run(Base):
     claim_action = Column(Text, nullable=True)
     claim_result = Column(JSONB, nullable=True)
 
+    # The runner's editable Home post. Media is a small array of compressed
+    # image data URIs so the first version does not depend on a separate object
+    # store; the API caps both count and encoded size before this reaches SQL.
+    caption = Column(Text, nullable=True)
+    post_media = Column(JSONB, nullable=False, default=list, server_default="'[]'::jsonb")
+
     user = relationship("User", back_populates="runs")
     territory = relationship("Territory", back_populates="run", uselist=False)
 

@@ -123,8 +123,8 @@ describe('all capture styles and territory scenarios', () => {
     });
   });
 
-  test('all 16 have bounded duration, one reveal, one primary haptic, and valid required effects', () => {
-    expect(CAPTURE_STYLES).toHaveLength(15);
+  test('all 29 have bounded duration, metadata, one reveal, one primary haptic, and valid required effects', () => {
+    expect(CAPTURE_STYLES).toHaveLength(29);
     CAPTURE_STYLES.forEach((style) => {
       expect(getCaptureStyle(style.id)).toBe(style);
       expect(validateCaptureStyle(style)).toEqual([]);
@@ -132,6 +132,12 @@ describe('all capture styles and territory scenarios', () => {
       expect(style.duration).toBeLessThanOrEqual(2400);
       expect(style.sequence.filter((step) => step.action === 'territoryReveal')).toHaveLength(1);
       expect(style.sequence.filter((step) => step.action === 'haptic')).toHaveLength(1);
+      expect(style.beats.length).toBeGreaterThanOrEqual(4);
+      expect(typeof style.showAttacker).toBe('boolean');
+      expect(typeof style.showDefender).toBe('boolean');
+      expect(typeof style.usesProjectile).toBe('boolean');
+      expect(style.territoryTransition).toBeTruthy();
+      expect(style.revealOrigin).toBeTruthy();
     });
   });
 
@@ -224,7 +230,7 @@ describe('which capture animation a claim gets', () => {
 
   test('only release-approved styles are ever picked', () => {
     const approved = new Set(PLAYABLE_CAPTURE_STYLES.map((style) => style.id));
-    expect(approved.size).toBeLessThan(CAPTURE_STYLES.length); // something IS blocked
+    expect(approved.size).toBe(CAPTURE_STYLES.length);
     for (let i = 0; i < 200; i += 1) {
       expect(approved.has(pickCaptureStyle(`seed-${i}`))).toBe(true);
     }

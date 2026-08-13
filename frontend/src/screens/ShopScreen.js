@@ -34,7 +34,7 @@ import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
 import { brand, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
 import RewardReveal from '../components/RewardReveal';
-import { Card, Row, Screen, Skeleton, Button } from '../components/ui';
+import { Card, Framed, Row, Screen, Skeleton, Button } from '../components/ui';
 import { PartThumb } from '../components/character/CharacterRig';
 import { getItem, SLOTS } from '../config/cosmetics';
 import { RARITY_COLOR } from '../components/RewardArt';
@@ -46,6 +46,7 @@ import { PIT_STOP_ANIM } from '../config/pitStop';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { CountUpText, haptic, Reveal, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 
 const SLOT_LABEL = Object.fromEntries(SLOTS.map((s) => [s.key, s.label]));
 const SLOT_ORDER = Object.fromEntries(SLOTS.map((s, index) => [s.key, index]));
@@ -129,15 +130,7 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
   return (
     <Animated.View style={[styles.cellWrap, style]}>
       <TouchableOpacity
-        style={[
-          styles.cell,
-          {
-            backgroundColor: selected ? colors.cardAlt : colors.card,
-            borderColor: selected ? tint : item.owned ? colors.border : tint,
-            borderWidth: selected ? 2.5 : 1.5,
-          },
-          item.owned && { opacity: 0.55 },
-        ]}
+        style={[styles.cellTouch, item.owned && { opacity: 0.55 }]}
         onPress={() => onSelect(item.item_id)}
         disabled={disabled}
         accessibilityRole="button"
@@ -147,20 +140,31 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
         }`}
         accessibilityHint={item.owned ? undefined : 'Shows the item details and the buy button'}
       >
-        {/* The name keeps similarly shaped tops/shoes distinguishable; rarity
-            remains both a section heading and the card's tinted border. */}
-        <PartThumb slot={item.slot} item={cat} size={56} />
-        <Text style={[type.captionMedium, styles.cellName, { color: colors.text }]} numberOfLines={2}>
-          {cat?.label || item.item_id}
-        </Text>
-        {item.owned ? (
-          <Text style={[type.caption, { color: colors.textMuted }]}>Owned</Text>
-        ) : (
-          <Row gap={4}>
-            <AppIcon name="coin" size={14} />
-            <Text style={[type.captionMedium, { color: colors.text }]}>{item.price}</Text>
-          </Row>
-        )}
+        <Framed
+          frame={frameVariant('card', `shop:${item.item_id}`)}
+          tint={selected ? colors.text : tint}
+          fill={selected ? withAlpha(tint, 0.2) : colors.card}
+          weight={selected ? INK.medium : INK.thin}
+          pose={framePose(`shop:${item.item_id}`)}
+          inset={false}
+          style={styles.cell}
+          contentStyle={styles.cellContent}
+        >
+          {/* The name keeps similarly shaped tops/shoes distinguishable; rarity
+              remains both a section heading and the card's tinted frame. */}
+          <PartThumb slot={item.slot} item={cat} size={52} />
+          <Text style={[type.captionMedium, styles.cellName, { color: colors.text }]} numberOfLines={2}>
+            {cat?.label || item.item_id}
+          </Text>
+          {item.owned ? (
+            <Text style={[type.caption, { color: colors.textMuted }]}>Owned</Text>
+          ) : (
+            <Row gap={4}>
+              <AppIcon name="coin" size={14} />
+              <Text style={[type.captionMedium, { color: colors.text }]}>{item.price}</Text>
+            </Row>
+          )}
+        </Framed>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -559,20 +563,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill, borderWidth: 1,
   },
   grid: {
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between',
+    flexDirection: 'row', flexWrap: 'wrap', gap: '2.75%',
   },
-  stock: { gap: space.lg },
-  stockSection: { gap: space.sm },
+  stock: { gap: space.md },
+  stockSection: { gap: 6 },
   sectionHead: { alignItems: 'center' },
   sectionTitle: { letterSpacing: 1.1 },
   sectionRule: { height: 1, flex: 1 },
-  cellWrap: { width: '31.5%', marginBottom: space.md },
+  cellWrap: { width: '31.5%' },
+  cellTouch: { width: '100%' },
   cell: {
-    width: '100%', alignItems: 'center', gap: 4,
-    minHeight: 132, padding: space.sm,
-    borderRadius: radius.card,
+    width: '100%', minHeight: 116,
   },
-  cellName: { minHeight: 32, textAlign: 'center' },
+  cellContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, padding: 7 },
+  cellName: { minHeight: 28, textAlign: 'center', fontSize: 10 },
   panel: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,
     borderWidth: 1.5,

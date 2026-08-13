@@ -63,11 +63,17 @@ jest.mock('../src/state/clan', () => ({
   NEUTRAL: { fill: '#222', stroke: '#888', glow: '#aaa' },
 }));
 jest.mock('../src/utils/runnerAssetPreload', () => ({ preloadRunnerAssets: jest.fn() }));
+// The test is about where/when the one-shot is mounted. Sprite timing itself
+// is covered by effect tests and needs a native UI-frame callback unavailable
+// in react-test-renderer.
+jest.mock('../src/effects/ReactionEffect', () => 'ReactionEffect');
 
 import { NavigationContext } from '@react-navigation/native';
 
 import HomeScreen from '../src/screens/HomeScreen';
 import FeedCard from '../src/components/FeedCard';
+import ReactionEffect from '../src/effects/ReactionEffect';
+import { PressableScale } from '../src/ui/motion';
 
 // `useFocusEffect` and `useQuery` both reach for the navigation object through
 // context rather than through props, so passing one as a prop is not enough —
@@ -175,6 +181,13 @@ describe('HomeScreen', () => {
 });
 
 describe('feed reactions', () => {
+  const route = {
+    path: [[103.80, 1.30], [103.81, 1.31], [103.82, 1.30]],
+    rings: [[
+      [103.80, 1.30], [103.81, 1.31], [103.82, 1.30], [103.80, 1.30],
+    ]],
+  };
+
   it('closes the inline picker when Home loses navigation focus', () => {
     const item = runner({ reactions: [], my_reaction: null });
     let tree;
@@ -193,6 +206,86 @@ describe('feed reactions', () => {
       tree.update(<FeedCard item={item} navigation={navigation} screenFocused={false} />);
     });
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Love it' })).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+
+  it('shows a run caption and every attached photo on the Home card', () => {
+    const item = runner({
+      is_you: true,
+      caption: 'Sunrise around the bay',
+      media: [
+        'data:image/jpeg;base64,aGVsbG8=',
+        'data:image/jpeg;base64,d29ybGQ=',
+      ],
+    });
+    let tree;
+    act(() => { tree = renderer.create(<FeedCard item={item} navigation={navigation} />); });
+    expect(tree.root.findByProps({ children: 'Sunrise around the bay' })).toBeTruthy();
+    const photoLabels = new Set(tree.root.findAll((node) =>
+      String(node.props.accessibilityLabel || '').startsWith('Run post photo ')
+    ).map((node) => node.props.accessibilityLabel));
+    expect([...photoLabels]).toEqual(['Run post photo 1 of 2', 'Run post photo 2 of 2']);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Edit run post' })).toBeTruthy();
+    act(() => tree.unmount());
+  });
+
+  it('renders a route thumbnail without crashing the Home tab', async () => {
+    // RouteThumb used the palette without creating it. Text-only feed fixtures
+    // all passed while the first real run with a path threw into Home's error
+    // boundary and showed the generic "Something went wrong" screen.
+    mockFeed = {
+      items: [runner({
+        id: 'with-route',
+        path: [
+          { latitude: 1.30, longitude: 103.80 },
+          { latitude: 1.31, longitude: 103.81 },
+          { latitude: 1.30, longitude: 103.82 },
+        ],
+        rings: [[
+          [103.80, 1.30], [103.81, 1.31], [103.82, 1.30], [103.80, 1.30],
+        ]],
+      })],
+      next_cursor: null,
+    };
+    const tree = mount();
+    await act(async () => {});
+    expect(tree).toBeTruthy();
+    act(() => tree.unmount());
+  });
+
+  it('draws aggregate reaction counts as separate route stickers', () => {
+    const item = runner({
+      ...route,
+      reactions: [
+        { emote: 'love', count: 3 },
+        { emote: 'wow', count: 2 },
+      ],
+      my_reaction: null,
+    });
+    let tree;
+    act(() => { tree = renderer.create(<FeedCard item={item} navigation={navigation} />); });
+    const stickers = (emote) => tree.root.findAllByType(PressableScale)
+      .filter((node) => node.props.accessibilityLabel === emote);
+    expect(stickers('love')).toHaveLength(3);
+    expect(stickers('wow')).toHaveLength(2);
+    act(() => tree.unmount());
+  });
+
+  it('plays the selected emoji animation at its new route sticker', () => {
+    const { api } = require('../src/api/client');
+    // Hold the request so this assertion sees the optimistic placement rather
+    // than an intentionally empty generic mock response replacing it.
+    api.setRunReaction.mockImplementation(() => new Promise(() => {}));
+    const item = runner({ ...route, reactions: [], my_reaction: null });
+    let tree;
+    act(() => { tree = renderer.create(<FeedCard item={item} navigation={navigation} />); });
+    act(() => tree.root.findByProps({ accessibilityLabel: 'Add a reaction' }).props.onPress());
+    act(() => tree.root.findByProps({ accessibilityLabel: 'Love it' }).props.onPress());
+    expect(tree.root.findAllByType(ReactionEffect)).toHaveLength(1);
+    expect(
+      tree.root.findAllByType(PressableScale)
+        .filter((node) => node.props.accessibilityLabel === 'love')
+    ).toHaveLength(1);
     act(() => tree.unmount());
   });
 });

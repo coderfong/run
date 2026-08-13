@@ -588,11 +588,11 @@ export default function ProfileScreen({ navigation }) {
         )}
       </Card>
 
-      {/* trail glow colour — how your live route lights up on the run map */}
+      {/* Player colour — trail, own-land outline and colourable game chrome. */}
       <Card style={{ marginTop: space.md }}>
-        <Text style={type.labelSm}>Trail glow</Text>
+        <Text style={type.labelSm}>Runner colour</Text>
         <Text style={[type.caption, { marginTop: 2 }]}>
-          The colour your route glows while you run. Club follows your club colour.
+          Colours your trail, map outline and runner highlights. Club follows your club colour.
         </Text>
         <View style={styles.swatchRow}>
           {TRAIL_GLOW_COLORS.map(({ key, label, value }) => {

@@ -46,7 +46,7 @@ function ringCentroid(t) {
 
 // Build the whole-board GeoJSON once per data change. Each ring is a feature
 // carrying its clan colors, owning territory id, clan key, and contested flag.
-function toFeatures(territories, userId) {
+function toFeatures(territories, userId, playerAccent) {
   const features = [];
   for (const t of territories) {
     const c = t.clan_color || NEUTRAL;
@@ -63,8 +63,8 @@ function toFeatures(territories, userId) {
         properties: {
           territoryId: t.id,
           clanTag: t.clan_tag || 'Solo',
-          fillColor: c.stroke,
-          strokeColor: c.stroke,
+          fillColor: mine && playerAccent ? playerAccent : c.stroke,
+          strokeColor: mine && playerAccent ? playerAccent : c.stroke,
           // Territory fill ~35% (own a touch higher), faded by decay so
           // land visibly weakens as it nears expiry.
           fillOpacity: (mine ? 0.45 : 0.35) * (0.35 + 0.65 * (t.freshness ?? 1)),
@@ -142,7 +142,7 @@ export default function GlobalMapScreen({ route }) {
   // something specific, and a `focus` only ever arrives on an explicit tap.
   const focus = route?.params?.focus;
   useEffect(() => {
-    if (!focus?.lat) return;
+    if (!Number.isFinite(focus?.lat) || !Number.isFinite(focus?.lon)) return;
     const t = setTimeout(
       () => mapRef.current?.flyTo({ latitude: focus.lat, longitude: focus.lon }, 15, 700),
       450
@@ -163,13 +163,17 @@ export default function GlobalMapScreen({ route }) {
         setMyLoc(p);
         setLocState('ok');
         // small delay so the camera call lands after the map is ready
-        setTimeout(() => mapRef.current?.flyTo(p, 15, 700), 400);
+        // Explicit "See the map" focus owns the camera. A late location fix
+        // must not pull the runner away from the land they just asked to see.
+        if (!Number.isFinite(focus?.lat) || !Number.isFinite(focus?.lon)) {
+          setTimeout(() => mapRef.current?.flyTo(p, 15, 700), 400);
+        }
       } catch {
         if (alive) setLocState('fail');
       }
     })();
     return () => { alive = false; };
-  }, []);
+  }, [focus?.lat, focus?.lon]);
 
   // Pulse the contested outline while heat is on (Reduce Motion → steady).
   useEffect(() => {
@@ -239,7 +243,7 @@ export default function GlobalMapScreen({ route }) {
   };
 
   const rows = list || [];
-  const features = useMemo(() => toFeatures(rows, user.id), [rows, user.id]);
+  const features = useMemo(() => toFeatures(rows, user.id, accent), [rows, user.id, accent]);
   const contestedFC = useMemo(
     () => ({ type: 'FeatureCollection', features: features.filter((f) => f.properties.contested) }),
     [features]

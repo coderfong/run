@@ -73,6 +73,7 @@ const EDGE_COLOR = {
   frost: '#9BE8FF',
   light: '#FFF3C4',
   void: '#C79BFF',
+  electric: '#8BE9FF',
 };
 
 /**
@@ -92,6 +93,38 @@ export const REVEAL_TRANSITIONS = Object.freeze({
     // ground being hit rather than filled.
     wipe: 'circle', speed: 0.55, easing: Easing.out(Easing.quad),
     ripple: 2, edge: 'hot', decoration: null, trace: 'with',
+  },
+  [REVEAL_TRANSITION.TILE_CONVERT]: {
+    wipe: 'bands', speed: 0.95, easing: Easing.inOut(Easing.quad),
+    ripple: 0, edge: 'light', decoration: null, trace: 'after',
+  },
+  [REVEAL_TRANSITION.SPREAD_FROM_CENTER]: {
+    wipe: 'circle', speed: 1.15, easing: Easing.out(Easing.cubic),
+    ripple: 1, edge: null, decoration: null, trace: 'with',
+  },
+  [REVEAL_TRANSITION.SPREAD_FROM_EDGE]: {
+    wipe: 'shrink', speed: 1.25, easing: Easing.inOut(Easing.cubic),
+    ripple: 0, edge: null, decoration: null, trace: 'before',
+  },
+  [REVEAL_TRANSITION.CRACK_GLOW]: {
+    wipe: 'circle', speed: 0.9, easing: Easing.out(Easing.cubic),
+    ripple: 0, edge: 'light', decoration: 'cracks', trace: 'after',
+  },
+  [REVEAL_TRANSITION.PIXEL_REFORM]: {
+    wipe: 'stepped', speed: 1.15, easing: Easing.linear,
+    ripple: 0, edge: null, decoration: 'glitch', trace: 'after', steps: 9,
+  },
+  [REVEAL_TRANSITION.TEAR_REVEAL]: {
+    wipe: 'linear', speed: 0.8, easing: Easing.inOut(Easing.quad),
+    ripple: 0, edge: 'light', decoration: 'cracks', trace: 'after',
+  },
+  [REVEAL_TRANSITION.FLIP_REVEAL]: {
+    wipe: 'bands', speed: 0.72, easing: Easing.inOut(Easing.back(1.2)),
+    ripple: 0, edge: null, decoration: null, trace: 'with',
+  },
+  [REVEAL_TRANSITION.ELECTRIFY]: {
+    wipe: 'stepped', speed: 0.62, easing: Easing.out(Easing.quad),
+    ripple: 2, edge: 'electric', decoration: 'cracks', trace: 'with', steps: 6,
   },
   [REVEAL_TRANSITION.CRACK]: {
     // Fissures reach the boundary BEFORE the fill does, so the ground looks

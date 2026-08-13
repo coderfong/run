@@ -22,6 +22,8 @@
         "NSLocationWhenInUseUsageDescription": "PASER records your route while you run so you can claim the area you enclose. Your route is only tracked during an active run.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "PASER records your route while you run so you can claim the area you enclose. Background access only keeps an active run recording when the screen is off.",
         "NSMotionUsageDescription": "Motion data verifies your runs are on foot.",
+        "NSCameraUsageDescription": "PASER lets you take a photo to add to your run post.",
+        "NSPhotoLibraryUsageDescription": "PASER lets you choose photos to add to your run post.",
         "NSPhotoLibraryAddUsageDescription": "PASER saves your run card to your photos when you tap Save on the share screen.",
         "NSHealthUpdateUsageDescription": "PASER saves your finished runs to Apple Health as running workouts when you turn on Health sync. PASER never reads your health data.",
         "NSHealthShareUsageDescription": "PASER never reads your Apple Health data. Health access is used only to save the runs you finish as workouts.",
@@ -88,13 +90,21 @@
       "expo-font",
       "expo-web-browser",
       "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PASER lets you choose photos to add to your run post.",
+          "cameraPermission": "PASER lets you take a photo to add to your run post.",
+          "microphonePermission": false
+        }
+      ],
       "@sentry/react-native",
       "@rnmapbox/maps",
       [
         "expo-media-library",
         {
           "savePhotosPermission": "PASER saves your run card to your photos when you tap Save on the share screen.",
-          "photosPermission": "PASER saves your run card to your photos when you tap Save on the share screen.",
+          "photosPermission": "PASER lets you choose photos for run posts and save run cards when you ask.",
           "isAccessMediaLocationEnabled": false
         }
       ],

@@ -1,8 +1,8 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
-import CaptureStylePlayer, { validateCaptureStyle } from '../src/effects/CaptureStylePlayer';
-import { REVEAL_ORIGIN, REVEAL_TRANSITION, effect, reveal } from '../src/effects/choreography';
+import CaptureStylePlayer, { defenderReactionForTransition, validateCaptureStyle } from '../src/effects/CaptureStylePlayer';
+import { ACTOR_ACTION, ENCOUNTER_MODE, REVEAL_ORIGIN, REVEAL_TRANSITION, effect, reveal } from '../src/effects/choreography';
 
 jest.mock('../src/effects/EffectPlayer', () => () => null);
 jest.mock('../src/effects/ReactionEffect', () => () => null);
@@ -110,7 +110,7 @@ describe('CaptureStylePlayer lifecycle', () => {
     expect(onTerritoryReveal).toHaveBeenCalledTimes(1);
     expect(onTerritoryReveal).toHaveBeenCalledWith(
       expect.objectContaining({
-        transition: REVEAL_TRANSITION.CRACK,
+        transition: REVEAL_TRANSITION.CRACK_GLOW,
         origin: REVEAL_ORIGIN.CHARACTER_FEET,
       })
     );
@@ -196,7 +196,7 @@ describe('CaptureStylePlayer lifecycle', () => {
     // style changes it — a freeze and a shatter are different events, not
     // different amounts of motion.
     expect(onTerritoryReveal).toHaveBeenCalledWith(
-      expect.objectContaining({ transition: REVEAL_TRANSITION.CRACK })
+      expect.objectContaining({ transition: REVEAL_TRANSITION.CRACK_GLOW })
     );
     // No jumping, no slamming, no camera.
     expect(play).not.toHaveBeenCalled();
@@ -215,15 +215,34 @@ describe('CaptureStylePlayer lifecycle', () => {
       }),
       { action: 'haptic', start: 10, style: 'light' },
     ];
+    const metadata = {
+      encounterMode: ENCOUNTER_MODE.TERRITORY_ONLY,
+      showAttacker: false,
+      showDefender: false,
+      usesProjectile: false,
+      territoryTransition: REVEAL_TRANSITION.RADIAL,
+      revealOrigin: REVEAL_ORIGIN.CLAIM_POINT,
+    };
     expect(validateCaptureStyle({
-      id: 'broken', duration: 900,
+      id: 'broken', duration: 900, ...metadata,
       // Built through `effect()` so it carries `track: 'effect'` — the
       // validator only inspects that track, and a bare object slips past it.
       sequence: [effect(0, 'not-registered'), ...actions],
     })).toEqual(expect.arrayContaining([expect.stringContaining('missing effect')]));
     expect(validateCaptureStyle({
-      id: 'optional', duration: 900,
+      id: 'optional', duration: 900, ...metadata,
       sequence: [effect(0, 'not-registered', { optional: true }), ...actions],
     })).toEqual([]);
+  });
+});
+
+describe('captured rival reactions', () => {
+  test('the territory transition determines the rival response', () => {
+    expect(defenderReactionForTransition(REVEAL_TRANSITION.SHOCKWAVE).name).toBe(ACTOR_ACTION.KNOCKBACK);
+    expect(defenderReactionForTransition(REVEAL_TRANSITION.DISSOLVE).name).toBe(ACTOR_ACTION.PULLED);
+    expect(defenderReactionForTransition(REVEAL_TRANSITION.ELECTRIFY)).toEqual({
+      name: ACTOR_ACTION.RECOIL,
+      jitter: true,
+    });
   });
 });

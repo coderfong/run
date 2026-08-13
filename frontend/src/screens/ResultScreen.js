@@ -37,6 +37,7 @@ import ClaimPayoff from '../components/ClaimPayoff';
 import GameAnimation from '../components/GameAnimation';
 import CaptureEncounter from '../components/claim/CaptureEncounter';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import { ENCOUNTER_MODE } from '../effects/captureStyles';
 import ClaimActor from '../effects/ClaimActor';
 import useCaptureStage from '../effects/useCaptureStage';
 import { buildTerritoryAnchorModel, resolveRevealOrigin } from '../effects/anchors';
@@ -59,7 +60,8 @@ import { shouldReveal } from '../config/paserby';
 import { preloadScreenImages } from '../config/screenAssets';
 import { RUN_TIER } from '../config/economy';
 import { brand, radius, shadow, space, toon, toonRadius, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
-import { OutlinedText, ToonButton } from '../components/ui';
+import { Framed, OutlinedText, ToonButton } from '../components/ui';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { useClan } from '../state/clan';
 import { useSettings } from '../state/settings';
 import { Confetti, CountUpText, Reveal, haptic, PressableScale } from '../ui/motion';
@@ -76,6 +78,22 @@ const DevSequenceControls = __DEV__
 // takes the whole screen; the recap scrolls; sharing is outward-facing and
 // comes last, immediately before Home.
 const STAGE = { CLAIM: 'claim', SUMMARY: 'summary', SHARE: 'share' };
+
+export function mapRootResetState(center) {
+  const focus = center
+    ? { focus: { lat: center.latitude, lon: center.longitude } }
+    : undefined;
+  return {
+    index: 0,
+    routes: [{
+      name: 'Tabs',
+      params: {
+        screen: 'Map',
+        params: { screen: 'MapMain', params: focus },
+      },
+    }],
+  };
+}
 
 // --- geometry / splits -----------------------------------------------------
 
@@ -200,6 +218,17 @@ function ringCentroid(ring) {
   return { longitude: x / (3 * twiceArea), latitude: y / (3 * twiceArea) };
 }
 
+export function payoffMapCenter(payoff) {
+  const direct = payoff?.center;
+  if (Number.isFinite(direct?.latitude) && Number.isFinite(direct?.longitude)) return direct;
+  const territory = payoff?.territory || {};
+  const ring = territory.rings?.[0]
+    || territory.polygon
+    || territory.geometry?.coordinates?.[0]
+    || territory.coordinates?.[0];
+  return ringCentroid(ring);
+}
+
 // Per-km splits from the recorded path (client-side; Phase 6 makes these
 // server-authoritative alongside PRs).
 function computeSplits(path) {
@@ -286,7 +315,9 @@ export default function ResultScreen({ navigation, route }) {
   const { equipped } = useAvatar();
   const { user } = useAuth();
   const { trailGlowColor } = useSettings();
-  const team = color; // {fill, stroke, glow} — clan color or neutral
+  const team = trailGlowColor
+    ? { fill: withAlpha(trailGlowColor, 0.2), stroke: trailGlowColor, glow: trailGlowColor }
+    : color;
   const label = clan?.tag || 'Solo';
   const insets = useSafeAreaInsets();
   const { height: winHeight } = useWindowDimensions();
@@ -370,6 +401,11 @@ export default function ResultScreen({ navigation, route }) {
     const point = seq.projection?.claimPoint;
     return point ? { x: point.x - 30, y: point.y - 84, width: 60, height: 84 } : null;
   }, [seq.projection?.claimPoint?.x, seq.projection?.claimPoint?.y]);
+  const captureDefenderPoint = useMemo(() => {
+    const point = seq.projection?.claimPoint;
+    if (!point) return null;
+    return { x: point.x + 92, y: point.y + 8 };
+  }, [seq.projection?.claimPoint?.x, seq.projection?.claimPoint?.y]);
   const captureSafeInsets = useMemo(() => ({
     top: insets.top + 116,
     right: 20,
@@ -384,6 +420,7 @@ export default function ResultScreen({ navigation, route }) {
   // a parse error, so the camera's stage carries the longer name.
   const captureStage = useCaptureStage(reducedMotion);
   const actorRef = useRef(null);
+  const defenderRef = useRef(null);
   // The encounter and victory beats are laid out in the map's own pixel space,
   // so they need its box to keep characters inside the card.
   const [mapBox, setMapBox] = useState(null);
@@ -692,6 +729,7 @@ export default function ResultScreen({ navigation, route }) {
   // from this object.
   const shareRun = useMemo(
     () => ({
+      runId: result.run_id,
       distanceM: result.distance_m,
       durationS: result.duration_s,
       areaM2: heroAreaM2,
@@ -701,6 +739,7 @@ export default function ResultScreen({ navigation, route }) {
       claimed: captured,
     }),
     [
+      result.run_id,
       result.distance_m,
       result.duration_s,
       heroAreaM2,
@@ -793,7 +832,7 @@ export default function ResultScreen({ navigation, route }) {
       // camera flight, capture encounter, radial reveal, victory beat. `path`
       // is what the flyover follows — without it the replay is skipped and the
       // sequence opens on the focus flight as it used to.
-      await seq.start(out, center, { variant: 'grin-knock', path });
+      await seq.start(out, center, { path });
     } catch (e) {
       if (e.status === 402) {
         // Out of energy — send them straight to the refill shop.
@@ -894,6 +933,21 @@ export default function ResultScreen({ navigation, route }) {
   const goToShare = () => {
     haptic.light();
     setStage(STAGE.SHARE);
+  };
+
+  // Result lives inside the full-screen Record modal. Navigating to `Tabs`
+  // from the child stack can leave that modal (and its navigator) mounted over
+  // the map, which is the duplicate-navigation sheet seen after "See the map".
+  // Reset the ROOT stack to one Tabs route instead: Record is gone before Map
+  // mounts, so there is exactly one tab bar and one Map stack.
+  const viewClaimOnMap = () => {
+    // Prefer the server's final territory, since a defended slice can change
+    // the held shape after the placement centre was chosen.
+    const c = payoffMapCenter(payoff);
+    seq.complete();
+    setCrossedOpen(false);
+    setStage(STAGE.SUMMARY);
+    navigation.getParent()?.reset(mapRootResetState(c));
   };
 
   // ---------------------------------------------------------------------
@@ -1055,7 +1109,7 @@ export default function ResultScreen({ navigation, route }) {
                 rather than inside the player so it can sit between the reveal
                 and the foreground art: the effect a character causes should
                 read as being in front of them, and the ground under both. */}
-            {seq.showCaptureStyle && seq.projection?.claimPoint && (
+            {seq.showCaptureStyle && seq.captureStyleMeta?.showAttacker && seq.projection?.claimPoint && (
               <ClaimActor
                 ref={actorRef}
                 equipped={equipped}
@@ -1067,6 +1121,25 @@ export default function ResultScreen({ navigation, route }) {
                 // visible.
                 fadeIn={reducedMotion ? 0 : 140}
               />
+            )}
+
+            {/* A style may keep a defender on screen as a witness without
+                turning the scene into a collision. Ghost Theft, UFO Abduction
+                and Disco do this. It is a stationary character layer, never
+                CaptureEncounter's left-bumps-right choreography. */}
+            {seq.showCaptureStyle
+              && seq.captureStyleMeta?.showDefender
+              && seq.captureStyleMeta?.encounterMode !== ENCOUNTER_MODE.DUEL
+              && seq.defenders?.length > 0
+              && captureDefenderPoint && (
+                <ClaimActor
+                  ref={defenderRef}
+                  equipped={seq.defenders[0]?.avatar || {}}
+                  anchor={captureDefenderPoint}
+                  bounds={mapBox}
+                  reducedMotion={reducedMotion}
+                  fadeIn={reducedMotion ? 0 : 140}
+                />
             )}
 
             {/* Optional visual building blocks. Capture success and the SVG
@@ -1085,6 +1158,7 @@ export default function ResultScreen({ navigation, route }) {
                 onTerritoryReveal={seq.onCaptureRevealCue}
                 stage={captureStage}
                 actor={actorRef}
+                defender={defenderRef}
               />
             )}
           </Animated.View>
@@ -1117,12 +1191,21 @@ export default function ResultScreen({ navigation, route }) {
             />
             <View style={styles.claimHeadRow} pointerEvents="box-none">
               <View pointerEvents="none" style={{ flex: 1 }}>
-                <View style={[styles.stepChip, { borderColor: team.stroke }]}>
+                <Framed
+                  frame={frameVariant('heading', 'place-your-territory')}
+                  tint={team.stroke}
+                  fill={withAlpha(colors.card, 0.96)}
+                  weight={INK.thin}
+                  pose={framePose('place-your-territory')}
+                  inset={false}
+                  style={styles.stepFrame}
+                  contentStyle={styles.stepChip}
+                >
                   <View style={[styles.stepDot, { backgroundColor: team.stroke }]} />
                   <Text style={[styles.stepChipText, { color: team.stroke }]}>
-                    {!canPlace ? 'GROUND TAKEN' : 'PLACE YOUR TERRITORY'}
+                    {!canPlace ? 'GROUND TAKEN' : '1 · PICK A SPOT'}
                   </Text>
-                </View>
+                </Framed>
                 <OutlinedText
                   style={[toonType.headline, styles.placeTitle]}
                   outline={toon.ink}
@@ -1130,7 +1213,7 @@ export default function ResultScreen({ navigation, route }) {
                   align="left"
                   containerStyle={{ alignSelf: 'flex-start' }}
                 >
-                  {!canPlace ? 'Territory claimed' : 'Where does it land?'}
+                  {!canPlace ? 'Territory claimed' : 'Drop your land!'}
                 </OutlinedText>
               </View>
               {canPlace && !seq.isRunning && (
@@ -1152,8 +1235,8 @@ export default function ResultScreen({ navigation, route }) {
                 {'  →  '}
                 <Text style={[type.bodySmBold, { color: team.glow }]}>{formatArea(claimArea)}</Text>
                 {canChoose
-                  ? ', in the shape of your run. Drag it along the route and turn it.'
-                  : ', grown around the route you ran.'}
+                  ? ' of land. Pick a shortcut or place it along your route.'
+                  : ' of land, shaped by the route you ran.'}
               </Text>
             )}
           </View>
@@ -1228,22 +1311,27 @@ export default function ResultScreen({ navigation, route }) {
                     button as well, which made every decision on this screen
                     read as a purchase; the decision is about ground, and what
                     it costs is a fact about the account, not about the move. */}
-                {energyStatus && (
-                  <View style={{ marginBottom: space.md }}>
-                      <EnergyMeter
-                        status={energyStatus}
-                        onPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
-                      />
-                  </View>
-                )}
+                <View style={styles.claimFooter}>
+                  {energyStatus && (
+                    <EnergyMeter
+                      compact
+                      style={styles.claimEnergy}
+                      status={energyStatus}
+                      onPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
+                    />
+                  )}
 
                 <ToonButton
                   title={claiming ? 'Claiming…' : 'CLAIM HERE'}
                   onPress={placeClaim}
                   loading={claiming}
                   disabled={claiming || seq.isRunning || moveBlocked}
-                  fill={{ colors: [team.glow, team.stroke, team.stroke], border: toon.ink }}
+                  size="sm"
+                  containerStyle={styles.claimButtonWrap}
+                  style={styles.claimButton}
+                  fill={{ color: team.glow, colors: [team.glow, team.glow, team.glow], border: toon.ink }}
                 />
+                </View>
               </>
             )}
           </ScrollView>
@@ -1261,14 +1349,7 @@ export default function ResultScreen({ navigation, route }) {
           claim={payoff}
           myAvatar={equipped}
           onClose={seq.continueToLeaderboard}
-          onViewMap={() => {
-            const c = payoff?.center;
-            endCelebration();
-            navigation.navigate('Tabs', {
-              screen: 'Map',
-              params: c ? { screen: 'MapMain', params: { focus: { lat: c.latitude, lon: c.longitude } } } : undefined,
-            });
-          }}
+          onViewMap={viewClaimOnMap}
         />
 
         {/* the standings, arriving behind a character-led wipe */}
@@ -1577,7 +1658,11 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderTopWidth: 2.5,
     borderTopColor: toon.ink,
   },
-  claimSheetInner: { padding: space.lg },
+  claimSheetInner: { paddingHorizontal: space.lg, paddingTop: space.sm },
+  claimFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 },
+  claimEnergy: { flex: 1, minWidth: 0 },
+  claimButtonWrap: { width: 132, flexShrink: 0 },
+  claimButton: { width: '100%' },
   mapMissing: {
     flex: 1,
     alignItems: 'center',
@@ -1586,17 +1671,13 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     backgroundColor: colors.cardAlt,
   },
   mapMissingText: { ...type.bodySm, color: colors.textMuted, textAlign: 'center' },
+  stepFrame: { alignSelf: 'flex-start', marginBottom: space.sm },
   stepChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    alignSelf: 'flex-start',
-    borderWidth: 1.5,
-    borderRadius: radius.pill,
     paddingHorizontal: space.md,
     paddingVertical: 4,
-    marginBottom: space.sm,
-    backgroundColor: withAlpha(colors.card, 0.92),
   },
   stepDot: { width: 7, height: 7, borderRadius: 4 },
   stepChipText: { ...type.captionMedium, letterSpacing: 0.8 },

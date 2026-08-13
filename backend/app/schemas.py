@@ -545,6 +545,8 @@ class FeedItem(BaseModel):
     # run nobody has reacted to, which is the common case and costs nothing.
     reactions: List["RunReaction"] = []
     my_reaction: Optional[str] = None
+    caption: Optional[str] = None
+    media: List[str] = []
 
 
 class FeedOut(BaseModel):
@@ -607,6 +609,8 @@ class RunSummary(BaseModel):
     area_m2: float
     closed_loop: bool
     created_at: datetime
+    caption: Optional[str] = None
+    media: List[str] = []
 
 
 class RunSplit(BaseModel):
@@ -634,6 +638,41 @@ class RunDetail(BaseModel):
     comment_count: int = 0
     reactions: List[RunReaction] = []
     my_reaction: Optional[str] = None
+    caption: Optional[str] = None
+    media: List[str] = []
+
+
+class RunPostIn(BaseModel):
+    caption: Optional[str] = Field(None, max_length=280)
+    media: List[str] = Field(default_factory=list, max_length=4)
+
+    @field_validator("caption")
+    @classmethod
+    def _clean_caption(cls, value):
+        cleaned = (value or "").strip()
+        return cleaned or None
+
+    @field_validator("media")
+    @classmethod
+    def _validate_media(cls, values):
+        out = []
+        for value in values:
+            if not isinstance(value, str) or not value.startswith(
+                ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
+            ):
+                raise ValueError("post photos must be JPEG, PNG, or WebP images")
+            # About 2.25 MB decoded. Four compressed phone images stay useful
+            # in the feed without allowing an unbounded JSON request/database row.
+            if len(value) > 3_000_000:
+                raise ValueError("each post photo must be smaller than 2.25 MB")
+            out.append(value)
+        return out
+
+
+class RunPostOut(BaseModel):
+    run_id: str
+    caption: Optional[str] = None
+    media: List[str] = []
 
 
 # ---- run comments + club chat ---------------------------------------------

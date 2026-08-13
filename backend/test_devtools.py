@@ -12,11 +12,15 @@ Pure functions and no database — run it directly:
 """
 
 import sys
+from datetime import datetime
 from types import SimpleNamespace
 
-from app import devtools
+from app import devtools, energy
 from app.config import settings
+from app.progression import energy_max
 from app.routes.auth import _user_dict
+from app.routes.runs import _claim_energy_cost
+from app import economy
 
 FAILURES = []
 PASSES = []
@@ -40,6 +44,29 @@ MALLORY = SimpleNamespace(
     email=None,
     email_verified_at=None,
 )
+JON = SimpleNamespace(
+    id="6f1c2f9a-0000-4000-8000-000000000078",
+    username="jonfong78",
+    email=None,
+    email_verified_at=None,
+)
+
+
+class _EnergyResult:
+    def __init__(self, row):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class _EnergyDb:
+    """The one SELECT energy.status_for_user needs for this pure gate test."""
+    def __init__(self, value=7, xp=0):
+        self.row = (value, datetime.utcnow(), xp)
+
+    def execute(self, statement, params=None):
+        return _EnergyResult(self.row)
 
 
 def with_allowlist(raw, fn):
@@ -54,12 +81,14 @@ def with_allowlist(raw, fn):
 def main():
     print("dev harness allowlist")
 
-    # The shipped default. Everything else is a deployment choosing otherwise.
+    # The pinned owner account works even if a deploy forgot the environment
+    # entry. Everyone else remains dark by default.
     with_allowlist(
         "",
         lambda: (
-            check("empty allowlist grants nobody", not devtools.is_dev_account(ALICE)),
+            check("empty configured list grants no ordinary account", not devtools.is_dev_account(ALICE)),
             check("...not even by id", not devtools.is_dev_account(MALLORY)),
+            check("jonfong78 is always a dev account", devtools.is_dev_account(JON)),
         ),
     )
 
@@ -108,6 +137,42 @@ def main():
     check(
         "/me reports dev_tools true once named",
         with_allowlist("alice", lambda: _user_dict(ALICE)["dev_tools"]) is True,
+    )
+
+    dev_energy = with_allowlist(
+        "", lambda: energy.status_for_user(_EnergyDb(value=7), JON)
+    )
+    check(
+        "dev energy is projected at the full level cap",
+        dev_energy["energy"] == dev_energy["energy_max"] == energy_max(0),
+        dev_energy,
+    )
+    check("dev claims advertise zero energy cost", dev_energy["claim_cost"] == 0, dev_energy)
+    check(
+        "every dev claim action is priced at zero",
+        with_allowlist(
+            "",
+            lambda: all(
+                _claim_energy_cost(JON, action, first) == 0
+                for action in (
+                    economy.ACTION_EMPTY,
+                    economy.ACTION_REINFORCE,
+                    economy.ACTION_ATTACK,
+                    economy.ACTION_FORTIFIED,
+                )
+                for first in (False, True)
+            ),
+        ),
+    )
+
+    ordinary_energy = with_allowlist(
+        "mallory", lambda: energy.status_for_user(_EnergyDb(value=7), ALICE)
+    )
+    check(
+        "ordinary accounts keep their real balance and cost",
+        ordinary_energy["energy"] == 7
+        and ordinary_energy["claim_cost"] == settings.energy_cost_claim,
+        ordinary_energy,
     )
 
     print(f"\n{len(PASSES)} passed, {len(FAILURES)} failed")

@@ -15,6 +15,7 @@ import renderer, { act } from 'react-test-renderer';
 
 import RunShareSheet from '../src/components/share/RunShareSheet';
 import RunShareCard, { availableStats } from '../src/components/share/RunShareCard';
+import LogoRunner from '../src/components/character/LogoRunner';
 
 // `act` so effects run: the sheet asks whether Instagram is installed on the
 // first frame it is visible, and a throw in there is as fatal as one in render.
@@ -73,6 +74,25 @@ describe('the run share card', () => {
     ).not.toThrow();
   });
 
+  test('puts the runner avatar on the end of the route', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <RunShareCard
+          format="story"
+          width={300}
+          team={TEAM}
+          run={RUN}
+          path={PATH}
+          rings={RINGS}
+          equipped={EQUIPPED}
+        />
+      );
+    });
+    expect(tree.root.findByType(LogoRunner).props.equipped).toBe(EQUIPPED);
+    act(() => tree.unmount());
+  });
+
   test('mounts with no route, no rings and no avatar', () => {
     // The claim can be declined, and a run can end with nothing to draw. The
     // card still has numbers to show, so it still has to come up.
@@ -94,6 +114,20 @@ describe('the run share card', () => {
           path={[PATH[0]]}
           rings={[[PATH[0]].map((p) => [p.longitude, p.latitude])]}
           equipped={EQUIPPED}
+        />
+      )
+    ).not.toThrow();
+  });
+
+  test('filters malformed persisted route points and numeric strings', () => {
+    expect(() =>
+      mount(
+        <RunShareCard
+          format="story"
+          width={300}
+          run={{ distanceM: '10310', durationS: '3550', avgSpeedKmh: '10.5' }}
+          path={[PATH[0], null, { latitude: undefined, longitude: 103 }, PATH[1]]}
+          rings={[[RINGS[0][0], null, RINGS[0][1], RINGS[0][2]]]}
         />
       )
     ).not.toThrow();

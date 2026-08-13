@@ -6,7 +6,7 @@
 // fifteen times over and shows up as a celebration that silently skips a beat.
 
 import {
-  ARCHETYPE_IDS,
+  ENCOUNTER_MODE,
   choreographyProfile,
   choreographySignature,
   validateChoreography,
@@ -30,17 +30,17 @@ describe('every capture style is its own animation', () => {
     }
   });
 
-  test('each archetype is used exactly once', () => {
+  test('each style has a distinct scene skeleton', () => {
     const used = CAPTURE_STYLES.map((s) => s.archetype);
     expect(new Set(used).size).toBe(used.length);
-    for (const archetype of used) expect(ARCHETYPE_IDS).toContain(archetype);
   });
 
-  test('the runner actually does something in most of them', () => {
-    // The point of the rework: the claim is something the runner DOES, not a
-    // sprite that happens near them.
-    const acting = CAPTURE_STYLES.filter((s) => choreographyProfile(s).actors.length > 0);
-    expect(acting.length).toBeGreaterThanOrEqual(CAPTURE_STYLES.length - 2);
+  test('only explicit duels opt into collision choreography', () => {
+    const duels = CAPTURE_STYLES.filter((s) => s.encounterMode === ENCOUNTER_MODE.DUEL);
+    expect(duels.map((s) => s.id).sort()).toEqual(['angel_vs_demon', 'sword_slash']);
+    expect(duels.every((s) => s.showAttacker && s.showDefender)).toBe(true);
+    expect(CAPTURE_STYLES.some((s) => !s.showAttacker)).toBe(true);
+    expect(CAPTURE_STYLES.some((s) => s.showDefender && s.encounterMode !== ENCOUNTER_MODE.DUEL)).toBe(true);
   });
 
   test('some styles hand the ground over before the impact and some after', () => {
