@@ -14,7 +14,6 @@ import Animated, {
 
 import { brand, darkColors, radius, shadow, space, toon, type } from '../../theme';
 import { useReduceMotion } from '../../ui/motion';
-import EffectPlayer from '../../effects/EffectPlayer';
 import GameLottie from '../GameLottie';
 import OutlinedText from '../ui/OutlinedText';
 
@@ -24,42 +23,27 @@ const EVENT_COPY = {
   rivalEntry: () => ({ title: 'RIVAL TURF', body: 'You crossed into contested ground', lottie: 'rivalEntry' }),
 };
 
-// The three ticks and the GO, each with its own sheet out of the curated FX
-// library. Deliberately DIFFERENT art per beat rather than one effect played
-// four times: a countdown that repeats itself has no build in it, and the whole
-// job of a countdown is to build.
-//
-// Nothing here is a new asset. These four are already in the bundle for the
-// claim celebrations, which matters — the project is over the OTA asset cap
-// (docs: eas update fails at 1000 referenced assets) and a countdown is not
-// worth another native build on its own.
-const COUNT_FX = {
-  3: { id: 'sunburn_ring_01', size: 300 },
-  2: { id: 'electric_burst_01', size: 300 },
-  1: { id: 'solar_shrapnel_01', size: 320 },
-  GO: { id: 'warm_explosion_01', size: 380 },
-};
-
 // One clock per beat, 0 → 1 over the beat's own length. Every transform below
 // reads it, so the ring, the digit and the shake can never drift apart the way
-// four independently-timed animations do.
+// independently-timed animations do.
 const TICK_MS = 520;
 
 /**
  * The start countdown: three · two · one · GO.
  *
- * It used to be a number in a circle with a ZoomIn on it, which is the same
- * gesture at the same size four times over. Now the digit is THROWN at you —
- * over-scaled and blurred past its resting size, snapped back with a bounce,
- * held, then punched out towards the viewer as the next one arrives — over a
- * different burst each time, with the ring behind it sweeping closed as the
- * beat runs out. GO is the only one that leaves rather than shrinks.
+ * RETUNED 2026-08-14: this used to lay a different sprite-sheet explosion
+ * behind each beat (a ring burst, an electric burst, a shrapnel burst, and a
+ * full detonation Lottie on GO) — one big effect stacked on top of another,
+ * four times a run. Simplified down to what actually reads a countdown: the
+ * digit itself thrown at you (over-scaled and blurred past its resting size,
+ * snapped back with a bounce, held, then punched out as the next one
+ * arrives) with a ring behind it sweeping closed as the beat runs out. GO is
+ * the only one that leaves rather than shrinks.
  */
 export function RunStartOverlay({ value, trigger }) {
   const reduced = useReduceMotion();
   const clock = useSharedValue(0);
   const go = value === 'GO';
-  const fx = value == null ? null : COUNT_FX[value];
 
   useEffect(() => {
     cancelAnimation(clock);
@@ -125,21 +109,6 @@ export function RunStartOverlay({ value, trigger }) {
 
   return (
     <Animated.View pointerEvents="none" style={[styles.fullOverlay, scrimStyle]}>
-      {/* The burst for this beat. Keyed on the value so each tick mounts its
-          own player and starts from frame zero — one player fed a changing id
-          would carry the previous sheet's playhead into the next beat. */}
-      {fx ? (
-        <View style={styles.startLottie}>
-          <EffectPlayer
-            key={`${value}:${trigger}`}
-            effect={fx.id}
-            size={fx.size}
-            playToken={`${value}:${trigger}`}
-          />
-        </View>
-      ) : null}
-      {go ? <GameLottie name="runStart" size={260} trigger={trigger} style={styles.startLottie} /> : null}
-
       <Animated.View style={[styles.countRing, go && styles.goRing, ringStyle]} />
 
       <Animated.View
@@ -195,10 +164,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  startLottie: { position: 'absolute' },
-  // A ring rather than a filled disc: the burst plays BEHIND the number, and a
-  // solid plate in the middle of the screen would hide the thing it is meant to
-  // be announcing.
+  // A ring rather than a filled disc, so it never competes with the number
+  // it sits behind.
   countRing: {
     position: 'absolute',
     width: 168,

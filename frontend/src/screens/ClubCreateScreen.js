@@ -1,16 +1,18 @@
-// Create-club flow: name, tag, color (12), badge (16), privacy.
+// Create-club flow: name, tag, color (12), photo, privacy.
 
 import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { ChevronLeft } from 'lucide-react-native';
+import { Camera, ChevronLeft, Images, Trash2 } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useClan } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Button, Framed, Segmented } from '../components/ui';
-import ClanBadge, { BADGE_KEYS } from '../components/ClanBadge';
+import ClanBadge from '../components/ClanBadge';
+import { Image } from '../ui/image';
+import { pickPhoto } from '../ui/photoPicker';
 import { toast } from '../ui/toast';
-import { PressableScale, Reveal, staggerDelay } from '../ui/motion';
+import { PressableScale, Reveal, haptic, staggerDelay } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 
 // Must match the server palette keys (clans_meta.py).
@@ -29,11 +31,34 @@ export default function ClubCreateScreen({ navigation }) {
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
   const [colorKey, setColorKey] = useState('azure');
-  const [badge, setBadge] = useState('shield');
+  const [photo, setPhoto] = useState(null);
+  // Counts photo changes so the crest can re-enter on each one. The image
+  // itself is a megabyte of base64 and makes a poor React key.
+  const [photoTake, setPhotoTake] = useState(0);
+  const [picking, setPicking] = useState(null);
   const [privacy, setPrivacy] = useState('open');
   const [busy, setBusy] = useState(false);
 
   const accent = STROKE[colorKey];
+
+  // The crop is square because the crest is drawn square everywhere, and the
+  // server re-crops anyway; doing it here is what lets you see the framing you
+  // are going to get.
+  const choosePhoto = async (source) => {
+    setPicking(source);
+    try {
+      const picked = await pickPhoto(source, { square: true });
+      if (picked) {
+        haptic.light();
+        setPhoto(picked);
+        setPhotoTake((n) => n + 1);
+      }
+    } catch (e) {
+      toast.error(e.message || 'Could not add that photo');
+    } finally {
+      setPicking(null);
+    }
+  };
 
   const create = async () => {
     setBusy(true);
@@ -42,7 +67,7 @@ export default function ClubCreateScreen({ navigation }) {
         name: name.trim(),
         tag: tag.trim().toUpperCase(),
         color_key: colorKey,
-        badge_icon: badge,
+        photo,
         privacy,
       });
       await refresh();
@@ -83,12 +108,24 @@ export default function ClubCreateScreen({ navigation }) {
           style={styles.preview}
           contentStyle={styles.previewInner}
         >
-          {/* Keyed on the badge so picking a new one re-enters the mark rather
-              than swapping it in place. */}
-          <Reveal key={badge} from="none" duration={220}>
-            <View style={[styles.previewBadge, { backgroundColor: accent }]}>
-              <ClanBadge icon={badge} size={42} color="#FFFFFF" />
-            </View>
+          {/* Keyed on the photo so picking a new one re-enters the crest
+              rather than swapping it in place. Tapping the crest is the
+              shortest path to the picker; the buttons below spell it out. */}
+          <Reveal key={photoTake} from="none" duration={220}>
+            <PressableScale
+              onPress={() => choosePhoto('library')}
+              scaleTo={0.94}
+              accessibilityRole="button"
+              accessibilityLabel="Choose a club photo"
+            >
+              <View style={[styles.previewBadge, { backgroundColor: accent }]}>
+                {photo ? (
+                  <Image source={{ uri: photo }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                ) : (
+                  <ClanBadge icon="shield" size={42} color="#FFFFFF" />
+                )}
+              </View>
+            </PressableScale>
           </Reveal>
           <Text style={[type.title, { marginTop: space.sm }]}>[{tag.toUpperCase() || 'TAG'}] {name || 'Club name'}</Text>
         </Framed>
@@ -115,32 +152,40 @@ export default function ClubCreateScreen({ navigation }) {
         ))}
       </View>
 
-      <Text style={styles.label}>Badge</Text>
-      <View style={styles.badgeRow}>
-        {BADGE_KEYS.map((k, i) => (
-          <Reveal key={k} delay={staggerDelay(i)} duration={240}>
-            <PressableScale
-              onPress={() => setBadge(k)}
-              scaleTo={0.9}
-              style={styles.badgePress}
-              accessibilityRole="button"
-              accessibilityLabel={`Badge ${k}`}
-            >
-              <Framed
-                frame={frameVariant('badge', `club-badge:${k}`)}
-                tint={badge === k ? colors.text : colors.border}
-                fill={badge === k ? accent : colors.card}
-                weight={badge === k ? INK.medium : INK.thin}
-                pose={framePose(`club-badge:${k}`)}
-                inset={false}
-                style={styles.badgeCell}
-                contentStyle={styles.badgeInner}
-              >
-                <ClanBadge icon={k} size={24} color={badge === k ? '#FFFFFF' : colors.textMuted} />
-              </Framed>
-            </PressableScale>
-          </Reveal>
-        ))}
+      <Text style={styles.label}>Club photo</Text>
+      <Text style={[type.caption, { marginBottom: space.sm }]}>
+        Give your crew a face. You can change it later.
+      </Text>
+      {/* three compact actions wrap rather than squeeze on a narrow phone */}
+      <View style={styles.photoActions}>
+        <Button
+          title={picking === 'library' ? 'Opening…' : photo ? 'Change photo' : 'Choose photo'}
+          variant="secondary"
+          size="sm"
+          full={false}
+          disabled={picking != null}
+          icon={<Images size={16} color={colors.text} />}
+          onPress={() => choosePhoto('library')}
+        />
+        <Button
+          title={picking === 'camera' ? 'Opening…' : 'Take photo'}
+          variant="secondary"
+          size="sm"
+          full={false}
+          disabled={picking != null}
+          icon={<Camera size={16} color={colors.text} />}
+          onPress={() => choosePhoto('camera')}
+        />
+        {photo ? (
+          <Button
+            title="Remove"
+            variant="secondary"
+            size="sm"
+            full={false}
+            icon={<Trash2 size={16} color={colors.text} />}
+            onPress={() => { setPhoto(null); setPhotoTake((n) => n + 1); }}
+          />
+        ) : null}
       </View>
 
       <Text style={styles.label}>Privacy</Text>
@@ -161,7 +206,10 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   preview: { minHeight: 170, marginBottom: space.lg },
   previewInner: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
-  previewBadge: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center' },
+  previewBadge: {
+    width: 78, height: 78, borderRadius: 39, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+  },
   label: { ...type.labelSm, marginTop: space.md, marginBottom: 6 },
   input: {
     ...type.body, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1,
@@ -170,8 +218,5 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   swatch: { width: 40, height: 40, borderRadius: 20, borderWidth: 3, borderColor: 'transparent' },
   swatchOn: { borderColor: colors.text },
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  badgePress: { width: 52, height: 52 },
-  badgeCell: { width: 52, height: 52 },
-  badgeInner: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  photoActions: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

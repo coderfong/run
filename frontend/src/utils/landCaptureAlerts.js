@@ -47,6 +47,10 @@ export function normaliseLandCaptureAlert(raw) {
     takenM2,
     lat: finiteNumber(raw.lat) ?? finiteNumber(data.lat),
     lon: finiteNumber(raw.lon) ?? finiteNumber(data.lon),
+    // The territory that was taken. pickCaptureStyle/pickCaptureVariant hash
+    // this to the exact style the attacker's own screen played, so the alert
+    // can replay the real thing instead of a generic stand-in.
+    territoryId: raw.territory_id || data.territory_id || null,
     createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
     attacker: {
       id: attackerId,

@@ -102,7 +102,7 @@ provider. Migration `0028` ships with it and is additive.
 | Production API base | `eas.json` production profile sets `EXPO_PUBLIC_API_BASE` to Render; the stale Cloudflare tunnel in `app.json` `extra` was replaced so it can't be picked up by a stray build |
 | Guideline 5.1.1(iv) | `LocationPermissionScreen` complies: neutral "Continue", no escape before the OS prompt; the "Explore" escape exists only in the already-denied state. Reasons documented in the file header |
 | Account deletion | Implemented client (`ProfileScreen` → type-to-confirm) and server (`DELETE /me`) — Apple requires this |
-| Privacy policy | Live at `https://www.bido.live/privacy` (the old `territoryrun.app` placeholder is gone) |
+| Privacy policy | Live at `https://www.gameablestudios.com/privacy` (migrated off `bido.live` and the old `territoryrun.app` placeholder) |
 | Sign in with Apple | Enabled, required because Google sign-in is offered |
 | Permission strings | All five `NS*UsageDescription` keys present and specific |
 | `__DEV__` unlock-all | In `cosmetics.js` `isUnlocked` — `__DEV__` is false in release builds, so store users still earn unlocks |

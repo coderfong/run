@@ -4,14 +4,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Polygon, Polyline } from 'react-native-svg';
 import { Pencil } from 'lucide-react-native';
 import AppIcon from './AppIcon';
+import RouteThumb, { hasRouteData } from './RouteThumb';
 import TerritoryStealBanner, { STEAL_HEADROOM } from './TerritoryStealBanner';
-import EmoteIcon from '../effects/EmoteIcon';
-import ReactionEffect from '../effects/ReactionEffect';
 
-import { api } from '../api/client';
+import { api, apiPhotoSource } from '../api/client';
 import { updateCached } from '../api/cache';
 import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { NEUTRAL } from '../state/clan';
@@ -26,17 +24,7 @@ import { fmtArea } from './RivalCard';
 import GameLottie from './GameLottie';
 import ReactionBar, { ReactionTrigger } from './ReactionBar';
 import { useRunReactions } from '../hooks/useRunReactions';
-import {
-  expandReactionStickers,
-  scatterReactionStickers,
-} from './feedReactionStickers';
 import { RunPostEditorModal } from './RunPostEditor';
-
-// Virtual drawing box; the <Svg> scales it to the card width, aspect preserved.
-// Taller than it was: a claim is now the shape of the RUN rather than a disc,
-// and an L or a lap needs vertical room to read as one.
-const THUMB_W = 300;
-const THUMB_H = 110;
 
 // The runner's portrait on a feed row. At 34 the bust inside the frame was a
 // thumbnail of a thumbnail — the whole point of the character is that you can
@@ -51,149 +39,50 @@ const POST_PHOTO_W = 272;
 // its separator.
 const NO_VALUE = '·';
 
-// One shared projection for every layer on the thumbnail. The territory and
-// the route have to be normalised TOGETHER — fitted separately, a run would
-// float somewhere over a claim it is supposed to sit inside.
-function makeProjection(layers, pad = 10) {
-  const all = layers.flat();
-  const xs = all.map((p) => p[0]);
-  const ys = all.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const spanX = maxX - minX || 1e-6;
-  const spanY = maxY - minY || 1e-6;
-  const scale = Math.min((THUMB_W - pad * 2) / spanX, (THUMB_H - pad * 2) / spanY);
-  const offX = (THUMB_W - spanX * scale) / 2;
-  const offY = (THUMB_H - spanY * scale) / 2;
-  return (points) => points.map(([lon, lat]) => [
-    offX + (lon - minX) * scale,
-    THUMB_H - (offY + (lat - minY) * scale),
-  ]);
-}
-
-// Sticker coordinates are chosen from the projected route itself in
-// feedReactionStickers, then converted back to percentages here so they remain
-// registered with the SVG when a card is wider than its 300-unit viewBox.
-const STICKER = 28;
-
-const svgPoints = (points) => points
-  .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
-  .join(' ');
-
-// Deterministic, so a card does not reshuffle its stickers as the feed
-// re-renders or scrolls — the same rule the frame variants follow.
-// The claim, as the card sees it: the territory the run grew, with the route
-// drawn INSIDE it. That pairing is the whole point of the new claim model —
-// the land is the shape of the run, and the card is where you can tell.
-//
-// The reactions live in here too, as STICKERS round the edge of the drawing.
-// They used to be a row of bordered chips between the header and the map, which
-// bought a whole line of card for a thing that is a decoration on the run — and
-// on a card with two reactions on it, that line was mostly empty. A sticker
-// costs no layout at all.
-function RouteThumb({ item, color, reactions = [], mine, burst = 0, onReact }) {
-  const { colors } = useTheme();
+// The photo half of the paired map+photo row. Sized by measuring itself
+// rather than a fixed pixel width, because it shares the row with the route
+// map at whatever width that leaves it — there is no width to hand a
+// snapToInterval ScrollView up front the way the full-width photo strip can.
+function PairedPhotoCard({ media, photoPage, onPage }) {
+  const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
-  const rings = (item.rings || []).filter((r) => r?.length >= 3);
-  const line = item.path?.length >= 2 ? item.path : null;
-  if (!rings.length && !line) return null;
-  const project = makeProjection([...rings, ...(line ? [line] : [])]);
-  const projectedRings = rings.map(project);
-  const projectedLine = line ? project(line) : null;
-  // A count is people, not a number stamped on one icon. Expand it into
-  // individual emoji, then place them furthest from the projected route.
-  const stickers = scatterReactionStickers(
-    expandReactionStickers(reactions),
-    projectedLine ? [projectedLine] : projectedRings,
-    item.id,
-    { width: THUMB_W, height: THUMB_H, size: STICKER }
-  );
-  const activeSticker = [...stickers].reverse().find((row) => row.emote === mine);
-  return (
-    // A DRAWN BOX, not a grey plate. The plate was `colors.bg` (#f7f8fa) inside
-    // a `colors.card` (#ffffff) card, with the steal bar's `colors.cardAlt`
-    // (#eef0f4) under it — three off-whites within four points of each other,
-    // stacked. That is not depth, it is a card that looks like it is made of
-    // two different whites, and it is what "two different colours inside the
-    // cards" is pointing at. The frame gives the route an edge without needing
-    // a second surface colour to do it.
-    <Framed
-      frame={frameVariant('box', `route:${item.id}`)}
-      // Drawn straight onto the card, with no paper of its own, so the card's
-      // surface is what the line has to read against — a pale clan colour on a
-      // white card is a box you cannot see.
-      on={colors.card}
-      tint={withAlpha(color, 0.55)}
-      weight={INK.thin}
-      pose={framePose(`route:${item.id}`)}
-      inset={false}
-      style={styles.thumb}
-    >
-      <Svg width="100%" height={THUMB_H} viewBox={`0 0 ${THUMB_W} ${THUMB_H}`}>
-        {projectedRings.map((ring, i) => (
-          <Polygon
-            key={i}
-            points={svgPoints(ring)}
-            fill={withAlpha(color, 0.22)}
-            stroke={color}
-            strokeWidth={2.5}
-            strokeLinejoin="round"
-          />
-        ))}
-        {line && (
-          <Polyline
-            points={svgPoints(projectedLine)}
-            fill="none"
-            // Lighter than the territory outline so the route reads as the
-            // thing inside the land, not as a second border around it.
-            stroke={rings.length ? withAlpha(color, 0.75) : color}
-            strokeWidth={rings.length ? 2 : 2.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        )}
-      </Svg>
+  const [width, setWidth] = useState(0);
 
-      {stickers.map((row) => {
-        const active = burst > 0 && row.key === activeSticker?.key;
-        return (
-          <PressableScale
-            key={row.key}
-            onPress={() => { haptic.light(); onReact?.(row.emote); }}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityState={{ selected: row.emote === mine }}
-            accessibilityLabel={row.emote}
-            style={[
-              styles.sticker,
-              {
-                left: `${(row.x / THUMB_W) * 100}%`,
-                top: `${(row.y / THUMB_H) * 100}%`,
-                transform: [
-                  { translateX: -STICKER / 2 },
-                  { translateY: -STICKER / 2 },
-                  { rotate: `${row.tilt}deg` },
-                ],
-              },
-            ]}
-          >
-            {/* Three reactions are three scattered emoji, not one emoji with
-                a number attached to it. */}
-            <EmoteIcon reaction={row.emote} size={STICKER} />
-            {active ? (
-              <ReactionEffect
-                reaction={mine}
-                point={{ x: STICKER / 2, y: STICKER / 2 }}
-                centered
-                size={58}
-                playToken={burst}
-                style={styles.reactionFx}
-              />
-            ) : null}
-          </PressableScale>
-        );
-      })}
-    </Framed>
+  return (
+    <View
+      testID="paired-photo-card"
+      style={styles.pairedPhoto}
+      onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}
+    >
+      {width > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          pagingEnabled
+          onMomentumScrollEnd={(event) => {
+            const page = Math.round(event.nativeEvent.contentOffset.x / width);
+            onPage(Math.max(0, Math.min(media.length - 1, page)));
+          }}
+        >
+          {media.map((uri, index) => (
+            <Image
+              key={`${index}:${uri.length}`}
+              source={apiPhotoSource(uri)}
+              style={{ width, height: '100%' }}
+              resizeMode="cover"
+              accessibilityLabel={`Run post photo ${index + 1} of ${media.length}`}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+      {media.length > 1 ? (
+        <View style={styles.photoCount}>
+          <Text style={[type.captionMedium, { color: '#FFFFFF' }]}>
+            {photoPage + 1}/{media.length}
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -240,10 +129,15 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
     media: item.media || [],
   });
   const [photoPage, setPhotoPage] = useState(0);
+  const hasPhotos = post.media.length > 0;
+  const hasRoute = hasRouteData({ rings: item.rings, path: item.path });
   const victims = item.victims || [];
   // Seeded from the row the feed already handed us, so the chips are on the
   // card at first paint rather than a fetch later.
   const { reactions, mine, burst, react } = useRunReactions(item.id, item);
+  // Matches ReactionBar's own `compact` visibility rule — needed here too, so
+  // the steal banner below knows whether this row is actually taking a line.
+  const showsReactionsRow = reactions.length > 0 || pickerOpen;
 
   useEffect(() => {
     if (!screenFocused) setPickerOpen(false);
@@ -367,9 +261,16 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         </Row>
       </Row>
 
-      {post.caption ? <Text style={[type.body, styles.caption]}>{post.caption}</Text> : null}
-
-      {post.media.length > 0 ? (
+      {/* A photo sits BESIDE the map rather than stacked under it, so the two
+          read as one row about the run instead of two separate blocks.
+          Standalone, each keeps the fuller layout it already had — a photo
+          alone does not need to give up half its width to nothing. */}
+      {hasPhotos && hasRoute ? (
+        <View style={styles.pairedRow}>
+          <RouteThumb id={item.id} rings={item.rings} path={item.path} color={c.stroke} style={styles.thumbCompact} compact />
+          <PairedPhotoCard media={post.media} photoPage={photoPage} onPage={setPhotoPage} />
+        </View>
+      ) : hasPhotos ? (
         <View style={styles.postPhotoWrap}>
           <ScrollView
             horizontal
@@ -387,7 +288,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
             {post.media.map((uri, index) => (
               <Image
                 key={`${index}:${uri.length}`}
-                source={{ uri }}
+                source={apiPhotoSource(uri)}
                 style={styles.postPhoto}
                 resizeMode="cover"
                 accessibilityLabel={`Run post photo ${index + 1} of ${post.media.length}`}
@@ -402,17 +303,47 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
             </View>
           ) : null}
         </View>
+      ) : (
+        <RouteThumb id={item.id} rings={item.rings} path={item.path} color={c.stroke} style={styles.thumb} />
+      )}
+
+      {/* Caption sits directly under the map, above its reactions — read
+          order goes what happened → what they said about it → how people
+          reacted. Framed and labelled like the app's other "here's a moment"
+          boxes (see ClaimPayoff's people-you-took-land-from card) instead of
+          a stray line of small grey text. */}
+      {post.caption ? (
+        <Framed
+          frame={frameVariant('box', `caption:${item.id}`)}
+          tint={withAlpha(c.stroke, 0.55)}
+          fill={colors.card}
+          weight={INK.thin}
+          pose={framePose(`caption:${item.id}`)}
+          inset={false}
+          style={styles.captionFrame}
+          contentStyle={styles.captionInner}
+        >
+          <Text style={[type.labelSm, { color: c.stroke }]}>NOTE</Text>
+          <Text style={[type.bodyBold, styles.captionBody]}>{post.caption}</Text>
+        </Framed>
       ) : null}
 
-      {/* The reactions ride ON the route now — see RouteThumb — so nothing
-          between the header and the map costs a row. */}
-      <RouteThumb
-        item={item}
-        color={c.stroke}
+      {/* Reactions below the caption, not above it — this is the same bar
+          that also hosts the "add a reaction" popover, so the chip summary
+          and the picker never compete for separate space. It costs no row at
+          all when there is nothing to show and no picker open (ReactionBar's
+          own `compact` rule). */}
+      <ReactionBar
+        compact
         reactions={reactions}
         mine={mine}
-        burst={burst}
+        color={c.stroke}
         onReact={react}
+        burst={burst}
+        open={pickerOpen}
+        inlinePicker
+        onRequestClose={() => setPickerOpen(false)}
+        style={styles.reactionsRow}
       />
 
       {/* The steal, on the card. It starts SETTLED — heads on the bar pulling
@@ -425,7 +356,10 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           normally that stage was a blank white gap between the route and the
           STOLEN bar. Negative margin puts the bar directly under the map and
           lets the blast play OVER it, which is where an explosion should be
-          anyway. */}
+          anyway. That trick only works when the map is what sits directly
+          above it — with the reactions row or a caption in between, the pull
+          would drag the bar up over one of those instead, so it only pulls
+          tight when there is neither. */}
       {victims.length > 0 && (
         <TerritoryStealBanner
           trigger={item.id}
@@ -433,22 +367,11 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           amount={fmtArea(item.stolen_m2 || 0)}
           autoPlay={autoPlaySteal}
           haptics={autoPlaySteal}
-          style={{ marginTop: space.sm - STEAL_HEADROOM }}
+          style={{
+            marginTop: post.caption || showsReactionsRow ? space.md : space.sm - STEAL_HEADROOM,
+          }}
         />
       )}
-
-      {/* The picker only. It is transient and it has to be big enough to hit,
-          so it takes a row while it is open and none at all when it is not. */}
-      <ReactionBar
-        compact
-        reactions={[]}
-        mine={mine}
-        color={c.stroke}
-        onReact={react}
-        open={pickerOpen}
-        inlinePicker
-        onRequestClose={() => setPickerOpen(false)}
-      />
 
       <Row between style={{ marginTop: space.md }}>
         <StatValue size="sm" label="Distance" value={`${(item.distance_m / 1000).toFixed(2)}`} unit="km" />
@@ -476,24 +399,25 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
 
 const makeStyles = (colors) =>
   StyleSheet.create({
-    // No background and no radius: the drawn box is the edge, and the card
-    // underneath is the surface. NOT clipped either — the stickers sit on the
-    // perimeter and a couple of them deliberately hang over it, the way a
-    // sticker stuck near the corner of a photo does.
-    thumb: {
+    // Sizing (aspect ratio, centring) is RouteThumb's own default style —
+    // this is only the layout this ROW wants around it.
+    thumb: { marginTop: space.md },
+    // The map's half of the paired row — margin lives on `pairedRow` instead,
+    // since this box now shares a line with the photo rather than starting
+    // one of its own.
+    thumbCompact: { flex: 1 },
+    pairedRow: {
+      flexDirection: 'row',
+      gap: space.sm,
       marginTop: space.md,
-      height: THUMB_H,
-      justifyContent: 'center',
     },
-    sticker: {
-      position: 'absolute',
-      width: STICKER,
-      height: STICKER,
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 3,
+    pairedPhoto: {
+      flex: 1,
+      aspectRatio: 1,
+      borderRadius: radius.md,
+      overflow: 'hidden',
+      backgroundColor: colors.cardAlt,
     },
-    reactionFx: { zIndex: 5 },
     kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
     kudosFx: { position: 'absolute', zIndex: 4 },
     action: {
@@ -505,7 +429,15 @@ const makeStyles = (colors) =>
       gap: 5,
       padding: 4,
     },
-    caption: { color: colors.text, marginTop: space.md },
+    // Its own line under the map now, not scattered on top of it — see
+    // RouteThumb and the note above the ReactionBar render.
+    reactionsRow: { marginTop: space.md },
+    captionFrame: { marginTop: space.md },
+    captionInner: { padding: space.md },
+    // `bodyBold` alone (15pt) was the same weight the header row's stat labels
+    // use — bumped a couple of points so a caption reads as the bigger, more
+    // deliberate thing it is now that it has its own framed box and header.
+    captionBody: { fontSize: 17, lineHeight: 23, marginTop: 2 },
     postPhotoWrap: {
       height: 190,
       marginTop: space.md,

@@ -4,7 +4,9 @@ import {
   getCaptureStyle,
   pickCaptureStyle,
 } from '../src/effects/captureStyles';
+import { DRAMA_SCALE } from '../src/effects/choreography';
 import {
+  REDUCED_BEATS,
   buildCapturePlan,
   effectIdForCaptureStep,
   validateCaptureStyle,
@@ -123,19 +125,25 @@ describe('all capture styles and territory scenarios', () => {
     });
   });
 
-  test('all 29 have bounded duration, metadata, one reveal, one primary haptic, and valid required effects', () => {
-    expect(CAPTURE_STYLES).toHaveLength(29);
+  test('all 30 have bounded duration, metadata, one reveal, one primary haptic, and valid required effects', () => {
+    expect(CAPTURE_STYLES).toHaveLength(30);
     CAPTURE_STYLES.forEach((style) => {
       expect(getCaptureStyle(style.id)).toBe(style);
       expect(validateCaptureStyle(style)).toEqual([]);
-      expect(style.duration).toBeGreaterThanOrEqual(800);
-      expect(style.duration).toBeLessThanOrEqual(2400);
+      // A complete cutscene is longer than the old sprite stack was: it has to
+      // fit setup, anticipation, reaction, impact, consequence, takeover,
+      // exit and victory. The ceiling is what the controller will keep it
+      // mounted for, checked against the reveal cue in validateChoreography.
+      // Both bounds carry DRAMA_SCALE, same as every style's own timing.
+      expect(style.duration).toBeGreaterThanOrEqual(Math.round(2400 * DRAMA_SCALE));
+      expect(style.duration).toBeLessThanOrEqual(Math.round(4500 * DRAMA_SCALE));
       expect(style.sequence.filter((step) => step.action === 'territoryReveal')).toHaveLength(1);
       expect(style.sequence.filter((step) => step.action === 'haptic')).toHaveLength(1);
+      expect(style.sequence.filter((step) => step.action === 'victory')).toHaveLength(1);
       expect(style.beats.length).toBeGreaterThanOrEqual(4);
-      expect(typeof style.showAttacker).toBe('boolean');
-      expect(typeof style.showDefender).toBe('boolean');
       expect(typeof style.usesProjectile).toBe('boolean');
+      expect(typeof style.usesContact).toBe('boolean');
+      expect(typeof style.usesEnvironment).toBe('boolean');
       expect(style.territoryTransition).toBeTruthy();
       expect(style.revealOrigin).toBeTruthy();
     });
@@ -191,14 +199,23 @@ describe('all capture styles and territory scenarios', () => {
     expect(visual).not.toEqual(geometricBoxCenter);
   });
 
-  test('reduced motion contains no sprite, shake, or decorative loop and remains informative', () => {
+  test('reduced motion drops the travel and keeps the whole story', () => {
+    // Not "remove the defenders". The narrative has to survive: the runner
+    // acts, the world does something, the rivals react, the ground changes
+    // hands, the rivals leave, the runner wins — each as a short fade or
+    // scale rather than a dash across the map.
     CAPTURE_STYLES.forEach((style) => {
       const plan = buildCapturePlan(style, true);
-      expect(plan.duration).toBe(220);
+      expect(plan.duration).toBe(REDUCED_BEATS.duration);
       expect(plan.sequence.some((step) => step.action === 'territoryReveal')).toBe(true);
       expect(plan.sequence.filter((step) => step.action === 'haptic')).toHaveLength(1);
       expect(plan.sequence.every((step) => !!step.action)).toBe(true);
       expect(plan.sequence.some((step) => step.action === 'screenShake')).toBe(false);
+      expect(plan.sequence.some((step) => step.action === 'projectile')).toBe(false);
+      const defenderBeats = plan.sequence.filter((step) => step.action === 'actor' && step.role === 'defender');
+      expect(defenderBeats.length).toBeGreaterThanOrEqual(2);
+      expect(plan.sequence.some((step) => step.action === 'actor' && step.role === 'attacker')).toBe(true);
+      expect(plan.sequence.some((step) => step.action === 'victory')).toBe(true);
     });
   });
 

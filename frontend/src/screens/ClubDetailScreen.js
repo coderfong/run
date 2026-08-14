@@ -13,7 +13,7 @@ import { useQuery } from '../hooks/useQuery';
 import { useClan } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
-import ClanBadge from '../components/ClanBadge';
+import ClubAvatar from '../components/ClubAvatar';
 import { toast } from '../ui/toast';
 import { Bar, Reveal, staggerDelay } from '../ui/motion';
 
@@ -92,9 +92,7 @@ export default function ClubDetailScreen({ route, navigation }) {
     >
       {/* header */}
       <View style={[styles.header, { backgroundColor: withAlpha(accent, 0.1) }]}>
-        <View style={[styles.badgeChip, { backgroundColor: clan.color.fill }]}>
-          <ClanBadge icon={clan.badge_icon} size={32} color={accent} />
-        </View>
+        <ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={64} />
         <Text style={[type.title, { marginTop: space.sm }]}>[{clan.tag}] {clan.name}</Text>
         {clan.description ? (
           <Text style={[type.caption, { textAlign: 'center', marginTop: 2 }]}>{clan.description}</Text>
@@ -188,7 +186,6 @@ export default function ClubDetailScreen({ route, navigation }) {
 
 const makeStyles = (colors) => StyleSheet.create({
   header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl },
-  badgeChip: { width: 56, height: 56, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden', marginTop: space.sm },
   xpFill: { height: '100%', borderRadius: 4 },
   leaderAvatar: {

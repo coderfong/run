@@ -22,13 +22,14 @@
 // wins outright — which is why validateChoreography rejects a style whose
 // actor steps overlap instead of letting a beat silently disappear.
 
-import React, { useCallback, useEffect, useImperativeHandle, useRef } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withSequence,
   withSpring,
   withTiming,
@@ -37,8 +38,15 @@ import Animated, {
 import { ACTOR_ACTION, actorActionSpec } from './choreography';
 import { CAPTURE_LAYER } from './layers';
 import { CharacterBust } from '../components/character/CharacterRig';
+import { withFace } from '../components/claim/expressions';
 
-export const ACTOR_SIZE = 60;
+// RETUNED 2026-08-14, twice. First 60→78 for more presence now the capture
+// choreography runs slower and more deliberately (DRAMA_SCALE) — a rig that
+// size read as a prop next to the art it was standing next to. Bumped again,
+// 78→98, on further feedback that it still wasn't big enough. `layoutDefenders`
+// in anchors.js already scales its own spacing/clamping off whatever size it is
+// handed, so this is safe to retune here alone.
+export const ACTOR_SIZE = 98;
 
 // Where the actor sits relative to the point it is anchored on. The character
 // stands ON the ground it is claiming, so the rig's feet want to be at the
@@ -76,6 +84,31 @@ function directionTo(target, origin) {
   return dx > 0 ? 1 : -1;
 }
 
+/**
+ * A unit vector from `a` to `b`, or a sensible default when there is nothing
+ * to measure.
+ *
+ * This is what makes a shockwave a shockwave. The displacement direction is
+ * `defenderPosition - impactPosition`, so two rivals standing on opposite
+ * sides of the same crater are thrown in opposite directions, and a rival
+ * standing beyond it is thrown further out rather than back through it. The
+ * old vocabulary had only a signed x, which meant every knockback was "left or
+ * right of the attacker" no matter where the event actually happened.
+ */
+function unitVector(from, to, fallback = { x: 1, y: 0 }) {
+  if (!from || !to) return fallback;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (!Number.isFinite(length) || length < 0.5) return fallback;
+  // Flattened vertically: the map is a ground plane seen from above, and a
+  // character thrown mostly upward reads as launched into the sky rather than
+  // across the dirt.
+  const v = { x: dx / length, y: (dy / length) * 0.65 };
+  const scale = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / scale, y: v.y / scale };
+}
+
 // ---------------------------------------------------------------------------
 // The action library
 // ---------------------------------------------------------------------------
@@ -84,6 +117,97 @@ function directionTo(target, origin) {
 // assigns one chain per value. `scale` lets a style stretch an action without
 // rewriting it: every duration inside is multiplied, so the anticipation ratio
 // that makes it readable survives the retune.
+
+// Left and right versions of the same movement, written once. `sign` is the
+// only difference, and keeping them as one builder is what makes a pool of
+// [DODGE_LEFT, DODGE_RIGHT, BRACE] read as three people reacting to one event
+// rather than three unrelated animations.
+
+/** Out of the way fast, and stay off the spot they were standing on. */
+function dodge(v, d, sign) {
+  v.translateX.value = withSequence(
+    withTiming(-8 * sign, { duration: d * 0.2, easing: ease.anticipate }),
+    withTiming(40 * sign, { duration: d * 0.3, easing: ease.outCubic }),
+    withSpring(34 * sign, SETTLE)
+  );
+  v.translateY.value = withSequence(
+    withTiming(3, { duration: d * 0.2 }),
+    withTiming(-11, { duration: d * 0.16, easing: ease.out }),
+    withTiming(2, { duration: d * 0.16, easing: ease.inCubic }),
+    withSpring(0, SETTLE)
+  );
+  v.rotate.value = withSequence(
+    withTiming(-6 * sign, { duration: d * 0.2 }),
+    withTiming(18 * sign, { duration: d * 0.3, easing: ease.outCubic }),
+    withSpring(6 * sign, SOFT_SETTLE)
+  );
+  v.scaleX.value = withSequence(
+    withTiming(0.94, { duration: d * 0.2 }),
+    withTiming(1.14, { duration: d * 0.3 }),
+    withSpring(1, SETTLE)
+  );
+  v.scaleY.value = withSequence(
+    withTiming(1.05, { duration: d * 0.2 }),
+    withTiming(0.9, { duration: d * 0.3 }),
+    withSpring(1, SETTLE)
+  );
+}
+
+/** Off balance, catching themselves. No anticipation: nobody chose this. */
+function stumble(v, d, sign) {
+  v.translateX.value = withSequence(
+    withTiming(26 * sign, { duration: d * 0.26, easing: ease.outCubic }),
+    withTiming(38 * sign, { duration: d * 0.2, easing: ease.out }),
+    withTiming(30 * sign, { duration: d * 0.18 }),
+    withSpring(28 * sign, SOFT_SETTLE)
+  );
+  v.rotate.value = withSequence(
+    withTiming(24 * sign, { duration: d * 0.26, easing: ease.outCubic }),
+    withTiming(-12 * sign, { duration: d * 0.22 }),
+    withTiming(8 * sign, { duration: d * 0.18 }),
+    withSpring(0, SOFT_SETTLE)
+  );
+  v.translateY.value = withSequence(
+    withTiming(6, { duration: d * 0.26 }),
+    withTiming(-4, { duration: d * 0.2 }),
+    withSpring(0, SETTLE)
+  );
+  v.scaleY.value = withSequence(
+    withTiming(0.92, { duration: d * 0.26 }),
+    withTiming(1.06, { duration: d * 0.2 }),
+    withSpring(1, SETTLE)
+  );
+}
+
+/**
+ * Away, at speed, and off the scene. Four bobs so it is running, not sliding.
+ *
+ * `reach` is how far this run travels — the caller works out how far the
+ * actual edge of the screen is from here, so the run doesn't stop short and
+ * fade out in the middle of the shot.
+ */
+function run(v, d, sign, reach = 160) {
+  v.translateX.value = withSequence(
+    withTiming(-10 * sign, { duration: d * 0.14, easing: ease.anticipate }),
+    withTiming(reach * sign, { duration: d * 0.86, easing: ease.inCubic })
+  );
+  v.translateY.value = withSequence(
+    withTiming(4, { duration: d * 0.14 }),
+    withTiming(-7, { duration: d * 0.215 }),
+    withTiming(1, { duration: d * 0.215 }),
+    withTiming(-7, { duration: d * 0.215 }),
+    withTiming(0, { duration: d * 0.215 })
+  );
+  v.rotate.value = withSequence(
+    withTiming(-6 * sign, { duration: d * 0.14 }),
+    withTiming(12 * sign, { duration: d * 0.86 })
+  );
+  v.scaleX.value = withSequence(
+    withTiming(0.95, { duration: d * 0.14 }),
+    withTiming(1.08, { duration: d * 0.43 }),
+    withTiming(1.02, { duration: d * 0.43 })
+  );
+}
 
 const ACTIONS = {
   [ACTOR_ACTION.IDLE]: (v, o, d) => {
@@ -496,6 +620,488 @@ const ACTIONS = {
     );
   },
 
+  // Points at something above the scene and HOLDS the pose, so whatever is
+  // arriving has somebody already looking at it when it appears. The hold is
+  // the difference between "called this down" and "flinched at it".
+  [ACTOR_ACTION.POINT_SKY]: (v, o, d) => {
+    const dir = o.direction;
+    v.rotate.value = withSequence(
+      withTiming(-6 * dir, { duration: d * 0.28, easing: ease.anticipate }),
+      withTiming(10 * dir, { duration: d * 0.16, easing: ease.out }),
+      withTiming(8 * dir, { duration: d * 0.56 })
+    );
+    v.translateY.value = withSequence(
+      withTiming(5, { duration: d * 0.28, easing: ease.anticipate }),
+      withTiming(-12, { duration: d * 0.16, easing: ease.out }),
+      withTiming(-9, { duration: d * 0.56 })
+    );
+    v.translateX.value = withSequence(
+      withTiming(-4 * dir, { duration: d * 0.28 }),
+      withTiming(6 * dir, { duration: d * 0.16, easing: ease.out }),
+      withTiming(5 * dir, { duration: d * 0.56 })
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.96, { duration: d * 0.28 }),
+      withTiming(1.09, { duration: d * 0.16, easing: ease.out }),
+      withTiming(1.06, { duration: d * 0.56 })
+    );
+  },
+
+  [ACTOR_ACTION.RAISE_ARMS]: (v, o, d) => {
+    v.translateY.value = withSequence(
+      withTiming(6, { duration: d * 0.3, easing: ease.anticipate }),
+      withTiming(-13, { duration: d * 0.2, easing: ease.out }),
+      withTiming(-10, { duration: d * 0.5 })
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.93, { duration: d * 0.3 }),
+      withTiming(1.12, { duration: d * 0.2, easing: ease.out }),
+      withTiming(1.08, { duration: d * 0.5 })
+    );
+    v.scaleX.value = withSequence(
+      withTiming(1.06, { duration: d * 0.3 }),
+      withTiming(0.94, { duration: d * 0.2, easing: ease.out }),
+      withTiming(0.97, { duration: d * 0.5 })
+    );
+  },
+
+  // Walk to a point and STAY there. `delta` is the real pixel offset from this
+  // body's anchor to the target, so the attacker can end the scene standing on
+  // the ground they just took rather than where they threw from.
+  [ACTOR_ACTION.MOVE_TO]: (v, o, d) => {
+    const dx = o.delta?.x || 0;
+    const dy = o.delta?.y || 0;
+    v.translateX.value = withSequence(
+      withTiming(-dx * 0.06, { duration: d * 0.14, easing: ease.anticipate }),
+      withTiming(dx, { duration: d * 0.62, easing: ease.inOut }),
+      withSpring(dx, SOFT_SETTLE)
+    );
+    v.translateY.value = withSequence(
+      withTiming(dy * 0.5, { duration: d * 0.38, easing: ease.inOut }),
+      withTiming(dy, { duration: d * 0.38, easing: ease.inOut }),
+      withSpring(dy, SOFT_SETTLE)
+    );
+    // Two bobs on the way, so it reads as walking rather than sliding.
+    v.scaleY.value = withSequence(
+      withTiming(1.05, { duration: d * 0.19 }),
+      withTiming(0.96, { duration: d * 0.19 }),
+      withTiming(1.05, { duration: d * 0.19 }),
+      withSpring(1, SOFT_SETTLE)
+    );
+  },
+
+  // ---- the defender vocabulary -------------------------------------------
+  //
+  // These are the beats that let a rival be part of the event instead of an
+  // obstacle removed before it. Same rules as everything above: one chain per
+  // shared value, anticipation before commit, and nothing open-ended in the
+  // timed section.
+
+  [ACTOR_ACTION.LOOK_UP]: (v, o, d) => {
+    v.translateY.value = withSequence(
+      withTiming(-7, { duration: d * 0.3, easing: ease.out }),
+      withTiming(-5, { duration: d * 0.42 }),
+      withSpring(0, SOFT_SETTLE)
+    );
+    v.rotate.value = withSequence(
+      withTiming(-6, { duration: d * 0.3, easing: ease.out }),
+      withTiming(-5, { duration: d * 0.42 }),
+      withSpring(0, SOFT_SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(1.06, { duration: d * 0.3 }),
+      withSpring(1, SOFT_SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.LOOK_LEFT]: (v, o, d) => {
+    v.rotate.value = withSequence(
+      withTiming(-9, { duration: d * 0.32, easing: ease.out }),
+      withTiming(-7, { duration: d * 0.38 }),
+      withSpring(0, SOFT_SETTLE)
+    );
+    v.translateX.value = withSequence(
+      withTiming(-6, { duration: d * 0.32, easing: ease.out }),
+      withSpring(0, SOFT_SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.LOOK_RIGHT]: (v, o, d) => {
+    v.rotate.value = withSequence(
+      withTiming(9, { duration: d * 0.32, easing: ease.out }),
+      withTiming(7, { duration: d * 0.38 }),
+      withSpring(0, SOFT_SETTLE)
+    );
+    v.translateX.value = withSequence(
+      withTiming(6, { duration: d * 0.32, easing: ease.out }),
+      withSpring(0, SOFT_SETTLE)
+    );
+  },
+
+  // A double-take toward whatever just happened. Small recoil first, then the
+  // turn: seeing something is a reaction before it is a movement.
+  [ACTOR_ACTION.NOTICE]: (v, o, d) => {
+    const dir = o.pull?.x >= 0 ? 1 : -1;
+    v.translateX.value = withSequence(
+      withTiming(-5 * dir, { duration: d * 0.18, easing: ease.out }),
+      withTiming(4 * dir, { duration: d * 0.22, easing: ease.out }),
+      withSpring(0, SOFT_SETTLE)
+    );
+    v.rotate.value = withSequence(
+      withTiming(-8 * dir, { duration: d * 0.18, easing: ease.out }),
+      withTiming(7 * dir, { duration: d * 0.22 }),
+      withSpring(0, SOFT_SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(1.08, { duration: d * 0.18 }),
+      withTiming(0.97, { duration: d * 0.2 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.SURPRISED]: (v, o, d) => {
+    v.translateY.value = withSequence(
+      withTiming(3, { duration: d * 0.1 }),
+      withTiming(-16, { duration: d * 0.2, easing: ease.outCubic }),
+      withTiming(2, { duration: d * 0.2, easing: ease.inCubic }),
+      withSpring(0, SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.9, { duration: d * 0.1 }),
+      withTiming(1.18, { duration: d * 0.2 }),
+      withTiming(0.96, { duration: d * 0.2 }),
+      withSpring(1, SETTLE)
+    );
+    v.scaleX.value = withSequence(
+      withTiming(1.1, { duration: d * 0.1 }),
+      withTiming(0.88, { duration: d * 0.2 }),
+      withTiming(1.05, { duration: d * 0.2 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.DUCK]: (v, o, d) => {
+    v.translateY.value = withSequence(
+      withTiming(-3, { duration: d * 0.14, easing: ease.anticipate }),
+      withTiming(16, { duration: d * 0.18, easing: ease.inCubic }),
+      withTiming(15, { duration: d * 0.36 }),
+      withSpring(0, SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(1.04, { duration: d * 0.14 }),
+      withTiming(0.66, { duration: d * 0.18, easing: ease.inCubic }),
+      withTiming(0.68, { duration: d * 0.36 }),
+      withSpring(1, SETTLE)
+    );
+    v.scaleX.value = withSequence(
+      withTiming(0.97, { duration: d * 0.14 }),
+      withTiming(1.28, { duration: d * 0.18 }),
+      withTiming(1.26, { duration: d * 0.36 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.DODGE_LEFT]: (v, o, d) => dodge(v, d, -1),
+  [ACTOR_ACTION.DODGE_RIGHT]: (v, o, d) => dodge(v, d, 1),
+
+  // Away from whatever is coming, and it keeps the ground it retreated to.
+  [ACTOR_ACTION.HOP_BACK]: (v, o, d) => {
+    const push = o.push || { x: -1, y: 0 };
+    const reach = 30;
+    v.translateX.value = withSequence(
+      withTiming(-push.x * 5, { duration: d * 0.2, easing: ease.anticipate }),
+      withTiming(push.x * reach, { duration: d * 0.34, easing: ease.outCubic }),
+      withSpring(push.x * reach * 0.86, SETTLE)
+    );
+    v.translateY.value = withSequence(
+      withTiming(4, { duration: d * 0.2, easing: ease.anticipate }),
+      withTiming(-14 + push.y * reach * 0.5, { duration: d * 0.18, easing: ease.out }),
+      withTiming(push.y * reach * 0.6, { duration: d * 0.16, easing: ease.inCubic }),
+      withSpring(push.y * reach * 0.5, SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.86, { duration: d * 0.2 }),
+      withTiming(1.12, { duration: d * 0.18 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.STUMBLE_LEFT]: (v, o, d) => stumble(v, d, -1),
+  [ACTOR_ACTION.STUMBLE_RIGHT]: (v, o, d) => stumble(v, d, 1),
+
+  /**
+   * Blown off their feet, along `defenderPosition - impactPosition`.
+   *
+   * The direction comes in as a resolved unit vector, so this single action
+   * covers everybody in the scene: the rival on the far side of the crater
+   * goes the other way, and nobody is thrown through the thing that hit them.
+   */
+  [ACTOR_ACTION.SHOCKWAVE_KNOCKBACK]: (v, o, d) => {
+    const push = o.push || { x: 1, y: 0 };
+    const reach = 84;
+    const spin = push.x >= 0 ? 1 : -1;
+    v.translateX.value = withSequence(
+      withTiming(push.x * reach, { duration: d * 0.34, easing: ease.outCubic }),
+      withTiming(push.x * reach * 1.1, { duration: d * 0.3, easing: ease.out }),
+      withSpring(push.x * reach * 1.05, SOFT_SETTLE)
+    );
+    // Up first, then down: hit by a blast, not dragged along the floor.
+    v.translateY.value = withSequence(
+      withTiming(-34 + push.y * reach * 0.4, { duration: d * 0.2, easing: ease.out }),
+      withTiming(push.y * reach * 0.75 + 6, { duration: d * 0.26, easing: ease.inCubic }),
+      withTiming(push.y * reach * 0.75, { duration: d * 0.2 }),
+      withSpring(push.y * reach * 0.7, SOFT_SETTLE)
+    );
+    v.rotate.value = withSequence(
+      withTiming(46 * spin, { duration: d * 0.34, easing: ease.outCubic }),
+      withTiming(12 * spin, { duration: d * 0.3 }),
+      withSpring(0, SOFT_SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.84, { duration: d * 0.2 }),
+      withTiming(1.1, { duration: d * 0.24 }),
+      withSpring(1, SETTLE)
+    );
+    v.scaleX.value = withSequence(
+      withTiming(1.16, { duration: d * 0.2 }),
+      withTiming(0.92, { duration: d * 0.24 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  // Dragged toward something, feet losing purchase.
+  [ACTOR_ACTION.SLIDE_TOWARD]: (v, o, d) => {
+    const pull = o.pull || { x: 1, y: 0 };
+    const reach = 46;
+    v.translateX.value = withSequence(
+      withTiming(pull.x * reach * 0.45, { duration: d * 0.4, easing: ease.inOut }),
+      withTiming(pull.x * reach, { duration: d * 0.4, easing: ease.inCubic }),
+      withSpring(pull.x * reach, SOFT_SETTLE)
+    );
+    v.translateY.value = withSequence(
+      withTiming(pull.y * reach * 0.45, { duration: d * 0.4, easing: ease.inOut }),
+      withTiming(pull.y * reach, { duration: d * 0.4, easing: ease.inCubic }),
+      withSpring(pull.y * reach, SOFT_SETTLE)
+    );
+    // Leaning back against the direction of travel is what makes it a drag.
+    v.rotate.value = withSequence(
+      withTiming(-16 * (pull.x >= 0 ? 1 : -1), { duration: d * 0.5, easing: ease.inOut }),
+      withSpring(-10 * (pull.x >= 0 ? 1 : -1), SOFT_SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(1.06, { duration: d * 0.5 }),
+      withSpring(1, SOFT_SETTLE)
+    );
+  },
+
+  // Digging in: they lose a little ground, then hold it. Slipping IN and being
+  // dragged AWAY are different beats, and a scene needs both to have a fight.
+  [ACTOR_ACTION.RESIST_PULL]: (v, o, d) => {
+    const pull = o.pull || { x: 1, y: 0 };
+    const dir = pull.x >= 0 ? 1 : -1;
+    v.translateX.value = withSequence(
+      withTiming(pull.x * 22, { duration: d * 0.3, easing: ease.inOut }),
+      withTiming(pull.x * 12, { duration: d * 0.22, easing: ease.out }),
+      withTiming(pull.x * 26, { duration: d * 0.28, easing: ease.inOut }),
+      withSpring(pull.x * 18, SOFT_SETTLE)
+    );
+    v.translateY.value = withSequence(
+      withTiming(pull.y * 22 + 5, { duration: d * 0.3, easing: ease.inOut }),
+      withTiming(pull.y * 14 + 5, { duration: d * 0.5 }),
+      withSpring(pull.y * 18, SOFT_SETTLE)
+    );
+    v.rotate.value = withSequence(
+      withTiming(-22 * dir, { duration: d * 0.3, easing: ease.out }),
+      withTiming(-18 * dir, { duration: d * 0.5 }),
+      withSpring(-12 * dir, SOFT_SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.9, { duration: d * 0.3 }),
+      withTiming(0.93, { duration: d * 0.5 }),
+      withSpring(1, SOFT_SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.RUN_LEFT]: (v, o, d) => run(v, d, -1, o.edgeReach),
+  [ACTOR_ACTION.RUN_RIGHT]: (v, o, d) => run(v, d, 1, o.edgeReach),
+
+  // Off in whatever direction is away from the event. The exit beat that
+  // matters most: a rival who runs has left, a rival who fades has been
+  // deleted, and only one of those is a story. `edgeReach` (screen-edge
+  // relative, from `play` below) carries the X travel; the Y drift stays a
+  // fixed modest arc regardless of how far sideways that edge turns out to be.
+  [ACTOR_ACTION.FLEE_FROM]: (v, o, d) => {
+    const push = o.push || { x: 1, y: 0 };
+    const reach = o.edgeReach || 150;
+    const vDrift = 150;
+    const dir = push.x >= 0 ? 1 : -1;
+    v.translateX.value = withSequence(
+      withTiming(-push.x * 8, { duration: d * 0.14, easing: ease.anticipate }),
+      withTiming(push.x * reach, { duration: d * 0.86, easing: ease.inCubic })
+    );
+    v.translateY.value = withSequence(
+      withTiming(3, { duration: d * 0.14 }),
+      withTiming(push.y * vDrift * 0.7 - 6, { duration: d * 0.43, easing: ease.out }),
+      withTiming(push.y * vDrift * 0.9, { duration: d * 0.43, easing: ease.inOut })
+    );
+    v.rotate.value = withSequence(
+      withTiming(-7 * dir, { duration: d * 0.14 }),
+      withTiming(13 * dir, { duration: d * 0.4 }),
+      withTiming(9 * dir, { duration: d * 0.46 })
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.92, { duration: d * 0.14 }),
+      withTiming(1.06, { duration: d * 0.28 }),
+      withTiming(0.97, { duration: d * 0.28 }),
+      withTiming(1.04, { duration: d * 0.3 })
+    );
+  },
+
+  // Knocked down and back up. The recovery is the point: they are beaten, not
+  // erased, and they get to leave under their own power afterwards.
+  [ACTOR_ACTION.FALL_AND_RECOVER]: (v, o, d) => {
+    const dir = o.push?.x >= 0 ? 1 : -1;
+    v.rotate.value = withSequence(
+      withTiming(72 * dir, { duration: d * 0.22, easing: ease.inCubic }),
+      withTiming(76 * dir, { duration: d * 0.3 }),
+      withTiming(14 * dir, { duration: d * 0.24, easing: ease.out }),
+      withSpring(0, SETTLE)
+    );
+    v.translateY.value = withSequence(
+      withTiming(18, { duration: d * 0.22, easing: ease.inCubic }),
+      withTiming(20, { duration: d * 0.3 }),
+      withTiming(-6, { duration: d * 0.24, easing: ease.out }),
+      withSpring(0, SETTLE)
+    );
+    v.translateX.value = withSequence(
+      withTiming(24 * dir, { duration: d * 0.22, easing: ease.outCubic }),
+      withTiming(26 * dir, { duration: d * 0.54 }),
+      withSpring(18 * dir, SOFT_SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.82, { duration: d * 0.22 }),
+      withTiming(0.84, { duration: d * 0.3 }),
+      withTiming(1.08, { duration: d * 0.24 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  // Quantised jitter. No easing anywhere on purpose: a glitch that eases is a
+  // wobble.
+  [ACTOR_ACTION.GLITCH_JUMP]: (v, o, d) => {
+    const step = d / 7;
+    v.translateX.value = withSequence(
+      withTiming(9, { duration: step, easing: Easing.linear }),
+      withTiming(-11, { duration: step, easing: Easing.linear }),
+      withTiming(5, { duration: step, easing: Easing.linear }),
+      withTiming(-7, { duration: step, easing: Easing.linear }),
+      withTiming(3, { duration: step, easing: Easing.linear }),
+      withTiming(0, { duration: step, easing: Easing.linear })
+    );
+    v.translateY.value = withSequence(
+      withTiming(-6, { duration: step * 1.5, easing: Easing.linear }),
+      withTiming(4, { duration: step * 1.5, easing: Easing.linear }),
+      withTiming(-3, { duration: step * 1.5, easing: Easing.linear }),
+      withTiming(0, { duration: step * 1.5, easing: Easing.linear })
+    );
+    v.scaleX.value = withSequence(
+      withTiming(1.14, { duration: step * 2, easing: Easing.linear }),
+      withTiming(0.88, { duration: step * 2, easing: Easing.linear }),
+      withTiming(1, { duration: step * 2, easing: Easing.linear })
+    );
+  },
+
+  [ACTOR_ACTION.BOUNCE_REACTION]: (v, o, d) => {
+    v.translateY.value = withSequence(
+      withTiming(8, { duration: d * 0.16, easing: ease.anticipate }),
+      withTiming(-22, { duration: d * 0.22, easing: ease.outCubic }),
+      withTiming(3, { duration: d * 0.18, easing: ease.inCubic }),
+      withTiming(-9, { duration: d * 0.14, easing: ease.out }),
+      withSpring(0, SETTLE)
+    );
+    v.scaleY.value = withSequence(
+      withTiming(0.8, { duration: d * 0.16 }),
+      withTiming(1.16, { duration: d * 0.22 }),
+      withTiming(0.92, { duration: d * 0.18 }),
+      withSpring(1, SETTLE)
+    );
+    v.scaleX.value = withSequence(
+      withTiming(1.2, { duration: d * 0.16 }),
+      withTiming(0.88, { duration: d * 0.22 }),
+      withTiming(1.08, { duration: d * 0.18 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  [ACTOR_ACTION.WINCE]: (v, o, d) => {
+    v.scaleY.value = withSequence(
+      withTiming(0.88, { duration: d * 0.24, easing: ease.out }),
+      withTiming(0.94, { duration: d * 0.2 }),
+      withSpring(1, SETTLE)
+    );
+    v.scaleX.value = withSequence(
+      withTiming(1.1, { duration: d * 0.24, easing: ease.out }),
+      withSpring(1, SETTLE)
+    );
+    v.rotate.value = withSequence(
+      withTiming(-7, { duration: d * 0.24 }),
+      withTiming(5, { duration: d * 0.2 }),
+      withSpring(0, SETTLE)
+    );
+  },
+
+  // Shaking off paint, dust, frost. The consequence beat that says an impact
+  // left something on them.
+  [ACTOR_ACTION.SHAKE_OFF]: (v, o, d) => {
+    const beat = d / 8;
+    v.rotate.value = withSequence(
+      withTiming(-13, { duration: beat }),
+      withTiming(12, { duration: beat }),
+      withTiming(-9, { duration: beat }),
+      withTiming(8, { duration: beat }),
+      withTiming(-5, { duration: beat }),
+      withSpring(0, SETTLE)
+    );
+    v.translateX.value = withSequence(
+      withTiming(-5, { duration: beat }),
+      withTiming(5, { duration: beat }),
+      withTiming(-3, { duration: beat }),
+      withTiming(3, { duration: beat }),
+      withSpring(0, SETTLE)
+    );
+    v.scaleX.value = withSequence(
+      withTiming(1.07, { duration: beat * 2 }),
+      withTiming(0.96, { duration: beat * 2 }),
+      withSpring(1, SETTLE)
+    );
+  },
+
+  // Pulled through something and gone. Sinks and spins down rather than
+  // shrinking on the spot, so it reads as a destination rather than a delete.
+  [ACTOR_ACTION.PORTAL_EXIT]: (v, o, d) => {
+    const pull = o.pull || { x: 0, y: 1 };
+    v.translateX.value = withSequence(
+      withTiming(-pull.x * 6, { duration: d * 0.22, easing: ease.anticipate }),
+      withTiming(pull.x * 30, { duration: d * 0.78, easing: ease.inCubic })
+    );
+    v.translateY.value = withSequence(
+      withTiming(-8, { duration: d * 0.22, easing: ease.anticipate }),
+      withTiming(pull.y * 30 + 12, { duration: d * 0.78, easing: ease.inCubic })
+    );
+    v.rotate.value = withSequence(
+      withTiming(0, { duration: d * 0.22 }),
+      withTiming(160 * (pull.x >= 0 ? 1 : -1), { duration: d * 0.78, easing: ease.inCubic })
+    );
+    v.scaleY.value = withSequence(
+      withTiming(1.1, { duration: d * 0.22 }),
+      withTiming(0.05, { duration: d * 0.78, easing: ease.inCubic })
+    );
+    v.scaleX.value = withSequence(
+      withTiming(0.92, { duration: d * 0.22 }),
+      withTiming(0.05, { duration: d * 0.78, easing: ease.inCubic })
+    );
+  },
+
   [ACTOR_ACTION.CELEBRATE]: (v, o, d) => {
     v.translateY.value = withSequence(
       withTiming(6, { duration: d * 0.14, easing: ease.anticipate }),
@@ -533,12 +1139,47 @@ const ACTIONS = {
  * commits, so the sequence still has a pulse where its impact is and the
  * runner is not left watching a static rig.
  */
-function playReduced(v, action) {
+function playReduced(v, action, options = {}) {
+  const spec = actorActionSpec(action);
   const big = action === ACTOR_ACTION.SLAM
     || action === ACTOR_ACTION.JUMP_SLAM
     || action === ACTOR_ACTION.PUNCH
     || action === ACTOR_ACTION.STOMP
-    || action === ACTOR_ACTION.KNOCKBACK;
+    || action === ACTOR_ACTION.KNOCKBACK
+    || action === ACTOR_ACTION.SHOCKWAVE_KNOCKBACK;
+
+  // An exit still has to END with the character gone, or reduced motion would
+  // leave the whole cast standing on ground that has already changed hands.
+  // It is a fade and a short shift rather than a sprint across the screen.
+  if (spec.exit || options.exit) {
+    const push = options.push || { x: 1, y: 0 };
+    v.translateX.value = withTiming(push.x * 18, { duration: 200 });
+    v.translateY.value = withTiming(push.y * 18, { duration: 200 });
+    v.opacity.value = withTiming(0, { duration: 220 });
+    return;
+  }
+
+  // Displacement keeps its DIRECTION and loses its distance, so "everyone was
+  // blown away from the crater" still reads at a glance.
+  if (spec.directional && options.push) {
+    v.translateX.value = withSequence(
+      withTiming(options.push.x * 12, { duration: 120 }),
+      withTiming(0, { duration: 180 })
+    );
+    v.translateY.value = withSequence(
+      withTiming(options.push.y * 12, { duration: 120 }),
+      withTiming(0, { duration: 180 })
+    );
+  }
+
+  // Settling somewhere new is information, not decoration: it is how the
+  // attacker ends up standing on the claim.
+  if (action === ACTOR_ACTION.MOVE_TO && options.delta) {
+    v.translateX.value = withTiming(options.delta.x, { duration: 220 });
+    v.translateY.value = withTiming(options.delta.y, { duration: 220 });
+    return;
+  }
+
   v.scaleX.value = withSequence(
     withTiming(big ? 1.08 : 1.04, { duration: 90 }),
     withTiming(1, { duration: 130 })
@@ -558,7 +1199,16 @@ function playReduced(v, action) {
  * `play(step)` through the ref. The player calls it; nothing else should.
  */
 const ClaimActor = React.forwardRef(function ClaimActor(
-  { equipped, anchor, bounds, size = ACTOR_SIZE, reducedMotion = false, visible = true, fadeIn = 0 },
+  {
+    equipped, anchor, bounds, size = ACTOR_SIZE, reducedMotion = false,
+    visible = true, fadeIn = 0,
+    // A rival wears their clan's outline, which is how you can tell at a
+    // glance whose ground is being taken.
+    ring,
+    // An expression is one swapped cosmetic slot, so a character can be
+    // startled without their hat moving. The cast decides it from the action.
+    face,
+  },
   ref
 ) {
   const translateX = useSharedValue(0);
@@ -568,9 +1218,11 @@ const ClaimActor = React.forwardRef(function ClaimActor(
   const rotate = useSharedValue(0);
   const opacity = useSharedValue(fadeIn > 0 ? 0 : 1);
 
-  const values = useRef({ translateX, translateY, scaleX, scaleY, rotate }).current;
+  const values = useRef({ translateX, translateY, scaleX, scaleY, rotate, opacity }).current;
   const anchorRef = useRef(anchor);
   anchorRef.current = anchor;
+  const boundsRef = useRef(bounds);
+  boundsRef.current = bounds;
 
   useEffect(() => {
     if (fadeIn > 0) opacity.value = withTiming(1, { duration: fadeIn });
@@ -586,28 +1238,75 @@ const ClaimActor = React.forwardRef(function ClaimActor(
       cancelAnimation(value);
       value.value = 1;
     });
-  }, [rotate, scaleX, scaleY, translateX, translateY]);
+    cancelAnimation(opacity);
+    opacity.value = 1;
+  }, [opacity, rotate, scaleX, scaleY, translateX, translateY]);
 
   const play = useCallback((step) => {
     const name = step?.name;
     const builder = ACTIONS[name];
     if (!builder) return;
-    if (reducedMotion) {
-      playReduced(values, name);
-      return;
-    }
     const spec = actorActionSpec(name);
-    const duration = step.duration || spec.duration;
+    // `originPoint` / `targetPoint` arrive already resolved: the player turns
+    // the step's anchor NAMES into screen points with the same resolver the
+    // effects use, so a shockwave is aimed at the crater that actually formed.
+    const here = anchorRef.current;
     const options = {
       ...step,
-      // `toward` / `lookAt` arrive as anchor NAMES; the player resolves them to
-      // points and passes the result through as `targetPoint`.
-      direction: directionTo(step.targetPoint, anchorRef.current),
+      direction: directionTo(step.targetPoint || step.originPoint, here),
+      // Away from what happened, and toward what is pulling. Both are unit
+      // vectors so an action can commit to a distance of its own.
+      push: step.originPoint ? unitVector(step.originPoint, here) : null,
+      pull: step.targetPoint ? unitVector(here, step.targetPoint) : null,
+      delta: step.targetPoint && here
+        ? { x: step.targetPoint.x - here.x, y: step.targetPoint.y - here.y }
+        : null,
     };
+
+    // RUN_LEFT/RUN_RIGHT/FLEE_FROM used to travel a fixed ~150px and fade
+    // mid-shot, which reads as "gave up" rather than "left". Instead they now
+    // travel exactly as far as the actual edge of the stage from wherever
+    // this rig is standing, so the fade at the tail of the action lands once
+    // they've cleared the side of the screen rather than stranded in the open.
+    if (here && (
+      name === ACTOR_ACTION.RUN_LEFT
+      || name === ACTOR_ACTION.RUN_RIGHT
+      || name === ACTOR_ACTION.FLEE_FROM
+    )) {
+      const stageWidth = boundsRef.current?.width || 0;
+      const clearance = size * 0.6;
+      const dirSign = name === ACTOR_ACTION.RUN_LEFT ? -1
+        : name === ACTOR_ACTION.RUN_RIGHT ? 1
+        : (options.push?.x >= 0 ? 1 : -1);
+      options.edgeReach = Math.max(
+        dirSign > 0 ? (stageWidth - here.x) + clearance : here.x + clearance,
+        160
+      );
+    }
+
+    if (reducedMotion) {
+      playReduced(values, name, options);
+      return;
+    }
+
+    const duration = step.duration || spec.duration;
     builder(values, options, duration);
-  }, [reducedMotion, values]);
+
+    // An exit action ends with the character off the scene. Done here rather
+    // than by the cast so the fade is part of the same chain as the movement
+    // that carried them off, and cannot land a frame early on a slow device.
+    if (spec.exit || step.exit) {
+      opacity.value = withDelay(
+        Math.round(duration * 0.55),
+        withTiming(0, { duration: Math.round(duration * 0.4) })
+      );
+    }
+  }, [opacity, reducedMotion, size, values]);
 
   useImperativeHandle(ref, () => ({ play, reset }), [play, reset]);
+
+  // One slot swapped, everything else the character is wearing kept.
+  const worn = useMemo(() => (face ? withFace(equipped, face) : (equipped || {})), [equipped, face]);
 
   const style = useAnimatedStyle(() => ({
     opacity: opacity.value,
@@ -640,7 +1339,7 @@ const ClaimActor = React.forwardRef(function ClaimActor(
       importantForAccessibility="no-hide-descendants"
       style={[styles.actor, { left, top, width: size, height: size }, style]}
     >
-      <CharacterBust equipped={equipped} size={size} bg="transparent" />
+      <CharacterBust equipped={worn} size={size} ring={ring} bg="transparent" />
     </Animated.View>
   );
 });

@@ -1,24 +1,44 @@
 """Push notifications via Expo's push service. Sent on a background task so
 the request never blocks on the HTTP call. Each category is gated by the
-recipient's notif_prefs. Best-effort — failures are swallowed.
+recipient's notif_prefs. Delivery is best-effort — a failed push never fails
+the request that triggered it — but failures are now logged and a token
+Expo reports as dead is pruned, instead of being silently retried forever.
 
 Categories: stolen | captured | clan_goal | kudos | season | recap | pasers |
 paserby.
 """
 
 import json
+import logging
+import urllib.error
 import urllib.request
 
 from sqlalchemy import text
 
 from .database import SessionLocal
 
+log = logging.getLogger("app.notifications")
+
 EXPO_URL = "https://exp.host/--/api/v2/push/send"
+
+# The only columns notif_prefs actually has. `category` is spliced straight
+# into the SQL below (Postgres has no clean way to parameterise a column
+# name) — every call site today passes a hardcoded literal, but this
+# whitelist is what keeps that true instead of just assumed.
+CATEGORIES = {
+    "stolen", "captured", "clan_goal", "kudos", "season", "recap", "pasers", "paserby",
+}
 
 
 def _expo_send(messages):
+    """POST to Expo, log what actually happened, and report which tokens Expo
+    says are dead so the caller can stop sending to them.
+
+    Expo replies 200 with a per-message ticket array even when individual
+    sends failed — a `DeviceNotRegistered` ticket looks identical to a 200 at
+    the transport level, which is exactly what used to hide it."""
     if not messages:
-        return
+        return []
     try:
         req = urllib.request.Request(
             EXPO_URL,
@@ -26,9 +46,28 @@ def _expo_send(messages):
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        urllib.request.urlopen(req, timeout=5).read()
+        raw = urllib.request.urlopen(req, timeout=5).read()
+    except urllib.error.HTTPError as e:
+        log.warning("expo push HTTP %s: %s", e.code, e.read()[:500])
+        return []
     except Exception:
-        pass  # best-effort
+        log.warning("expo push request failed", exc_info=True)
+        return []
+
+    try:
+        tickets = json.loads(raw).get("data") or []
+    except Exception:
+        log.warning("expo push: unparseable response %r", raw[:500])
+        return []
+
+    dead = []
+    for message, ticket in zip(messages, tickets):
+        if ticket.get("status") != "ok":
+            error = (ticket.get("details") or {}).get("error")
+            log.warning("expo push ticket error: %s (%s)", ticket.get("message"), error)
+            if error == "DeviceNotRegistered":
+                dead.append(message["to"])
+    return dead
 
 
 def notify(user_ids, category, title, body, data=None, actor_id=None):
@@ -40,6 +79,9 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
     it wherever there is a person behind the event; leave it off for system
     notices (season, recap) that nobody sent."""
     if not user_ids:
+        return
+    if category not in CATEGORIES:
+        log.warning("notify: unknown category %r, dropping", category)
         return
     db = SessionLocal()
     try:
@@ -86,6 +128,9 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
             for r in rows
             if r[0]
         ]
-        _expo_send(messages)
+        dead = _expo_send(messages)
+        if dead:
+            db.execute(text("DELETE FROM device_tokens WHERE token = ANY(:t)"), {"t": dead})
+            db.commit()
     finally:
         db.close()

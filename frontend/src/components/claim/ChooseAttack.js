@@ -22,7 +22,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, PanResponder, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line } from 'react-native-svg';
-import { Maximize2, RotateCw, ShieldCheck, Swords } from 'lucide-react-native';
+import { Maximize2, ShieldCheck, Swords } from 'lucide-react-native';
 
 import { CharacterBust } from '../character/CharacterRig';
 import { Framed } from '../ui';
@@ -356,23 +356,17 @@ export default function ChooseAttack({
 
   // The recommendations are sampled poses, so taking one is just jumping to
   // its (t, heading) — from there the runner can keep dragging.
-  // Keep the four choices in a stable row. In particular ATTACK stays visible
+  // Keep the three choices in a stable row. In particular ATTACK stays visible
   // when this stretch has no rival target; disabling it is much clearer than
   // making the option disappear and looking like the mode was removed.
-  const recs = [
-    ...RECOMMENDATIONS.map((r) => ({
-      ...r,
-      target: options?.[r.key],
-      cell: options?.placements?.[options?.[r.key]],
-    })),
-    {
-      key: 'as_run',
-      label: 'AS RUN',
-      Icon: RotateCw,
-      color: D.textMuted,
-      cell: { t: baseT, rotation_deg: 0 },
-    },
-  ];
+  // (AS RUN — jump back to where the run itself was — used to sit here as a
+  // fourth choice; the position rail's own rest notch at `baseT` already does
+  // that job with a snap, so the button was a second control for one thing.)
+  const recs = RECOMMENDATIONS.map((r) => ({
+    ...r,
+    target: options?.[r.key],
+    cell: options?.placements?.[options?.[r.key]],
+  }));
 
   const gained = (p?.new_m2 || 0) + (p?.enemy_m2 || 0);
   const rivals = p?.rivals || [];
@@ -527,7 +521,10 @@ const HANDLE = 26;
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   recGrid: {
     flexDirection: 'row',
-    gap: 4,
+    // Three buttons now, not four — the extra room goes to the gap between
+    // them rather than sitting unused, so they read as three deliberate
+    // choices instead of three squeezed into a row sized for a fourth.
+    gap: 10,
     alignItems: 'stretch',
     marginBottom: 5,
   },
@@ -585,12 +582,22 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
 
   controlsRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 7 },
   breakdownFrame: { flex: 1, minWidth: 0 },
-  breakdown: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, padding: 7 },
+  // One column of four rows, not a 2x2 grid: each metric on its own line,
+  // label and number side by side, so both can run bigger than the grid's
+  // ~48%-wide cells ever had room for.
+  breakdown: { flexDirection: 'column', gap: 4, padding: 8 },
   breakdownStale: { opacity: 0.55 },
-  metric: { width: '48%', minWidth: 0, borderLeftWidth: 2, paddingLeft: 5 },
+  metric: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    minWidth: 0,
+    borderLeftWidth: 2,
+    paddingLeft: 6,
+  },
   metricDim: { opacity: 0.48 },
-  metricLabel: { ...type.captionMedium, color: colors.textDim, fontSize: 7, lineHeight: 8 },
-  metricValue: { ...type.bodySmBold, color: colors.text, fontSize: 10, lineHeight: 13 },
+  metricLabel: { ...type.captionMedium, color: colors.textDim, fontSize: 10, lineHeight: 13 },
+  metricValue: { ...type.bodySmBold, color: colors.text, fontSize: 15, lineHeight: 18, marginLeft: 8 },
 
   moveRow: {
     minHeight: 40,

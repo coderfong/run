@@ -22,7 +22,7 @@ import { useAuth } from '../auth/AuthContext';
 import { radius, space, toon, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { NEUTRAL } from '../state/clan';
 import { Screen, Card, Row, Skeleton, EmptyState, PANEL_INK, ToonHeader } from '../components/ui';
-import ClanBadge from '../components/ClanBadge';
+import ClubAvatar from '../components/ClubAvatar';
 import { PressableScale } from '../ui/motion';
 import { SEASON_CATEGORY_ART, SEASON_SCOPE_ART } from '../config/seasonArt';
 
@@ -193,9 +193,7 @@ export default function SeasonScreen({ navigation, route }) {
           <Row between>
             <Row gap={12} style={{ flex: 1 }}>
               <RankCol rank={rank} top={top} />
-              <View style={[styles.badgeChip, { backgroundColor: c.fill }]}>
-                <ClanBadge icon={item.badge_icon} size={20} color={c.stroke} />
-              </View>
+              <ClubAvatar photoUrl={item.photo_url} badgeIcon={item.badge_icon} color={c} size={40} />
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold} numberOfLines={1}>[{item.tag}] {item.name}</Text>
                 <Text style={type.caption}>
@@ -289,7 +287,6 @@ function Amount({ value, unit, color }) {
 
 const makeStyles = () => StyleSheet.create({
   rankCol: { width: 24, alignItems: 'center' },
-  badgeChip: { width: 40, height: 40, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   avatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
 
   // --- header board chips ---

@@ -28,7 +28,7 @@ const options = {
 };
 
 describe('capture placement controls', () => {
-  it('keeps four compact move modes above the rotator', () => {
+  it('keeps three compact move modes above the rotator', () => {
     let tree;
     act(() => {
       tree = renderer.create(
@@ -54,11 +54,11 @@ describe('capture placement controls', () => {
     expect(copy).toContain('MOST LAND');
     expect(copy).toContain('ATTACK');
     expect(copy).toContain('BEST DEFENCE');
-    expect(copy).toContain('AS RUN');
+    expect(copy).not.toContain('AS RUN');
     expect(copy).not.toMatch(/\bTURN\b|\bSLIDE\b/);
 
     // PressableScale applies `style` to its animated child. Flex belongs on
-    // the outer pressable so all four options share one row without wrapping.
+    // the outer pressable so all three options share one row without wrapping.
     const mostLand = tree.root.findByProps({ accessibilityLabel: 'Move claim to most land' });
     expect(mostLand.props.containerStyle).toEqual(expect.objectContaining({ flex: 1, minWidth: 0 }));
     act(() => tree.unmount());

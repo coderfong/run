@@ -409,9 +409,26 @@ ITEMS.footwear = [
 // Helpers
 // ---------------------------------------------------------------------------
 
+// `getItem` is called 8x (once per slot) on every render of every mounted
+// CharacterRig — a feed of busts, up to 6 bodies in a capture cutscene — and
+// was doing a linear `Array.find` through catalogues up to 124 items long
+// (headwear) every single time. `ITEMS` is the static catalogue, frozen at
+// import time and never mutated at runtime, so it is safe to index once per
+// slot and reuse the index for the app's whole lifetime.
+const ITEM_INDEX = {};
+function itemIndexFor(slot) {
+  let index = ITEM_INDEX[slot];
+  if (!index) {
+    index = new Map();
+    (ITEMS[slot] || []).forEach((item) => index.set(item.id, item));
+    ITEM_INDEX[slot] = index;
+  }
+  return index;
+}
+
 export function getItem(slot, id) {
   const list = ITEMS[slot] || [];
-  return list.find((i) => i.id === id) || list[0];
+  return itemIndexFor(slot).get(id) || list[0];
 }
 
 const COLOR_KEY = { hair: 'hairColor', headwear: 'headwearColor', glasses: 'glassesColor', top: 'topColor', bottom: 'bottomColor' };

@@ -1,45 +1,99 @@
 // The choreography vocabulary.
 //
-// A capture style used to be a playlist: effect A appears, effect B appears,
-// the stage rattles, the ground turns over, effect C appears. Fifteen of them,
-// different sprites and anchors each time, and every one of them the same
-// EVENT. Changing the paint on an identical movement is why a run of claims
-// read as recolours.
+// A capture style used to be a playlist of sprites over ONE actor. The people
+// whose ground was being taken were not in it: they were handled upstream by
+// CaptureEncounter, which ran the same shoulder-check for every style, threw
+// them off screen, and only then let the style play. So every claim was
+// "attacker bumps rival, rival vanishes, some art happens" — the art changed,
+// the EVENT never did, and a meteor read exactly like a paint bomb.
 //
-// So a style is no longer a list of effects. It is five parallel tracks:
+// A style is now a complete mini cutscene with a CAST, and it owns the whole
+// encounter. Eight parallel tracks:
 //
-//     actor      what the runner's character does
-//     camera     what the scene does
-//     effects    what the art does, including art that TRAVELS
-//     territory  how the ground itself changes hands
-//     feel       haptics, and the pauses that make an impact land
+//     attacker     what the runner's character does
+//     defenders    what each rival does, individually
+//     camera       what the scene does
+//     effects      what the art does, including art that TRAVELS
+//     environment  what the WORLD does: shadows, cracks, wind, sweeps, dust
+//     territory    how the ground itself changes hands
+//     feel         haptics, and the pauses that make an impact land
+//     victory      the beat the attacker has actually won on
 //
-// and the thing that distinguishes two celebrations is the shape of those
-// tracks, not which sprite sheet turned up. `choreographySignature` at the
-// bottom is the check, and it deliberately cannot see effect ids: two styles
-// that jump, slam and crack the ground are the same animation whether one of
-// them is on fire and the other is frozen.
+// Two rules follow from that and are enforced below rather than trusted:
+//
+//   1. Defenders are cast members, not a mode. If the claim returned people,
+//      they are on screen and they participate. `encounterMode` describes the
+//      SHAPE of the scene; it must never decide whether rivals exist.
+//   2. Direct character contact is a style choice. Only a style whose fantasy
+//      IS a clash (Sword Slash) may emit a `contact` step. An environmental
+//      style that wants a rival knocked over says so with a defender action
+//      caused by the event, not with a collision borrowed from somewhere else.
+//
+// Narrative shape every style is held to (see `validateChoreography`):
+//
+//     setup → anticipation → reaction → commit → impact → consequence
+//           → territory takeover → defender exit → victory
 //
 // This module is plain data and plain functions on purpose — no Reanimated, no
 // React. The transform chains that execute an actor action live in
-// ClaimActor.js, the stage cues in useCaptureStage.js, and the ground
-// transitions in claim/TerritoryRevealCanvas.js. Here is only what happens,
-// when, and in what order.
+// ClaimActor.js, the multi-character routing in CaptureCast.js, the stage cues
+// in useCaptureStage.js, the world primitives in EnvironmentLayer.js and the
+// ground transitions in claim/TerritoryRevealCanvas.js. Here is only what
+// happens, to whom, when, and in what order.
+
+import { HAPTIC_STYLES } from '../theme/haptics';
+import { CLAIM_TIMING, DRAMA_SCALE } from '../components/claim/timing';
+
+export { DRAMA_SCALE };
 
 // ---------------------------------------------------------------------------
-// What the actor can do
+// Who is on stage
+// ---------------------------------------------------------------------------
+
+export const ROLE = Object.freeze({
+  ATTACKER: 'attacker',
+  DEFENDER: 'defender',
+});
+
+/**
+ * Which defenders a step is addressed to.
+ *
+ * A style is authored WITHOUT knowing how many people it will be played
+ * against — the same Meteor Claim has to work over empty ground and over three
+ * rivals. So defender steps address the group, and `expandCast` resolves them
+ * against the real cast at play time.
+ *
+ *   ALL       every defender, same action (optionally staggered)
+ *   EACH      every defender, one action chosen per person from a pool, seeded
+ *   <number>  one specific defender by index
+ *   NEAREST   index 0 — the layout sorts the cast by distance from the claim
+ *   FURTHEST  the last index, for the same reason
+ */
+export const TARGET = Object.freeze({
+  ALL: 'all',
+  EACH: 'each',
+  NEAREST: 'nearest',
+  FURTHEST: 'furthest',
+});
+
+// ---------------------------------------------------------------------------
+// What a character can do
 // ---------------------------------------------------------------------------
 //
-// Deliberately transform-level. The PASER character is assembled at runtime
-// from live cosmetics (CharacterRig), so there are no pose sprites to cut to —
-// but a container that can translate, scale, squash and rotate covers every
-// beat below, and reads as intent because of its TIMING rather than its
-// drawing. A wind-up that takes 320ms and a release that takes 90ms is a punch
-// whatever the arms are doing.
+// Deliberately transform-level. A PASER character is assembled at runtime from
+// live cosmetics (CharacterRig), so there are no pose sprites to cut to — but a
+// container that can translate, scale, squash and rotate covers every beat
+// below, and reads as intent because of its TIMING rather than its drawing. A
+// wind-up that takes 320ms and a release that takes 90ms is a punch whatever
+// the arms are doing.
 //
-// `duration` is how long the action owns the actor. Archetypes schedule off
-// these, so changing one here retimes every style that uses it.
+// The second half of this list is the defender vocabulary, and it is the whole
+// point of the rework: a rival can now notice, track, dodge, brace, be blown
+// off their feet by something that landed somewhere specific, resist a pull,
+// and leave under their own power. None of it needs new art.
+
 export const ACTOR_ACTION = Object.freeze({
+  // --- shared ---
   IDLE: 'idle',
   LOOK: 'look',
   BRACE: 'brace',
@@ -58,7 +112,38 @@ export const ACTOR_ACTION = Object.freeze({
   KNOCKBACK: 'knockback',
   PULLED: 'pulled',
   CELEBRATE: 'celebrate',
+  POINT_SKY: 'pointSky',
+  RAISE_ARMS: 'raiseArms',
+  MOVE_TO: 'moveTo',
+
+  // --- the defender vocabulary ---
+  LOOK_UP: 'lookUp',
+  LOOK_LEFT: 'lookLeft',
+  LOOK_RIGHT: 'lookRight',
+  NOTICE: 'notice',
+  SURPRISED: 'surprised',
+  DUCK: 'duck',
+  DODGE_LEFT: 'dodgeLeft',
+  DODGE_RIGHT: 'dodgeRight',
+  HOP_BACK: 'hopBack',
+  STUMBLE_LEFT: 'stumbleLeft',
+  STUMBLE_RIGHT: 'stumbleRight',
+  SHOCKWAVE_KNOCKBACK: 'shockwaveKnockback',
+  SLIDE_TOWARD: 'slideToward',
+  RESIST_PULL: 'resistPull',
+  RUN_LEFT: 'runLeft',
+  RUN_RIGHT: 'runRight',
+  FLEE_FROM: 'fleeFrom',
+  FALL_AND_RECOVER: 'fallAndRecover',
+  GLITCH_JUMP: 'glitchJump',
+  BOUNCE_REACTION: 'bounceReaction',
+  WINCE: 'wince',
+  SHAKE_OFF: 'shakeOff',
+  PORTAL_EXIT: 'portalExit',
 });
+
+/** Ergonomic alias — styles read better as `ACTION.LOOK_UP`. */
+export const ACTION = ACTOR_ACTION;
 
 // duration  — how long the actor is busy
 // anticipation — how much of that is wind-up BEFORE the committed movement.
@@ -67,7 +152,13 @@ export const ACTOR_ACTION = Object.freeze({
 //   moment it started. This is the single most load-bearing number in the file:
 //   an impact that lands during the wind-up looks like the effect caused the
 //   character rather than the other way round.
-const ACTOR_SPECS = Object.freeze({
+// directional — the action needs a point to work from or towards. A shockwave
+//   blows a character along `defenderPosition - impactPosition`, so two people
+//   on opposite sides of the same crater move in opposite directions.
+// exit — the character is gone when it finishes. The cast holds everyone on
+//   screen until an exit beat says otherwise, which is what stops the old
+//   "defender is deleted before the style starts" behaviour coming back.
+const ACTOR_SPECS_BASE = Object.freeze({
   [ACTOR_ACTION.IDLE]: { duration: 200, anticipation: 0 },
   [ACTOR_ACTION.LOOK]: { duration: 420, anticipation: 0 },
   [ACTOR_ACTION.BRACE]: { duration: 500, anticipation: 180 },
@@ -86,29 +177,80 @@ const ACTOR_SPECS = Object.freeze({
   [ACTOR_ACTION.KNOCKBACK]: { duration: 780, anticipation: 0 },
   [ACTOR_ACTION.PULLED]: { duration: 700, anticipation: 0 },
   [ACTOR_ACTION.CELEBRATE]: { duration: 900, anticipation: 0 },
+  // Points at something above the scene and HOLDS it, so the thing arriving has
+  // somebody already looking at it. The hold is why it is not just a LOOK.
+  [ACTOR_ACTION.POINT_SKY]: { duration: 560, anticipation: 220, hold: true },
+  [ACTOR_ACTION.RAISE_ARMS]: { duration: 620, anticipation: 260, hold: true },
+  [ACTOR_ACTION.MOVE_TO]: { duration: 620, anticipation: 80, directional: true },
+
+  // --- defenders ---
+  [ACTOR_ACTION.LOOK_UP]: { duration: 420, anticipation: 120 },
+  [ACTOR_ACTION.LOOK_LEFT]: { duration: 380, anticipation: 100 },
+  [ACTOR_ACTION.LOOK_RIGHT]: { duration: 380, anticipation: 100 },
+  [ACTOR_ACTION.NOTICE]: { duration: 460, anticipation: 90, directional: true },
+  [ACTOR_ACTION.SURPRISED]: { duration: 520, anticipation: 60 },
+  [ACTOR_ACTION.DUCK]: { duration: 560, anticipation: 130 },
+  [ACTOR_ACTION.DODGE_LEFT]: { duration: 520, anticipation: 120 },
+  [ACTOR_ACTION.DODGE_RIGHT]: { duration: 520, anticipation: 120 },
+  [ACTOR_ACTION.HOP_BACK]: { duration: 480, anticipation: 140, directional: true },
+  [ACTOR_ACTION.STUMBLE_LEFT]: { duration: 560, anticipation: 0 },
+  [ACTOR_ACTION.STUMBLE_RIGHT]: { duration: 560, anticipation: 0 },
+  [ACTOR_ACTION.SHOCKWAVE_KNOCKBACK]: { duration: 820, anticipation: 0, directional: true },
+  [ACTOR_ACTION.SLIDE_TOWARD]: { duration: 700, anticipation: 0, directional: true },
+  [ACTOR_ACTION.RESIST_PULL]: { duration: 760, anticipation: 0, directional: true },
+  [ACTOR_ACTION.RUN_LEFT]: { duration: 720, anticipation: 100, exit: true },
+  [ACTOR_ACTION.RUN_RIGHT]: { duration: 720, anticipation: 100, exit: true },
+  [ACTOR_ACTION.FLEE_FROM]: { duration: 780, anticipation: 120, directional: true, exit: true },
+  [ACTOR_ACTION.FALL_AND_RECOVER]: { duration: 900, anticipation: 0 },
+  [ACTOR_ACTION.GLITCH_JUMP]: { duration: 460, anticipation: 0 },
+  [ACTOR_ACTION.BOUNCE_REACTION]: { duration: 500, anticipation: 80 },
+  [ACTOR_ACTION.WINCE]: { duration: 420, anticipation: 0 },
+  [ACTOR_ACTION.SHAKE_OFF]: { duration: 620, anticipation: 0 },
+  [ACTOR_ACTION.PORTAL_EXIT]: { duration: 640, anticipation: 160, directional: true, exit: true },
 });
+
+// Stretched by DRAMA_SCALE, same as every step's `start`/`duration`/`stagger`
+// below — so an actor step with no explicit duration override (the common
+// case) still runs proportionally longer, and the "clears before the next
+// beat" arithmetic authored against the old numbers stays true.
+const ACTOR_SPECS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(ACTOR_SPECS_BASE).map(([action, spec]) => [
+      action,
+      Object.freeze({
+        ...spec,
+        duration: Math.round(spec.duration * DRAMA_SCALE),
+        anticipation: Math.round((spec.anticipation || 0) * DRAMA_SCALE),
+      }),
+    ])
+  )
+);
 
 export function actorActionSpec(action) {
   return ACTOR_SPECS[action] || ACTOR_SPECS[ACTOR_ACTION.IDLE];
 }
 
-/** When an actor action is finished and the body is free again. */
+/** Does this action need a point to work from or towards? */
+export const isDirectionalAction = (action) => !!actorActionSpec(action).directional;
+
+/** Does this action end with the character off the scene? */
+export const isExitAction = (action) => !!actorActionSpec(action).exit;
+
+/** When an actor action is finished and that body is free again. */
 export function actorEndsAt(start, action, options = {}) {
   return start + (options.duration || actorActionSpec(action).duration);
 }
 
 /**
- * The earliest an actor beat can start without cancelling the one before it.
+ * The earliest a beat can start without cancelling the one before it ON THE
+ * SAME BODY.
  *
- * There is ONE body. Two overlapping actor steps means the second silently
- * takes over the transform chain and the first never finishes — the beat the
- * style was written around simply does not play, and nothing errors. Four of
- * the fifteen archetypes were doing this: a throw begun 120ms into a 380ms step
- * forward, a recoil begun while a slam was still landing.
- *
- * Archetypes therefore schedule the body through this rather than by picking
- * numbers that look about right. Effects, camera and ground are unaffected —
- * those tracks are SUPPOSED to overlap, and that overlap is the choreography.
+ * There is one body per character. Two overlapping steps means the second
+ * silently takes over the transform chain and the first never finishes — the
+ * beat the style was written around simply does not play, and nothing errors.
+ * `validateChoreography` now checks this per ROLE AND PER DEFENDER INDEX, so a
+ * style may quite legally have defender 0 dodging while defender 2 braces, and
+ * may not have defender 0 doing both.
  */
 export function afterActor(wanted, previousStart, previousAction, options = {}) {
   return Math.max(wanted, actorEndsAt(previousStart, previousAction, options));
@@ -116,7 +258,7 @@ export function afterActor(wanted, previousStart, previousAction, options = {}) 
 
 /** When an actor action commits — the frame its effect should be caused by. */
 export function actorCommitAt(step) {
-  const spec = actorActionSpec(step.name);
+  const spec = actorActionSpec(step.name || step.action_name || step.actionName);
   const scale = step.duration ? step.duration / spec.duration : 1;
   return Math.round(step.start + spec.anticipation * scale);
 }
@@ -125,13 +267,13 @@ export function actorCommitAt(step) {
 // What the scene can do
 // ---------------------------------------------------------------------------
 //
-// These move the OVERLAY STACK — the reveal, the actor and the effects
-// together — and not the Mapbox camera. That is a hard constraint, not a
-// shortcut: the reveal is screen-space, projected once from a camera that is
-// flat and stopped, and moving the real camera mid-sequence invalidates every
-// pixel the overlay was laid out in (see the note in useClaimReveal.focus).
-// A 1.1x push over 300ms still reads as a camera move because everything that
-// is moving is on the stage; the ground under it is a static backdrop.
+// These move the OVERLAY STAGE — the reveal, the cast and the effects together
+// — and not the Mapbox camera. That is a hard constraint, not a shortcut: the
+// reveal is screen-space, projected once from a camera that is flat and
+// stopped, and moving the real camera mid-sequence invalidates every pixel the
+// overlay was laid out in (see the note in useClaimReveal.focus). A 1.1x push
+// over 300ms still reads as a camera move because everything that is moving is
+// on the stage; the ground under it is a static backdrop.
 export const CAMERA_ACTION = Object.freeze({
   ZOOM_IN: 'zoomIn',
   ZOOM_OUT: 'zoomOut',
@@ -155,15 +297,50 @@ const HOLDING_CAMERA_ACTIONS = new Set([
 export const isHoldingCamera = (action) => HOLDING_CAMERA_ACTIONS.has(action);
 
 // ---------------------------------------------------------------------------
-// How the ground changes hands
+// What the world can do
 // ---------------------------------------------------------------------------
 //
-// `reveal` used to take a `style` argument that was passed to a canvas which
-// ignored it — every claim in the app's history wiped as a circle growing from
-// the claim point, whether the style called itself radial or glitch. These are
-// real now (see REVEAL_TRANSITIONS in TerritoryRevealCanvas), and WHICH one a
-// style uses is part of its identity: a claim that freezes over from the edge
-// is not the same event as one that shatters outward from a fist.
+// The environment track exists because the alternative was more sprites, and
+// more sprites was the thing that made every style the same. What actually
+// tells a viewer "a meteor is coming" is not a fireball — it is a shadow
+// growing on the ground under them while people look up. These are drawn as
+// primitives (SVG shapes and plain views, tinted from the live palette) by
+// EnvironmentLayer, so they cost no art, carry no licence and never fail to
+// load.
+export const ENVIRONMENT = Object.freeze({
+  // A shadow growing on the ground: something is above you and getting closer.
+  SHADOW: 'shadow',
+  // A shadow CROSSING the ground: something is flying over.
+  SHADOW_SWEEP: 'shadowSweep',
+  // One frame of light. The cheapest possible impact.
+  FLASH: 'flash',
+  // The scene dims. Anticipation without motion.
+  DARKEN: 'darken',
+  // Fissures crawling out from a point, and staying.
+  CRACKS: 'cracks',
+  // The claim colour coming up through those fissures BEFORE the reveal, so
+  // the ground looks like it is about to change hands rather than being told.
+  GLOW_SEAMS: 'glowSeams',
+  // Slabs of ground lifting and dropping back.
+  RISE: 'rise',
+  // A band travelling across the territory: a breath weapon, a scanline.
+  SWEEP_BAND: 'sweepBand',
+  // A line of light stepping down the claim, quantised.
+  SCANLINE: 'scanline',
+  // Streaks pushing one way. Wind off a banner, blast off an explosion.
+  WIND: 'wind',
+  // Streaks pulling inward, plus a horizon. A gravity well, before anybody
+  // has reacted to it.
+  PULL_FIELD: 'pullField',
+  // A veil that arrives and then CLEARS, which is what makes an impact have an
+  // aftermath instead of just ending.
+  DUST: 'dust',
+});
+
+// ---------------------------------------------------------------------------
+// How the ground changes hands
+// ---------------------------------------------------------------------------
+
 export const REVEAL_TRANSITION = Object.freeze({
   RADIAL: 'radial',
   SHOCKWAVE: 'shockwave',
@@ -186,9 +363,16 @@ export const REVEAL_TRANSITION = Object.freeze({
   CORRUPTION_SPREAD: 'corruptionSpread',
 });
 
-// The encounter is a style decision. Only DUEL asks CaptureEncounter to run
-// its attacker/defender contact animation; every other mode is free to start a
-// one-character, projectile, summoned-object or ground-only scene instead.
+/**
+ * The SHAPE of the scene, and nothing else.
+ *
+ * This used to decide whether rivals appeared at all, which is how a claim
+ * against three people could play out with none of them on screen. It no
+ * longer has any say in that: the cast comes from the claim, and a style's mode
+ * only describes what KIND of event takes the ground. DUEL is the one mode
+ * whose fantasy is direct contact, and it is the only one allowed to emit a
+ * `contact` step.
+ */
 export const ENCOUNTER_MODE = Object.freeze({
   DUEL: 'duel',
   ATTACKER_ONLY: 'attacker_only',
@@ -207,6 +391,7 @@ export const REVEAL_ORIGIN = Object.freeze({
   TERRITORY_TOP: 'territoryTop',
   TERRITORY_BOTTOM: 'territoryBottom',
   PERIMETER: 'perimeter',
+  DEFENDER_GROUP: 'defenderGroupCenter',
 });
 
 // ---------------------------------------------------------------------------
@@ -215,13 +400,51 @@ export const REVEAL_ORIGIN = Object.freeze({
 //
 // Every step carries `start`, in ms from the beginning of the style. Flat and
 // absolute rather than nested and relative, because the whole point of a
-// choreography is that tracks OVERLAP — the actor is still recoiling while the
-// debris flies and the ground is already turning over.
+// choreography is that tracks OVERLAP — the attacker is still recoiling while
+// the defenders are blown outward and the ground is already turning over.
 
-/** The runner's character does something. */
-export const actor = (start, name, options = {}) => ({
-  track: 'actor', action: 'actor', name, start, ...options,
-});
+/**
+ * A character does something.
+ *
+ * Object form, because a step now has to say WHO as well as what:
+ *
+ *   actor({ role: 'attacker', start: 250, action: ACTION.POINT_SKY })
+ *   actor({ role: 'defender', target: 'all', start: 600, action: ACTION.LOOK_UP })
+ *   actor({ role: 'defender', target: 0, start: 1000, action: ACTION.DODGE_LEFT })
+ *   actor({ role: 'defender', target: 'each', start: 950, stagger: 90,
+ *           actions: [ACTION.DODGE_LEFT, ACTION.BRACE, ACTION.DODGE_RIGHT] })
+ *
+ * `from` / `toward` are anchor NAMES. The player resolves them with the same
+ * resolver the effects use and hands the result to the action as a point, so a
+ * shockwave knocks each person away from the crater that actually formed
+ * rather than away from an assumed centre.
+ */
+export const actor = (config) => {
+  const { role = ROLE.ATTACKER, action, actions, ...rest } = config;
+  return {
+    track: role === ROLE.DEFENDER ? 'defenders' : 'attacker',
+    action: 'actor',
+    role,
+    // `name` is the resolved single action; `actions` is a pool that
+    // `expandCast` picks from per defender. Exactly one of them is set.
+    name: action || null,
+    actions: actions || null,
+    target: role === ROLE.DEFENDER ? (config.target ?? TARGET.ALL) : null,
+    ...rest,
+  };
+};
+
+/** Shorthand for the runner. */
+export const attacker = (start, action, options = {}) =>
+  actor({ role: ROLE.ATTACKER, start, action, ...options });
+
+/** Shorthand for the group. */
+export const defenders = (start, action, options = {}) =>
+  actor({ role: ROLE.DEFENDER, target: TARGET.ALL, start, action, ...options });
+
+/** Shorthand for "everybody reacts, but not identically". */
+export const scatter = (start, actions, options = {}) =>
+  actor({ role: ROLE.DEFENDER, target: TARGET.EACH, start, actions, stagger: 70, ...options });
 
 /** A sprite plays in one place. */
 export const effect = (start, id, options = {}) => ({
@@ -232,14 +455,14 @@ export const effect = (start, id, options = {}) => ({
 /**
  * A sprite TRAVELS from one anchor to another.
  *
- * The single biggest omission in the old vocabulary. `at()` could put a bolt
- * at the top of the screen and another at the middle, but nothing ever crossed
- * the gap, so a strike from the sky was two unrelated flashes rather than one
- * object arriving. A projectile is what makes a throw a throw.
+ * A projectile is what makes a throw a throw. `grow` scales it as it goes, so
+ * a meteor arrives bigger than it left, and `bounce` gives it a second, shorter
+ * hop on landing — the difference between a bomb that lands and a bomb that
+ * simply appears where it exploded.
  */
 export const projectile = (start, id, from, to, options = {}) => ({
   track: 'effect', action: 'projectile', effect: id, start,
-  from, to, duration: 260, size: 150, spin: 0, arc: 0, ...options,
+  from, to, duration: 260, size: 150, spin: 0, arc: 0, grow: 1, ...options,
 });
 
 /** The scene moves. */
@@ -253,18 +476,37 @@ export const shake = (start, options = {}) => ({
   intensity: 1, axis: 'x', ...options,
 });
 
+/** The world does something. */
+export const environment = (start, kind, options = {}) => ({
+  track: 'environment', action: 'environment', kind, start,
+  duration: 600, anchor: REVEAL_ORIGIN.TERRITORY_CENTER, ...options,
+});
+
 /**
  * The ground changes hands.
  *
  * Exactly one per style, and its POSITION in the sequence is a choice: before
  * the impact the land arrives and is then struck, after it the strike is what
- * put it there. `transition` and `origin` now reach the canvas.
+ * put it there.
  */
 export const reveal = (start, options = {}) => ({
   track: 'territory', action: 'territoryReveal', start,
   transition: REVEAL_TRANSITION.RADIAL,
   origin: REVEAL_ORIGIN.CLAIM_POINT,
   ...options,
+});
+
+/**
+ * Direct character contact.
+ *
+ * The ONLY way a style gets a collision, and validation rejects it outside a
+ * duel. It exists so Sword Slash can keep its clash — the clash is that style's
+ * whole fantasy — without every environmental style inheriting a bump it never
+ * asked for.
+ */
+export const contact = (start, options = {}) => ({
+  track: 'attacker', action: 'contact', start,
+  variant: 'grin-knock', duration: 520, ...options,
 });
 
 export const haptic = (start, style = 'medium') => ({
@@ -285,500 +527,130 @@ export const pause = (start, duration) => ({
 
 export const sound = (start, name) => ({ track: 'feel', action: 'sound', name, start });
 
-// ---------------------------------------------------------------------------
-// Archetypes
-// ---------------------------------------------------------------------------
-//
-// The MOVEMENT, with no art in it. A style picks one and supplies paint.
-//
-// Each builder takes `paint` (effect ids, all optional — a missing one drops
-// only its own step) and `tune` (a few beat lengths worth varying), and returns
-// a flat sequence plus the duration the player should hold the stage for.
-//
-// Fifteen archetypes for fifteen styles, one-to-one. That is two deviations
-// from the obvious reading of the brief, both deliberate: a portal that hands
-// you the ground and a collapse that swallows it are opposite movements and
-// cannot share a skeleton, so PORTAL_DELIVERY and IMPLOSION are separate; and
-// "ground punch" and "ground stomp" are beats rather than skeletons, so they
-// live inside JUMP_SLAM and PERIMETER_SWEEP.
-
-const ms = (value, fallback) => (Number.isFinite(value) ? value : fallback);
-
-/** Drop any step whose art the caller did not supply. */
-const compact = (steps) => steps.filter((step) => {
-  if (step.track !== 'effect') return true;
-  return !!step.effect;
+/**
+ * The beat the attacker has won on.
+ *
+ * A marker rather than a movement — the celebrate itself is an actor step. It
+ * exists so the narrative contract can be checked: a style must end with the
+ * runner owning the ground, AFTER the reveal, and not simply stop once the
+ * fireball has finished.
+ */
+export const victory = (start, options = {}) => ({
+  track: 'victory', action: 'victory', start, ...options,
 });
 
-const build = (duration, steps) => ({ duration, sequence: compact(steps).sort((a, b) => a.start - b.start) });
+// ---------------------------------------------------------------------------
+// Pacing
+// ---------------------------------------------------------------------------
 
-export const ARCHETYPES = Object.freeze({
-  /**
-   * SKY_STRIKE — something is coming, and the runner knows it.
-   * brace → sky charges → bolt TRAVELS down → strike → recoil → spread
-   */
-  skyStrike: (paint = {}, tune = {}) => {
-    const brace = 0;
-    const charge = ms(tune.charge, 260);
-    const travel = ms(tune.travel, 220);
-    const strike = charge + travel + 180;
-    return build(strike + 900, [
-      actor(brace, ACTOR_ACTION.BRACE, { lookAt: REVEAL_ORIGIN.TERRITORY_CENTER }),
-      effect(charge, paint.charge, { anchor: 'screenTop', size: 240, speed: 1.3 }),
-      camera(charge + 60, CAMERA_ACTION.WHIP_DOWN, { duration: 200 }),
-      projectile(charge + 160, paint.bolt, 'screenTop', REVEAL_ORIGIN.TERRITORY_CENTER, {
-        duration: travel, size: 170, speed: 1.6,
-      }),
-      effect(strike, paint.impact, { size: 300, speed: 1.15 }),
-      haptic(strike, 'medium'),
-      shake(strike + 20, { intensity: 1.1, axis: 'x' }),
-      actor(strike + 30, ACTOR_ACTION.RECOIL),
-      reveal(strike + 90, {
-        transition: REVEAL_TRANSITION.SHOCKWAVE,
-        origin: REVEAL_ORIGIN.TERRITORY_CENTER,
-      }),
-      effect(strike + 260, paint.residue, { anchor: 'territoryBottom', size: 230, opacity: 0.9 }),
-    ]);
-  },
+const scaleMs = (value) => (Number.isFinite(value) ? Math.round(value * DRAMA_SCALE) : value);
 
-  /**
-   * JUMP_SLAM — the heaviest thing in the pack, and the only one with hang time.
-   * jump → HANG → fall → punch the ground → shockwave → cracks
-   * The pause is the whole point: a slam with no hang is a hop.
-   */
-  jumpSlam: (paint = {}, tune = {}) => {
-    const hang = ms(tune.hang, 240);
-    const jump = actorActionSpec(ACTOR_ACTION.JUMP).duration;
-    const land = jump + hang + 260;
-    return build(land + 1000, [
-      actor(0, ACTOR_ACTION.JUMP),
-      camera(60, CAMERA_ACTION.WHIP_UP, { duration: 240 }),
-      pause(jump, hang),
-      camera(jump + hang - 80, CAMERA_ACTION.WHIP_DOWN, { duration: 200 }),
-      actor(jump + hang, ACTOR_ACTION.SLAM),
-      effect(land, paint.impact, { anchor: 'characterFeet', size: 300, speed: 1.25 }),
-      haptic(land, 'medium'),
-      shake(land + 10, { intensity: 1.4, axis: 'y' }),
-      camera(land + 20, CAMERA_ACTION.PUNCH_IN, { amount: 1.12 }),
-      reveal(land + 80, {
-        transition: REVEAL_TRANSITION.CRACK,
-        origin: REVEAL_ORIGIN.CHARACTER_FEET,
-      }),
-      effect(land + 240, paint.debris, { anchor: 'randomTerritoryPoint', size: 220, opacity: 0.85 }),
-    ]);
-  },
+/**
+ * Stretch one authored step by `DRAMA_SCALE`, in place.
+ *
+ * Only the timing fields move: `start`, `duration` and `stagger` (a group
+ * beat's spacing) all scale by the same constant, which is what keeps every
+ * inequality `validateChoreography` checks true after the retune. A sprite's
+ * `speed` is not a timestamp — it is the ART's own playback rate — so it goes
+ * the OTHER way, divided by the same factor, or a stretched beat would still
+ * finish its effect at the old speed and hold a dead frame for the rest of
+ * the beat it is now sitting inside.
+ */
+function scaleStep(step) {
+  const scaled = { ...step };
+  if (Number.isFinite(step.start)) scaled.start = scaleMs(step.start);
+  if (Number.isFinite(step.duration)) scaled.duration = scaleMs(step.duration);
+  if (Number.isFinite(step.stagger)) scaled.stagger = scaleMs(step.stagger);
+  if (step.track === 'effect' && Number.isFinite(step.speed)) {
+    scaled.speed = step.speed / DRAMA_SCALE;
+  }
+  return scaled;
+}
 
-  /**
-   * PROJECTILE_THROW — cause and effect separated by a flight and a silence.
-   * step in → throw → charge ARCS to the ground → pause → detonation
-   */
-  projectileThrow: (paint = {}, tune = {}) => {
-    const flight = ms(tune.flight, 380);
-    const fuse = ms(tune.fuse, 260);
-    // NO STEP FORWARD. There used to be one, thrown away 120ms in by a throw
-    // that overlapped it — so it never actually played, and sequencing it
-    // properly instead pushed the whole style past the 2.4s a celebration is
-    // allowed to take. A throw already reads as planting and swinging; the
-    // step was costing 380ms to show nothing.
-    const throwAt = 0;
-    const release = actorCommitAt(actor(throwAt, ACTOR_ACTION.THROW));
-    const lands = release + flight;
-    const braceAt = afterActor(lands + 40, throwAt, ACTOR_ACTION.THROW);
-    // The fuse burns at least as long as the brace takes, so the blast never
-    // lands on top of the runner still bracing for it.
-    const blast = Math.max(lands + fuse, actorEndsAt(braceAt, ACTOR_ACTION.BRACE));
-    return build(blast + 950, [
-      actor(throwAt, ACTOR_ACTION.THROW, { toward: REVEAL_ORIGIN.TERRITORY_CENTER }),
-      projectile(release, paint.charge, 'characterCenter', REVEAL_ORIGIN.TERRITORY_BOTTOM, {
-        duration: flight, size: 130, arc: -90, spin: 320, speed: 1.2,
-      }),
-      effect(lands, paint.settle, { anchor: 'territoryBottom', size: 150, opacity: 0.8 }),
-      pause(lands, fuse),
-      actor(braceAt, ACTOR_ACTION.BRACE),
-      effect(blast, paint.blast, { size: 320, speed: 1.1 }),
-      haptic(blast, 'medium'),
-      shake(blast + 10, { intensity: 1.25, axis: 'both' }),
-      camera(blast + 20, CAMERA_ACTION.PUNCH_IN, { amount: 1.14 }),
-      actor(blast + 40, ACTOR_ACTION.KNOCKBACK),
-      reveal(blast + 180, {
-        transition: REVEAL_TRANSITION.BURN_SPREAD,
-        origin: REVEAL_ORIGIN.TERRITORY_CENTER,
-      }),
-      effect(blast + 320, paint.smoke, { anchor: 'territoryTop', size: 240, speed: 1.2, opacity: 0.85 }),
-    ]);
-  },
+/** Stretch a whole authored timeline. `scene()` in captureStyles.js calls this once per style. */
+export function scaleSequence(sequence) {
+  return (sequence || []).map(scaleStep);
+}
 
-  /**
-   * CHANNEL_SPREAD — the runner is the SOURCE and holds it the whole way.
-   * cast and hold → it starts at their feet → travels outward → ground freezes
-   * No impact anywhere: a spread that banged would be a blast.
-   */
-  channelSpread: (paint = {}, tune = {}) => {
-    const spread = ms(tune.spread, 900);
-    const start = actorActionSpec(ACTOR_ACTION.CAST).anticipation;
-    return build(start + spread + 800, [
-      actor(0, ACTOR_ACTION.CAST, { hold: true }),
-      effect(start, paint.source, { anchor: 'characterFeet', size: 200, speed: 1.2 }),
-      haptic(start, 'light'),
-      camera(start, CAMERA_ACTION.ZOOM_IN, { amount: 1.06, duration: 600 }),
-      reveal(start + 90, {
-        transition: REVEAL_TRANSITION.FREEZE_SPREAD,
-        origin: REVEAL_ORIGIN.CHARACTER_FEET,
-        duration: spread,
-      }),
-      effect(start + 260, paint.spread, { size: 300, speed: 0.9 }),
-      effect(start + spread * 0.7, paint.crust, {
-        anchor: 'randomTerritoryPoint', size: 220, speed: 1.4, opacity: 0.75,
-      }),
-      camera(start + spread, CAMERA_ACTION.RELEASE, { duration: 420 }),
-      actor(start + spread + 40, ACTOR_ACTION.CELEBRATE),
-    ]);
-  },
+// ---------------------------------------------------------------------------
+// Resolving the cast
+// ---------------------------------------------------------------------------
 
-  /**
-   * PERIMETER_SWEEP — the border is the animation.
-   * stomp → a spark runs the whole outline → the ring closes → the inside floods
-   * The only archetype whose reveal starts at the EDGE and works inward.
-   */
-  perimeterSweep: (paint = {}, tune = {}) => {
-    const lap = ms(tune.lap, 820);
-    const stomp = actorCommitAt(actor(0, ACTOR_ACTION.STOMP));
-    const closes = stomp + lap;
-    return build(closes + 1000, [
-      actor(0, ACTOR_ACTION.STOMP),
-      effect(stomp, paint.spark, { anchor: 'characterFeet', size: 190, speed: 1.5 }),
-      // The stomp is felt as a shake, not a tap. One haptic per style, saved
-      // for the beat that IS the claim — see theme/haptics.js.
-      shake(stomp + 20, { intensity: 0.6, axis: 'y' }),
-      effect(stomp + 120, paint.ring, { size: 300, speed: 0.85, opacity: 0.9 }),
-      reveal(stomp + 140, {
-        transition: REVEAL_TRANSITION.PERIMETER_BURN,
-        origin: REVEAL_ORIGIN.PERIMETER,
-        duration: lap,
-      }),
-      pause(closes - 120, 120),
-      effect(closes, paint.flood, { size: 300, speed: 1.1 }),
-      haptic(closes, 'medium'),
-      camera(closes + 20, CAMERA_ACTION.PUNCH_IN, { amount: 1.08 }),
-      actor(closes + 40, ACTOR_ACTION.CELEBRATE),
-    ]);
-  },
+/** FNV-1a. Small, stable, and the same function the style picker uses. */
+function hashSeed(seed) {
+  let hash = 0x811c9dc5;
+  const text = String(seed == null ? '' : seed);
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
 
-  /**
-   * IMPLOSION — everything goes IN, and there is a silence before it lands.
-   * camera creeps in → the runner is dragged toward it → particles collapse
-   * → nothing → implode
-   */
-  implosion: (paint = {}, tune = {}) => {
-    const pull = ms(tune.pull, 700);
-    const silence = ms(tune.silence, 320);
-    const collapse = pull + silence;
-    return build(collapse + 1000, [
-      camera(0, CAMERA_ACTION.ZOOM_IN, { amount: 1.14, duration: pull }),
-      effect(0, paint.well, { size: 290, speed: 0.8 }),
-      actor(120, ACTOR_ACTION.PULLED, { toward: REVEAL_ORIGIN.TERRITORY_CENTER }),
-      effect(240, paint.debris, { anchor: 'randomTerritoryPoint', size: 200, speed: 1.4, opacity: 0.8 }),
-      camera(pull, CAMERA_ACTION.FREEZE, { duration: silence }),
-      pause(pull, silence),
-      effect(collapse, paint.collapse, { size: 200, speed: 1.3 }),
-      haptic(collapse, 'medium'),
-      camera(collapse + 20, CAMERA_ACTION.ZOOM_OUT, { amount: 0.94, duration: 160 }),
-      camera(collapse + 200, CAMERA_ACTION.RELEASE, { duration: 320 }),
-      reveal(collapse + 120, {
-        transition: REVEAL_TRANSITION.IMPLODE,
-        origin: REVEAL_ORIGIN.TERRITORY_CENTER,
-      }),
-      actor(collapse + 160, ACTOR_ACTION.RECOIL),
-    ]);
-  },
+function resolveTargets(target, count) {
+  if (count <= 0) return [];
+  if (target === TARGET.ALL || target === TARGET.EACH) {
+    return Array.from({ length: count }, (_, i) => i);
+  }
+  // The cast layout sorts defenders by distance from the claim point, so
+  // "nearest" and "furthest" are the ends of that ordering rather than a
+  // runtime geometry question the timeline cannot answer.
+  if (target === TARGET.NEAREST) return [0];
+  if (target === TARGET.FURTHEST) return [count - 1];
+  if (Array.isArray(target)) return target.filter((i) => i >= 0 && i < count);
+  if (Number.isInteger(target)) return target < count ? [target] : [];
+  return [];
+}
 
-  /**
-   * PORTAL_DELIVERY — the ground is HANDED OVER rather than taken.
-   * a door opens underneath → light comes through it → the land arrives
-   * → the door folds away
-   * Nothing shakes anywhere in this one, and the reveal is early.
-   */
-  portalDelivery: (paint = {}, tune = {}) => {
-    const open = ms(tune.open, 420);
-    const close = ms(tune.close, 520);
-    // Step back first, then look. Looking 160ms into a 380ms step cancelled
-    // the step, so the runner never actually gave ground to the portal.
-    const lookAt = actorEndsAt(0, ACTOR_ACTION.STEP_FORWARD);
-    return build(open + close + 900, [
-      actor(0, ACTOR_ACTION.STEP_FORWARD, { away: true }),
-      effect(0, paint.portal, { anchor: 'territoryBottom', size: 280, speed: 1.4 }),
-      actor(lookAt, ACTOR_ACTION.LOOK, { lookAt: REVEAL_ORIGIN.TERRITORY_BOTTOM }),
-      effect(open, paint.through, { size: 250, speed: 1.05 }),
-      haptic(open, 'light'),
-      reveal(open + 60, {
-        transition: REVEAL_TRANSITION.LIGHT_SWEEP,
-        origin: REVEAL_ORIGIN.TERRITORY_BOTTOM,
-      }),
-      camera(open + 120, CAMERA_ACTION.ZOOM_IN, { amount: 1.05, duration: 420 }),
-      effect(open + close, paint.fold, { anchor: 'territoryBottom', size: 240 }),
-      camera(open + close, CAMERA_ACTION.RELEASE, { duration: 380 }),
-      actor(open + close + 60, ACTOR_ACTION.CELEBRATE),
-    ]);
-  },
-
-  /**
-   * BEAM_DOWN — earned, not won. Arrives on the runner and opens out.
-   * raise → beam lands ON them → rings push out → the ground lights up
-   */
-  beamDown: (paint = {}, tune = {}) => {
-    const arrive = ms(tune.arrive, 340);
-    return build(arrive + 1400, [
-      actor(0, ACTOR_ACTION.CAST, { raise: true }),
-      projectile(120, paint.beam, 'screenTop', 'characterHead', {
-        duration: arrive - 120, size: 150, speed: 1.5,
-      }),
-      effect(arrive, paint.land, { anchor: 'characterFeet', size: 250 }),
-      haptic(arrive, 'success'),
-      camera(arrive + 20, CAMERA_ACTION.ZOOM_IN, { amount: 1.07, duration: 500 }),
-      reveal(arrive + 80, {
-        transition: REVEAL_TRANSITION.RADIAL,
-        origin: REVEAL_ORIGIN.CHARACTER_FEET,
-        duration: 900,
-      }),
-      effect(arrive + 200, paint.rings, { size: 300, speed: 1.3 }),
-      effect(arrive + 520, paint.halo, { anchor: 'characterHead', size: 210, opacity: 0.75 }),
-      camera(arrive + 700, CAMERA_ACTION.RELEASE, { duration: 400 }),
-      actor(arrive + 760, ACTOR_ACTION.CELEBRATE),
-    ]);
-  },
-
-  /**
-   * MAGIC_CAST — three places in order, and the sheets TRAVEL between them.
-   * cast left → cast right → glyphs land apart → they connect → the rune fires
-   */
-  magicCast: (paint = {}, tune = {}) => {
-    const beat = ms(tune.beat, 320);
-    // TWO CASTS AND A CHARGE, back to back — the beat only controls how much
-    // air sits between them. Each has to finish before the next begins: at a
-    // 320ms beat the second cast used to start 320ms into the first's 620ms,
-    // so the left glyph was thrown by a gesture that never played, and the
-    // charge cancelled the right one in turn.
-    //
-    // They are also SHORTENED here rather than left at their natural lengths.
-    // Three full-length body actions back to back is 2000ms of casting before
-    // the rune even fires, which made this the one style that outran the whole
-    // sequence's budget. These are flicks of the wrist, not full casts, so they
-    // are written as such — the anticipation ratio scales with the duration, so
-    // they still read as wind-up-then-release.
-    const FLICK = 380;
-    const GATHER = 520;
-    const castLeft = 0;
-    const castRight = afterActor(beat, castLeft, ACTOR_ACTION.CAST, { duration: FLICK });
-    const chargeAt = afterActor(castRight + beat, castRight, ACTOR_ACTION.CAST, { duration: FLICK });
-    const connect = actorEndsAt(chargeAt, ACTOR_ACTION.CHARGE, { duration: GATHER });
-    return build(connect + 1100, [
-      actor(castLeft, ACTOR_ACTION.CAST, { side: 'left', duration: FLICK }),
-      effect(actorCommitAt(actor(castLeft, ACTOR_ACTION.CAST, { duration: FLICK })), paint.glyph, {
-        anchor: 'territoryTop', size: 200, speed: 1.3,
-      }),
-      actor(castRight, ACTOR_ACTION.CAST, { side: 'right', duration: FLICK }),
-      effect(actorCommitAt(actor(castRight, ACTOR_ACTION.CAST, { duration: FLICK })), paint.glyph, {
-        anchor: 'territoryBottom', size: 200, speed: 1.3,
-      }),
-      actor(chargeAt, ACTOR_ACTION.CHARGE, { duration: GATHER }),
-      projectile(chargeAt + 180, paint.link, REVEAL_ORIGIN.TERRITORY_TOP, REVEAL_ORIGIN.TERRITORY_BOTTOM, {
-        duration: beat * 0.7, size: 160, speed: 1.5,
-      }),
-      effect(connect, paint.rune, { size: 260, speed: 1.2 }),
-      haptic(connect, 'medium'),
-      shake(connect + 20, { intensity: 0.7, axis: 'both' }),
-      actor(connect + 40, ACTOR_ACTION.RECOIL),
-      reveal(connect + 120, {
-        transition: REVEAL_TRANSITION.DISSOLVE,
-        origin: REVEAL_ORIGIN.TERRITORY_CENTER,
-      }),
-    ]);
-  },
-
-  /**
-   * WITNESS_GROWTH — the runner does almost nothing, and that is the choice.
-   * a seed lands → they watch → it grows across the whole claim on its own
-   * The one archetype where the actor is not the cause.
-   */
-  witnessGrowth: (paint = {}, tune = {}) => {
-    const land = ms(tune.land, 300);
-    const grow = ms(tune.grow, 1100);
-    return build(land + grow + 700, [
-      projectile(0, paint.seed, 'screenTop', REVEAL_ORIGIN.TERRITORY_CENTER, {
-        duration: land, size: 120, speed: 1.2,
-      }),
-      actor(land - 160, ACTOR_ACTION.LOOK, { lookAt: REVEAL_ORIGIN.TERRITORY_CENTER }),
-      effect(land, paint.sprout, { size: 200, speed: 1.1 }),
-      reveal(land + 60, {
-        transition: REVEAL_TRANSITION.BLOOM,
-        origin: REVEAL_ORIGIN.TERRITORY_CENTER,
-        duration: grow,
-      }),
-      effect(land + grow * 0.35, paint.grow, { size: 300, speed: 0.85 }),
-      camera(land + grow * 0.4, CAMERA_ACTION.ZOOM_OUT, { amount: 0.95, duration: 600 }),
-      effect(land + grow * 0.8, paint.settle, { anchor: 'randomTerritoryPoint', size: 220, opacity: 0.75 }),
-      camera(land + grow, CAMERA_ACTION.RELEASE, { duration: 420 }),
-      haptic(land + grow, 'success'),
-    ]);
-  },
-
-  /**
-   * CHARGE_RELEASE — a long wind-up and a short violent release.
-   * charge between the hands → the orb grows → THRUST it down → nova
-   */
-  chargeRelease: (paint = {}, tune = {}) => {
-    const wind = ms(tune.wind, actorActionSpec(ACTOR_ACTION.CHARGE).duration);
-    // The charge has to finish before the slam starts, and the slam before the
-    // recoil: the wind-up is tunable, so a style asking for a long charge would
-    // otherwise have its slam begin partway through it.
-    const slamAt = afterActor(wind, 0, ACTOR_ACTION.CHARGE);
-    const thrust = slamAt + 140;
-    const recoilAt = afterActor(thrust + 140, slamAt, ACTOR_ACTION.SLAM);
-    return build(recoilAt + 960, [
-      actor(0, ACTOR_ACTION.CHARGE),
-      effect(80, paint.gather, { anchor: 'characterCenter', size: 180, speed: 0.9 }),
-      camera(120, CAMERA_ACTION.ZOOM_IN, { amount: 1.1, duration: wind }),
-      effect(wind * 0.55, paint.orb, { anchor: 'characterCenter', size: 230, speed: 0.8 }),
-      pause(wind, 140),
-      actor(slamAt, ACTOR_ACTION.SLAM, { toward: REVEAL_ORIGIN.TERRITORY_CENTER }),
-      effect(thrust, paint.nova, { size: 320, speed: 1.35 }),
-      haptic(thrust, 'medium'),
-      shake(thrust + 10, { intensity: 1.2, axis: 'both' }),
-      camera(thrust + 20, CAMERA_ACTION.RELEASE, { duration: 260 }),
-      reveal(thrust + 100, {
-        transition: REVEAL_TRANSITION.SHOCKWAVE,
-        origin: REVEAL_ORIGIN.CHARACTER_FEET,
-      }),
-      actor(recoilAt, ACTOR_ACTION.RECOIL),
-      effect(thrust + 300, paint.wake, { anchor: 'territoryTop', size: 230, opacity: 0.8 }),
-    ]);
-  },
-
-  /**
-   * FALLING_OBJECTS — one thing forms overhead, breaks, and rains down.
-   * form → crack → three fragments fall on different points → the big one lands
-   */
-  fallingObjects: (paint = {}, tune = {}) => {
-    const form = ms(tune.form, 420);
-    const stagger = ms(tune.stagger, 140);
-    const finale = form + stagger * 3 + 240;
-    return build(finale + 1000, [
-      actor(0, ACTOR_ACTION.LOOK, { lookAt: 'screenTop' }),
-      effect(0, paint.form, { anchor: 'screenTop', size: 260, speed: 1.1 }),
-      effect(form, paint.crack, { anchor: 'screenTop', size: 220, speed: 1.4 }),
-      actor(form, ACTOR_ACTION.BRACE),
-      projectile(form + stagger, paint.shard, 'screenTop', REVEAL_ORIGIN.TERRITORY_TOP, {
-        duration: 220, size: 120, spin: 220,
-      }),
-      projectile(form + stagger * 2, paint.shard, 'screenTop', 'randomTerritoryPoint', {
-        duration: 240, size: 110, spin: -260,
-      }),
-      projectile(form + stagger * 3, paint.shard, 'screenTop', REVEAL_ORIGIN.TERRITORY_BOTTOM, {
-        duration: 200, size: 130, spin: 180,
-      }),
-      shake(form + stagger + 220, { intensity: 0.5, axis: 'y' }),
-      camera(finale - 200, CAMERA_ACTION.WHIP_DOWN, { duration: 180 }),
-      effect(finale, paint.strike, { size: 310, speed: 1.2 }),
-      haptic(finale, 'heavy'),
-      shake(finale + 10, { intensity: 1.3, axis: 'x' }),
-      reveal(finale + 90, {
-        transition: REVEAL_TRANSITION.CRACK,
-        origin: REVEAL_ORIGIN.TERRITORY_CENTER,
-      }),
-      actor(finale + 40, ACTOR_ACTION.KNOCKBACK),
-    ]);
-  },
-
-  /**
-   * RAIN_BARRAGE — no single impact at all. It gets heavier, then it has won.
-   * throw the cloud up → sparse drops → dense drops → the ground gives way
-   */
-  rainBarrage: (paint = {}, tune = {}) => {
-    const drops = Math.max(3, ms(tune.drops, 5));
-    const spacing = ms(tune.spacing, 130);
-    const open = actorCommitAt(actor(0, ACTOR_ACTION.THROW));
-    const last = open + 200 + spacing * drops;
-    const rain = [];
-    for (let i = 0; i < drops; i += 1) {
-      // Accelerating, not metronomic: the gaps shrink so the barrage builds.
-      const at = open + 200 + spacing * i * (1 - i / (drops * 2.4));
-      rain.push(projectile(Math.round(at), paint.drop, 'screenTop', 'randomTerritoryPoint', {
-        duration: 200 + i * 12, size: 90 + i * 8, opacity: 0.85,
-      }));
+/**
+ * Turn an authored timeline into the one this cast will actually play.
+ *
+ * Defender steps address the group; this resolves them to individuals against
+ * the real defender count and a seed. Same claim, same reactions, every replay
+ * — and different claims get different combinations, which is what stops three
+ * people all dodging the same way like a chorus line.
+ *
+ * With no defenders every defender step simply disappears, which is how one
+ * authored style covers both occupied and empty ground.
+ */
+export function expandCast(sequence, { defenderCount = 0, seed = '' } = {}) {
+  const out = [];
+  (sequence || []).forEach((step, position) => {
+    if (step.action !== 'actor' || step.role !== ROLE.DEFENDER) {
+      if (step.action === 'actor') out.push({ ...step, index: 0 });
+      else out.push(step);
+      return;
     }
-    return build(last + 1000, [
-      actor(0, ACTOR_ACTION.THROW, { upward: true }),
-      effect(open, paint.cloud, { anchor: 'screenTop', size: 280, speed: 1.1, opacity: 0.9 }),
-      ...rain,
-      camera(open + 400, CAMERA_ACTION.TILT, { amount: 1.5, duration: 400 }),
-      actor(open + 300, ACTOR_ACTION.BRACE),
-      reveal(last - 320, {
-        transition: REVEAL_TRANSITION.DISSOLVE,
-        origin: REVEAL_ORIGIN.TERRITORY_CENTER,
-        duration: 900,
-      }),
-      effect(last, paint.pool, { anchor: 'randomTerritoryPoint', size: 250, speed: 1.5, opacity: 0.8 }),
-      haptic(last, 'success'),
-    ]);
-  },
+    const targets = resolveTargets(step.target, defenderCount);
+    targets.forEach((defenderIndex, n) => {
+      const pool = step.actions;
+      // Seeded per person AND per step, so one defender does not get the same
+      // slot of every pool in the style and end up the designated left-dodger.
+      // `position` alone already identifies the step uniquely — deliberately
+      // NOT `step.start`, which moves whenever the choreography is retuned
+      // (see DRAMA_SCALE) and would silently reshuffle who gets which slot,
+      // or coincidentally collide and make every defender pick the same one.
+      const name = pool && pool.length
+        ? pool[hashSeed(`${seed}|${position}|${defenderIndex}`) % pool.length]
+        : step.name;
+      out.push({
+        ...step,
+        name,
+        actions: null,
+        index: defenderIndex,
+        start: Math.round(step.start + (step.stagger || 0) * n),
+      });
+    });
+  });
+  return out.sort((a, b) => a.start - b.start);
+}
 
-  /**
-   * PLANT_GROWTH — planted deliberately, then it runs away from the runner.
-   * plant → sprout → vines race outward → flowers pop in sequence → full bloom
-   */
-  plantGrowth: (paint = {}, tune = {}) => {
-    const plant = actorCommitAt(actor(0, ACTOR_ACTION.PLANT));
-    const run = ms(tune.run, 900);
-    const pops = [0.45, 0.62, 0.8].map((fraction, i) =>
-      effect(Math.round(plant + run * fraction), paint.pop, {
-        anchor: 'randomTerritoryPoint', size: 170 + i * 20, speed: 1.3, opacity: 0.85,
-      })
-    );
-    return build(plant + run + 900, [
-      actor(0, ACTOR_ACTION.PLANT),
-      effect(plant, paint.sprout, { anchor: 'characterFeet', size: 190 }),
-      reveal(plant + 80, {
-        transition: REVEAL_TRANSITION.BLOOM,
-        origin: REVEAL_ORIGIN.CHARACTER_FEET,
-        duration: run,
-      }),
-      effect(plant + 160, paint.vines, { size: 280, speed: 0.95 }),
-      ...pops,
-      camera(plant + run, CAMERA_ACTION.PUNCH_IN, { amount: 1.06 }),
-      effect(plant + run, paint.bloom, { size: 300, speed: 1.15 }),
-      haptic(plant + run, 'success'),
-      actor(plant + run + 40, ACTOR_ACTION.CELEBRATE),
-    ]);
-  },
-
-  /**
-   * CORRUPTION — the only one where the runner is not in control.
-   * it starts off-screen → the actor glitches with it → it snaps into place
-   */
-  corruption: (paint = {}, tune = {}) => {
-    const creep = ms(tune.creep, 620);
-    const snap = creep + 380;
-    return build(snap + 900, [
-      effect(0, paint.corrupt, { anchor: 'screenBottom', size: 300, speed: 1.7, optional: true }),
-      actor(140, ACTOR_ACTION.LOOK, { lookAt: 'screenBottom' }),
-      camera(200, CAMERA_ACTION.TILT, { amount: 2.4, duration: 300 }),
-      reveal(creep - 200, {
-        transition: REVEAL_TRANSITION.CORRUPTION_SPREAD,
-        origin: REVEAL_ORIGIN.TERRITORY_BOTTOM,
-        duration: 700,
-      }),
-      effect(creep, paint.spread, { size: 250, speed: 1.5 }),
-      actor(creep, ACTOR_ACTION.RECOIL, { jitter: true }),
-      shake(creep + 60, { intensity: 0.6, axis: 'both' }),
-      effect(snap, paint.snap, { size: 270, speed: 1.35 }),
-      haptic(snap, 'medium'),
-      shake(snap + 10, { intensity: 1.1, axis: 'x' }),
-      camera(snap + 20, CAMERA_ACTION.PUNCH_IN, { amount: 1.1 }),
-    ]);
-  },
-});
-
-export const ARCHETYPE_IDS = Object.freeze(Object.keys(ARCHETYPES));
+/** Every actor step for one body, in order. */
+export function timelineFor(sequence, role, index = 0) {
+  return sequence
+    .filter((step) => step.action === 'actor' && step.role === role && (step.index || 0) === index)
+    .sort((a, b) => a.start - b.start);
+}
 
 // ---------------------------------------------------------------------------
 // The uniqueness check
@@ -787,28 +659,29 @@ export const ARCHETYPE_IDS = Object.freeze(Object.keys(ARCHETYPES));
 /**
  * A style's CHOREOGRAPHY, with the art taken out of it.
  *
- * The old `captureStyleShape` compared anchors and stage cues, which was the
- * right idea against the wrong vocabulary: every style was a stack of sheets,
- * so anchors were all there was to tell them apart. Two styles that both
- * explode in the middle, rattle and wipe radially were "different" because one
- * of them put its third sheet at the bottom.
- *
- * This compares the things a viewer actually reads: what the character did,
- * what the scene did, which art TRAVELLED and along what path, how the ground
- * turned over and from where, and where the silences were. Effect ids, sizes,
- * opacities and exact timings are all invisible to it on purpose — fire and
- * ice over the same movement is one animation painted twice.
+ * This compares the things a viewer actually reads: what each side did, what
+ * the world did, what the scene did, which art TRAVELLED and along what path,
+ * how the ground turned over and from where, and where the silences were.
+ * Effect ids, sizes, opacities and exact timings are all invisible to it on
+ * purpose — fire and ice over the same movement is one animation painted twice.
  */
 export function choreographySignature(style) {
   const steps = [...(style?.sequence || [])].sort((a, b) => a.start - b.start);
   return steps
     .map((step) => {
-      if (step.action === 'actor') return `actor:${step.name}`;
+      if (step.action === 'actor') {
+        const who = step.role === ROLE.DEFENDER ? `def:${step.target}` : 'atk';
+        const what = step.name || (step.actions || []).join('/');
+        return `${who}:${what}`;
+      }
+      if (step.action === 'contact') return `contact:${step.variant}`;
       if (step.action === 'camera') return `cam:${step.name}`;
       if (step.action === 'screenShake') return `shake:${step.axis || 'x'}`;
       if (step.action === 'projectile') return `fly:${step.from}>${step.to}`;
+      if (step.action === 'environment') return `world:${step.kind}@${step.anchor}`;
       if (step.action === 'territoryReveal') return `ground:${step.transition}@${step.origin}`;
       if (step.action === 'pause') return 'pause';
+      if (step.action === 'victory') return 'win';
       if (step.action === 'haptic') return null; // felt, not seen
       if (step.action === 'sound') return null;
       return `fx@${step.anchor || REVEAL_ORIGIN.TERRITORY_CENTER}`;
@@ -824,16 +697,17 @@ export function choreographySignature(style) {
  */
 export function choreographyProfile(style) {
   const steps = style?.sequence || [];
-  const actors = steps.filter((s) => s.action === 'actor').map((s) => s.name);
-  const cameras = steps.filter((s) => s.action === 'camera').map((s) => s.name);
-  const flights = steps.filter((s) => s.action === 'projectile').length;
   const ground = steps.find((s) => s.action === 'territoryReveal');
   const impact = steps.find((s) => s.action === 'haptic');
+  const defenderSteps = steps.filter((s) => s.action === 'actor' && s.role === ROLE.DEFENDER);
   return {
-    actors,
-    cameras,
-    flights,
+    actors: steps.filter((s) => s.action === 'actor' && s.role === ROLE.ATTACKER).map((s) => s.name),
+    defenderBeats: defenderSteps.length,
+    cameras: steps.filter((s) => s.action === 'camera').map((s) => s.name),
+    world: steps.filter((s) => s.action === 'environment').map((s) => s.kind),
+    flights: steps.filter((s) => s.action === 'projectile').length,
     pauses: steps.filter((s) => s.action === 'pause').length,
+    contact: steps.some((s) => s.action === 'contact'),
     transition: ground?.transition || null,
     origin: ground?.origin || null,
     // Whether the land arrives and is then struck, or the strike is what put
@@ -842,10 +716,30 @@ export function choreographyProfile(style) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// The contract
+// ---------------------------------------------------------------------------
+
 const KNOWN_ACTIONS = new Set([
   'actor', 'camera', 'screenShake', 'projectile', 'territoryReveal',
-  'haptic', 'pause', 'sound', 'character',
+  'environment', 'contact', 'victory', 'haptic', 'pause', 'sound',
 ]);
+
+// How long a style may still be running after it has cued the reveal.
+//
+// The controller keeps the style mounted from its cue through the reveal and
+// the handoff to the permanent Mapbox layer, and unmounts it there. A style
+// whose rivals are still retreating past this point has those beats cut off
+// mid-movement — which is exactly the "characters vanish" failure this rework
+// exists to remove, arriving by a different door. Derived from the timing
+// table rather than written down twice, so retuning the reveal cannot silently
+// invalidate thirty styles.
+export const POST_REVEAL_BUDGET = CLAIM_TIMING.reveal + CLAIM_TIMING.handoff;
+
+// The counts every style is validated against. Three is the practical ceiling
+// on a claim's victim list on screen at once; zero has to work because empty
+// ground is a real claim and the same authored style has to cover it.
+const VALIDATION_CAST_SIZES = [0, 1, 2, 3];
 
 /**
  * What a style must satisfy to be playable. Run over the whole pack by the
@@ -859,10 +753,10 @@ export function validateChoreography(style) {
   if (!Object.values(ENCOUNTER_MODE).includes(style.encounterMode)) {
     errors.push(`unknown encounter mode ${style.encounterMode}`);
   }
-  if (typeof style.showAttacker !== 'boolean') errors.push('showAttacker metadata is required');
-  if (typeof style.showDefender !== 'boolean') errors.push('showDefender metadata is required');
   if (typeof style.usesProjectile !== 'boolean') errors.push('usesProjectile metadata is required');
+  if (typeof style.usesContact !== 'boolean') errors.push('usesContact metadata is required');
 
+  // --- the ground ---------------------------------------------------------
   const reveals = steps.filter((s) => s.action === 'territoryReveal');
   if (reveals.length !== 1) errors.push('exactly one territory reveal is required');
   reveals.forEach((step) => {
@@ -880,39 +774,140 @@ export function validateChoreography(style) {
     errors.push('usesProjectile metadata does not match the sequence');
   }
 
-  // Exactly one, not "at least one". Haptics in this app are deliberately
-  // restrained (see theme/haptics.js) and a claim already spends its budget:
-  // a style that buzzed at its wind-up AND its impact would be twice the feel
-  // of every other beat in the app. Secondary beats get a shake instead.
-  if (steps.filter((s) => s.action === 'haptic').length !== 1) {
-    errors.push('exactly one primary haptic is required');
+  // The style stays mounted from its reveal cue until the permanent map layer
+  // has taken over. Anything it schedules after that window is a beat nobody
+  // will ever see.
+  if (reveals[0] && style.duration > reveals[0].start + POST_REVEAL_BUDGET) {
+    errors.push(
+      `style runs ${style.duration - reveals[0].start}ms past its reveal cue, `
+      + `over the ${POST_REVEAL_BUDGET}ms the controller keeps it mounted for`
+    );
   }
 
+  // --- feel ---------------------------------------------------------------
+  //
+  // Exactly one, not "at least one". Haptics in this app are deliberately
+  // restrained (see theme/haptics.js) and a claim already spends its budget: a
+  // style that buzzed at its wind-up AND its impact would be twice the feel of
+  // every other beat in the app. Secondary beats get a shake instead.
+  const haptics = steps.filter((s) => s.action === 'haptic');
+  if (haptics.length !== 1) errors.push('exactly one primary haptic is required');
+  haptics.forEach((step) => {
+    // `haptic[name]?.()` makes a typo a silent no-op, which is how five styles
+    // shipped asking for a 'heavy' that did not exist and felt like nothing at
+    // their own climax. An unknown name is now a failing test instead.
+    if (!HAPTIC_STYLES.includes(step.style)) {
+      errors.push(`unknown haptic style ${step.style}`);
+    }
+  });
+
+  // --- the narrative ------------------------------------------------------
+  const wins = steps.filter((s) => s.action === 'victory');
+  if (wins.length !== 1) errors.push('exactly one victory beat is required');
+  if (wins[0] && reveals[0] && wins[0].start < reveals[0].start) {
+    errors.push('the victory beat happens before the ground changes hands');
+  }
+
+  const contacts = steps.filter((s) => s.action === 'contact');
+  if (contacts.length && style.encounterMode !== ENCOUNTER_MODE.DUEL) {
+    errors.push(
+      'only a duel may use direct contact: an environmental style must not '
+      + 'open with a generic attacker/defender collision'
+    );
+  }
+  if (style.usesContact !== contacts.length > 0) {
+    errors.push('usesContact metadata does not match the sequence');
+  }
+
+  // The runner starts it. Every scene opens on somebody DOING something —
+  // throwing, casting, calling something down — because an event with no cause
+  // is a cutaway, and a claim the runner did not visibly make is the thing the
+  // whole post-run flow exists to sell.
+  const attackerSteps = steps.filter((s) => s.action === 'actor' && s.role === ROLE.ATTACKER);
+  if (!attackerSteps.length) errors.push('the attacker never does anything');
+  if (reveals[0] && !attackerSteps.some((s) => s.start < reveals[0].start)) {
+    errors.push('the attacker never initiates: the ground turns over before they act');
+  }
+
+  const defenderSteps = steps.filter((s) => s.action === 'actor' && s.role === ROLE.DEFENDER);
+  if (!defenderSteps.length) {
+    errors.push('no defender choreography: rivals would stand still through their own defeat');
+  }
+  // Somebody has to react BEFORE the thing that takes their ground, or the
+  // scene has no anticipation and the event reads as a cutaway.
+  if (reveals[0] && !defenderSteps.some((s) => s.start < reveals[0].start)) {
+    errors.push('defenders never react before the territory turns over');
+  }
+  // ...and the scene has to say how they leave. Without this the cast simply
+  // holds position under a finished claim, which is the other half of the old
+  // bug: rivals deleted by the system rather than displaced by the event.
+  const exits = defenderSteps.filter((s) => {
+    const pool = s.actions || [s.name];
+    return s.exit || pool.every((name) => isExitAction(name));
+  });
+  if (!exits.length) errors.push('defenders never leave: the style needs an exit beat');
+
+  // --- per-step sanity ----------------------------------------------------
   steps.forEach((step, index) => {
     if (!Number.isFinite(step.start) || step.start < 0) errors.push(`step ${index} has an invalid start`);
     if (step.action && !KNOWN_ACTIONS.has(step.action)) errors.push(`step ${index} has unknown action ${step.action}`);
-    if (step.action === 'actor' && !ACTOR_SPECS[step.name]) errors.push(`step ${index} has unknown actor action ${step.name}`);
+    if (step.action === 'actor') {
+      const pool = step.actions || [step.name];
+      if (!pool.length || pool.some((name) => !ACTOR_SPECS[name])) {
+        errors.push(`step ${index} has unknown actor action ${step.name || (step.actions || []).join('/')}`);
+      }
+      if (!Object.values(ROLE).includes(step.role)) errors.push(`step ${index} has unknown role ${step.role}`);
+      // A directional action with nothing to work from would silently fall
+      // back to a default direction, which is how a shockwave ends up blowing
+      // everybody the same way regardless of where the crater is.
+      if (pool.some((name) => isDirectionalAction(name)) && !step.from && !step.toward) {
+        errors.push(`step ${index} is directional but names no origin anchor`);
+      }
+    }
+    if (step.action === 'environment' && !Object.values(ENVIRONMENT).includes(step.kind)) {
+      errors.push(`step ${index} has unknown environment kind ${step.kind}`);
+    }
     if (step.action === 'camera' && !Object.values(CAMERA_ACTION).includes(step.name)) {
       errors.push(`step ${index} has unknown camera action ${step.name}`);
     }
     if (step.start > style.duration) errors.push(`step ${index} starts after the style ends`);
   });
 
-  // One actor, one body: two actions overlapping means the second silently
-  // cancels the first's transform chain, and the beat the style was written
-  // for never plays.
-  const actorSteps = steps
-    .filter((s) => s.action === 'actor')
-    .sort((a, b) => a.start - b.start);
-  actorSteps.forEach((step, i) => {
-    const next = actorSteps[i + 1];
-    if (!next) return;
-    const spec = actorActionSpec(step.name);
-    const ends = step.start + (step.duration || spec.duration);
-    // `hold` actions are explicitly written to be interrupted by the next beat.
-    if (!step.hold && next.start < ends - 1) {
-      errors.push(`actor steps overlap: ${step.name} still running when ${next.name} starts`);
+  // --- one body per character --------------------------------------------
+  //
+  // Checked against the REAL expansion at every cast size the style can be
+  // played at, because "does defender 1 have two overlapping beats" is not a
+  // question the authored timeline can answer: it depends on how `each` and
+  // `stagger` land for that many people.
+  VALIDATION_CAST_SIZES.forEach((count) => {
+    const expanded = expandCast(steps, { defenderCount: count, seed: `validate:${style.id}` });
+    if (count > 0) {
+      const mounted = new Set(
+        expanded.filter((s) => s.action === 'actor' && s.role === ROLE.DEFENDER).map((s) => s.index)
+      );
+      for (let i = 0; i < count; i += 1) {
+        if (!mounted.has(i)) errors.push(`defender ${i} of ${count} has nothing to do`);
+      }
     }
+    const bodies = [[ROLE.ATTACKER, 0], ...Array.from({ length: count }, (_, i) => [ROLE.DEFENDER, i])];
+    bodies.forEach(([role, index]) => {
+      const timeline = timelineFor(expanded, role, index);
+      timeline.forEach((step, i) => {
+        const next = timeline[i + 1];
+        if (!next) return;
+        const spec = actorActionSpec(step.name);
+        const ends = step.start + (step.duration || spec.duration);
+        // `hold` actions are explicitly written to be interrupted by the next
+        // beat: a character pointing at the sky holds the pose until whatever
+        // they are pointing at arrives.
+        if (!step.hold && !spec.hold && next.start < ends - 1) {
+          errors.push(
+            `${role}${role === ROLE.DEFENDER ? ` ${index}` : ''} steps overlap at cast size ${count}: `
+            + `${step.name} still running when ${next.name} starts`
+          );
+        }
+      });
+    });
   });
 
   // A camera hold that is never released would leave the scene zoomed when the

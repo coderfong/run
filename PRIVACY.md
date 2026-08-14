@@ -1,7 +1,7 @@
 # PASER Privacy Policy
 
 _Last updated: 2026-08-12. Publish the finalized version at
-`https://www.bido.live/privacy` before submission._
+`https://www.gameablestudios.com/privacy` before submission._
 
 ## Data PASER collects
 
@@ -73,4 +73,4 @@ Apple, PASER also attempts to revoke the associated Apple authorization.
 ## Contact
 
 Privacy and support requests can be submitted at
-`https://www.bido.live/support`.
+`https://www.gameablestudios.com/support`.

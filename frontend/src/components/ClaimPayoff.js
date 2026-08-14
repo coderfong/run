@@ -11,7 +11,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ShieldOff, Swords } from 'lucide-react-native';
+import { ShieldOff, Trophy } from 'lucide-react-native';
 
 import { brand, space, toon, toonType, useTheme, useThemedType } from '../theme';
 import { Confetti, haptic } from '../ui/motion';
@@ -31,7 +31,7 @@ function headline(claim) {
   return 'TERRITORY CLAIMED';
 }
 
-export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewMap }) {
+export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewLeaderboard }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();
@@ -61,7 +61,7 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.lg },
+            { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.md },
           ]}
           showsVerticalScrollIndicator={false}
         >
@@ -126,10 +126,17 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
               style={styles.block}
               contentStyle={styles.peopleCard}
             >
+              {/* `label` (13pt, no line-height) was sized for a short chip
+                  caption, not a sentence carrying a username — against a
+                  white card with only a 1.5pt outline it read as a thin grey
+                  line more than a headline. `sub` plus a heavier outline and
+                  a two-line allowance keeps a long or clipped-looking name
+                  from crowding the frame's edge. */}
               <OutlinedText
-                style={[toonType.label, { color: brand.pink }]}
+                style={[toonType.sub, styles.peopleHeadline, { color: brand.pink }]}
                 outline={toon.ink}
-                width={1.5}
+                width={2}
+                numberOfLines={2}
               >
                 {taken.length === 1
                   ? `YOU TOOK LAND FROM ${String(taken[0].username || 'A RUNNER').toUpperCase()}`
@@ -233,10 +240,10 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
 
         <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
           <ToonButton
-            title="See the map"
+            title="See the leaderboard"
             variant="teal"
-            icon={<Swords size={18} color="#fff" />}
-            onPress={onViewMap}
+            icon={<Trophy size={18} color="#fff" />}
+            onPress={onViewLeaderboard}
           />
           <ToonGhostButton title="Done" onPress={onClose} color={colors.textMuted} />
         </View>
@@ -247,23 +254,31 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewM
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // The whole point of this pass was fitting the payoff on one screen instead
+  // of one that needs a scroll to reach "Done" — every margin below is
+  // trimmed from what it was, not just the ones called out inline.
   scroll: { paddingHorizontal: space.gutter, alignItems: 'stretch' },
-  headlineFrame: { minHeight: 92 },
+  headlineFrame: { minHeight: 80 },
   headlineInner: { flex: 1, justifyContent: 'center', paddingHorizontal: space.md, paddingVertical: space.sm },
   headline: { color: '#fff', textAlign: 'center' },
   stage: {
     alignItems: 'center',
-    marginTop: space.lg,
-    // The rig's shoes visually overhang its layout box. A deliberate floor
-    // keeps the area plaque from looking glued to the character's feet.
-    marginBottom: space.xxl + space.sm,
+    marginTop: space.md,
+    // The rig's shoes visually overhang its layout box, so this can't go to
+    // zero — but 40pt of floor under a 104pt character was most of a screen
+    // on its own.
+    marginBottom: space.lg,
   },
   areaFrame: { alignSelf: 'center', minWidth: 230 },
-  areaInner: { alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.xs },
+  // Vertical padding was `space.xs` (4pt) around a 40pt hero number — the ink
+  // frame all but hugged the digits top and bottom, which is the "too small"
+  // of it. Horizontal padding did not have that problem, so only this moved.
+  areaInner: { alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md },
   // The banner throws heads outside its own bounds, so it never clips.
   stealBanner: { marginTop: space.md, overflow: 'visible' },
-  block: { marginTop: space.xl },
+  block: { marginTop: space.lg },
   peopleCard: { padding: space.lg },
+  peopleHeadline: { marginBottom: 2 },
   levelFxRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: -8 },
   levelTrophy: { marginLeft: -34 },
   row: {

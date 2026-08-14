@@ -38,3 +38,13 @@ LEAGUES = ["bronze", "silver", "gold", "platinum", "diamond"]
 
 def color_triple(color_key):
     return CLAN_COLORS.get(color_key or DEFAULT_COLOR, CLAN_COLORS[DEFAULT_COLOR])
+
+
+def photo_url(clan_id, etag):
+    """Where a club's uploaded photo is served from, or None if it has none.
+
+    The etag changes on every upload, so the URL is safe for a client to cache
+    forever — which is the point of handing out a URL instead of inlining the
+    image into every list that mentions the club.
+    """
+    return f"/clans/{clan_id}/photo?v={etag}" if etag else None

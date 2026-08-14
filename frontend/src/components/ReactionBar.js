@@ -40,7 +40,7 @@ function Chip({ row, onPress, color, styles, type, colors }) {
       onPress={() => onPress(row.emote)}
       style={[
         styles.chip,
-        row.mine && { backgroundColor: withAlpha(color, 0.18), borderColor: color },
+        row.mine && { backgroundColor: withAlpha(color, 0.18) },
       ]}
       accessibilityRole="button"
       accessibilityState={{ selected: !!row.mine }}
@@ -218,16 +218,14 @@ export function ReactionTrigger({ mine, active, onPress, color, size = 30 }) {
 const makeStyles = (colors) => StyleSheet.create({
   wrap: { position: 'relative' },
   burst: { zIndex: 5 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: space.sm },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: space.xs },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: 'transparent',
     backgroundColor: colors.bgElevated,
   },
   // Floating. `bottom: '100%'` hangs it off the top edge of the bar, so it

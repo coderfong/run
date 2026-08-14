@@ -35,8 +35,8 @@ import SocialAuthButtons from '../components/SocialAuthButtons';
 import { preloadScreenImagesAfterInteractions } from '../config/screenAssets';
 
 const AUTH_HERO = require('../../assets/art/auth-hero.png');
-const PRIVACY_URL = 'https://www.bido.live/privacy';
-const SUPPORT_URL = 'https://www.bido.live/support';
+const PRIVACY_URL = 'https://www.gameablestudios.com/privacy';
+const SUPPORT_URL = 'https://www.gameablestudios.com/support';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
 

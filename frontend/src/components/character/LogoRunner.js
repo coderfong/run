@@ -118,7 +118,7 @@ export default function LogoRunner({ equipped, size = 120, color = '#FFFFFF', fl
           transform: [{ rotate: `${HEAD_TILT_DEG}deg` }],
         }}
       >
-        <CharacterRig equipped={equipped} size={rigW} animate={false} headOnly />
+        <CharacterRig equipped={equipped} size={rigW} animate={false} headOnly captureSafe />
       </View>
     </View>
   );

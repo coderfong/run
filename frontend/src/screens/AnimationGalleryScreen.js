@@ -12,12 +12,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 import Animated from 'react-native-reanimated';
 
-import { CharacterBust } from '../components/character/CharacterRig';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
-import ClaimActor from '../effects/ClaimActor';
+import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
 import useCaptureStage from '../effects/useCaptureStage';
 import EffectPlayer from '../effects/EffectPlayer';
 import { CAPTURE_STYLES } from '../effects/captureStyles';
+import { layoutDefenders } from '../effects/anchors';
 import { choreographySignature } from '../effects/choreography';
 import { EFFECT_CATEGORY_LABELS } from '../effects/effectCategories';
 import { getAllEffects } from '../effects/effectRegistry';
@@ -27,10 +27,13 @@ import { radius, space, useTheme, useThemedType } from '../theme';
 const PREFS_KEY = 'dev:animation-gallery:v1';
 const BACKGROUNDS = ['dark', 'light', 'checkerboard', 'map'];
 const SPEEDS = [0.5, 1, 1.5, 2];
+// The four cast sizes every style is validated against, so the lab can be
+// pointed at the same cases the tests assert on.
 const SCENARIOS = [
   { id: 'empty', label: 'Empty', defenders: 0 },
-  { id: 'one', label: '1 defender', defenders: 1 },
-  { id: 'three', label: '3 defenders', defenders: 3 },
+  { id: 'one', label: '1 rival', defenders: 1 },
+  { id: 'two', label: '2 rivals', defenders: 2 },
+  { id: 'three', label: '3 rivals', defenders: 3 },
 ];
 
 function Chip({ label, active, onPress }) {
@@ -236,7 +239,7 @@ function CaptureStyleLab() {
   // would preview only the sprite track — which is exactly the partial view
   // that let fifteen "different" styles look fine in isolation.
   const captureStage = useCaptureStage(reduced);
-  const actorRef = useRef(null);
+  const castRef = useRef(null);
   const replay = useCallback(() => {
     setRevealed(null);
     setPlayToken((value) => value + 1);
@@ -255,6 +258,27 @@ function CaptureStyleLab() {
     [center]
   );
   const selected = useMemo(() => CAPTURE_STYLES.find((item) => item.id === styleId), [styleId]);
+  // The lab casts the same rivals the live claim would, laid out by the same
+  // function against the same shape, so "how does this style read against
+  // three people" is answerable at a desk. Seeded off the style so switching
+  // styles reshuffles who stands where, and replaying one does not.
+  const labDefenders = useMemo(
+    () => Array.from({ length: scenario.defenders }, (_, index) => ({
+      id: `lab-${index}`,
+      avatar: equipped,
+      clan_color: { stroke: '#FF8C6B' },
+    })),
+    [equipped, scenario.defenders]
+  );
+  const labRects = useMemo(
+    () => layoutDefenders(
+      scenario.defenders,
+      { bounds: stage, claimPoint: center, territoryRings: rings },
+      `lab:${styleId}`,
+      DEFENDER_SIZE
+    ),
+    [center, rings, scenario.defenders, stage, styleId]
+  );
 
   return (
     <ScrollView contentContainerStyle={styles.lab}>
@@ -283,19 +307,12 @@ function CaptureStyleLab() {
           <Svg style={StyleSheet.absoluteFill}>
             <Path d={d} fill={revealed ? 'rgba(84,231,165,0.32)' : 'rgba(255,255,255,0.03)'} stroke="#54E7A5" strokeWidth={3} />
           </Svg>
-          {Array.from({ length: scenario.defenders }, (_, index) => (
-            <CharacterBust
-              key={index}
-              equipped={equipped}
-              size={42}
-              ring="#FF8C6B"
-              style={{ position: 'absolute', left: center.x + 52 + index * 18, top: center.y - 24 - index * 36 }}
-            />
-          ))}
-          <ClaimActor
-            ref={actorRef}
-            equipped={equipped}
-            anchor={center}
+          <CaptureCast
+            ref={castRef}
+            attacker={equipped}
+            attackerPoint={center}
+            defenders={labDefenders}
+            defenderRects={labRects}
             bounds={stage}
             reducedMotion={reduced}
           />
@@ -306,10 +323,15 @@ function CaptureStyleLab() {
             claimPoint={center}
             territoryRings={rings}
             characterRect={characterRect}
+            defenderRects={labRects}
+            defenderCount={scenario.defenders}
             reducedMotion={reduced}
+            seed={`lab:${styleId}`}
+            tint="#54E7A5"
+            ink="#54E7A5"
             onTerritoryReveal={reveal}
             stage={captureStage}
-            actor={actorRef}
+            cast={castRef}
           />
         </Animated.View>
       </PreviewBackground>

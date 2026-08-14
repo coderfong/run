@@ -395,7 +395,9 @@ export default function ShopScreen() {
         )
       );
     } catch (e) {
-      if (e.status === 402) toast.error('Not enough coins');
+      // The energy shortfall on the claim screen does the same thing — offer
+      // the sheet that fixes it, not just a toast saying what's wrong.
+      if (e.status === 402) { toast.error('Not enough coins'); if (IAP_ENABLED) setGetMore(true); }
       else if (e.status === 409) toast.error('You already own that');
       else if (e.status === 410) { toast.error('That just rotated out'); setSelectedId(null); load(); }
       else toast.error(e.message || 'Could not buy that');

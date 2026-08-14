@@ -10,7 +10,7 @@
 // configured; screens can render a placeholder in that case.
 
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 
 import { activeCity, cityMaxBounds } from '../config/cities';
@@ -302,12 +302,21 @@ export function TerritoryFill({
 
 // An arbitrary React view pinned to a map coordinate — used for the player's
 // character-portrait location marker and territory-owner portraits.
-export function UserMarker({ point, children, anchor = { x: 0.5, y: 0.5 } }) {
+// `MarkerView` has no press handler of its own (per @rnmapbox/maps docs, taps
+// must be handled by a Pressable/TouchableOpacity among its children), so an
+// `onPress` here wraps `children` in one rather than forwarding a prop down.
+export function UserMarker({ point, children, anchor = { x: 0.5, y: 0.5 }, onPress }) {
   if (!MAPBOX_AVAILABLE) return null;
   if (!point) return null;
   return (
     <MarkerView coordinate={toLngLat(point)} anchor={anchor} allowOverlap>
-      {children}
+      {onPress ? (
+        <Pressable onPress={onPress} hitSlop={8}>
+          {children}
+        </Pressable>
+      ) : (
+        children
+      )}
     </MarkerView>
   );
 }
@@ -336,9 +345,9 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
     <ShapeSource id={`${id}-src`} shape={featureCollection} onPress={onPress}>
       <FillLayer id={`${id}-fill`} style={{ fillColor: ['get', 'fillColor'], fillOpacity: ['get', 'fillOpacity'] }} />
       {dark && (
-        <LineLayer id={`${id}-glow`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 5, lineOpacity: 0.35, lineBlur: 3 }} />
+        <LineLayer id={`${id}-glow`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 6, lineOpacity: 0.5, lineBlur: 3 }} />
       )}
-      <LineLayer id={`${id}-stroke`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 2 }} />
+      <LineLayer id={`${id}-stroke`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 2.5 }} />
     </ShapeSource>
   );
 }

@@ -6,43 +6,47 @@ request would hand over the whole PASER PRO track. Every paid grant must go
 through `verify()` first.
 
 Design notes:
-  * stdlib `urllib` only — matches routes/auth.py, no new dependency.
   * FAILS CLOSED. If verification is enabled but unconfigured or the store is
     unreachable, we raise rather than granting. A purchase that errors can be
     retried by the client; a purchase granted in error cannot be taken back.
   * Returns a stable transaction id so callers can dedupe replays. The same
     receipt POSTed twice must not grant twice.
 
-Apple: verifyReceipt takes the base64 app receipt. Status 21007 means a
-sandbox receipt hit production, which is exactly what App Review's sandbox
-testers send — retry against sandbox, per Apple's own guidance. Getting this
-wrong is a classic review rejection.
+Apple: the client (expo-iap, StoreKit 2) hands us a signed JWS transaction —
+NOT the old base64 whole-app receipt, which StoreKit 2 purchases don't
+produce. That JWS is verified LOCALLY against Apple's own root certificate
+(app/certs/AppleRootCA-G3.cer, a public file downloaded from
+apple.com/certificateauthority — not a secret) using Apple's official
+app-store-server-library, rather than posting to the deprecated verifyReceipt
+endpoint. Sandbox testers — App Review included — always transact in sandbox,
+so a production check is tried first and a sandbox one second, mirroring the
+old endpoint's "status 21007 means sandbox" retry.
 """
 
 from __future__ import annotations
 
+import functools
 import json
+import os
 import urllib.error
 import urllib.request
 
+from appstoreserverlibrary.models.Environment import Environment
+from appstoreserverlibrary.signed_data_verifier import (
+    SignedDataVerifier,
+    VerificationException,
+    VerificationStatus,
+)
 from fastapi import HTTPException
 
 from .config import settings
 
-APPLE_PROD_URL = "https://buy.itunes.apple.com/verifyReceipt"
-APPLE_SANDBOX_URL = "https://sandbox.itunes.apple.com/verifyReceipt"
 GOOGLE_URL = ("https://androidpublisher.googleapis.com/androidpublisher/v3/"
               "applications/{pkg}/purchases/products/{sku}/tokens/{token}")
 
 _TIMEOUT = 8
 
-
-def _post_json(url: str, payload: dict) -> dict:
-    data = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-        return json.loads(r.read())
+_APPLE_ROOT_CERT_PATH = os.path.join(os.path.dirname(__file__), "certs", "AppleRootCA-G3.cer")
 
 
 def _get_json(url: str, bearer: str | None = None) -> dict:
@@ -52,37 +56,54 @@ def _get_json(url: str, bearer: str | None = None) -> dict:
         return json.loads(r.read())
 
 
-def _verify_apple(receipt: str, product_id: str) -> str:
-    secret = (settings.apple_shared_secret or "").strip()
-    if not secret:
-        # Fail closed: an unconfigured server must never grant a paid item.
+@functools.lru_cache(maxsize=1)
+def _apple_root_certs() -> list[bytes]:
+    with open(_APPLE_ROOT_CERT_PATH, "rb") as f:
+        return [f.read()]
+
+
+def _apple_verifier(environment: Environment, bundle_id: str) -> SignedDataVerifier:
+    app_apple_id = None
+    if environment == Environment.PRODUCTION:
+        raw = (settings.apple_app_apple_id or "").strip()
+        if not raw:
+            # A production transaction cannot be checked without the app's
+            # App Store Connect id — fail closed rather than skip the check.
+            raise HTTPException(503, "iap not configured")
+        app_apple_id = int(raw)
+    return SignedDataVerifier(
+        root_certificates=_apple_root_certs(),
+        enable_online_checks=True,
+        environment=environment,
+        bundle_id=bundle_id,
+        app_apple_id=app_apple_id,
+    )
+
+
+def _verify_apple(signed_transaction: str, product_id: str) -> str:
+    bundle_id = (settings.apple_bundle_id or "").strip()
+    if not bundle_id:
         raise HTTPException(503, "iap not configured")
-    body = {"receipt-data": receipt, "password": secret,
-            "exclude-old-transactions": True}
     try:
-        res = _post_json(APPLE_PROD_URL, body)
-        # 21007 = sandbox receipt sent to production. App Review's testers use
-        # sandbox, so this path MUST work or every review purchase fails.
-        if res.get("status") == 21007:
-            res = _post_json(APPLE_SANDBOX_URL, body)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as e:
-        raise HTTPException(503, "could not reach the App Store") from e
+        payload = _apple_verifier(Environment.PRODUCTION, bundle_id) \
+            .verify_and_decode_signed_transaction(signed_transaction)
+    except VerificationException as e:
+        if e.status != VerificationStatus.INVALID_ENVIRONMENT:
+            raise HTTPException(402, f"invalid receipt ({e.status.name})") from e
+        try:
+            payload = _apple_verifier(Environment.SANDBOX, bundle_id) \
+                .verify_and_decode_signed_transaction(signed_transaction)
+        except VerificationException as e2:
+            raise HTTPException(402, f"invalid receipt ({e2.status.name})") from e2
 
-    if res.get("status") != 0:
-        raise HTTPException(402, f"invalid receipt (apple status {res.get('status')})")
-
-    receipts = (res.get("receipt", {}).get("in_app", [])
-                or res.get("latest_receipt_info", []))
-    for item in receipts:
-        if item.get("product_id") != product_id:
-            continue
-        if item.get("cancellation_date") or item.get("cancellation_date_ms"):
-            continue                                   # refunded / revoked
-        txn = (item.get("original_transaction_id")
-               or item.get("transaction_id"))
-        if txn:
-            return f"apple:{txn}"
-    raise HTTPException(402, "receipt does not contain that product")
+    if payload.productId != product_id:
+        raise HTTPException(402, "receipt does not contain that product")
+    if payload.revocationDate:
+        raise HTTPException(402, "purchase was refunded")
+    txn = payload.originalTransactionId or payload.transactionId
+    if not txn:
+        raise HTTPException(402, "receipt missing transaction id")
+    return f"apple:{txn}"
 
 
 def _verify_google(token: str, product_id: str) -> str:

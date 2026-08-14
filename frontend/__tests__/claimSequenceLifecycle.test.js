@@ -119,7 +119,7 @@ describe('claim sequence cancellation and skip safety', () => {
     act(() => tree.unmount());
   });
 
-  test('a non-duel style starts instead of the collision encounter', async () => {
+  test('the cutscene starts immediately, with no collision in front of it', async () => {
     let tree;
     let run;
     await act(async () => { tree = renderer.create(<Harness />); });
@@ -129,13 +129,53 @@ describe('claim sequence cancellation and skip safety', () => {
     });
     expect(latest.captureStyleMeta.encounterMode).toBe('projectile');
     expect(latest.showCaptureStyle).toBe(true);
+    // The regression this guards is the one the whole rework is about: a
+    // meteor used to wait for the attacker to shoulder-check somebody first.
     expect(latest.showEncounter).toBe(false);
     act(() => latest.skip());
     await act(async () => { await run; });
     act(() => tree.unmount());
   });
 
-  test('an explicit duel owns collision and starts its style at impact', async () => {
+  test('the rivals are cast from the claim, whatever the style is', async () => {
+    let tree;
+    let run;
+    await act(async () => { tree = renderer.create(<Harness />); });
+    await act(async () => {
+      // A projectile style, which under the old rules meant "no defenders on
+      // screen at all". The claim has one, so the claim wins.
+      run = latest.start(claim, center, { captureStyle: 'meteor_claim' });
+      await flush();
+    });
+    expect(latest.defenderCount).toBe(1);
+    expect(latest.defenders).toHaveLength(1);
+    expect(latest.showCast).toBe(true);
+    act(() => latest.skip());
+    await act(async () => { await run; });
+    act(() => tree.unmount());
+  });
+
+  test('empty ground casts nobody and skips the cutscene entirely', async () => {
+    // RETUNED 2026-08-14: this used to play the full choreography anyway (a
+    // meteor falling on a field nobody was standing in). There is nobody for
+    // a cutscene to be ABOUT with zero defenders, so it is skipped outright —
+    // see the note in useClaimSequence's `run`.
+    let tree;
+    let run;
+    await act(async () => { tree = renderer.create(<Harness />); });
+    await act(async () => {
+      run = latest.start({ territory: {}, victims: [] }, center, { captureStyle: 'meteor_claim' });
+      await flush();
+    });
+    expect(latest.defenderCount).toBe(0);
+    expect(latest.showCaptureStyle).toBe(false);
+    expect(latest.showCast).toBe(false);
+    act(() => latest.skip());
+    await act(async () => { await run; });
+    act(() => tree.unmount());
+  });
+
+  test('a duel gets its clash when its own choreography asks for one', async () => {
     let tree;
     let run;
     await act(async () => { tree = renderer.create(<Harness />); });
@@ -143,15 +183,21 @@ describe('claim sequence cancellation and skip safety', () => {
       run = latest.start(claim, center, { captureStyle: 'sword_slash' });
       await flush();
     });
-    expect(latest.showEncounter).toBe(true);
-    expect(latest.showCaptureStyle).toBe(false);
+    // The style is running from the first frame; the clash has not happened
+    // yet because the style has not reached it.
+    expect(latest.showCaptureStyle).toBe(true);
+    expect(latest.showEncounter).toBe(false);
+
     await act(async () => {
-      latest.onImpact();
+      latest.onContact({ variant: 'grin-knock' });
       await flush();
     });
+    expect(latest.showEncounter).toBe(true);
     expect(latest.showCaptureStyle).toBe(true);
+
     act(() => latest.skip());
     await act(async () => { await run; });
+    expect(latest.showEncounter).toBe(false);
     act(() => tree.unmount());
   });
 });

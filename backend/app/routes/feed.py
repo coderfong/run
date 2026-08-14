@@ -14,7 +14,7 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, privacy, ranks, reactions as reaction_rules, schemas
+from .. import models, post_media, privacy, ranks, reactions as reaction_rules, schemas
 from ..clans_meta import color_triple
 from ..database import get_db
 from ..geospatial import geometry_to_rings
@@ -72,7 +72,7 @@ def feed(
                    -- a page can carry fifty runs from fifty different runners.
                    COALESCE(r.visibility, 'public'),
                    u.route_trim_m, u.privacy_zones, u.route_publish_delay_h, u.birthday,
-                   r.caption, COALESCE(r.post_media, '[]'::jsonb)
+                   r.caption, COALESCE(r.post_media, '[]'::jsonb), r.post_media_etag
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -179,7 +179,10 @@ def feed(
             reactions=[schemas.RunReaction(**x) for x in reactions_by_run.get(r[0], [])],
             my_reaction=my_reaction_by_run.get(r[0]),
             caption=r[23],
-            media=list(r[24] or []),
+            # URLs, not the images: a page of base64 photos is megabytes the
+            # client cannot cache, which is what stopped Home from painting
+            # instantly the moment anybody added a picture to a run.
+            media=post_media.photo_urls(r[0], r[25], list(r[24] or [])),
         )
         for r in rows
     ]

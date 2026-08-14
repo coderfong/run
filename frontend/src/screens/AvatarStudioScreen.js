@@ -18,7 +18,7 @@
 // active palette so they don't stay dark-on-cream there.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   Check,
   Crown,
@@ -33,8 +33,10 @@ import {
 } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
-import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Button, Screen } from '../components/ui';
+import { radius, space, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
+import { Button, Framed, Screen } from '../components/ui';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
+import { RARITY_COLOR } from '../components/RewardArt';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
 import { PressableScale, Reveal, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
@@ -147,51 +149,60 @@ function Swatches({ palette, value, onPick, enabled = true }) {
   );
 }
 
-function ItemGrid({ slot, equipped, isUnlocked, onEquip, clanColor }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const items = ITEMS[slot.key] || [];
+// One cell of the item grid, factored out so `AvatarStudioScreen` can hand it
+// to a `FlatList` as `renderItem`. Headwear alone runs 124 items — rendering
+// every cell at once (the old `.map` inside a plain `View`) meant switching a
+// slot chip mounted up to 124 real image views synchronously. `FlatList`
+// below only mounts what's near the viewport.
+// Same hand-drawn box the Shop uses for its own item grid (ShopProductCard) —
+// this screen used to be the one place in the catalogue that showed items in
+// a plain rounded rect instead of the app's frame language. Rarity tint
+// matches Shop's too, so a legendary hat reads as legendary in both places it
+// is browsed, not just the one you can buy it from.
+const GridCell = React.memo(function GridCell({ item, slot, equipped, isUnlocked, onEquip, clanColor, colors, styles }) {
+  const selected = equipped[slot.key] === item.id;
+  const unlocked = isUnlocked(item);
+  const tint = selected ? colors.text : (RARITY_COLOR[item.rarity] || colors.border);
   return (
-    <View style={styles.grid}>
-      {items.map((item) => {
-        const selected = equipped[slot.key] === item.id;
-        const unlocked = isUnlocked(item);
-        return (
-          <View key={item.id} style={styles.cellWrap}>
-            <PressableScale
-              onPress={() => onEquip(item, unlocked)}
-              accessibilityRole="button"
-              accessibilityLabel={unlocked ? `Equip ${item.label}` : `${item.label}, locked: ${unlockLabel(item)}`}
-              accessibilityState={{ selected }}
-              style={[
-                styles.cell,
-                selected && { borderColor: colors.text, borderWidth: 2 },
-              ]}
-            >
-              {/* Art only — no name or unlock caption. The lock icon still marks
-                  locked items, and tapping one toasts how to earn it, so the
-                  text is available on demand instead of under every tile. */}
-              <View style={{ opacity: unlocked ? 1 : 0.28 }}>
-                {/* `equipped` replaces the old `contrastHair` patch: the tile
-                    wears the colour the runner actually chose, so the grid
-                    agrees with the character standing above it. */}
-                <PartThumb slot={slot.key} item={item} size={56} clanColor={clanColor} equipped={equipped} />
-              </View>
-              {!unlocked && (
-                <View style={styles.lockWrap}>
-                  <Lock size={14} color={colors.textMuted} />
-                </View>
-              )}
-            </PressableScale>
+    <View style={styles.cellWrap}>
+      <PressableScale
+        onPress={() => onEquip(item, unlocked)}
+        accessibilityRole="button"
+        accessibilityLabel={unlocked ? `Equip ${item.label}` : `${item.label}, locked: ${unlockLabel(item)}`}
+        accessibilityState={{ selected }}
+      >
+        <Framed
+          frame={frameVariant('card', `avatar:${slot.key}:${item.id}`)}
+          tint={tint}
+          fill={selected ? withAlpha(tint, 0.14) : colors.card}
+          weight={selected ? INK.medium : INK.thin}
+          pose={framePose(`avatar:${slot.key}:${item.id}`)}
+          inset={false}
+          style={styles.cell}
+          contentStyle={styles.cellContent}
+        >
+          {/* Art only — no name or unlock caption. The lock icon still marks
+              locked items, and tapping one toasts how to earn it, so the
+              text is available on demand instead of under every tile. */}
+          <View style={{ opacity: unlocked ? 1 : 0.28 }}>
+            {/* `equipped` replaces the old `contrastHair` patch: the tile
+                wears the colour the runner actually chose, so the grid
+                agrees with the character standing above it. */}
+            <PartThumb slot={slot.key} item={item} size={56} clanColor={clanColor} equipped={equipped} />
           </View>
-        );
-      })}
+          {!unlocked && (
+            <View style={styles.lockWrap}>
+              <Lock size={14} color={colors.textMuted} />
+            </View>
+          )}
+        </Framed>
+      </PressableScale>
     </View>
   );
-}
+});
 
 export default function AvatarStudioScreen({ standalone = false, onDone }) {
-  const { scheme } = useTheme();
+  const { scheme, colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const { equipped, setPart, randomize, save, isUnlocked } = useAvatar();
@@ -208,6 +219,8 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
   const [saving, setSaving] = useState(false);
 
   const slot = useMemo(() => SLOTS.find((s) => s.key === slotKey), [slotKey]);
+  const items = useMemo(() => ITEMS[slotKey] || [], [slotKey]);
+  const gridKeyExtractor = useCallback((item) => item.id, []);
 
   // Only the recolourable items carry `art` (ten pre-rendered variants). Most
   // of the catalogue is authored multicolour art that a swatch cannot touch,
@@ -232,7 +245,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
     preloadImages(itemVariantSources(selected));
   }, [equipped, slotKey, warmSlot]);
 
-  const equip = (item, unlocked) => {
+  const equip = useCallback((item, unlocked) => {
     if (!unlocked) {
       haptic.light();
       toast.error(unlockLabel(item) || 'Locked');
@@ -245,7 +258,20 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
     // image cache is a beat after the tap — firing a second animation on the
     // tap itself just put a stutter in front of it. A colour swatch gets the
     // same reaction for free, which it never used to have.
-  };
+  }, [slot, setPart]);
+
+  const renderGridItem = useCallback(({ item }) => (
+    <GridCell
+      item={item}
+      slot={slot}
+      equipped={equipped}
+      isUnlocked={isUnlocked}
+      onEquip={equip}
+      clanColor={color?.stroke}
+      colors={colors}
+      styles={styles}
+    />
+  ), [slot, equipped, isUnlocked, equip, color?.stroke, colors, styles]);
 
   const pickColor = (idx) => {
     haptic.light();
@@ -289,8 +315,8 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
         {/* The runner is the subject, so they stand in the CENTRE of the scene.
             The dice used to sit in the same flex row, which pushed the
             character off-centre by half the button — on a scene composed around
-            a middle it read as a mistake. It floats on the right edge now and
-            takes no part in the layout. */}
+            a middle it read as a mistake. It floats in the top-right corner now,
+            clear of the character entirely, and takes no part in the layout. */}
         <View style={styles.runnerRow}>
           <Reveal>
             <PressableScale
@@ -316,13 +342,24 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
       {/* slot chips */}
       <SlotChips active={slotKey} onChange={setSlotKey} onWarm={warmSlot} />
 
-      {/* items + colors */}
-      <ScrollView
+      {/* items + colors. FlatList rather than a ScrollView.map: headwear alone
+          is 124 items, and mounting every cell at once made switching a slot
+          chip a synchronous burst of up to 124 real image views. */}
+      <FlatList
+        key="avatar-item-grid"
+        data={items}
+        keyExtractor={gridKeyExtractor}
+        renderItem={renderGridItem}
+        numColumns={3}
+        columnWrapperStyle={styles.gridRow}
         style={{ flex: 1, marginTop: space.md }}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xl }}
         showsVerticalScrollIndicator={false}
-      >
-        {slot.palette && (
+        initialNumToRender={18}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
+        ListHeaderComponent={slot.palette ? (
           <>
             <Text style={[type.labelSm, { marginBottom: space.sm }]}>Color</Text>
             <Swatches
@@ -338,15 +375,8 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
               </Text>
             ) : null}
           </>
-        )}
-        <ItemGrid
-          slot={slot}
-          equipped={equipped}
-          isUnlocked={isUnlocked}
-          onEquip={equip}
-          clanColor={color?.stroke}
-        />
-      </ScrollView>
+        ) : null}
+      />
 
       {standalone && (
         <View style={{ paddingHorizontal: space.gutter, paddingTop: space.sm }}>
@@ -365,10 +395,13 @@ const makeStyles = (colors) => StyleSheet.create({
   // happens to contain.
   runnerRow: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'flex-end' },
   // Floated, so adding or removing it can never shift the character again.
+  // Top corner rather than bottom: the runner stands at the FOOT of the
+  // scene, so bottom-right sat it right next to their shoulder on a narrow
+  // phone. The sky above their head has the room the ground doesn't.
   diceBtn: {
     position: 'absolute',
     right: space.sm,
-    bottom: space.xl,
+    top: space.md,
     width: 52,
     height: 52,
     borderRadius: radius.pill,
@@ -410,19 +443,12 @@ const makeStyles = (colors) => StyleSheet.create({
   chipLabel: { color: colors.textMuted, fontSize: 12 },
   chipLabelActive: { color: colors.bg },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: space.sm },
+  // `columnWrapperStyle` for the FlatList grid — applied to every row of 3.
+  gridRow: { justifyContent: 'space-between', marginTop: 7 },
   cellWrap: { width: '31%' },
-  cell: {
-    width: '100%',
-    alignItems: 'center',
-    paddingVertical: space.sm,
-    paddingHorizontal: 4,
-    borderRadius: radius.card,
-    backgroundColor: colors.card,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    minHeight: 88,
-  },
+  // Sizing only — the frame itself draws the box now (see GridCell).
+  cell: { width: '100%', minHeight: 88 },
+  cellContent: { alignItems: 'center', justifyContent: 'center', padding: space.xs },
   lockWrap: { alignItems: 'center', marginTop: 2, gap: 1 },
 
   swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },

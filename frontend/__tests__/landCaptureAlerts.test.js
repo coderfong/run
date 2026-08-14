@@ -18,6 +18,7 @@ describe('land capture alert normalisation', () => {
         taken_m2: 1240.4,
         lat: 1.3521,
         lon: 103.8198,
+        territory_id: 'territory-42',
       },
     });
 
@@ -26,6 +27,7 @@ describe('land capture alert normalisation', () => {
       takenM2: 1240.4,
       lat: 1.3521,
       lon: 103.8198,
+      territoryId: 'territory-42',
       attacker: {
         id: 'kai',
         username: 'RivalKai',
@@ -46,6 +48,17 @@ describe('land capture alert normalisation', () => {
     expect(alert.takenM2).toBe(9876);
     expect(alert.lat).toBeNull();
     expect(alert.lon).toBeNull();
+    expect(alert.territoryId).toBeNull();
+  });
+
+  it('reads territory_id off a foreground push the same way as an inbox item', () => {
+    const alert = normaliseLandCaptureAlert({
+      category: 'stolen',
+      title: 'Your land was captured',
+      body: 'NeonFox took your territory.',
+      data: { attacker_username: 'NeonFox', territory_id: 'territory-9' },
+    });
+    expect(alert.territoryId).toBe('territory-9');
   });
 
   it('reads the new km²-only notification copy back into square metres', () => {

@@ -12,6 +12,7 @@
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import Svg from 'react-native-svg';
 
 // --- data the screen pulls in ----------------------------------------------
 let mockFeed = { items: [], next_cursor: null };
@@ -36,6 +37,8 @@ jest.mock('../src/api/client', () => {
     }),
     ApiError: class ApiError extends Error {},
     API_BASE: 'http://test',
+    apiImageUri: jest.fn((path) => (path ? `http://test${path}` : null)),
+    apiPhotoSource: jest.fn((path) => (path ? { uri: `http://test${path}` } : null)),
   };
 });
 
@@ -73,7 +76,6 @@ import { NavigationContext } from '@react-navigation/native';
 import HomeScreen from '../src/screens/HomeScreen';
 import FeedCard from '../src/components/FeedCard';
 import ReactionEffect from '../src/effects/ReactionEffect';
-import { PressableScale } from '../src/ui/motion';
 
 // `useFocusEffect` and `useQuery` both reach for the navigation object through
 // context rather than through props, so passing one as a prop is not enough —
@@ -229,6 +231,33 @@ describe('feed reactions', () => {
     act(() => tree.unmount());
   });
 
+  it('puts the route map and the post photos side by side when a run has both', () => {
+    const item = runner({
+      ...route,
+      is_you: true,
+      caption: 'Loop with a view',
+      media: ['data:image/jpeg;base64,aGVsbG8=', 'data:image/jpeg;base64,d29ybGQ='],
+    });
+    let tree;
+    act(() => { tree = renderer.create(<FeedCard item={item} navigation={navigation} />); });
+
+    // The photo half measures itself before it renders any image — simulate
+    // the layout pass a real device does automatically.
+    const photoCard = tree.root.findByProps({ testID: 'paired-photo-card' });
+    act(() => {
+      photoCard.props.onLayout({ nativeEvent: { layout: { width: 160, height: 160 } } });
+    });
+
+    const photoLabels = new Set(tree.root.findAll((node) =>
+      String(node.props.accessibilityLabel || '').startsWith('Run post photo ')
+    ).map((node) => node.props.accessibilityLabel));
+    expect([...photoLabels]).toEqual(['Run post photo 1 of 2', 'Run post photo 2 of 2']);
+    // The route drawing is still there, beside the photos rather than instead
+    // of them.
+    expect(tree.root.findAllByType(Svg).length).toBeGreaterThan(0);
+    act(() => tree.unmount());
+  });
+
   it('renders a route thumbnail without crashing the Home tab', async () => {
     // RouteThumb used the palette without creating it. Text-only feed fixtures
     // all passed while the first real run with a path threw into Home's error
@@ -253,7 +282,7 @@ describe('feed reactions', () => {
     act(() => tree.unmount());
   });
 
-  it('draws aggregate reaction counts as separate route stickers', () => {
+  it('shows aggregate reaction counts as chips in their own row, not on the map', () => {
     const item = runner({
       ...route,
       reactions: [
@@ -264,14 +293,13 @@ describe('feed reactions', () => {
     });
     let tree;
     act(() => { tree = renderer.create(<FeedCard item={item} navigation={navigation} />); });
-    const stickers = (emote) => tree.root.findAllByType(PressableScale)
-      .filter((node) => node.props.accessibilityLabel === emote);
-    expect(stickers('love')).toHaveLength(3);
-    expect(stickers('wow')).toHaveLength(2);
+    // One chip per emote, carrying its count — not one sticker per person.
+    expect(tree.root.findByProps({ accessibilityLabel: 'Love it, 3' })).toBeTruthy();
+    expect(tree.root.findByProps({ accessibilityLabel: 'No way, 2' })).toBeTruthy();
     act(() => tree.unmount());
   });
 
-  it('plays the selected emoji animation at its new route sticker', () => {
+  it('plays the selected emoji animation over the reaction row', () => {
     const { api } = require('../src/api/client');
     // Hold the request so this assertion sees the optimistic placement rather
     // than an intentionally empty generic mock response replacing it.
@@ -282,10 +310,7 @@ describe('feed reactions', () => {
     act(() => tree.root.findByProps({ accessibilityLabel: 'Add a reaction' }).props.onPress());
     act(() => tree.root.findByProps({ accessibilityLabel: 'Love it' }).props.onPress());
     expect(tree.root.findAllByType(ReactionEffect)).toHaveLength(1);
-    expect(
-      tree.root.findAllByType(PressableScale)
-        .filter((node) => node.props.accessibilityLabel === 'love')
-    ).toHaveLength(1);
+    expect(tree.root.findByProps({ accessibilityLabel: 'Love it, 1' })).toBeTruthy();
     act(() => tree.unmount());
   });
 });

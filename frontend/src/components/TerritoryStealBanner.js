@@ -498,7 +498,12 @@ export default function TerritoryStealBanner({
           <OutlinedText style={[toonType.label, styles.labelText]} outline={toon.ink} width={1.5}>
             {label}
           </OutlinedText>
-          <AppIcon name="steal" size={STEAL_ICON_SIZE} style={styles.labelIcon} />
+          {/* Bigger than the shared STEAL_ICON_SIZE (26), same reasoning as
+              TerritoryVictoryBeat's own steal icon: this banner IS the
+              celebratory moment, not a chip in a list — sized directly so
+              the notifications-inbox icon (which also reads STEAL_ICON_SIZE)
+              is untouched. */}
+          <AppIcon name="steal" size={STEAL_ICON_SIZE * 1.6} style={styles.labelIcon} />
           {amount != null ? (
             <OutlinedText
               style={[toonType.sub, styles.labelAmount]}

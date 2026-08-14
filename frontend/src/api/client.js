@@ -20,6 +20,31 @@ export function setAuthToken(token) {
   _token = token || null;
 }
 
+// Images the server hosts (club photos) come back as API-relative paths, so
+// the stored value survives the backend moving hosts. Each path already
+// carries the upload's token, which is what makes them safe for expo-image to
+// keep on disk forever.
+export function apiImageUri(path) {
+  if (!path) return null;
+  return /^https?:/i.test(path) ? path : `${API_BASE}${path}`;
+}
+
+// Run post photos are NOT public like a club crest — they follow the run's
+// own visibility rule, so the endpoint requires the viewer's token. A plain
+// <Image uri> never sends one; this is the `source` an <Image>/expo-image
+// needs to actually authenticate the request.
+//
+// Also the one place a caller can hand this a photo that was never uploaded
+// at all: a `data:` URI fresh out of the picker, still sitting in local state
+// before a save round-trip. That one needs neither the API host prepended nor
+// a header attached, so it is returned exactly as given.
+export function apiPhotoSource(path) {
+  if (!path) return null;
+  if (/^data:/i.test(path)) return { uri: path };
+  const uri = apiImageUri(path);
+  return _token ? { uri, headers: { Authorization: `Bearer ${_token}` } } : { uri };
+}
+
 export class ApiError extends Error {
   constructor(status, message) {
     super(message);

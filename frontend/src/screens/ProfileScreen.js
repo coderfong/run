@@ -14,8 +14,8 @@ import { frameVariant } from '../ui/frameRegistry';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
-import { useClan } from '../state/clan';
 import { useAvatar } from '../state/avatar';
+import { useAccent } from '../hooks/useAccent';
 import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
@@ -63,10 +63,10 @@ const NOTIF_ROWS = [
 ];
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
-// Hosted on the repurposed bido-frontend site (Next.js /privacy route).
-// www resolves cleanly over HTTPS (the apex has a cert quirk).
-const PRIVACY_POLICY_URL = 'https://www.bido.live/privacy';
-const SUPPORT_URL = 'https://www.bido.live/support';
+// Hosted on the bido-frontend site (Next.js /privacy route), now on the
+// gameablestudios.com domain.
+const PRIVACY_POLICY_URL = 'https://www.gameablestudios.com/privacy';
+const SUPPORT_URL = 'https://www.gameablestudios.com/support';
 
 // The PRO gold, shared with the first-run step's wordmark and the pass's own
 // gold track, so the three places it is sold read as one thing.
@@ -116,14 +116,17 @@ export default function ProfileScreen({ navigation }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
-  const { color } = useClan();
   const { equipped } = useAvatar();
   const { trailGlow, setTrailGlow } = useSettings();
   // The drift in the header stops when the tab is not the one you are on.
   // This is a tab screen, so without it the leaves keep crossing for the whole
   // session behind Home, the map and the shop.
   const focused = useIsFocused();
-  const accent = color.stroke;
+  // The runner colour picker below is exactly this: club colour unless a
+  // fixed one is chosen. This page's own frames used to hardcode the club
+  // colour, which is why only whichever swatch happened to match the club's
+  // colour ever looked like it did anything.
+  const accent = useAccent();
 
   // The scene behind the runner — daytime kerb in light mode, lamp-lit night
   // street in dark. SceneBackdrop sizes itself to whichever art is showing and
@@ -592,7 +595,7 @@ export default function ProfileScreen({ navigation }) {
       <Card style={{ marginTop: space.md }}>
         <Text style={type.labelSm}>Runner colour</Text>
         <Text style={[type.caption, { marginTop: 2 }]}>
-          Colours your trail, map outline and runner highlights. Club follows your club colour.
+          Colours your trail, map outline and this page's frames. Club follows your club colour.
         </Text>
         <View style={styles.swatchRow}>
           {TRAIL_GLOW_COLORS.map(({ key, label, value }) => {
@@ -850,8 +853,11 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     marginVertical: space.sm,
   },
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm },
-  swatchRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: space.md },
-  swatchItem: { alignItems: 'center', gap: 6 },
+  // `space-between` on a single row worked for the original six, but ten
+  // swatches (plus a label under each) in that width just overlapped. Wraps
+  // instead, spaced evenly regardless of how many colours the list grows to.
+  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginTop: space.md },
+  swatchItem: { alignItems: 'center', gap: 6, width: 56 },
   swatch: {
     width: 34,
     height: 34,

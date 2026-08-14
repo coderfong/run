@@ -481,6 +481,7 @@ class SeasonLeaderboardEntry(BaseModel):
     tag: Optional[str] = None
     color: Optional[ClanColor] = None
     badge_icon: Optional[str] = None
+    photo_url: Optional[str] = None
     league: Optional[str] = None
     member_count: int = 0
     total_area_m2: float = 0.0
@@ -657,7 +658,14 @@ class RunPostIn(BaseModel):
     def _validate_media(cls, values):
         out = []
         for value in values:
-            if not isinstance(value, str) or not value.startswith(
+            if not isinstance(value, str):
+                raise ValueError("post photos must be JPEG, PNG, or WebP images")
+            # A photo already on the post comes back as its own URL, meaning
+            # "keep it"; the route resolves it against what is stored.
+            if value.startswith("/runs/"):
+                out.append(value)
+                continue
+            if not value.startswith(
                 ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
             ):
                 raise ValueError("post photos must be JPEG, PNG, or WebP images")
@@ -957,20 +965,59 @@ class RunnerProfile(BaseModel):
 
 # ---- clans (Phase 5) ------------------------------------------------------
 
+def _validate_club_photo(value):
+    """A club photo is a data URI, the same shape run post media uses.
+
+    Empty means "no photo" on the way in and clears an existing one on a
+    patch. The cap only has to bound the request: the server crops and
+    downscales what it stores, so the phone can send its own idea of a photo.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("club photo must be an image")
+    value = value.strip()
+    if not value:
+        return ""
+    if not value.startswith(
+        ("data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")
+    ):
+        raise ValueError("the club photo must be a JPEG, PNG, or WebP image")
+    # About 2.25 MB decoded, the same ceiling a run post photo has.
+    if len(value) > 3_000_000:
+        raise ValueError("the club photo must be smaller than 2.25 MB")
+    return value
+
+
 class ClanCreate(BaseModel):
     name: str = Field(..., min_length=3, max_length=24)
     tag: str = Field(..., min_length=2, max_length=5)
     description: Optional[str] = Field(None, max_length=140)
     color_key: str
-    badge_icon: str
+    # Clubs are made with a photo now; the icon is only the fallback crest a
+    # club without one is drawn with, so clients no longer have to send it.
+    badge_icon: str = "shield"
+    photo: Optional[str] = None
     privacy: str = "open"  # 'open' | 'invite_only'
+
+    @field_validator("photo")
+    @classmethod
+    def _check_photo(cls, value):
+        return _validate_club_photo(value)
 
 
 class ClanUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=140)
     color_key: Optional[str] = None
     badge_icon: Optional[str] = None
+    # None leaves the photo alone; "" removes it.
+    photo: Optional[str] = None
     privacy: Optional[str] = None
+
+    @field_validator("photo")
+    @classmethod
+    def _check_photo(cls, value):
+        return _validate_club_photo(value)
 
 
 class ClanMemberOut(BaseModel):
@@ -1001,6 +1048,7 @@ class ClanOut(BaseModel):
     color_key: str
     color: ClanColor
     badge_icon: str
+    photo_url: Optional[str] = None
     privacy: str
     member_cap: int
     member_count: int
@@ -1022,6 +1070,7 @@ class ClanSummary(BaseModel):
     tag: str
     color: ClanColor
     badge_icon: str
+    photo_url: Optional[str] = None
     privacy: str
     member_count: int
     league: Optional[str] = None
@@ -1042,6 +1091,7 @@ class ClanLeaderboardEntry(BaseModel):
     tag: str
     color: ClanColor
     badge_icon: str = "shield"
+    photo_url: Optional[str] = None
     league: Optional[str] = None
     total_area_m2: float
     member_count: int

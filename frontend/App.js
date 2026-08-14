@@ -216,6 +216,13 @@ function MapStack() {
   return (
     <MapStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <MapStackNav.Screen name="MapMain" component={GlobalMapScreen} />
+      {/* Reachable from the "Full profile" link on a tapped territory/avatar's
+          quick-look popup, so it has to exist on this stack too. */}
+      <MapStackNav.Screen
+        name="RunnerProfile"
+        component={RunnerProfileScreen}
+        options={{ headerShown: true, title: 'Runner' }}
+      />
     </MapStackNav.Navigator>
   );
 }
@@ -325,6 +332,10 @@ function MainTabs() {
       // Keep lazy mounting's low initial cost, but prepare every one of our
       // four tabs while Home is visible. With the default distance of 0, iOS
       // first mounted and decoded a tab only after the user tapped/swiped it.
+      // This still means all four MOUNT together — useQuery (hooks/useQuery.js)
+      // now separately gates each screen's first data fetch on that screen
+      // actually being focused, so mounting eagerly no longer means every tab
+      // also fires its first network request in the same burst the app opens.
       screenOptions={{ swipeEnabled: true, lazy: true, lazyPreloadDistance: 3 }}
     >
       <Tab.Screen name="Home" component={HomeTab} />

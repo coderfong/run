@@ -1,4 +1,4 @@
-import { EFFECT_ANCHOR } from './effectTypes';
+import { EFFECT_ANCHOR, parseDefenderAnchor } from './effectTypes';
 
 export const DEFAULT_EFFECT_SAFE_INSETS = Object.freeze({ top: 16, right: 16, bottom: 16, left: 16 });
 
@@ -182,6 +182,108 @@ export function buildTerritoryAnchorModel({ rings = [], bounds, insets, preferre
   return { rect, visual, viable };
 }
 
+// ---------------------------------------------------------------------------
+// Where the rivals are standing
+// ---------------------------------------------------------------------------
+
+/** The character box a rig of `size` occupies standing with its feet on `point`. */
+function rectAtFeet(point, size) {
+  return { x: point.x - size / 2, y: point.y - size, width: size, height: size };
+}
+
+const rectCenter = (rect) => ({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+
+/**
+ * Place the claim's rivals on the ground they are about to lose.
+ *
+ * They stand INSIDE the territory, spread out, clear of the attacker and of
+ * each other, and the same claim puts the same people in the same places on
+ * every replay. Two properties the choreography depends on:
+ *
+ *   * the result is sorted by distance from the claim point, so index 0 IS the
+ *     nearest defender and the last index IS the furthest. `TARGET.NEAREST`
+ *     and `TARGET.FURTHEST` are the ends of this ordering rather than a
+ *     geometry question the timeline would have to ask at runtime.
+ *   * every position is a real interior point of the projected polygon, so a
+ *     shockwave that throws somebody outward is throwing them off ground the
+ *     attacker has actually taken.
+ *
+ * Falls back to a fan around the claim point when the shape is too small or too
+ * far off screen to hold anybody — a cast that cannot be laid out still has to
+ * be visible, because the alternative is the disappearing rival this whole
+ * rework exists to remove.
+ */
+export function layoutDefenders(count, context = {}, seed = 'cast', size = 40) {
+  if (!count || count < 1) return [];
+  const bounds = context.bounds || { width: 0, height: 0 };
+  const rect = safeRect(bounds, context.safeInsets);
+  const rings = context.territoryRings || [];
+  const claimPoint = finitePoint(context.claimPoint) ? context.claimPoint : center(bounds);
+  const model = context.anchorModel || buildTerritoryAnchorModel({
+    rings, bounds, insets: context.safeInsets, preferred: claimPoint,
+  });
+
+  // Interior points with room around them, minus the ground the attacker is
+  // standing on. `viable` is already scored by distance to the boundary.
+  const attackerGap = size * 1.1;
+  const pool = model.viable
+    .filter((candidate) => candidate.score > size * 0.35)
+    .filter((candidate) => Math.hypot(candidate.point.x - claimPoint.x, candidate.point.y - claimPoint.y) > attackerGap);
+
+  const chosen = [];
+  if (pool.length) {
+    // Farthest-point sampling from a seeded start: spread without randomness.
+    let cursor = pool[seededIndex(`${seed}:start`, pool.length)].point;
+    chosen.push(cursor);
+    while (chosen.length < count) {
+      let best = null;
+      let bestScore = -Infinity;
+      for (const candidate of pool) {
+        const spread = Math.min(
+          ...chosen.map((p) => Math.hypot(candidate.point.x - p.x, candidate.point.y - p.y))
+        );
+        if (spread < size * 0.8) continue;
+        // Prefer room from the others, then room from the border.
+        const score = spread + candidate.score * 0.25;
+        if (score > bestScore) { bestScore = score; best = candidate.point; }
+      }
+      if (!best) break;
+      chosen.push(best);
+      cursor = best;
+    }
+  }
+
+  // Not enough interior room for everybody: fan the remainder around the claim
+  // point at a deterministic angle rather than dropping them.
+  while (chosen.length < count) {
+    const i = chosen.length;
+    const angle = (seededIndex(`${seed}:fan:${i}`, 360) * Math.PI) / 180;
+    const radius = size * (1.4 + i * 0.5);
+    chosen.push(clampPoint({
+      x: claimPoint.x + Math.cos(angle) * radius,
+      y: claimPoint.y + Math.sin(angle) * radius * 0.6,
+    }, rect));
+  }
+
+  return chosen
+    .slice(0, count)
+    .sort((a, b) => (
+      Math.hypot(a.x - claimPoint.x, a.y - claimPoint.y)
+      - Math.hypot(b.x - claimPoint.x, b.y - claimPoint.y)
+    ))
+    .map((point) => {
+      // Keep the whole rig inside the safe rect: a rival clipped by the map
+      // card's edge cannot be watched reacting.
+      const feet = clampPoint(point, {
+        left: rect.left + size / 2,
+        right: Math.max(rect.left + size / 2, rect.right - size / 2),
+        top: rect.top + size,
+        bottom: Math.max(rect.top + size, rect.bottom),
+      });
+      return rectAtFeet(feet, size);
+    });
+}
+
 export function resolveEffectAnchor(anchor, context = {}, seed = '') {
   const bounds = context.bounds || context.mapBounds || { width: 0, height: 0 };
   const rect = safeRect(bounds, context.safeInsets);
@@ -196,9 +298,52 @@ export function resolveEffectAnchor(anchor, context = {}, seed = '') {
   const visual = model.visual;
   const character = context.characterRect;
   const viable = model.viable;
+  // The cast's real, laid-out boxes. Empty for a claim on empty ground, which
+  // is why every defender anchor below falls through to the territory rather
+  // than to a guess.
+  const defenderRects = (context.defenderRects || []).filter(
+    (item) => item && Number.isFinite(item.x) && Number.isFinite(item.y)
+  );
+
+  // `defender[i].head|center|feet`. Parsed rather than enumerated because the
+  // cast size is a property of the claim, not of the vocabulary.
+  const part = parseDefenderAnchor(anchor);
+  if (part) {
+    const box = defenderRects[part.index];
+    if (box) {
+      const point = part.part === 'head'
+        ? { x: box.x + box.width / 2, y: box.y }
+        : part.part === 'feet'
+          ? { x: box.x + box.width / 2, y: box.y + box.height }
+          : rectCenter(box);
+      return clampPoint(point, rect);
+    }
+    // Addressed a rival who is not in this cast: the event still has to land
+    // somewhere sensible on the ground it was aimed at.
+    return clampPoint(visual, rect);
+  }
 
   let resolved;
   switch (anchor) {
+    case EFFECT_ANCHOR.DEFENDER_GROUP_CENTER: {
+      if (!defenderRects.length) { resolved = visual; break; }
+      const points = defenderRects.map(rectCenter);
+      resolved = {
+        x: points.reduce((sum, p) => sum + p.x, 0) / points.length,
+        y: points.reduce((sum, p) => sum + p.y, 0) / points.length,
+      };
+      break;
+    }
+    case EFFECT_ANCHOR.NEAREST_DEFENDER:
+      // layoutDefenders sorts by distance from the claim point, so the ends of
+      // the cast are the nearest and furthest by construction.
+      resolved = defenderRects.length ? rectCenter(defenderRects[0]) : visual;
+      break;
+    case EFFECT_ANCHOR.FURTHEST_DEFENDER:
+      resolved = defenderRects.length
+        ? rectCenter(defenderRects[defenderRects.length - 1])
+        : visual;
+      break;
     case EFFECT_ANCHOR.TERRITORY_CENTER:
       resolved = rawTerritoryCenter;
       break;

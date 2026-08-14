@@ -15,35 +15,15 @@ import {
 import { Camera, Images, Trash2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { api } from '../api/client';
+import { api, apiPhotoSource } from '../api/client';
 import { invalidate, updateCached } from '../api/cache';
 import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { PressableScale, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
+import { MAX_DATA_URI_LENGTH, dataUri, imagePicker } from '../ui/photoPicker';
 
 export const MAX_POST_PHOTOS = 4;
 export const MAX_CAPTION = 280;
-const MAX_DATA_URI_LENGTH = 3_000_000;
-
-let pickerModule;
-function imagePicker() {
-  if (pickerModule === undefined) {
-    try {
-      pickerModule = require('expo-image-picker');
-    } catch {
-      pickerModule = null;
-    }
-  }
-  return pickerModule;
-}
-
-function dataUri(asset) {
-  if (!asset?.base64) return null;
-  const mime = ['image/jpeg', 'image/png', 'image/webp'].includes(asset.mimeType)
-    ? asset.mimeType
-    : 'image/jpeg';
-  return `data:${mime};base64,${asset.base64}`;
-}
 
 function PickerButton({ label, Icon, disabled, onPress }) {
   const { colors } = useTheme();
@@ -77,16 +57,29 @@ export default function RunPostEditor({
   const [media, setMedia] = useState(initialMedia || []);
   const [busy, setBusy] = useState(null);
   const [saving, setSaving] = useState(false);
+  // The global toast host is mounted once at the app root, and a native
+  // <Modal> — which is what this editor lives inside of — presents in its own
+  // window above that whole tree. On iOS especially, that means a `toast.*()`
+  // call made from in here never becomes visible: every failure looked like
+  // the button silently doing nothing. Shown inline instead, next to the
+  // thing that failed, so it can't get lost behind the sheet that raised it.
+  const [formError, setFormError] = useState(null);
 
   useEffect(() => {
     setCaption(initialCaption || '');
     setMedia(initialMedia || []);
   }, [runId, initialCaption, initialMedia]);
 
+  const fail = (message) => {
+    setFormError(message);
+    toast.error(message);
+  };
+
   const addPhotos = async (source) => {
+    setFormError(null);
     const Picker = imagePicker();
     if (!Picker) {
-      toast.error('Photo editing needs the latest PASER app update.');
+      fail('Photo editing needs the latest PASER app update.');
       return;
     }
     const remaining = MAX_POST_PHOTOS - media.length;
@@ -98,7 +91,7 @@ export default function RunPostEditor({
         ? await Picker.requestCameraPermissionsAsync()
         : await Picker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        toast.error(
+        fail(
           source === 'camera'
             ? 'PASER needs camera access to take a post photo.'
             : 'PASER needs photo access to add pictures to your post.'
@@ -124,14 +117,14 @@ export default function RunPostEditor({
       const next = (result?.assets || []).slice(0, remaining).map(dataUri).filter(Boolean);
       const acceptable = next.filter((value) => value.length <= MAX_DATA_URI_LENGTH);
       if (acceptable.length !== next.length) {
-        toast.error('One photo was too large. Try a screenshot or a smaller image.');
+        fail('One photo was too large. Try a screenshot or a smaller image.');
       }
       if (acceptable.length) {
         haptic.light();
         setMedia((current) => [...current, ...acceptable].slice(0, MAX_POST_PHOTOS));
       }
     } catch (error) {
-      toast.error(error?.message || 'Could not add that photo');
+      fail(error?.message || 'Could not add that photo');
     } finally {
       setBusy(null);
     }
@@ -140,6 +133,7 @@ export default function RunPostEditor({
   const save = async () => {
     if (!runId || saving) return;
     setSaving(true);
+    setFormError(null);
     try {
       const post = await api.updateRunPost(runId, caption.trim(), media);
       haptic.success();
@@ -157,7 +151,7 @@ export default function RunPostEditor({
       onSaved?.(post);
       toast.show('Post updated');
     } catch (error) {
-      toast.error(error?.message || 'Could not update your post');
+      fail(error?.message || 'Could not update your post');
     } finally {
       setSaving(false);
     }
@@ -186,7 +180,7 @@ export default function RunPostEditor({
         >
           {media.map((uri, index) => (
             <View key={`${index}:${uri.length}`} style={styles.photoWrap}>
-              <Image source={{ uri }} style={styles.photo} resizeMode="cover" />
+              <Image source={apiPhotoSource(uri)} style={styles.photo} resizeMode="cover" />
               <PressableScale
                 style={styles.removePhoto}
                 onPress={() => setMedia((items) => items.filter((_, i) => i !== index))}
@@ -214,6 +208,10 @@ export default function RunPostEditor({
           onPress={() => addPhotos('camera')}
         />
       </View>
+
+      {formError ? (
+        <Text style={[type.captionMedium, styles.errorText]}>{formError}</Text>
+      ) : null}
 
       <PressableScale
         style={[styles.save, (!runId || saving) && styles.disabled]}
@@ -278,6 +276,7 @@ const makeStyles = (colors) => StyleSheet.create({
     padding: space.md,
   },
   count: { alignSelf: 'flex-end', color: colors.textDim, marginTop: 4 },
+  errorText: { color: colors.danger, marginTop: space.sm },
   photoRow: { gap: space.sm, paddingVertical: space.md },
   photoWrap: { width: 116, height: 116 },
   photo: { width: 116, height: 116, borderRadius: radius.md, backgroundColor: colors.cardAlt },

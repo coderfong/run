@@ -11,10 +11,13 @@ const TRAIL_GLOW_KEY = 'tr.settings.trailGlow';
 export const TRAIL_GLOW_COLORS = [
   { key: 'clan', label: 'Club', value: null },
   { key: 'cyan', label: 'Cyan', value: '#22d3ee' },
-  { key: 'volt', label: 'Volt', value: '#a3e635' },
+  { key: 'azure', label: 'Azure', value: '#38bdf8' },
+  { key: 'violet', label: 'Violet', value: '#a78bfa' },
   { key: 'magenta', label: 'Magenta', value: '#e879f9' },
+  { key: 'rose', label: 'Rose', value: '#fb7185' },
+  { key: 'orange', label: 'Orange', value: '#fb923c' },
   { key: 'amber', label: 'Amber', value: '#fbbf24' },
-  { key: 'white', label: 'White', value: '#f8fafc' },
+  { key: 'volt', label: 'Volt', value: '#a3e635' },
 ];
 
 

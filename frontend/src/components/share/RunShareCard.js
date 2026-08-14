@@ -356,6 +356,13 @@ export default function RunShareCard({
   // half a figure.
   const runnerSize = width * 0.21;
   const runner = (() => {
+    // DIAGNOSTIC — the share screen crashes on open (EXC_BAD_ACCESS deep in
+    // Hermes, a different exact call site each build) and every fix so far
+    // has landed on the character rig without stopping it. This forces the
+    // runner off entirely so a rebuild can prove or rule out LogoRunner /
+    // CharacterRig as the cause before chasing it further. Revert once that
+    // answer is in hand — see the conversation this landed in for context.
+    if (true) return null;
     if (!showCharacter || !equipped || !route) return null;
     // The mark's feet are not at the bottom edge of its square, so the drop is
     // measured to the soles rather than to the image.

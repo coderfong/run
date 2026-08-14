@@ -86,7 +86,12 @@ export default function TerritoryVictoryBeat({
   const squashX = useSharedValue(1);
   const squashY = useSharedValue(1);
   const opacity = useSharedValue(0);
-  const labelScale = useSharedValue(0.7);
+  // The headline SLAMS down rather than popping — falls from above and hits
+  // with the same drop-then-squash shape the rig itself lands with, just
+  // faster and harder, so it reads as an impact rather than a soft entrance.
+  const labelDrop = useSharedValue(reducedMotion ? 0 : -60);
+  const labelSquashX = useSharedValue(1);
+  const labelSquashY = useSharedValue(1);
   const labelOpacity = useSharedValue(0);
   const pulse = useSharedValue(0);
 
@@ -106,7 +111,9 @@ export default function TerritoryVictoryBeat({
 
     opacity.value = withTiming(1, { duration: 110 });
     labelOpacity.value = 0;
-    labelScale.value = 0.7;
+    labelDrop.value = reducedMotion ? 0 : -60;
+    labelSquashX.value = 1;
+    labelSquashY.value = 1;
     pulse.value = 0;
 
     if (reducedMotion) {
@@ -144,15 +151,35 @@ export default function TerritoryVictoryBeat({
       );
     }, landAt));
 
-    // 6. the headline
+    // 6. the headline — the territory and the rig have already landed by now
+    // (this fires 60ms after THEIR landing, which itself is after the ground
+    // has finished changing hands in the phases before this component ever
+    // mounts — see useClaimSequence). SLAMS down: falls from above and hits
+    // with an impact squash, rather than fading or scaling up in place.
     track(setTimeout(() => {
-      labelOpacity.value = withTiming(1, { duration: 120 });
-      labelScale.value = reducedMotion
-        ? withTiming(1, { duration: 120 })
-        : withSequence(
-            withTiming(1.12, { duration: 130 }),
-            withSpring(1, { damping: 13, stiffness: 260, mass: 0.45 })
-          );
+      labelOpacity.value = withTiming(1, { duration: 70 });
+      if (reducedMotion) {
+        labelDrop.value = withTiming(0, { duration: 120 });
+      } else {
+        labelDrop.value = withSequence(
+          withTiming(0, { duration: 130, easing: Easing.in(Easing.cubic) }),
+          withSpring(0, { damping: 10, stiffness: 320, mass: 0.5 })
+        );
+        labelSquashX.value = withDelay(
+          130,
+          withSequence(
+            withTiming(1.24, { duration: 70 }),
+            withSpring(1, { damping: 11, stiffness: 300, mass: 0.4 })
+          )
+        );
+        labelSquashY.value = withDelay(
+          130,
+          withSequence(
+            withTiming(0.76, { duration: 70 }),
+            withSpring(1, { damping: 11, stiffness: 300, mass: 0.4 })
+          )
+        );
+      }
     }, landAt + 60));
 
     // 7. hold, then hand over to the payoff
@@ -180,7 +207,11 @@ export default function TerritoryVictoryBeat({
 
   const labelStyle = useAnimatedStyle(() => ({
     opacity: labelOpacity.value,
-    transform: [{ scale: labelScale.value }],
+    transform: [
+      { translateY: labelDrop.value },
+      { scaleX: labelSquashX.value },
+      { scaleY: labelSquashY.value },
+    ],
   }));
 
   const pulseProps = useAnimatedProps(() => ({
@@ -243,7 +274,11 @@ export default function TerritoryVictoryBeat({
         <OutlinedText style={[toonType.label, styles.labelText]} outline={toon.ink} width={2}>
           {label}
         </OutlinedText>
-        {label === 'TERRITORY STOLEN' && <AppIcon name="steal" size={STEAL_ICON_SIZE} style={styles.labelIcon} />}
+        {/* Bigger than the shared STEAL_ICON_SIZE (26) on purpose — this is
+            the one headline moment the icon exists to punctuate, not a chip
+            in a list. Sized directly rather than retuning the shared
+            constant, which would also inflate the notifications-inbox icon. */}
+        {label === 'TERRITORY STOLEN' && <AppIcon name="steal" size={STEAL_ICON_SIZE * 1.6} style={styles.labelIcon} />}
       </Animated.View>
     </View>
   );

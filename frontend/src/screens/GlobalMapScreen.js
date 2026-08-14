@@ -18,6 +18,7 @@ import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { territoryRings } from '../components/claim/geometry';
 import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer, UserMarker } from '../components/GameMap';
+import MapProfileSheet from '../components/MapProfileSheet';
 
 // Area-weighted centroid (shoelace) of a territory's largest ring — where the
 // owner portrait sits. Vertex-averaging drifts off-centre once a claim is
@@ -65,9 +66,10 @@ function toFeatures(territories, userId, playerAccent) {
           clanTag: t.clan_tag || 'Solo',
           fillColor: mine && playerAccent ? playerAccent : c.stroke,
           strokeColor: mine && playerAccent ? playerAccent : c.stroke,
-          // Territory fill ~35% (own a touch higher), faded by decay so
-          // land visibly weakens as it nears expiry.
-          fillOpacity: (mine ? 0.45 : 0.35) * (0.35 + 0.65 * (t.freshness ?? 1)),
+          // Territory fill ~48% (own a touch higher), faded by decay so land
+          // visibly weakens as it nears expiry — but never down to the wash
+          // it used to fade to, which read as barely-there rather than aged.
+          fillOpacity: (mine ? 0.58 : 0.48) * (0.55 + 0.45 * (t.freshness ?? 1)),
           contested: !!t.contested,
         },
       });
@@ -108,8 +110,8 @@ function bboxContains(outer, inner) {
   );
 }
 
-export default function GlobalMapScreen({ route }) {
-  const { colors } = useTheme();
+export default function GlobalMapScreen({ route, navigation }) {
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
@@ -129,6 +131,8 @@ export default function GlobalMapScreen({ route }) {
   const [list, setList] = useState(null); // null = first load
   const [loadError, setLoadError] = useState(false);
   const [selected, setSelected] = useState(null);
+  // Tapped territory/avatar's owner — drives the quick-look profile popup.
+  const [profileUserId, setProfileUserId] = useState(null);
   const [zoom, setZoom] = useState(12);
   const [heatOn, setHeatOn] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
@@ -277,6 +281,7 @@ export default function GlobalMapScreen({ route }) {
     return (list || [])
       .map((t) => ({
         id: t.id,
+        userId: t.user_id,
         mine: t.user_id === user.id,
         avatar: t.user_id === user.id ? equipped : t.avatar,
         ring: (t.clan_color || NEUTRAL).stroke,
@@ -338,17 +343,21 @@ export default function GlobalMapScreen({ route }) {
   return (
     <View style={styles.container}>
       <GameMap ref={mapRef} onIdle={onIdle} onPress={() => setSelected(null)}>
-        <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} />
+        {/* The glow line was built in but never switched on, which is a lot of
+            why the board read pastel — the plain 2px stroke alone. Dark mode
+            is where a blurred neon outline actually reads as vivid rather
+            than muddy against a light basemap. */}
+        <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} dark={scheme === 'dark'} />
         {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
         {/* owner portrait in the middle of every territory in view */}
         {landPortraits.map((m) => (
-          <UserMarker key={m.id} point={m.at}>
+          <UserMarker key={m.id} point={m.at} onPress={() => setProfileUserId(m.userId)}>
             <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={colors.card} />
           </UserMarker>
         ))}
         {/* Keep location visible when pulled back without covering the land. */}
         {myLoc && (
-          <UserMarker point={myLoc}>
+          <UserMarker point={myLoc} onPress={() => setProfileUserId(user.id)}>
             {showPortraits ? (
               // The "this is you" ring has to be the opposite of the map it
               // sits on — a white ring vanished on the light style.
@@ -420,21 +429,36 @@ export default function GlobalMapScreen({ route }) {
             held since {new Date(selected.created_at).toLocaleDateString()}
             {selected.contested ? ' · contested' : ''}
           </Text>
-          <Button
-            title="View territory"
-            variant="gradient"
-            size="sm"
-            onPress={() => {
-              const pts = [];
-              territoryRings(selected).forEach((ring) =>
-                ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
-              );
-              if (pts.length) mapRef.current?.fitToPoints(pts, 70);
-            }}
-            style={{ marginTop: space.md }}
-          />
+          <View style={styles.cardActions}>
+            <Button
+              title="View territory"
+              variant="gradient"
+              size="sm"
+              onPress={() => {
+                const pts = [];
+                territoryRings(selected).forEach((ring) =>
+                  ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
+                );
+                if (pts.length) mapRef.current?.fitToPoints(pts, 70);
+              }}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title="View profile"
+              variant="secondary"
+              size="sm"
+              onPress={() => setProfileUserId(selected.user_id)}
+              style={{ flex: 1 }}
+            />
+          </View>
         </Card>
       )}
+
+      <MapProfileSheet
+        userId={profileUserId}
+        onClose={() => setProfileUserId(null)}
+        navigation={navigation}
+      />
 
       {/* legend: top clubs in view */}
       <Sheet visible={legendOpen} onClose={() => setLegendOpen(false)}>
@@ -492,6 +516,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
 
   card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
 
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56 },
   legendDot: { width: 12, height: 12, borderRadius: 6 },

@@ -26,7 +26,7 @@ import {
 import * as Sentry from '@sentry/react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { Copy, Download, Instagram, Share2 } from 'lucide-react-native';
 
 import RunShareCard, {
@@ -45,32 +45,42 @@ import { toast } from '../../ui/toast';
 // Instagram's own gradient, so the destination is recognisable at a glance.
 const IG_GRADIENT = ['#F9CE34', '#EE2A7B', '#6228D7'];
 
-// The transparency checkerboard, in the size Photoshop and Figma use. Drawn as
-// one SVG pattern rather than a grid of Views: a 9:16 preview is a couple of
-// hundred squares, and that is a couple of hundred native views for decoration.
+// The transparency checkerboard, in the size Photoshop and Figma use.
+//
+// TWO nodes, and it has to stay that way. A grid of Views is a thousand native
+// views for decoration, so this began as an SVG `<Pattern>` — which was the one
+// react-native-svg feature the app used NOWHERE else, mounted on the one screen
+// that died the moment it opened. Every dark square now goes into a single
+// `<Path>` instead: the same picture, no pattern, and still only a fill and a
+// path to rasterise.
 const CHECKER = 12;
+
+// The path is built in the preview's own pixels rather than at "100%", because
+// the squares have to stay square whatever shape the card is.
+function checkerPath(width, height) {
+  const cols = Math.ceil(width / CHECKER);
+  const rows = Math.ceil(height / CHECKER);
+  let d = '';
+  for (let r = 0; r < rows; r += 1) {
+    // Dark where row + column is even, which is the diagonal the tile drew.
+    for (let c = r % 2; c < cols; c += 2) {
+      d += `M${c * CHECKER} ${r * CHECKER}h${CHECKER}v${CHECKER}h${-CHECKER}z`;
+    }
+  }
+  return d;
+}
 
 // Keep optional native sharing code out of the initial render. This screen can
 // be delivered over the air to older binaries that do not contain every
 // native module yet.
 const socialShare = () => require('../../utils/socialShare');
 
-function Checkerboard({ style }) {
+function Checkerboard({ width, height, style }) {
+  const d = useMemo(() => checkerPath(width, height), [width, height]);
   return (
-    <Svg style={style} width="100%" height="100%">
-      <Defs>
-        <Pattern
-          id="checker"
-          width={CHECKER * 2}
-          height={CHECKER * 2}
-          patternUnits="userSpaceOnUse"
-        >
-          <Rect x={0} y={0} width={CHECKER * 2} height={CHECKER * 2} fill="#4A4A4E" />
-          <Rect x={0} y={0} width={CHECKER} height={CHECKER} fill="#38383C" />
-          <Rect x={CHECKER} y={CHECKER} width={CHECKER} height={CHECKER} fill="#38383C" />
-        </Pattern>
-      </Defs>
-      <Rect x={0} y={0} width="100%" height="100%" fill="url(#checker)" />
+    <Svg style={style} width={width} height={height}>
+      <Rect x={0} y={0} width={width} height={height} fill="#4A4A4E" />
+      <Path d={d} fill="#38383C" />
     </Svg>
   );
 }
@@ -367,7 +377,11 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           {/* The exact pixels that get posted, on a checkerboard so the empty
               parts read as empty rather than as dark grey. */}
           <View style={styles.previewShadow}>
-            <Checkerboard style={StyleSheet.absoluteFill} />
+            <Checkerboard
+              width={previewW}
+              height={previewW * spec.ratio}
+              style={StyleSheet.absoluteFill}
+            />
             {/* Boundaried. The card composites a runner's whole avatar over a
                 projected route, and it is the LAST thing between a finished run
                 and the way home — a throw in here used to take the result

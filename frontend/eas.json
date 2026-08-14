@@ -11,7 +11,10 @@
       "env": {
         "EXPO_PUBLIC_API_BASE": "https://chargers-use-asylum-composed.trycloudflare.com",
         "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2hhaWdlbiIsImEiOiJjbXI4NjI4cnYxa3p5MndvcDZkN2FtaXlwIn0.2wPGUM_PG_Rq0Q7sN8dvqw",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://08e52c1f590863ed0fc38a45f93f963a@o4511909689622528.ingest.us.sentry.io/4511909694406656",
+        "SENTRY_ORG": "paser",
+        "SENTRY_PROJECT": "react-native",
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "preview": {
@@ -26,7 +29,10 @@
       "env": {
         "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com",
         "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2hhaWdlbiIsImEiOiJjbXI4NjI4cnYxa3p5MndvcDZkN2FtaXlwIn0.2wPGUM_PG_Rq0Q7sN8dvqw",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://08e52c1f590863ed0fc38a45f93f963a@o4511909689622528.ingest.us.sentry.io/4511909694406656",
+        "SENTRY_ORG": "paser",
+        "SENTRY_PROJECT": "react-native",
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     },
     "production": {
@@ -35,7 +41,10 @@
       "env": {
         "EXPO_PUBLIC_API_BASE": "https://run-mdlv.onrender.com",
         "EXPO_PUBLIC_MAPBOX_TOKEN": "pk.eyJ1IjoiY2hhaWdlbiIsImEiOiJjbXI4NjI4cnYxa3p5MndvcDZkN2FtaXlwIn0.2wPGUM_PG_Rq0Q7sN8dvqw",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://08e52c1f590863ed0fc38a45f93f963a@o4511909689622528.ingest.us.sentry.io/4511909694406656",
+        "SENTRY_ORG": "paser",
+        "SENTRY_PROJECT": "react-native",
+        "SENTRY_ALLOW_FAILURE": "true"
       }
     }
   },

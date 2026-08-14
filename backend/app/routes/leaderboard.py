@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .. import models, ranks, schemas
-from ..clans_meta import color_triple
+from ..clans_meta import color_triple, photo_url
 from ..config import settings
 from ..database import get_db
 from ..security import current_user_optional
@@ -170,7 +170,8 @@ def season_leaderboard(
                        COALESCE(q.claim_count, 0) AS claim_count,
                        COALESCE(s.steals, 0) AS capture_count,
                        COALESCE(d.defense_count, 0) AS defense_count,
-                       COALESCE(s.distance_sum, 0) AS distance_m
+                       COALESCE(s.distance_sum, 0) AS distance_m,
+                       c.photo_etag
                 FROM clans c
                 LEFT JOIN clan_season_stats s
                   ON s.clan_id = c.id AND s.season_id = :season_id
@@ -191,6 +192,7 @@ def season_leaderboard(
                 tag=r[2],
                 color=schemas.ClanColor(**color_triple(r[3])),
                 badge_icon=r[4] or "shield",
+                photo_url=photo_url(r[0], r[13]),
                 league=r[5],
                 member_count=int(r[6] or 0),
                 total_area_m2=float(r[7] or 0),

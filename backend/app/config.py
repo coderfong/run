@@ -372,10 +372,24 @@ class Settings(BaseSettings):
     # MUST be true in production. With it off, /me/pass/purchase and
     # /me/energy/purchase grant their goods to any authenticated caller with
     # no receipt at all — the entire premium track for free. Verification
-    # lives in app/iap.py and FAILS CLOSED if the secrets below are unset.
+    # lives in app/iap.py and FAILS CLOSED if the settings below are unset.
     iap_verify_receipts: bool = False
-    # Apple: App Store Connect → your app → App-Specific Shared Secret.
+    # Apple verification is now StoreKit 2's signed transaction, checked
+    # LOCALLY against Apple's own root certificate (app/certs/AppleRootCA-G3.cer,
+    # a public file — no secret) rather than the deprecated verifyReceipt HTTP
+    # endpoint. `apple_shared_secret` is what that old endpoint needed; it is
+    # kept only so a still-running deploy doesn't crash on an unrecognised env
+    # var, but nothing reads it any more.
     apple_shared_secret: str = ""
+    # iOS bundle id every verified transaction must match. Same value as
+    # `android_package` today, but it is Apple's identifier, not Google's —
+    # App Store Connect → your app → General → Bundle ID.
+    apple_bundle_id: str = "com.pacerrun.app"
+    # The numeric App Store Connect app id (App Information → Apple ID). Only
+    # required to verify a PRODUCTION transaction — sandbox verification (every
+    # TestFlight tester and every App Review purchase) works without it, so
+    # this can stay unset until the app is actually live for sale.
+    apple_app_apple_id: str = ""
     # Google Play: an OAuth access token for the Android Publisher API, plus
     # the package name receipts are validated against.
     google_play_access_token: str = ""

@@ -23,7 +23,11 @@
 // tab showing minutes-old data; a focus fetch refreshes exactly when you look
 // at it. `staleMs` stops a quick swipe through the tabs from firing the same
 // request three times, and concurrent callers of one endpoint are coalesced
-// into a single request by the cache.
+// into a single request by the cache. The FIRST load is focus-gated too, for
+// the same reason: a screen the tab navigator merely preloaded is mounted
+// without being looked at, and firing its fetch anyway meant opening the app
+// fired four screens' worth of requests in one burst. See the first-load
+// effect below.
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavigationContext } from '@react-navigation/native';
@@ -134,18 +138,34 @@ export function useQuery(key, fetcher, options = {}) {
     [active, key, staleMs]
   );
 
-  // First load. Forced when there is nothing cached, so a screen that has just
-  // mounted with an empty cache asks straight away — the cache's in-flight
-  // coalescing makes that free when two screens really do ask at once.
-  useEffect(() => {
-    if (!active) return;
-    run({ force: touchedAt(key) === 0 });
-  }, [active, key, run]);
-
   // Refresh when the screen is actually looked at. NavigationContext is absent
   // outside a navigator (contexts and providers use this hook too), in which
   // case there is nothing to subscribe to and mount-time load is all there is.
   const navigation = useContext(NavigationContext);
+
+  // First load. Forced when there is nothing cached, so a screen that has just
+  // mounted with an empty cache asks straight away — the cache's in-flight
+  // coalescing makes that free when two screens really do ask at once.
+  //
+  // Gated on focus for a screen that HAS a navigation context and is not
+  // focused: the tab navigator keeps all four tabs mounted at once
+  // (lazyPreloadDistance: 3), so without this every one of them fired its
+  // first fetch in the same burst the instant the app opened, whether or not
+  // the tab was ever looked at. A preloaded-but-unfocused screen now gets its
+  // first fetch from the `focus` listener below instead, when the tab is
+  // actually opened — that `run()` call still fetches (unforced doesn't mean
+  // skipped, only throttled) because nothing has been attempted yet, so nothing
+  // about what a freshly-opened tab shows changes, only when the request fires.
+  useEffect(() => {
+    if (!active) return;
+    // Deferring only holds together because the focus listener below is what
+    // eventually fires the fetch — a caller that opts OUT of it
+    // (`refetchOnFocus: false`) would otherwise mount unfocused and never
+    // fetch at all.
+    if (refetchOnFocus && navigation?.isFocused && !navigation.isFocused()) return;
+    run({ force: touchedAt(key) === 0 });
+  }, [active, key, run, navigation, refetchOnFocus]);
+
   useEffect(() => {
     if (!active || !refetchOnFocus || !navigation?.addListener) return undefined;
     const unsub = navigation.addListener('focus', () => run());

@@ -2,6 +2,7 @@
 weekly-recap cron."""
 
 import json
+import secrets
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
@@ -9,7 +10,17 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import content_moderation, models, paserby, privacy, ranks, reactions as reaction_rules, schemas
+from .. import (
+    content_moderation,
+    images,
+    models,
+    paserby,
+    post_media,
+    privacy,
+    ranks,
+    reactions as reaction_rules,
+    schemas,
+)
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -34,7 +45,7 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
                    r.verified, COALESCE(t.area_m2, 0), (t.id IS NOT NULL),
                    ST_AsText(r.path), ST_AsText(t.polygon), c.tag, c.color_key,
                    COALESCE(r.visibility, 'public'), r.caption,
-                   COALESCE(r.post_media, '[]'::jsonb)
+                   COALESCE(r.post_media, '[]'::jsonb), r.post_media_etag
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -102,7 +113,7 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         comment_count=int(ccount or 0),
         reactions=[schemas.RunReaction(**x) for x in summary.get(run_id, [])],
         my_reaction=mine.get(run_id),
-        caption=r[14], media=list(r[15] or []),
+        caption=r[14], media=post_media.photo_urls(r[0], r[16], list(r[15] or [])),
     )
 
 
@@ -130,7 +141,10 @@ def update_run_post(
 ):
     """Edit the caption and photos attached to the owner's Home feed card."""
     run = db.execute(
-        text("SELECT user_id::text, ended_at FROM runs WHERE id = :rid"),
+        text(
+            "SELECT user_id::text, ended_at, COALESCE(post_media, '[]'::jsonb) "
+            "FROM runs WHERE id = :rid"
+        ),
         {"rid": run_id},
     ).fetchone()
     if not run or run[0] != user.id:
@@ -141,21 +155,61 @@ def update_run_post(
     caption = payload.caption
     if caption:
         caption = content_moderation.require_allowed_text(caption, "caption")
-    media = list(payload.media or [])
+    # New photos arrive as data URIs; the ones already on the post come back as
+    # their own URLs, which resolve to the stored image rather than a re-upload.
+    try:
+        media = post_media.resolve_incoming(run_id, list(run[2] or []), payload.media)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    etag = secrets.token_hex(6) if media else None
     db.execute(
         text(
-            "UPDATE runs SET caption = :caption, post_media = CAST(:media AS jsonb) "
-            "WHERE id = :rid AND user_id = :uid"
+            "UPDATE runs SET caption = :caption, post_media = CAST(:media AS jsonb), "
+            "post_media_etag = :etag WHERE id = :rid AND user_id = :uid"
         ),
         {
             "caption": caption,
             "media": json.dumps(media),
+            "etag": etag,
             "rid": run_id,
             "uid": user.id,
         },
     )
     db.commit()
-    return schemas.RunPostOut(run_id=run_id, caption=caption, media=media)
+    return schemas.RunPostOut(
+        run_id=run_id, caption=caption, media=post_media.photo_urls(run_id, etag, media)
+    )
+
+
+@router.get("/runs/{run_id}/post-photo/{index}")
+def run_post_photo(
+    run_id: str,
+    index: int,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """One photo from a run post, as an image.
+
+    Authenticated and behind the same visibility rule as the run itself: these
+    are somebody's own photos, and a private or shadow-flagged run must not
+    leak them just because the URL is guessable from the run id.
+    """
+    _run_visible_to(db, run_id, user)
+    row = db.execute(
+        text("SELECT COALESCE(post_media, '[]'::jsonb) FROM runs WHERE id = :rid"),
+        {"rid": run_id},
+    ).fetchone()
+    media = list(row[0] or []) if row else []
+    if index < 0 or index >= len(media):
+        raise HTTPException(404, "no such photo")
+    data, media_type = images.decode_data_uri(media[index])
+    if data is None:
+        raise HTTPException(404, "no such photo")
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/runs/{run_id}/comments", response_model=list[schemas.RunCommentOut])

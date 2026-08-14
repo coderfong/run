@@ -18,13 +18,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import content_moderation, models, schemas
+from .. import content_moderation, images, models, schemas
 from ..clans_meta import (
     CLAN_BADGES,
     CLAN_COLORS,
     LEAGUES,
     NEUTRAL_COLOR,
     color_triple,
+    photo_url as _photo_url,
 )
 from ..config import settings
 from ..database import get_db
@@ -117,6 +118,7 @@ def _clan_summary(db: Session, row) -> schemas.ClanSummary:
     area, league, _ = _season_area_and_rank(db, row[0])
     return schemas.ClanSummary(
         id=row[0], name=row[1], tag=row[2], color=_color(row[3]), badge_icon=row[4],
+        photo_url=_photo_url(row[0], row[6]),
         privacy=row[5], member_count=_member_count(db, row[0]), league=league, season_area_m2=area,
     )
 
@@ -124,7 +126,7 @@ def _clan_summary(db: Session, row) -> schemas.ClanSummary:
 def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanOut:
     c = db.execute(
         text("SELECT id::text, name, tag, description, color_key, badge_icon, privacy, member_cap, "
-             "created_by::text, created_at, COALESCE(xp, 0) FROM clans WHERE id = :cid"),
+             "created_by::text, created_at, COALESCE(xp, 0), photo_etag FROM clans WHERE id = :cid"),
         {"cid": clan_id},
     ).fetchone()
     if not c:
@@ -172,7 +174,8 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
 
     return schemas.ClanOut(
         id=c[0], name=c[1], tag=c[2], description=c[3], color_key=c[4] or "azure",
-        color=_color(c[4]), badge_icon=c[5], privacy=c[6], member_cap=c[7],
+        color=_color(c[4]), badge_icon=c[5], photo_url=_photo_url(c[0], c[11]),
+        privacy=c[6], member_cap=c[7],
         member_count=_member_count(db, clan_id), created_by=c[8], created_at=c[9],
         my_role=my[1] if my else None, league=league, season_area_m2=area, season_rank=rank,
         members=members, week_goal=week_goal, xp=int(c[10] or 0),
@@ -307,11 +310,14 @@ def create_clan(request: Request, response: Response, payload: schemas.ClanCreat
     if taken:
         raise HTTPException(409, "club name or tag already taken")
 
+    photo = images.square_jpeg_data_uri(payload.photo) if payload.photo else None
     cid = db.execute(
-        text("INSERT INTO clans (id, name, tag, description, color_key, badge_icon, privacy, created_by, created_at) "
-             "VALUES (gen_random_uuid(), :n, :t, :d, :ck, :b, :p, :uid, now()) RETURNING id::text"),
+        text("INSERT INTO clans (id, name, tag, description, color_key, badge_icon, privacy, "
+             "photo, photo_etag, created_by, created_at) "
+             "VALUES (gen_random_uuid(), :n, :t, :d, :ck, :b, :p, :photo, :etag, :uid, now()) RETURNING id::text"),
         {"n": name, "t": tag, "d": description, "ck": payload.color_key,
-         "b": payload.badge_icon, "p": payload.privacy, "uid": user.id},
+         "b": payload.badge_icon, "p": payload.privacy, "uid": user.id,
+         "photo": photo, "etag": secrets.token_hex(6) if photo else None},
     ).scalar()
     db.execute(text("INSERT INTO clan_members (clan_id, user_id, role) VALUES (:cid, :uid, 'leader')"),
                {"cid": cid, "uid": user.id})
@@ -325,7 +331,7 @@ def search_clans(q: str = Query("", max_length=32), user: models.User = Depends(
                  db: Session = Depends(get_db)):
     like = f"%{q.strip().lower()}%"
     rows = db.execute(
-        text("SELECT id::text, name, tag, color_key, badge_icon, privacy FROM clans "
+        text("SELECT id::text, name, tag, color_key, badge_icon, privacy, photo_etag FROM clans "
              "WHERE lower(name) LIKE :q OR lower(tag) LIKE :q ORDER BY name LIMIT 30"),
         {"q": like},
     ).fetchall()
@@ -337,6 +343,28 @@ def search_clans(q: str = Query("", max_length=32), user: models.User = Depends(
 @router.get("/clans/{clan_id}", response_model=schemas.ClanOut)
 def get_clan(clan_id: str, user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     return _clan_out(db, clan_id, user.id, full=True)
+
+
+@router.get("/clans/{clan_id}/photo")
+def clan_photo(clan_id: str, db: Session = Depends(get_db)):
+    """The club's uploaded photo, as an image.
+
+    Unauthenticated on purpose: this is the <img> target for every club crest
+    in the app, the URL carries an unguessable club id plus upload token, and
+    a crest is already visible to anyone who can open the club directory.
+    Handing images out by URL is what lets the client cache them to disk.
+    """
+    row = db.execute(text("SELECT photo FROM clans WHERE id = :cid"), {"cid": clan_id}).fetchone()
+    if not row or not row[0]:
+        raise HTTPException(404, "no club photo")
+    data, media_type = images.decode_data_uri(row[0])
+    if data is None:
+        raise HTTPException(404, "no club photo")
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/clans/{clan_id}/join", response_model=schemas.ClanOut)
@@ -488,6 +516,12 @@ def update_clan(request: Request, response: Response, clan_id: str, payload: sch
         if payload.badge_icon not in CLAN_BADGES:
             raise HTTPException(400, "unknown badge")
         fields.append("badge_icon = :b"); params["b"] = payload.badge_icon
+    if payload.photo is not None:
+        # "" clears the photo; a new image gets a new etag so every client
+        # that cached the old URL fetches the new one.
+        photo = images.square_jpeg_data_uri(payload.photo) if payload.photo else None
+        fields.append("photo = :photo"); params["photo"] = photo
+        fields.append("photo_etag = :etag"); params["etag"] = secrets.token_hex(6) if photo else None
     if payload.privacy is not None:
         if payload.privacy not in ("open", "invite_only"):
             raise HTTPException(400, "bad privacy")
@@ -508,7 +542,7 @@ def clan_leaderboard(db: Session = Depends(get_db), limit: int = Query(50, ge=1,
             """
             SELECT c.id::text, c.name, c.tag, c.color_key, s.area_current, s.league,
                    (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id),
-                   c.badge_icon
+                   c.badge_icon, c.photo_etag
             FROM clan_season_stats s JOIN clans c ON c.id = s.clan_id
             WHERE s.season_id = :sid
             ORDER BY s.area_current DESC
@@ -520,7 +554,7 @@ def clan_leaderboard(db: Session = Depends(get_db), limit: int = Query(50, ge=1,
     return [
         schemas.ClanLeaderboardEntry(
             clan_id=r[0], name=r[1], tag=r[2], color=_color(r[3]),
-            badge_icon=r[7] or "shield",
+            badge_icon=r[7] or "shield", photo_url=_photo_url(r[0], r[8]),
             league=r[5], total_area_m2=float(r[4]), member_count=int(r[6]),
         )
         for r in rows

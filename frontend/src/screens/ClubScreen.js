@@ -2,10 +2,10 @@
 // the club hub (header, weekly goal, members, role-gated management).
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from '../ui/image';
-import { ArrowRight, MessageCircle, Trophy, UserPlus, Users } from 'lucide-react-native';
+import { ArrowRight, Camera, MessageCircle, Trophy, UserPlus, Users } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
@@ -15,8 +15,9 @@ import { useClan } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { art } from '../config/onboardingArt';
 import { Screen, Card, Framed, Row, Button, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
-import ClanBadge from '../components/ClanBadge';
+import ClubAvatar from '../components/ClubAvatar';
 import { toast } from '../ui/toast';
+import { pickPhoto } from '../ui/photoPicker';
 import { framePose, frameVariant } from '../ui/frameRegistry';
 import { Bar } from '../ui/motion';
 import GameLottie from '../components/GameLottie';
@@ -158,9 +159,7 @@ function Directory({ navigation }) {
             >
               <Row between>
                 <Row gap={12}>
-                  <View style={[styles.badgeChip, { backgroundColor: c.color.fill }]}>
-                    <ClanBadge icon={c.badge_icon} size={22} color={c.color.stroke} />
-                  </View>
+                  <ClubAvatar photoUrl={c.photo_url} badgeIcon={c.badge_icon} color={c.color} />
                   <View>
                     <Text style={type.bodyBold}>[{c.tag}] {c.name}</Text>
                     <Text style={type.caption}>
@@ -204,6 +203,7 @@ function MemberHub({ clanId, navigation }) {
     { enabled: canSeeRequests, fallback: [] }
   );
   const [pulling, setPulling] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [clubView, setClubView] = useState('view');
   const { data: clubRanks, loading: ranksLoading, refresh: reloadRanks } = useQuery(
     'leaderboard:clans',
@@ -264,6 +264,48 @@ function MemberHub({ clanId, navigation }) {
     ]);
   };
 
+  // The crest belongs to the whole club, so only the people who run it can
+  // change it. Writing it invalidates every cached club view: the directory,
+  // the standings and this hub all carry the old photo URL.
+  const setPhoto = async (photo) => {
+    setPhotoBusy(true);
+    try {
+      await api.updateClan(clanId, { photo });
+      invalidate('clan');
+      invalidate('leaderboard:clans');
+      await Promise.all([load(), refresh()]);
+      toast.success(photo ? 'Club photo updated' : 'Club photo removed');
+    } catch (e) {
+      toast.error(e.message || 'Could not update the club photo');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const pickClubPhoto = async (source) => {
+    try {
+      const picked = await pickPhoto(source, { square: true });
+      if (picked) await setPhoto(picked);
+    } catch (e) {
+      toast.error(e.message || 'Could not add that photo');
+    }
+  };
+
+  const changePhoto = () => {
+    if (!canManage || photoBusy) return;
+    const opts = [
+      { text: 'Choose photo', onPress: () => pickClubPhoto('library') },
+      { text: 'Take photo', onPress: () => pickClubPhoto('camera') },
+    ];
+    if (clan.photo_url) {
+      opts.push({ text: 'Remove photo', style: 'destructive', onPress: () => setPhoto('') });
+    }
+    Alert.alert('Club photo', 'Every runner who finds your club sees this.', [
+      ...opts,
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const manageMember = (m) => {
     if (!canManage || m.user_id === user.id) return;
     const opts = [];
@@ -319,9 +361,11 @@ function MemberHub({ clanId, navigation }) {
           >
             <Row gap={space.md}>
               <Text style={[type.statSm, { width: 28, color: index < 3 ? '#F5B32C' : colors.textDim }]}>#{index + 1}</Text>
-              <View style={[styles.badgeChip, { backgroundColor: entry.color?.fill || colors.cardAlt }]}>
-                <ClanBadge icon={entry.badge_icon} size={23} color={entry.color?.stroke || accent} />
-              </View>
+              <ClubAvatar
+                photoUrl={entry.photo_url}
+                badgeIcon={entry.badge_icon}
+                color={entry.color || { fill: colors.cardAlt, stroke: accent }}
+              />
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>[{entry.tag}] {entry.name}</Text>
                 <Text style={type.caption}>{entry.member_count} members{entry.league ? ` · ${LEAGUE_LABEL[entry.league]}` : ''}</Text>
@@ -354,9 +398,29 @@ function MemberHub({ clanId, navigation }) {
             pointerEvents="none"
           />
         )}
-        <View style={[styles.badgeChip, { backgroundColor: clan.color.fill, width: 56, height: 56 }]}>
-          <ClanBadge icon={clan.badge_icon} size={30} color={accent} />
-        </View>
+        <TouchableOpacity
+          onPress={changePhoto}
+          disabled={!canManage || photoBusy}
+          activeOpacity={0.85}
+          accessibilityRole={canManage ? 'button' : 'image'}
+          accessibilityLabel={canManage ? 'Change the club photo' : `${clan.name} photo`}
+        >
+          <ClubAvatar
+            photoUrl={clan.photo_url}
+            badgeIcon={clan.badge_icon}
+            color={clan.color}
+            size={64}
+          />
+          {canManage ? (
+            // The upload is a photo's worth of base64 over mobile data, so the
+            // corner marker doubles as the progress it would otherwise lack.
+            <View style={[styles.crestEdit, { backgroundColor: accent }]}>
+              {photoBusy
+                ? <ActivityIndicator size="small" color="#FFFFFF" />
+                : <Camera size={13} color="#FFFFFF" strokeWidth={2.4} />}
+            </View>
+          ) : null}
+        </TouchableOpacity>
         <Text style={[type.title, { marginTop: space.sm }]}>[{clan.tag}] {clan.name}</Text>
         {clan.description ? <Text style={[type.caption, { textAlign: 'center', marginTop: 2 }]}>{clan.description}</Text> : null}
         <Row gap={8} style={{ marginTop: space.sm }}>
@@ -546,7 +610,12 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     ...type.body, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1,
     borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: 12,
   },
-  badgeChip: { width: 44, height: 44, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+  crestEdit: {
+    position: 'absolute', right: -4, bottom: -4,
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: colors.bg,
+  },
   header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl, overflow: 'hidden', marginTop: space.md },
   rankHero: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,

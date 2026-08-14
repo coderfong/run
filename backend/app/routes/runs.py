@@ -1576,6 +1576,11 @@ def claim_territory(
                 "attacker_id": str(user.id),
                 "attacker_username": user.username,
                 "attacker_avatar": user.avatar or {},
+                # Lets the victim's device pick the exact same capture-style
+                # animation the attacker's screen played — pickCaptureStyle
+                # and pickCaptureVariant are pure hashes of this id, so no
+                # further server round-trip is needed to keep the two in sync.
+                "territory_id": str(territory_out.id),
             },
             str(user.id),
         )

@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import * as Sentry from '@sentry/react-native';
 
 import { api } from '../api/client';
 
@@ -28,8 +29,14 @@ export function usePushRegistration(signedIn) {
         if (tokenResp?.data) {
           await api.registerPushToken(tokenResp.data, Platform.OS);
         }
-      } catch {
-        // Push is best-effort; failures never block the app.
+      } catch (error) {
+        // Push is best-effort; failures never block the app. They used to be
+        // swallowed outright, which is how a broken registration (missing
+        // projectId, a token request that fails, a dead backend call) went
+        // unnoticed indefinitely — every "stolen" alert downstream depends on
+        // this call actually having succeeded.
+        if (__DEV__) console.warn('[push] registration failed', error);
+        Sentry.captureException(error);
       }
     })();
   }, [signedIn]);

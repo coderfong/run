@@ -159,7 +159,7 @@ const path = [
 ];
 
 describe('ResultScreen', () => {
-  it('resets See the map to one root Tabs route', () => {
+  it('resets a map jump to one root Tabs route', () => {
     expect(mapRootResetState({ latitude: 1.30, longitude: 103.80 })).toEqual({
       index: 0,
       routes: [{

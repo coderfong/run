@@ -2,13 +2,19 @@
 //
 // A push banner is easy to miss while the app is open, and the inbox only
 // refreshed when Home regained focus. This host listens to both foreground
-// pushes and a lightweight active-app poll, then reuses the exact
-// CaptureEncounter shown to the attacker so the owner sees the moment their
-// runner is knocked off the land. The event remains an inbox item after this
-// presentation is dismissed.
+// pushes and a lightweight active-app poll, then plays the SAME capture-style
+// choreography engine the attacker's own screen played (CaptureCast +
+// CaptureStylePlayer, ResultScreen's own cast — see AnimationGalleryScreen's
+// CaptureStyleLab for the pattern this borrows: a mapless mount with
+// synthetic geometry), cast from the other side: the victim's own avatar
+// stands in the defender's spot, and the real attacker's avatar performs the
+// real move. Both sides resolve the identical style because it is a pure
+// hash of the territory id (see effects/captureStyles.js), carried over in
+// the push payload — no extra round-trip needed to keep them in sync. The
+// event remains an inbox item after this presentation is dismissed.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Modal, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, Image, Modal, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -29,6 +35,7 @@ import {
   getCached,
   invalidateAfterLandLoss,
 } from '../api/cache';
+import { MAPBOX_PUBLIC_TOKEN, MAP_READY, styleForTheme } from '../config/map';
 import { useAvatar } from '../state/avatar';
 import { brand, space, toon, toonRadius, toonType, useTheme, withAlpha } from '../theme';
 import { haptic, useReduceMotion } from '../ui/motion';
@@ -37,9 +44,27 @@ import {
   landCaptureAlertKey,
   normaliseLandCaptureAlert,
 } from '../utils/landCaptureAlerts';
-import CaptureEncounter from './claim/CaptureEncounter';
+import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
+import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import useCaptureStage from '../effects/useCaptureStage';
+import { layoutDefenders } from '../effects/anchors';
+import { pickCaptureStyle } from '../effects/captureStyles';
 import { fmtArea } from './RivalCard';
 import { OutlinedText, ToonButton, ToonGhostButton } from './ui';
+
+// A still frame of exactly where this happened, not a live map: this modal
+// can pop up over any screen, and a second live Mapbox instance mounted on
+// top of whatever the screen underneath is already running is a cost with no
+// payoff here. The Static Images API is one HTTPS image — same style, same
+// token, none of the weight.
+function staticMapUrl({ lat, lon, width, height, scheme, pinHex }) {
+  if (!MAP_READY || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const style = styleForTheme(scheme).replace('mapbox://styles/', '');
+  const w = Math.max(64, Math.min(640, Math.round(width)));
+  const h = Math.max(64, Math.min(640, Math.round(height)));
+  const pin = `pin-s+${pinHex}(${lon},${lat})`;
+  return `https://api.mapbox.com/styles/v1/${style}/static/${pin}/${lon},${lat},15,0/${w}x${h}@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`;
+}
 
 const POLL_MS = 10_000;
 const FIRST_FETCH_GRACE_MS = 3_000;
@@ -82,7 +107,7 @@ function HazardRail({ style }) {
 }
 
 export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { equipped } = useAvatar();
   const reduced = useReduceMotion();
   const { width } = useWindowDimensions();
@@ -92,6 +117,17 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
   const [phase, setPhase] = useState('incoming');
   const recent = useRef(new Map());
   const pulse = useSharedValue(0);
+  // The card's own kick on arrival — separate from `pulse` (the ambient wash)
+  // and from `captureStage` (which only moves the small stage once the style
+  // starts playing). This is what makes the whole card feel like it landed
+  // rather than faded in.
+  const entrance = useSharedValue(0);
+  // The choreography engine's own camera: every capture style already carries
+  // zooms, punches and shakes as part of its beats, so reusing it here (the
+  // same engine ResultScreen drives) is what makes this read as an impact
+  // rather than a modal opening — see effects/useCaptureStage.js.
+  const captureStage = useCaptureStage(reduced);
+  const castRef = useRef(null);
 
   const enqueue = useCallback((payload) => {
     const next = normaliseLandCaptureAlert(payload);
@@ -213,13 +249,81 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
           -1,
           false
         );
-    return () => cancelAnimation(pulse);
-  }, [current, pulse, reduced]);
+    // A punchy overshoot the card grows in with, so the whole thing reads as
+    // having LANDED rather than faded up like an ordinary modal.
+    entrance.value = 0;
+    entrance.value = reduced
+      ? 1
+      : withSequence(
+          withTiming(1.08, { duration: 110, easing: Easing.out(Easing.quad) }),
+          withTiming(0.97, { duration: 90, easing: Easing.inOut(Easing.quad) }),
+          withTiming(1, { duration: 130, easing: Easing.out(Easing.back(1.4)) })
+        );
+    captureStage.reset();
+    return () => {
+      cancelAnimation(pulse);
+      cancelAnimation(entrance);
+    };
+  }, [current, pulse, entrance, reduced, captureStage]);
+
+  const entranceStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: entrance.value || 1 }],
+  }));
 
   const defender = useMemo(
     () => [{ user_id: 'me', username: 'You', avatar: equipped }],
     [equipped]
   );
+
+  // The stage the choreography plays in — the same box that used to hold a
+  // static ring decoration. Sized once from stageWidth so a claim point
+  // computed against it and defender layout computed against it agree.
+  const stageBox = useMemo(
+    () => ({ width: stageWidth - 24, height: STAGE_HEIGHT }),
+    [stageWidth]
+  );
+  const claimPoint = useMemo(
+    () => ({ x: stageBox.width / 2, y: stageBox.height / 2 }),
+    [stageBox]
+  );
+  const characterRect = useMemo(
+    () => ({ x: claimPoint.x - 29, y: claimPoint.y - 29, width: 58, height: 58 }),
+    [claimPoint]
+  );
+  // The territory id is a stable hash seed on the attacker's own device (see
+  // pickCaptureStyle) — carrying it over in the push payload is what lets the
+  // victim's phone resolve the SAME style the attacker's screen played, no
+  // extra round-trip needed.
+  const styleId = useMemo(() => pickCaptureStyle(current?.territoryId ?? null), [current]);
+  const seed = useMemo(() => String(current?.territoryId ?? ''), [current]);
+  // No real polygon for what was taken reaches this alert (only the area and
+  // a point) — layoutDefenders' fallback for empty rings is a seeded fan
+  // around the claim point, which is exactly the shape a single defender
+  // needs anyway.
+  const defenderRects = useMemo(
+    () => layoutDefenders(1, { bounds: stageBox, claimPoint, territoryRings: [] }, seed, DEFENDER_SIZE),
+    [stageBox, claimPoint, seed]
+  );
+  const mapUrl = useMemo(
+    () => staticMapUrl({
+      lat: current?.lat,
+      lon: current?.lon,
+      width: stageBox.width,
+      height: stageBox.height,
+      scheme,
+      pinHex: 'FF4967',
+    }),
+    [current, stageBox, scheme]
+  );
+
+  const handleTerritoryReveal = useCallback(() => {
+    setPhase('captured');
+    haptic.warning();
+  }, []);
+  const handleContact = useCallback(() => {
+    haptic.warning();
+  }, []);
+  const handleStyleComplete = useCallback(() => setPhase('settled'), []);
 
   if (!current) return null;
 
@@ -250,7 +354,7 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
         <HazardRail style={styles.hazardTop} />
         <HazardRail style={styles.hazardBottom} />
 
-        <View style={[styles.card, { width: stageWidth, backgroundColor: colors.card }]}> 
+        <Animated.View style={[styles.card, { width: stageWidth, backgroundColor: colors.card }, entranceStyle]}>
           <View style={styles.alertChip}>
             <TriangleAlert size={16} color="#fff" strokeWidth={3} />
             <Text style={styles.alertChipText}>LIVE TERRITORY ALERT</Text>
@@ -265,34 +369,68 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
             style={[
               styles.stage,
               {
-                width: stageWidth - 24,
-                height: STAGE_HEIGHT,
+                width: stageBox.width,
+                height: stageBox.height,
                 backgroundColor: colors.bg,
                 borderColor: captured ? brand.pink : '#FFB020',
               },
             ]}
           >
-            <View style={styles.mapGrid} />
-            <Animated.View style={[styles.breachRing, { borderColor: brand.pink }]} />
+            {/* Where it happened, not just a number — a still frame centred
+                on the real lat/lon, or the old plain grid when there is no
+                token or no location on this event. */}
+            {mapUrl ? (
+              <Image source={{ uri: mapUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : (
+              <View style={styles.mapGrid} />
+            )}
+            <View pointerEvents="none" style={styles.stageScrim} />
+
+            {/* The real capture-style choreography — the same engine and the
+                same style id the attacker's own screen played (both are
+                seeded off the territory), just cast with the victim's own
+                avatar standing in the defender's spot. `stage` is the shared
+                camera transform, so a style's zooms and shakes move the map
+                snapshot underneath along with the cast. */}
+            <Animated.View
+              style={[StyleSheet.absoluteFill, captureStage.style]}
+              pointerEvents="none"
+            >
+              <CaptureCast
+                ref={castRef}
+                attacker={current.attacker.avatar}
+                attackerPoint={claimPoint}
+                defenders={defender}
+                defenderRects={defenderRects}
+                bounds={stageBox}
+                reducedMotion={reduced}
+                fadeIn={reduced ? 0 : 140}
+              />
+              <CaptureStylePlayer
+                style={styleId}
+                playToken={current.captureId || current.id || current.createdAt}
+                bounds={stageBox}
+                claimPoint={claimPoint}
+                territoryRings={[]}
+                characterRect={characterRect}
+                defenderRects={defenderRects}
+                defenderCount={1}
+                reducedMotion={reduced}
+                seed={seed}
+                tint={brand.pink}
+                ink={toon.ink}
+                onTerritoryReveal={handleTerritoryReveal}
+                onContact={handleContact}
+                onComplete={handleStyleComplete}
+                stage={captureStage}
+                cast={castRef}
+              />
+            </Animated.View>
+
             <View style={styles.stageLabel}>
               <ShieldAlert size={15} color="#fff" />
               <Text style={styles.stageLabelText}>{captured ? 'BORDER BREACHED' : 'CAPTURE INCOMING'}</Text>
             </View>
-            <CaptureEncounter
-              visible
-              variant="grin-knock"
-              attacker={current.attacker.avatar}
-              defenders={defender}
-              claimScreenPoint={{ x: (stageWidth - 24) / 2, y: STAGE_HEIGHT / 2 + 14 }}
-              bounds={{ width: stageWidth - 24, height: STAGE_HEIGHT }}
-              reducedMotion={reduced}
-              playToken={current.captureId || current.id || current.createdAt}
-              onImpact={() => {
-                setPhase('captured');
-                haptic.warning();
-              }}
-              onComplete={() => setPhase('settled')}
-            />
           </View>
 
           <View style={[styles.loss, { backgroundColor: withAlpha(brand.pink, 0.13) }]}> 
@@ -318,7 +456,7 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
             />
             <ToonGhostButton title="DISMISS" onPress={() => setCurrent(null)} color={colors.textMuted} />
           </View>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -400,15 +538,11 @@ const styles = StyleSheet.create({
     shadowRadius: 0,
     shadowOffset: { width: 0, height: 46 },
   },
-  breachRing: {
-    position: 'absolute',
-    width: 176,
-    height: 116,
-    borderRadius: 58,
-    borderWidth: 3,
-    borderStyle: 'dashed',
-    backgroundColor: 'rgba(255,73,103,0.08)',
-    transform: [{ rotate: '-8deg' }],
+  // Keeps the cast and the impact art legible over a real map photo —
+  // without it a bright street or a light-mode style washes out the fx.
+  stageScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10,4,10,0.34)',
   },
   stageLabel: {
     position: 'absolute',

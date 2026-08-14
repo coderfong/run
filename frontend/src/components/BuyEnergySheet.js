@@ -1,16 +1,7 @@
-// BuyEnergySheet — the energy refill shop (real-money IAP).
-//
-// Products mirror ENERGY_PRODUCTS in routes/progression.py. The store layer is
-// loaded defensively: if `expo-in-app-purchases` isn't installed / configured
-// (dev, Expo Go), we fall back to crediting straight through the backend (which
-// accepts unverified purchases while settings.iap_verify_receipts is off), so
-// the whole flow is testable before store setup.
-//
-// TODO(prod): install & configure expo-in-app-purchases, register these product
-// ids in App Store Connect / Play Console, turn on backend receipt verification,
-// and pass the real transaction receipt to api.purchaseEnergy().
+// BuyEnergySheet — the energy + coins refill shop (real-money IAP,
+// consumables — bought again every time the player runs out).
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { api } from '../api/client';
@@ -18,6 +9,7 @@ import { brand, radius, space, useTheme, useThemedType } from '../theme';
 import { Sheet } from './ui';
 import AppIcon from './AppIcon';
 import { toast } from '../ui/toast';
+import { finishPurchase, fetchProductPrices, storePurchase } from '../iap';
 
 const PACKS = [
   { id: 'energy_refill_small', label: '+50 energy', price: '$0.99' },
@@ -26,7 +18,9 @@ const PACKS = [
 ];
 
 // Mirrors COIN_PRODUCTS in backend/app/coins.py. Prices must match the App
-// Store tiers or the sheet advertises a number Apple doesn't charge.
+// Store tiers or the sheet advertises a number Apple doesn't charge — the
+// live `fetchProductPrices` call below is what actually keeps that true;
+// these strings are only the fallback shown before it answers.
 const COIN_PACKS = [
   { id: 'coins_pouch', coins: 500, price: '$0.99', icon: 'coin-pouch' },
   { id: 'coins_sack', coins: 1200, price: '$1.99', icon: 'coin-sack' },
@@ -34,37 +28,42 @@ const COIN_PACKS = [
   { id: 'coins_vault', coins: 6500, price: '$9.99', icon: 'coin-vault' },
 ];
 
-// No store SDK is installed yet, so we can't reference one: Metro resolves
-// imports at BUILD time, and a require() of a missing package is a bundling
-// error (try/catch doesn't help). Note `expo-in-app-purchases` is deprecated and
-// removed from modern Expo SDKs — use `react-native-iap` (or `expo-iap`) when
-// you wire real billing, then do the purchase here and return its receipt.
-//
-// Returning null means "no store": the backend credits the pack directly while
-// settings.iap_verify_receipts is false, so the whole flow is testable in dev.
-async function storePurchase(/* productId */) {
-  return null;
-}
+const ALL_PRODUCT_IDS = [...PACKS, ...COIN_PACKS].map((p) => p.id);
 
 export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const [busy, setBusy] = useState(null);
+  const [prices, setPrices] = useState({});
+
+  // Only once the sheet actually opens — RN's <Modal> (what Sheet wraps)
+  // keeps children mounted while closed, so this can't run on mount without
+  // touching the store connection every time this screen merely renders.
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    fetchProductPrices(ALL_PRODUCT_IDS)
+      .then((live) => { if (!cancelled) setPrices(live); })
+      .catch(() => {}); // store unreachable — the packs' own fallback prices stay up
+    return () => { cancelled = true; };
+  }, [visible]);
+
+  const priceFor = (pack) => prices[pack.id] || pack.price;
 
   const buy = async (pack) => {
     if (busy) return;
     setBusy(pack.id);
     try {
-      let receipt = null;
-      try { receipt = await storePurchase(pack.id); } catch (e) {
-        toast.error(e.message || 'Purchase failed'); setBusy(null); return;
-      }
-      const res = await api.purchaseEnergy(pack.id, receipt, Platform.OS);
+      const { receipt, platform, purchase } = await storePurchase(pack.id);
+      const res = await api.purchaseEnergy(pack.id, receipt, platform);
+      // Consumable: finished as CONSUMED so the same pack can be bought
+      // again next time the player runs low, unlike the one-time pass.
+      await finishPurchase(purchase, { isConsumable: true });
       toast.success(`Energy topped up to ${res.energy.energy}/${res.energy.energy_max}`);
       onPurchased?.();
       onClose?.();
     } catch (e) {
-      // 501 = receipt verification not wired yet (prod guard).
+      if (e?.cancelled) return;
       toast.error(e.status === 501 ? 'Purchases aren’t live yet.' : (e.message || 'Could not complete purchase'));
     } finally {
       setBusy(null);
@@ -75,12 +74,16 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
     if (busy) return;
     setBusy(pack.id);
     try {
-      const receipt = await storePurchase(pack.id);
-      const res = await api.purchaseCoins(pack.id, receipt, Platform.OS);
+      const { receipt, platform, purchase } = await storePurchase(pack.id);
+      // The response's `coins` is the new BALANCE, not the amount just
+      // added — the pack's own known amount is what belongs in "+N coins".
+      await api.purchaseCoins(pack.id, receipt, platform);
+      await finishPurchase(purchase, { isConsumable: true });
       toast.success(`+${pack.coins} coins`);
       onPurchased?.();
       onClose?.();
     } catch (e) {
+      if (e?.cancelled) return;
       toast.error(e.status === 402 ? 'Purchases aren’t live yet.'
         : (e.message || 'Could not complete purchase'));
     } finally {
@@ -110,12 +113,12 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
           disabled={!!busy}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel={`${pack.label} for ${pack.price}`}
+          accessibilityLabel={`${pack.label} for ${priceFor(pack)}`}
         >
           <AppIcon name="energy" size={22} />
           <Text style={[type.bodyBold, { flex: 1 }]}>{pack.label}</Text>
           <View style={[styles.price, { backgroundColor: brand.pink }]}>
-            <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : pack.price}</Text>
+            <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : priceFor(pack)}</Text>
           </View>
         </TouchableOpacity>
       ))}
@@ -131,12 +134,12 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
           disabled={!!busy}
           activeOpacity={0.85}
           accessibilityRole="button"
-          accessibilityLabel={`${pack.coins} coins for ${pack.price}`}
+          accessibilityLabel={`${pack.coins} coins for ${priceFor(pack)}`}
         >
           <AppIcon name={pack.icon} size={26} />
           <Text style={[type.bodyBold, { flex: 1 }]}>{pack.coins.toLocaleString()} coins</Text>
           <View style={[styles.price, { backgroundColor: '#eab308' }]}>
-            <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : pack.price}</Text>
+            <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : priceFor(pack)}</Text>
           </View>
         </TouchableOpacity>
       ))}

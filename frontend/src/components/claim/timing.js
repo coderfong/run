@@ -2,19 +2,38 @@
 // their beat lengths from here rather than carrying magic numbers, so the
 // whole thing can be retuned without hunting through five files.
 //
-// RETUNED 2026-08-10. The first slowdown still compressed the encounter,
-// reveal and victory into one gesture on a phone. Full motion now gives each
-// of those beats its own readable pause; reduced motion remains concise.
+// RETUNED 2026-08-10, and again when capture styles became complete
+// cutscenes. The encounter beats that used to live here are GONE: there is no
+// longer a fixed collision in front of every style, so there is no intro,
+// grin, wind-up, dash or defender exit for this table to time. Each style owns
+// its own pacing (src/effects/captureStyles.js) and tells the controller when
+// the ground turns over; the numbers below are the map beats around it.
 //
 // Occupied-territory budget, from "Claim here" to a readable payoff:
-//   focus 2100 + intro 1050 + grinHold 700 + anticipation 520 + dash 500
-//   = 4870 to impact, then exit hold 700 + reveal 2400 + handoff 400
-//   + victory 2400 + payoffEntrance 800  ≈ 11.6s.
+//   focus 2100 + the style's own run to its reveal cue (1000-2300 depending
+//   on the style) + reveal 2400 + handoff 400 + victory 2400
+//   + payoffEntrance 800  ≈ 12s to 13s.
 //
-// Two of these are NOT visual beats and must not be scaled with the rest:
-// `settle` (how long the camera is given to stop before its coordinates are
-// projected) and `impactTimeout` (the deadline that rescues a broken
-// encounter). Both are consequences of the numbers above — see their notes.
+// The style keeps playing THROUGH the reveal and handoff — that is where its
+// consequence, defender exit and victory beats live — so the extra length over
+// the old 11.6s is anticipation at the front, not dead time at the back.
+//
+// `settle` is NOT a visual beat and must not be scaled with the rest: it is
+// how long the camera is given to stop before its coordinates are projected.
+//
+// RETUNED 2026-08-14: the choreographies read as busy rather than momentous —
+// the anticipation before an impact was as short as the impact itself, so
+// nothing had room to feel earned. `DRAMA_SCALE` stretches every beat in a
+// capture style (effects/captureStyles.js) and the actor timing table
+// (effects/choreography.js) by the same factor. That is safe despite the
+// one-body-per-action rule those files enforce: multiplying every timestamp
+// AND every duration by the same K preserves every "clears before the next
+// beat" relationship the original authoring computed, because
+// K*end = K*start + K*duration for any K > 0. `reveal` and `handoff` below
+// carry the same factor, because `POST_REVEAL_BUDGET` in choreography.js is
+// derived from them and a style that now runs longer needs a bigger budget to
+// still fit inside it.
+export const DRAMA_SCALE = 1.4;
 
 export const CLAIM_TIMING = {
   // --- the run, replayed in 3D (claim/runFlyover.js) ---
@@ -40,39 +59,25 @@ export const CLAIM_TIMING = {
   // screen space, or the polygon lands offset. Not a visual beat — this is
   // slack after the flight, and it scales with nothing.
   settle: 180,
-  reveal: 2400,
-  handoff: 400,
-
-  // --- capture encounter ---
-  encounterIntro: 1050,
-  grinHold: 700,
-  attackAnticipation: 520,
-  attackDash: 500,
-  defenderExit: 1100,
-  // Capture presentation begins at impact. Its authored reveal cue starts the
-  // territory transition while defenders finish leaving over the top of it.
-  defenderExitOverlap: 400,
-  // Empty ground: the attacker just lands on the spot and plants a flag.
-  emptyLanding: 1050,
+  // How long the style is given to finish its own consequence, defender exit
+  // and victory over the top of the turnover. `POST_REVEAL_BUDGET` in
+  // effects/choreography.js is reveal + handoff, and validation fails any
+  // style that schedules a beat past it.
+  reveal: Math.round(2400 * DRAMA_SCALE),
+  handoff: Math.round(400 * DRAMA_SCALE),
 
   // --- payoff and after ---
-  victoryBeat: 2400,
+  victoryBeat: Math.round(2400 * DRAMA_SCALE),
   payoffEntrance: 800,
   leaderboardWipe: 1200,
   rowStagger: 110,
   playerRowEmphasis: 900,
-
-  // A failed encounter must never stall the sequence: if `onImpact` has not
-  // fired by this point the controller proceeds to the reveal regardless.
-  // MUST stay clear of the encounter's own path to impact — intro 1050 +
-  // grinHold 700 + anticipation 520 + dash 500 = 2770 — or this deadline
-  // fires DURING a healthy attack and cuts the fight off mid-dash. The margin
-  // below is deliberate slack, not a guess.
-  impactTimeout: 4000,
 };
 
 // Reduced motion keeps every phase and every piece of information — the beats
-// just collapse to quick fades. No dashes, no flight, no wipe.
+// just collapse to quick fades. No flight, no wipe. The cast is NOT dropped:
+// the style's own reduced plan (CaptureStylePlayer.buildCapturePlan) keeps the
+// rivals, their reaction and their exit, and only takes the travel out.
 export const CLAIM_TIMING_REDUCED = {
   // No flyover at all under Reduce Motion. A pitched camera swinging along a
   // route is exactly the kind of large-field movement the setting exists to
@@ -89,21 +94,11 @@ export const CLAIM_TIMING_REDUCED = {
   reveal: 220,
   handoff: 120,
 
-  encounterIntro: 160,
-  grinHold: 0,
-  attackAnticipation: 0,
-  attackDash: 120,
-  defenderExit: 160,
-  defenderExitOverlap: 60,
-  emptyLanding: 160,
-
   victoryBeat: 320,
   payoffEntrance: 200,
   leaderboardWipe: 220,
   rowStagger: 12,
   playerRowEmphasis: 180,
-
-  impactTimeout: 900,
 };
 
 export const timingFor = (reduced) => (reduced ? CLAIM_TIMING_REDUCED : CLAIM_TIMING);

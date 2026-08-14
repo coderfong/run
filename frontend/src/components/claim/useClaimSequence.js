@@ -5,8 +5,15 @@
 // The map half is delegated to useClaimReveal; this hook owns the ordering,
 // the timing and the handoffs between beats.
 //
-//   focus → encounter (intro / attack / exit) → reveal → handoff
+//   focus → the style's own cutscene → reveal → handoff
 //         → victory → payoff → leaderboard transition → leaderboard
+//
+// The middle of that used to be a fixed collision this hook drove: attacker
+// slides in, knocks the rivals over, style plays afterwards. It is now the
+// STYLE's cutscene from the first frame, cast with whoever the claim returned,
+// and this hook's only job between the camera landing and the ground turning
+// over is to wait for the style to cue it. A clash is a beat some styles ask
+// for (`onContact`), not a stage every claim passes through.
 //
 // Cancellation is by token: every await re-checks that it still belongs to
 // the current run, so a replay, a skip or an unmount stops the old sequence
@@ -24,7 +31,6 @@ import { timingFor } from './timing';
 import useClaimReveal from './useClaimReveal';
 import {
   DEFAULT_CAPTURE_STYLE_ID,
-  ENCOUNTER_MODE,
   pickCaptureStyle,
   resolveCaptureStyle,
 } from '../../effects/captureStyles';
@@ -72,9 +78,14 @@ export function pickCaptureVariant(seed) {
   return CAPTURE_VARIANTS[hash % CAPTURE_VARIANTS.length];
 }
 
-// Who the attacker actually ran into. Only runners who LOST land are
-// defenders — if everyone held, there is nobody to knock over and the empty
-// landing beat is the honest thing to play.
+// Who the attacker actually took ground from. Only runners who LOST land are
+// defenders — if everyone held, there is nobody in the scene and the style's
+// empty-ground choreography is the honest thing to play.
+//
+// This list is now the ONLY thing that decides whether rivals appear. It used
+// to be gated behind `encounterMode === DUEL`, so a claim against three people
+// could play out with none of them on screen; the style says what they DO, it
+// does not get a vote on whether they exist.
 export function resolveDefenders(claim) {
   const victims = claim?.victims || [];
   return victims
@@ -102,20 +113,30 @@ export default function useClaimSequence({ mapRef, userId }) {
   const [revealSpec, setRevealSpec] = useState(null);
   const [leaderboard, setLeaderboard] = useState(null);
   const [playToken, setPlayToken] = useState(0);
-  // Encounter mounts on intro and unmounts when it says it's finished — that
-  // is what lets the defenders keep leaving over the top of the reveal.
+  // Direct character contact, and only when a style asked for it. This used to
+  // be "the encounter", mounted before EVERY style, which is how a meteor came
+  // to open with a shoulder-check. Now it is a beat inside two styles whose
+  // fantasy is a clash, started by the style at the moment the style chose.
   const [encounterLive, setEncounterLive] = useState(false);
+  const [contactStep, setContactStep] = useState(null);
   // Who is actually in this encounter, and how. Resolved once per run so the
   // component renders exactly what the controller timed the beats for.
   const [cast, setCast] = useState({
     defenders: [],
     variant: 'grin-knock',
     captureStyle: DEFAULT_CAPTURE_STYLE_ID,
+    seed: '',
   });
   // How far along the route the 3D replay has flown, 0..1. The screen draws
   // the trail up to here, so it unrolls behind the camera instead of the whole
-  // run being on the map before it has been flown.
-  const [replayProgress, setReplayProgress] = useState(0);
+  // run being on the map before it has been flown. 1 by default — this is 0
+  // only while a flyover is actually mid-flight (set in `run`, below) — so the
+  // placement screen, which reads this same value before `run` has ever been
+  // called, draws the WHOLE route rather than truncating it to its first two
+  // points (`Math.max(2, Math.ceil(path.length * 0))`). ResultScreen's
+  // `replayTrail` already assumes this contract in its own comment; this used
+  // to just not honour it.
+  const [replayProgress, setReplayProgress] = useState(1);
 
   // The last claim played, kept so dev replay can re-run it without spending
   // another claim (or another API call).
@@ -126,7 +147,6 @@ export default function useClaimSequence({ mapRef, userId }) {
 
   const runToken = useRef(0);
   const timers = useRef(new Set());
-  const impactResolver = useRef(null);
   const revealCueResolver = useRef(null);
 
   const clearTimers = useCallback(() => {
@@ -153,49 +173,31 @@ export default function useClaimSequence({ mapRef, userId }) {
     });
   }, []);
 
-  const schedule = useCallback((callback, ms) => {
-    let active = true;
-    const timer = { id: null, cancel: null };
-    const finish = () => {
-      if (!active) return;
-      active = false;
-      timers.current.delete(timer);
-      callback();
-    };
-    timer.cancel = () => {
-      if (!active) return;
-      active = false;
-      clearTimeout(timer.id);
-      timers.current.delete(timer);
-    };
-    timer.id = setTimeout(finish, ms);
-    timers.current.add(timer);
-    return timer;
-  }, []);
-
-  // Resolves when the encounter reports contact — or when the fallback fires,
-  // so a broken encounter can never strand the sequence before the reveal.
-  const waitForImpact = useCallback((timeoutMs) => {
-    return new Promise((resolve) => {
-      let settled = false;
-      const timer = { id: null, cancel: null };
-      const done = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer.id);
-        timers.current.delete(timer);
-        if (impactResolver.current === done) impactResolver.current = null;
-        resolve();
-      };
-      impactResolver.current = done;
-      timer.cancel = done;
-      timer.id = setTimeout(done, timeoutMs);
-      timers.current.add(timer);
-    });
-  }, []);
-
+  // Nothing awaits contact any more.
+  //
+  // The old controller could not start a style until a collision had reported
+  // its impact, which is why every style needed one and why `impactTimeout`
+  // existed to rescue the sequence when it did not arrive. The ground is now
+  // driven by the style's own reveal cue, so a clash is a beat inside a scene
+  // rather than a gate in front of it — and a style that never has one is not
+  // waiting on anything.
   const handleImpact = useCallback(() => {
-    impactResolver.current?.();
+    // Contact landed. The phase still moves so anything reading "have we
+    // passed the collision" stays true.
+    setPhase((current) => (
+      current === CLAIM_PHASE.ENCOUNTER_ATTACK ? CLAIM_PHASE.ENCOUNTER_EXIT : current
+    ));
+  }, []);
+
+  // The style asking for a clash. Only a duel can emit this step at all —
+  // `validateChoreography` rejects it anywhere else — so an environmental
+  // style physically cannot start a collision.
+  const handleContact = useCallback((step) => {
+    setContactStep(step || {});
+    setEncounterLive(true);
+    setPhase((current) => (
+      current === CLAIM_PHASE.ENCOUNTER_INTRO ? CLAIM_PHASE.ENCOUNTER_ATTACK : current
+    ));
   }, []);
 
   // Resolves WITH the style's cue — the transition and origin it asked for —
@@ -230,21 +232,23 @@ export default function useClaimSequence({ mapRef, userId }) {
     // gestures, so there is nothing to unlock.
     runToken.current += 1;
     clearTimers();
-    impactResolver.current = null;
     revealCueResolver.current = null;
   }, [clearTimers]);
 
   const reset = useCallback(() => {
     runToken.current += 1;
     clearTimers();
-    impactResolver.current = null;
     revealCueResolver.current = null;
     revealApi.reset();
     setProjection(null);
     setRevealSpec(null);
     setEncounterLive(false);
+    setContactStep(null);
     levelCamera(mapRef, 0);
-    setReplayProgress(0);
+    // Back to IDLE, where the placement screen reads this value BEFORE any
+    // flyover has run — 1 (whole route), same as the mount default, not 0
+    // (which truncates the trail to its first two points; see the note there).
+    setReplayProgress(1);
     setPhase(CLAIM_PHASE.IDLE);
   }, [clearTimers, mapRef, revealApi]);
 
@@ -255,12 +259,12 @@ export default function useClaimSequence({ mapRef, userId }) {
       const alive = () => token === runToken.current;
 
       clearTimers();
-      impactResolver.current = null;
       revealCueResolver.current = null;
       revealApi.reset();
       setProjection(null);
       setRevealSpec(null);
       setEncounterLive(false);
+      setContactStep(null);
       setPlayToken((t) => t + 1);
 
       const variant = opts.variant || pickCaptureVariant(claim?.territory?.id);
@@ -277,11 +281,14 @@ export default function useClaimSequence({ mapRef, userId }) {
       // An explicit [] (dev "empty" scenario) must survive — only a missing
       // list falls back to the claim's real victims.
       const defenders = opts.defenders ?? resolveDefenders(claim);
-      const captureMeta = resolveCaptureStyle(captureStyle);
-      const playsDuel = captureMeta.encounterMode === ENCOUNTER_MODE.DUEL && defenders.length > 0;
       const reduced = opts.reducedOverride == null ? systemReduced : opts.reducedOverride;
       const T = timingFor(reduced);
-      setCast({ defenders, variant, captureStyle });
+      // The territory's id is the seed for everything the scene decides per
+      // person: which of a pool each rival reacts with, where they stand. Null
+      // for a dev replay with no claim behind it, which reads as "no identity
+      // to be stable about".
+      const seed = String(claim?.territory?.id ?? opts.seed ?? '');
+      setCast({ defenders, variant, captureStyle, seed });
       setReplayProgress(0);
 
       // Standings load while the animation plays, so Continue is instant.
@@ -336,38 +343,36 @@ export default function useClaimSequence({ mapRef, userId }) {
         return;
       }
 
-      // --- encounter (or the empty-ground landing) ------------------------
+      // --- the cutscene ----------------------------------------------------
+      //
+      // Every style with a cast starts here. There is no longer a collision in
+      // front of it: a style that wants contact emits a `contact` step and
+      // gets it at the moment it asked for, and a style that does not never
+      // sees one. The controller's only job between here and the reveal is to
+      // wait for the style to cue the ground.
+      //
+      // UNLESS there is nobody in it. Empty ground has no rivals to notice,
+      // react to or be displaced by anything, so playing the full choreography
+      // anyway was theatre over nothing — a meteor falling on a field nobody
+      // was standing in. `showCaptureStyle`/`showCast` below don't mount the
+      // player or the cast at all when `cast.defenders` is empty, so waiting
+      // for THAT style's own reveal cue (tuned for its full multi-second
+      // scene) would just be a dead pause with nothing on screen to fill it.
+      // A short fixed settle instead, then straight to the reveal.
       setPhase(CLAIM_PHASE.ENCOUNTER_INTRO);
+      setEncounterLive(false);
+      setContactStep(null);
 
-      let cue;
-      if (playsDuel) {
-        // Only an explicitly authored duel mounts the contact choreography.
-        // Its style player begins at impact, where it can dress or replace the
-        // exit without creating a second attacker during the face-off.
-        setEncounterLive(true);
-        const dashAt = T.encounterIntro + T.grinHold + T.attackAnticipation;
-        schedule(() => {
-          if (alive()) setPhase(CLAIM_PHASE.ENCOUNTER_ATTACK);
-        }, dashAt);
-
-        await waitForImpact(T.impactTimeout);
-        if (!alive()) return;
-        setPhase(CLAIM_PHASE.ENCOUNTER_EXIT);
-        const revealFallback = reduced
-          ? Math.max(40, T.defenderExitOverlap)
-          : Math.max(0, T.defenderExit - T.defenderExitOverlap);
-        cue = await waitForRevealCue(
-          revealCueDeadline(captureStyle, reduced, revealFallback)
-        );
-      } else {
-        // Projectile, attacker-only, summoned and terrain scenes start NOW,
-        // instead of being forced to wait for a fake collision to finish.
-        setEncounterLive(false);
+      let cue = null;
+      if (defenders.length > 0) {
         cue = await waitForRevealCue(
           revealCueDeadline(captureStyle, reduced, reduced ? 80 : 700)
         );
+        if (!alive()) return;
+      } else {
+        await wait(reduced ? 0 : 260);
+        if (!alive()) return;
       }
-      if (!alive()) return;
 
       // How the ground turns over, and from where. The style decides; a
       // timeout that beat the style to it falls back to the plain radial wipe
@@ -391,7 +396,7 @@ export default function useClaimSequence({ mapRef, userId }) {
 
       setPhase(CLAIM_PHASE.PAYOFF);
     },
-    [clearTimers, mapRef, revealApi, schedule, systemReduced, userId, wait, waitForImpact, waitForRevealCue]
+    [clearTimers, mapRef, revealApi, systemReduced, userId, wait, waitForRevealCue]
   );
 
   const start = useCallback(
@@ -423,9 +428,9 @@ export default function useClaimSequence({ mapRef, userId }) {
   const skip = useCallback(() => {
     runToken.current += 1;
     clearTimers();
-    impactResolver.current = null;
     revealCueResolver.current = null;
     setEncounterLive(false);
+    setContactStep(null);
     // Skipping mid-flyover leaves the camera tilted. Put it back on its back
     // instantly: the payoff and the permanent territory below it are both
     // drawn against a flat map, and a pitched one is a different picture.
@@ -450,15 +455,14 @@ export default function useClaimSequence({ mapRef, userId }) {
   const complete = useCallback(() => {
     runToken.current += 1;
     clearTimers();
-    impactResolver.current = null;
     revealCueResolver.current = null;
     setEncounterLive(false);
+    setContactStep(null);
     setPhase(CLAIM_PHASE.COMPLETE);
   }, [clearTimers]);
 
   const index = phaseIndex(phase);
   const captureStyleMeta = resolveCaptureStyle(cast.captureStyle);
-  const captureUsesDuel = captureStyleMeta.encounterMode === ENCOUNTER_MODE.DUEL;
 
   const derived = useMemo(
     () => ({
@@ -473,15 +477,24 @@ export default function useClaimSequence({ mapRef, userId }) {
       // The run is being flown right now, so the trail should be unrolling
       // rather than sitting on the map complete.
       showRunReplay: phase === CLAIM_PHASE.RUN_REPLAY,
-      showEncounter: encounterLive && captureUsesDuel && !!projection,
-      // FX are presentation-only. They start at contact and disappear before
-      // victory; the independent SVG reveal below still owns territory state.
+      // A clash, only while a style that asked for one is having it.
+      showEncounter: encounterLive && !!projection,
+      // The cutscene runs from the first frame of the encounter phase to the
+      // handoff. It is no longer gated on a collision finishing, because there
+      // is no collision in front of it to finish. Also gated on there being a
+      // cast at all — empty ground skips the cutscene entirely (see the note
+      // in `run`), so there is nothing for the player or the characters to
+      // show even while the phase machine passes through this range.
       showCaptureStyle:
         !!projection &&
-        index >= phaseIndex(
-          captureUsesDuel ? CLAIM_PHASE.ENCOUNTER_EXIT : CLAIM_PHASE.ENCOUNTER_INTRO
-        ) &&
+        cast.defenders.length > 0 &&
+        index >= phaseIndex(CLAIM_PHASE.ENCOUNTER_INTRO) &&
         index <= phaseIndex(CLAIM_PHASE.TERRITORY_HANDOFF),
+      // The cast is on screen for exactly as long as the cutscene is. Who
+      // leaves and when is the style's business, not the controller's.
+      showCast: !!projection && cast.defenders.length > 0
+        && index >= phaseIndex(CLAIM_PHASE.ENCOUNTER_INTRO)
+        && index <= phaseIndex(CLAIM_PHASE.TERRITORY_HANDOFF),
       showReveal: !!revealApi.reveal,
       showPermanentTerritory: revealApi.finalVisible,
       showVictory: phase === CLAIM_PHASE.VICTORY,
@@ -490,7 +503,7 @@ export default function useClaimSequence({ mapRef, userId }) {
         phase === CLAIM_PHASE.LEADERBOARD_TRANSITION || phase === CLAIM_PHASE.LEADERBOARD,
       isRunning: phase !== CLAIM_PHASE.IDLE && phase !== CLAIM_PHASE.COMPLETE,
     }),
-    [captureUsesDuel, encounterLive, index, phase, projection, revealApi.finalVisible, revealApi.reveal]
+    [cast.defenders, encounterLive, index, phase, projection, revealApi.finalVisible, revealApi.reveal]
   );
 
   return {
@@ -505,9 +518,14 @@ export default function useClaimSequence({ mapRef, userId }) {
 
     // Data the beats need.
     defenders: cast.defenders,
-    variant: cast.variant,
+    defenderCount: cast.defenders.length,
+    variant: contactStep?.variant || cast.variant,
+    contactStep,
     captureStyle: cast.captureStyle,
     captureStyleMeta,
+    // Everything seeded off the claim reads from here, so a replay of the same
+    // claim gives the same people the same reactions.
+    castSeed: cast.seed,
     // 0..1 along the route while the 3D replay flies; 1 once it is done, so a
     // screen can draw `path.slice(0, n * progress)` and get the whole trail
     // for free everywhere else in the sequence.
@@ -521,8 +539,9 @@ export default function useClaimSequence({ mapRef, userId }) {
     options,
     setOptions,
 
-    // Wiring for CaptureEncounter.
+    // Wiring for the cutscene.
     onImpact: handleImpact,
+    onContact: handleContact,
     onCaptureRevealCue: handleCaptureRevealCue,
     onEncounterComplete: handleEncounterComplete,
   };

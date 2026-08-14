@@ -21,6 +21,7 @@ class _Result:
 class _Session:
     def __init__(self):
         self.inserts = []
+        self.deletes = []
         self.committed = False
         self.closed = False
 
@@ -33,6 +34,9 @@ class _Session:
             return _Result()
         if "SELECT token FROM device_tokens" in sql:
             return _Result(rows=[("ExponentPushToken[test]",)])
+        if "DELETE FROM device_tokens" in sql:
+            self.deletes.append(params)
+            return _Result()
         raise AssertionError(sql)
 
     def commit(self):
@@ -65,6 +69,55 @@ class NotificationTest(unittest.TestCase):
         self.assertEqual(stored["category"], "stolen")
         self.assertEqual(stored["attacker_id"], str(actor_id))
         self.assertTrue(session.committed and session.closed)
+
+    def test_unknown_category_is_dropped_before_touching_the_db(self):
+        with patch.object(notifications, "SessionLocal") as session_local:
+            notifications.notify([str(uuid.uuid4())], "not_a_real_category", "t", "b")
+        session_local.assert_not_called()
+
+    def test_dead_token_reported_by_expo_is_pruned(self):
+        session = _Session()
+        with (
+            patch.object(notifications, "SessionLocal", lambda: session),
+            patch.object(notifications, "_expo_send", lambda messages: ["ExponentPushToken[test]"]),
+        ):
+            notifications.notify([str(uuid.uuid4())], "stolen", "t", "b")
+
+        self.assertEqual(session.deletes[0]["t"], ["ExponentPushToken[test]"])
+
+
+class ExpoSendTest(unittest.TestCase):
+    """_expo_send talks to Expo's push service directly — a ticket-level
+    error looks identical to a 200 at the transport layer, which is exactly
+    what used to hide a dead token forever."""
+
+    def test_device_not_registered_ticket_is_reported_as_dead(self):
+        body = json.dumps({
+            "data": [
+                {"status": "ok", "id": "abc"},
+                {"status": "error", "message": "not registered",
+                 "details": {"error": "DeviceNotRegistered"}},
+            ]
+        }).encode()
+
+        class _Response:
+            def read(self):
+                return body
+
+        messages = [
+            {"to": "ExponentPushToken[live]", "title": "t", "body": "b"},
+            {"to": "ExponentPushToken[dead]", "title": "t", "body": "b"},
+        ]
+        with patch.object(notifications.urllib.request, "urlopen", return_value=_Response()):
+            dead = notifications._expo_send(messages)
+
+        self.assertEqual(dead, ["ExponentPushToken[dead]"])
+
+    def test_transport_failure_reports_no_dead_tokens(self):
+        with patch.object(notifications.urllib.request, "urlopen", side_effect=OSError("boom")):
+            dead = notifications._expo_send([{"to": "x", "title": "t", "body": "b"}])
+
+        self.assertEqual(dead, [])
 
 
 if __name__ == "__main__":

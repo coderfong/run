@@ -18,8 +18,8 @@ then create and test a fresh production build.
 - Secondary category: Games
 - Bundle ID: `com.pacerrun.app`
 - Version: `2.1.0`
-- Privacy Policy URL: `https://www.bido.live/privacy`
-- Support URL: `https://www.bido.live/support`
+- Privacy Policy URL: `https://www.gameablestudios.com/privacy`
+- Support URL: `https://www.gameablestudios.com/support`
 - Regulated medical device declaration: **No**
 - Copyright: use the legal owner and current year
 
@@ -180,6 +180,10 @@ make sure every screenshot reflects the submitted binary.
       `https://www.bido.live`, so a foreign `Origin` gets no
       `Access-Control-Allow-Origin` at all. Rotate `JWT_SECRET` once more after
       launch: the value was pasted into a chat transcript.
+      **[2026-08-14: `CORS_ORIGINS` on Render still points at the retired
+      `bido.live` domain and has not been migrated — update it to the
+      gameablestudios.com origin if anything server-side needs to call the
+      API from that domain.]**
 - [x] `APPLE_KEY_ID` (`78L7WYZJ67`) and `APPLE_PRIVATE_KEY` set. The key was
       confirmed to be a Sign in with Apple key, not one of the other Apple key
       types, by signing a client secret and having Apple's token endpoint reply
@@ -248,15 +252,18 @@ make sure every screenshot reflects the submitted binary.
 - [ ] Capture final 6.9-inch screenshots from that exact build.
 - [ ] Complete App Privacy, age rating, content-rights, export-compliance, and
       regulated-medical-device questions in App Store Connect.
-- [x] Support and privacy URLs load without authentication. Checked 2026-08-13:
-      `https://www.bido.live/privacy` serves the policy and states the Apple
-      Health position in the words the binary needs — "If you turn on Health
-      sync, PASER writes your finished runs to Apple Health. PASER does not
-      read any health data from your device." `https://www.bido.live/support`
-      serves a real support page with a contact address. Note the contact on
-      both pages is `jonfong78@gmail.com` while the App Store Connect account
-      in `eas.json` is `constanceow@gmail.com`; that is fine, but the support
-      address is what reviewers and users will write to.
+- [x] Support and privacy URLs load without authentication. Migrated off the
+      old `bido.live` domain (checked live there 2026-08-13) to
+      `https://www.gameablestudios.com/privacy` and
+      `https://www.gameablestudios.com/support`, contact address now
+      `jonathan@gameablestudios.com`. Re-verified live 2026-08-14 after the
+      Vercel custom-domain move — both pages load with the correct content
+      and contact address. **Update the App Store Connect Privacy Policy URL
+      / Support URL fields to the gameablestudios.com URLs before
+      submitting** — those are set manually in ASC and don't follow this
+      repo. The App Store Connect account in `eas.json` remains
+      `constanceow@gmail.com`; that is fine, but the support address is what
+      reviewers and users will write to.
 
 Build and submit only after those gates are complete:
 

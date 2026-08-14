@@ -12,8 +12,8 @@
 // clanColor (accepted for API compat; the art is not tinted).
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { View } from 'react-native';
-import { Image } from '../../ui/image';
+import { Image as RNImage, View } from 'react-native';
+import { Image as ExpoImage } from '../../ui/image';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -116,7 +116,7 @@ const SWAP_COALESCE_MS = 180;
 // because that bails out early for an empty slot and hooks cannot live behind
 // a return, and kept off the static path because every bust in the feed draws
 // ten of these.
-function SwapLayer({ img, frame, entered, onSwapIn }) {
+function SwapLayer({ img, frame, entered, onSwapIn, captureSafe }) {
   // The art currently on screen. A layer's FIRST load is the rig drawing
   // itself, not a change, so it must arrive plainly; only art that replaces
   // different art counts.
@@ -147,17 +147,20 @@ function SwapLayer({ img, frame, entered, onSwapIn }) {
     onSwapIn?.();
   };
 
+  const Img = captureSafe ? RNImage : ExpoImage;
   return (
-    <Image source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp onLoad={onLoad} />
+    <Img source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp onLoad={onLoad} />
   );
 }
 
-function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn }) {
+function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false }) {
   if (!img) return null;
   const base = LAYOUT[fit || slot];
   if (!base) return null;
   const spec = layout ? { ...base, ...layout } : base;
-  const src = Image.resolveAssetSource(img);
+  // Metadata only — RN's own resolver and expo-image's re-export of it return
+  // the same thing, so which Image component is drawing has no bearing here.
+  const src = RNImage.resolveAssetSource(img);
   let w = spec.w * bodyW;
   let h = w * (src.height / src.width);
   if (spec.maxH != null && h > spec.maxH * bodyH) {
@@ -170,9 +173,18 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
   const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
   const frame = { position: 'absolute', width: w, height: h, left, top };
   if (swap) {
-    return <SwapLayer img={img} frame={frame} entered={entered} onSwapIn={onSwapIn} />;
+    return (
+      <SwapLayer
+        img={img}
+        frame={frame}
+        entered={entered}
+        onSwapIn={onSwapIn}
+        captureSafe={captureSafe}
+      />
+    );
   }
-  return <Image source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp />;
+  const Img = captureSafe ? RNImage : ExpoImage;
+  return <Img source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp />;
 }
 
 // Footwear, one shoe at a time.
@@ -193,7 +205,7 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
 // as one layer the whole collar ring sits in front of the leg and reads as an
 // empty ring beside the ankle instead of around it. The two pieces tile, so a
 // shoe with no back piece is simply the old single layer.
-function Feet({ item, equipped, bodyW, bodyH, back = false, ...rest }) {
+function Feet({ item, equipped, bodyW, bodyH, back = false, captureSafe = false, ...rest }) {
   const feet = item?.feet;
   if (!feet) {
     const img = back ? item?.backImg : itemWornImage('footwear', item, equipped);
@@ -204,10 +216,12 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, ...rest }) {
         layout={item?.layout}
         bodyW={bodyW}
         bodyH={bodyH}
+        captureSafe={captureSafe}
         {...rest}
       />
     );
   }
+  const Img = captureSafe ? RNImage : ExpoImage;
   return (
     <>
       {['l', 'r'].map((side) => {
@@ -216,12 +230,12 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, ...rest }) {
           : (side === 'l' ? item.footL : item.footR);
         const spec = feet[side];
         if (!img || !spec) return null;
-        const src = Image.resolveAssetSource(img);
+        const src = RNImage.resolveAssetSource(img);
         const w = spec.w * bodyW;
         const h = w * (src.height / src.width);
         const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
         return (
-          <Image
+          <Img
             key={side}
             source={img}
             style={{
@@ -247,8 +261,32 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, ...rest }) {
   );
 }
 
-const CharacterRig = forwardRef(function CharacterRig(
-  { equipped, size = 120, animate = false, animateSwaps = false, headOnly = false, clanColor, style },
+// Memoized: a rig re-assembles up to 8 layers (LAYOUT + getItem lookups) on
+// every render, and it is mounted a LOT at once — a feed of busts, up to 6
+// bodies during a capture cutscene. Without this, an unrelated re-render
+// anywhere above (a reaction toggle, a tab-bar pulse) re-runs that assembly
+// for every rig on screen even though nothing about it changed. Safe as a
+// plain shallow memo: `equipped` comes from data (a loadout object) at every
+// real call site rather than being rebuilt inline, so reference equality is
+// the common case; a call site that DOES rebuild it inline just falls back to
+// today's always-re-render behaviour, never worse.
+const CharacterRig = React.memo(forwardRef(function CharacterRig(
+  {
+    equipped,
+    size = 120,
+    animate = false,
+    animateSwaps = false,
+    headOnly = false,
+    clanColor,
+    style,
+    // For the one caller (LogoRunner, on the share card) whose output gets
+    // rasterised by react-native-view-shot rather than just looked at.
+    // expo-image's async, GPU-backed decode is what every other rig instance
+    // wants — see ui/image.js — but a view being screenshotted the instant it
+    // mounts cannot assume that decode has finished, so this swaps every
+    // layer back to RN's own synchronous Image for that one render tree only.
+    captureSafe = false,
+  },
   ref
 ) {
   const reduced = useReduceMotion();
@@ -310,6 +348,7 @@ const CharacterRig = forwardRef(function CharacterRig(
     swap: animateSwaps && !reduced,
     entered: painted.current,
     onSwapIn,
+    captureSafe,
   };
 
   // A short hop: up, back down to where they stood — with a happy face.
@@ -374,6 +413,8 @@ const CharacterRig = forwardRef(function CharacterRig(
   const hideHair =
     it.headwear.hideHair || (it.headwear.hidesBulky && it.hair.bulky);
 
+  const Img = captureSafe ? RNImage : ExpoImage;
+
   return (
     <Animated.View
       style={[
@@ -411,7 +452,7 @@ const CharacterRig = forwardRef(function CharacterRig(
           <>
             {/* The far rim of the shoe's collar, behind the leg. See Feet. */}
             <Feet item={it.footwear} equipped={equipped} back {...layerBox} />
-            <Image
+            <Img
               source={BODY_IMG}
               style={{ position: 'absolute', width: bodyW, height: bodyH }}
               resizeMode="contain"
@@ -445,7 +486,7 @@ const CharacterRig = forwardRef(function CharacterRig(
             lost the bottom 13px of the chin; extending that crop also pulled
             the shoulders over the shirt. The dedicated plate contains the
             complete head silhouette and nothing below it. */}
-        <Image
+        <Img
           source={HEAD_IMG}
           style={{ position: 'absolute', width: bodyW, height: bodyH }}
           resizeMode="contain"
@@ -467,7 +508,7 @@ const CharacterRig = forwardRef(function CharacterRig(
       </View>
     </Animated.View>
   );
-});
+}));
 
 export default CharacterRig;
 
@@ -478,7 +519,7 @@ export default CharacterRig;
 // Props: equipped, size (circle diameter), ring (border color), bg.
 // ---------------------------------------------------------------------------
 
-export function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,255,0.06)', style }) {
+export const CharacterBust = React.memo(function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,255,0.06)', style }) {
   const W = size * BUST.bodyScale;
   return (
     <View
@@ -503,7 +544,7 @@ export function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,25
       />
     </View>
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // PartThumb — a single item preview for the customizer grid, contained in a
@@ -577,7 +618,7 @@ export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, c
     // width FACE_W of the head, brows FACE_TOP down it. Percentages are of the
     // circle here rather than of 160x196, which is close enough at chip sizes.
     const d = size * 0.92;
-    const meta = Image.resolveAssetSource(img);
+    const meta = RNImage.resolveAssetSource(img);
     let fw = d * FACE_W_OF_HEAD;
     const fh = meta?.width ? fw * (meta.height / meta.width) : fw;
     let fittedFh = fh;
@@ -597,7 +638,7 @@ export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, c
             overflow: 'hidden',
           }}
         >
-          <Image
+          <ExpoImage
             source={img}
             style={{
               position: 'absolute',
@@ -616,7 +657,7 @@ export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, c
   }
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Image
+      <ExpoImage
         source={img}
         style={{ width: size, height: size }}
         resizeMode="contain"

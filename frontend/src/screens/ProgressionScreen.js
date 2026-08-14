@@ -9,14 +9,14 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from '../ui/image';
-import { Check, Lock } from 'lucide-react-native';
+import { Check, Info, Lock, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
 import { brand, fonts, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
-import { Card, Framed, Row, Skeleton, Screen, OutlinedText, ToonButton } from '../components/ui';
+import { Card, Framed, Row, Sheet, Skeleton, Screen, OutlinedText, ToonButton } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
 import GameAnimation from '../components/GameAnimation';
@@ -247,6 +247,51 @@ function Spine({ level, reached, current }) {
   );
 }
 
+// What Level, Rank and the two reward tracks actually mean. The header shows
+// both numbers side by side with no explanation of why they move differently
+// (level only ever climbs, rank can fall) or what claiming even does, so this
+// is one tap away rather than a wall of text on a page that's mostly ladder.
+const INFO_SECTIONS = [
+  {
+    title: 'Level',
+    body: 'Every kilometre you run earns XP, and XP is permanent. Level 1 to 50, and it never goes back down.',
+  },
+  {
+    title: 'Rank',
+    body: 'Rank comes from territory: claiming ground, stealing it, defending it. It can fall too, if someone takes your land or you stop running for a while. Your rank sets the border around your portrait.',
+  },
+  {
+    title: 'Rewards',
+    body: 'Reaching a level unlocks its tier on the ladder below. Free rewards are for everyone; PASER PRO adds a second, better reward on the same tier. Tap a lit tile to collect it, or use Claim all to grab everything at once.',
+  },
+];
+
+function ProgressionInfoSheet({ visible, onClose }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  return (
+    <Sheet visible={visible} onClose={onClose}>
+      <Row between style={{ marginBottom: space.sm }}>
+        <Text style={type.heading}>Level, rank and rewards</Text>
+        <TouchableOpacity
+          onPress={onClose}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        >
+          <X size={22} color={colors.textMuted} />
+        </TouchableOpacity>
+      </Row>
+      {INFO_SECTIONS.map((section) => (
+        <View key={section.title} style={{ marginBottom: space.md }}>
+          <Text style={[type.bodySmBold, { color: brand.pink, marginBottom: 2 }]}>{section.title}</Text>
+          <Text style={[type.caption, { color: colors.textMuted, lineHeight: 18 }]}>{section.body}</Text>
+        </View>
+      ))}
+    </Sheet>
+  );
+}
+
 export default function ProgressionScreen() {
   const { colors } = useTheme();
   const type = useThemedType();
@@ -258,6 +303,7 @@ export default function ProgressionScreen() {
   const { data, loading, error, refresh: load } = useQuery('me:progression', api.progression);
   const [opening, setOpening] = useState(false);
   const [passOpen, setPassOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
   const [claimingAll, setClaimingAll] = useState(false);
   // { done, total } while the fallback sweep is walking tiers one at a time,
@@ -452,6 +498,10 @@ export default function ProgressionScreen() {
         tint={brand.pink}
         weight={INK.medium}
         pose={framePose('levels-and-rewards')}
+        // The one frame on this screen that boils. Fifty tiles down the page
+        // is not a place for a crawling line on each of them, but the page's
+        // single hero card can carry the hand animated look on its own.
+        boil
         inset={false}
         style={styles.header}
         contentStyle={styles.headerClip}
@@ -468,6 +518,15 @@ export default function ProgressionScreen() {
             hiding the crew, and it is always dark, so the text below is always
             white regardless of theme. */}
         <View style={[StyleSheet.absoluteFill, styles.headerScrim]} pointerEvents="none" />
+        <TouchableOpacity
+          style={styles.infoBtn}
+          onPress={() => setInfoOpen(true)}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="How level, rank and rewards work"
+        >
+          <Info size={18} color="#fff" />
+        </TouchableOpacity>
         <View style={styles.headerInner}>
           <PortraitBorder borderKey={rank?.key || 'wood'} size={104}>
             <CharacterBust equipped={equipped} size={104} bg={withAlpha('#000000', 0.35)} />
@@ -505,7 +564,15 @@ export default function ProgressionScreen() {
           to be a small pill under the portrait, which is a strange way to
           mention eighty-five unclaimed rewards. */}
       {claimableCount > 0 && (
-        <View style={[styles.claimBar, { backgroundColor: colors.card, borderColor: brand.pink }]}>
+        <Framed
+          frame={frameVariant('box', 'claim-bar')}
+          tint={brand.pink}
+          fill={colors.card}
+          weight={INK.thin}
+          pose={framePose('claim-bar')}
+          style={styles.claimBar}
+          contentStyle={styles.claimBarContent}
+        >
           <View style={{ flex: 1 }}>
             <OutlinedText
               style={[toonType.sub, { color: brand.pink, textAlign: 'left' }]}
@@ -532,14 +599,20 @@ export default function ProgressionScreen() {
             disabled={claimingAll}
             style={styles.claimAllBtn}
           />
-        </View>
+        </Framed>
       )}
 
       {/* The PRO pitch, shown only to non-holders. There is no "premium pass
           active" banner any more: once you own it the whole gold track is
           unlocked down the page, which says it better than a bar does. */}
       {IAP_ENABLED && !premium_active && (
-        <Card style={[styles.passBanner, { borderColor: GOLD }]}>
+        <Card
+          frame={frameVariant('featured', 'pro-pitch')}
+          frameTint={GOLD}
+          frameWeight={INK.thin}
+          framePose={framePose('pro-pitch')}
+          style={styles.passBanner}
+        >
           <Row gap={12}>
             {art('crestPro') ? (
               <Image source={art('crestPro')} style={{ width: 34, height: 34 }} resizeMode="contain" fadeDuration={0} />
@@ -574,17 +647,26 @@ export default function ProgressionScreen() {
 
       {/* unopened lootboxes */}
       {pending_lootboxes.length > 0 && (
-        <TouchableOpacity style={[styles.boxCard, { borderColor: brand.pink }]} onPress={openBox} activeOpacity={0.85} disabled={opening}>
-          {/* The one chest on this screen that is always worth looking at:
-              there is a box waiting and the row exists to be tapped. It is
-              this row's icon as well as its animation, so Reduce Motion stills
-              it rather than leaving the row with an empty slot. */}
-          <GameAnimation name="giftBox" size={34} loop={!reducedMotion} still={reducedMotion} />
-          <View style={{ flex: 1 }}>
-            <Text style={type.bodyBold}>{pending_lootboxes.length} lootbox{pending_lootboxes.length === 1 ? '' : 'es'} ready</Text>
-            <Text style={[type.caption, { color: colors.textMuted }]}>Tap to open a random collectible</Text>
-          </View>
-          <AppIcon name="sparkles" size={20} />
+        <TouchableOpacity onPress={openBox} activeOpacity={0.85} disabled={opening} style={styles.boxCard}>
+          <Framed
+            frame={frameVariant('box', 'lootbox-row')}
+            tint={brand.pink}
+            fill={colors.card}
+            weight={INK.thin}
+            pose={framePose('lootbox-row')}
+            contentStyle={styles.boxCardContent}
+          >
+            {/* The one chest on this screen that is always worth looking at:
+                there is a box waiting and the row exists to be tapped. It is
+                this row's icon as well as its animation, so Reduce Motion stills
+                it rather than leaving the row with an empty slot. */}
+            <GameAnimation name="giftBox" size={34} loop={!reducedMotion} still={reducedMotion} />
+            <View style={{ flex: 1 }}>
+              <Text style={type.bodyBold}>{pending_lootboxes.length} lootbox{pending_lootboxes.length === 1 ? '' : 'es'} ready</Text>
+              <Text style={[type.caption, { color: colors.textMuted }]}>Tap to open a random collectible</Text>
+            </View>
+            <AppIcon name="sparkles" size={20} />
+          </Framed>
         </TouchableOpacity>
       )}
 
@@ -646,6 +728,7 @@ export default function ProgressionScreen() {
       {IAP_ENABLED ? (
         <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={load} />
       ) : null}
+      <ProgressionInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
       <RewardReveal
         visible={!!reveal}
         rewards={reveal?.rewards}
@@ -678,6 +761,12 @@ const styles = StyleSheet.create({
   },
   headerClip: { flex: 1, borderRadius: radius.card, overflow: 'hidden' },
   headerScrim: { backgroundColor: 'rgba(14,10,28,0.52)' },
+  infoBtn: {
+    position: 'absolute', top: space.md, right: space.md, zIndex: 1,
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.32)',
+  },
   headerInner: { alignItems: 'center', padding: space.lg },
   // Always white: the panel underneath is the purple art plus a dark scrim in
   // both themes, so this can't take the theme's text colour.
@@ -685,23 +774,18 @@ const styles = StyleSheet.create({
   headerSubText: { color: 'rgba(255,255,255,0.78)' },
 
   claimAllBtn: { minWidth: 118 },
-  claimBar: {
+  claimBar: { marginTop: space.md },
+  claimBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    marginTop: space.md,
-    padding: space.lg,
-    borderRadius: radius.card,
-    borderWidth: 2,
   },
 
   xpTrack: { height: 10, borderRadius: 5, overflow: 'hidden', alignSelf: 'stretch', marginTop: space.md },
   xpFill: { height: '100%', borderRadius: 5, backgroundColor: brand.pink },
-  boxCard: {
-    flexDirection: 'row', alignItems: 'center', gap: space.md,
-    borderWidth: 1.5, borderRadius: radius.card, padding: space.lg, marginTop: space.md,
-  },
-  passBanner: { marginTop: space.md, borderWidth: 1.5 },
+  boxCard: { marginTop: space.md },
+  boxCardContent: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  passBanner: { marginTop: space.md },
 
   trackHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xl, marginBottom: space.sm },
   // Flat fills plus an ink border, hard shadow, and small highlight give the
