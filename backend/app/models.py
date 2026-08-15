@@ -60,8 +60,33 @@ class User(Base):
     # before it — including whoever's session prompted the reset.
     token_version = Column(Integer, nullable=False, default=0, server_default="0")
 
+    # A seeded/simulated player (see bot_activity.py). Has no password, never
+    # logs in — its runs and claims exist so the map and leaderboards aren't
+    # empty for a new real player. Lets notify() and social surfaces skip it.
+    is_bot = Column(Boolean, nullable=False, default=False, server_default="false")
+
     runs = relationship("Run", back_populates="user")
     territories = relationship("Territory", back_populates="user")
+
+
+class BotAccount(Base):
+    """Per-bot state for the run-simulation cron (bot_activity.py).
+
+    Kept separate from User rather than bolted onto it because this is
+    cron-internal bookkeeping — a home point to stay near and a schedule —
+    not anything the API ever exposes to a client."""
+
+    __tablename__ = "bot_accounts"
+
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    home_lat = Column(Float, nullable=False)
+    home_lon = Column(Float, nullable=False)
+    region_key = Column(Text, nullable=True)
+    # One of the bots allowed to run far enough from home to raid a real
+    # player's territory instead of only reinforcing its own neighbourhood.
+    attacker = Column(Boolean, nullable=False, default=False, server_default="false")
+    next_run_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class AuthCode(Base):

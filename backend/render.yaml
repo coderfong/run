@@ -97,6 +97,38 @@ services:
       - key: CORS_ORIGINS
         value: "https://coderfong.github.io"
 
+  # Seeded bot players going on runs and occasionally raiding a real player's
+  # territory — see bot_activity.py. Talks to the database directly, same
+  # reasoning as the sweep cron above.
+  #
+  # Every 30 minutes: with ~120 bots each running roughly once every 1-2 days,
+  # most ticks have a small handful due (see bot_activity.py's BATCH_SIZE
+  # math) rather than a burst, which is what keeps the map's activity looking
+  # like people playing instead of a scheduled batch job.
+  - type: cron
+    name: territory-run-bots
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: singapore
+    schedule: "*/30 * * * *"
+    dockerCommand: python bot_activity.py
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: territory-run-db
+          property: connectionString
+      - key: ENV
+        value: production
+      - key: JWT_SECRET
+        fromService:
+          name: territory-run-api
+          type: web
+          envVarKey: JWT_SECRET
+      - key: CORS_ORIGINS
+        value: "https://coderfong.github.io"
+
 databases:
   - name: territory-run-db
     plan: starter
