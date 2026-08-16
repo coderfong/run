@@ -7,8 +7,8 @@
 // One shared projection for territory + route TOGETHER — fitted separately, a
 // run would float somewhere over a claim it is supposed to sit inside.
 
-import React from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Polygon, Polyline } from 'react-native-svg';
 
 import { withAlpha, useTheme, useThemedStyles } from '../theme';
@@ -54,10 +54,22 @@ export const svgPoints = (points) => points
  *           same hand-drawn box.
  * `compact` square (THUMB_W x THUMB_W) beside a photo, panoramic
  *           (THUMB_W x THUMB_H) running the full width alone.
+ * `style`   layout for the OUTER box (margin, flex) — sizing itself is
+ *           measured, not styled; see the note below.
  */
 export default function RouteThumb({ id, rings, path, color, compact = false, style }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  // CSS `aspectRatio` used to size this box directly, and on at least some
+  // devices it did not resolve against the parent's width the way a sibling
+  // with no sizing at all (the caption frame right below this one) does —
+  // the two frames read as different widths, and the route box read as
+  // taller than its content, mostly blank underneath the drawing. Measuring
+  // the box's own width and setting an explicit pixel height from it is the
+  // same trick `Framed` itself already uses one layer in, and it can't
+  // disagree with a plain block-width sibling the way an aspect-ratio
+  // resolution edge case could.
+  const [boxWidth, setBoxWidth] = useState(0);
   const filteredRings = (rings || []).filter((r) => r?.length >= 3);
   const line = (path?.length || 0) >= 2 ? path : null;
   if (!filteredRings.length && !line) return null;
@@ -65,54 +77,61 @@ export default function RouteThumb({ id, rings, path, color, compact = false, st
   const project = makeProjection([...filteredRings, ...(line ? [line] : [])], 10, boxH);
   const projectedRings = filteredRings.map(project);
   const projectedLine = line ? project(line) : null;
+  const pixelHeight = boxWidth ? boxWidth * (boxH / THUMB_W) : null;
   return (
-    // A DRAWN BOX, not a grey plate — see the note this carried in FeedCard
-    // before the extraction: the frame gives the route an edge without a
-    // second surface colour under it.
-    <Framed
-      frame={frameVariant('box', `route:${id}`)}
-      on={colors.card}
-      tint={withAlpha(color, 0.55)}
-      weight={INK.thin}
-      pose={framePose(`route:${id}`)}
-      inset={false}
-      style={[compact ? styles.thumbCompact : styles.thumb, style]}
+    <View
+      style={style}
+      onLayout={(e) => setBoxWidth(Math.round(e.nativeEvent.layout.width))}
     >
-      {/* height="100%", not the raw box pixels: the box is locked to the
-          viewBox's own aspect ratio, so this fills it edge to edge with no
-          "meet" letterboxing. */}
-      <Svg width="100%" height="100%" viewBox={`0 0 ${THUMB_W} ${boxH}`}>
-        {projectedRings.map((ring, i) => (
-          <Polygon
-            key={i}
-            points={svgPoints(ring)}
-            fill={withAlpha(color, 0.22)}
-            stroke={color}
-            strokeWidth={2.5}
-            strokeLinejoin="round"
-          />
-        ))}
-        {line && (
-          <Polyline
-            points={svgPoints(projectedLine)}
-            fill="none"
-            // Lighter than the territory outline so the route reads as the
-            // thing inside the land, not as a second border around it.
-            stroke={filteredRings.length ? withAlpha(color, 0.75) : color}
-            strokeWidth={filteredRings.length ? 2 : 2.5}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        )}
-      </Svg>
-    </Framed>
+      {/* A DRAWN BOX, not a grey plate — see the note this carried in
+          FeedCard before the extraction: the frame gives the route an edge
+          without a second surface colour under it. */}
+      <Framed
+        frame={frameVariant('box', `route:${id}`)}
+        on={colors.card}
+        tint={withAlpha(color, 0.55)}
+        weight={INK.thin}
+        pose={framePose(`route:${id}`)}
+        inset={false}
+        // Before the outer box has measured itself, fall back to the
+        // fixed-ratio style for one frame rather than collapsing to zero
+        // height — `boxWidth` is set on the very next layout pass.
+        style={pixelHeight ? { height: pixelHeight } : (compact ? styles.thumbCompact : styles.thumb)}
+      >
+        {/* height="100%", not the raw box pixels: the Svg fills whatever
+            height the box above resolved to, edge to edge, no letterboxing. */}
+        <Svg width="100%" height="100%" viewBox={`0 0 ${THUMB_W} ${boxH}`}>
+          {projectedRings.map((ring, i) => (
+            <Polygon
+              key={i}
+              points={svgPoints(ring)}
+              fill={withAlpha(color, 0.22)}
+              stroke={color}
+              strokeWidth={2.5}
+              strokeLinejoin="round"
+            />
+          ))}
+          {line && (
+            <Polyline
+              points={svgPoints(projectedLine)}
+              fill="none"
+              // Lighter than the territory outline so the route reads as the
+              // thing inside the land, not as a second border around it.
+              stroke={filteredRings.length ? withAlpha(color, 0.75) : color}
+              strokeWidth={filteredRings.length ? 2 : 2.5}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          )}
+        </Svg>
+      </Framed>
+    </View>
   );
 }
 
 const makeStyles = () => StyleSheet.create({
+  // First-frame-only fallbacks — see the comment above `boxWidth`.
   thumb: {
-    // Locking the box to the viewBox's own ratio is what makes it fill edge
-    // to edge with no letterboxing on any card wider than THUMB_W.
     aspectRatio: THUMB_W / THUMB_H,
     justifyContent: 'center',
   },

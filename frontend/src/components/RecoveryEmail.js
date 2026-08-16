@@ -24,6 +24,7 @@ import { useQuery } from '../hooks/useQuery';
 import { radius, space, useTheme, useThemedType } from '../theme';
 import { Card, Row, Button, SectionHeader, Skeleton } from './ui';
 import { toast } from '../ui/toast';
+import { Arrival, useArrival } from '../ui/motion';
 
 function looksLikeEmail(raw) {
   return /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test((raw || '').trim());
@@ -41,6 +42,7 @@ export default function RecoveryEmail() {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const arriving = useArrival(!data);
 
   if (!data) {
     return (
@@ -106,7 +108,11 @@ export default function RecoveryEmail() {
 
   return (
     <>
+      {/* Outside the fade on purpose: the header is drawn over the placeholder
+          too, and ramping up a title that never left reads as a blink. Only
+          the card underneath it arrives. */}
       <SectionHeader title="Account recovery" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <Arrival active={arriving}>
       <Card>
         {!data.mail_available ? (
           <Text style={type.caption}>
@@ -250,6 +256,7 @@ export default function RecoveryEmail() {
           </>
         ) : null}
       </Card>
+      </Arrival>
     </>
   );
 }

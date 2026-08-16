@@ -84,7 +84,7 @@
     "usableFiles": 1802,
     "unsupportedFiles": 619,
     "oversizedFiles": 9,
-    "selectedForImport": 44
+    "selectedForImport": 58
   },
   "containers": [
     {
@@ -124176,8 +124176,8 @@
   ],
   "selection": {
     "manifest": "C:\\Users\\user\\Desktop\\run\\frontend\\scripts\\animations\\animation-selection.json",
-    "selectedAssets": 44,
-    "selectedBytes": 4464371,
+    "selectedAssets": 58,
+    "selectedBytes": 6766838,
     "licenseBlockedAssets": [
       {
         "id": "glitch_portal_01",

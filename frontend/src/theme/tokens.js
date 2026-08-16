@@ -119,11 +119,21 @@ export function readableInk(surface, {
 // screens (constitution). Gutter 20, card padding 16, section gap 24.
 // ---------------------------------------------------------------------------
 
+// LIMITED RADII (neo-brutalist): the scale is 0 / 12 / 24 and nothing between.
+// The six-step scale this replaces (8/14/16/22/24) was the single biggest thing
+// keeping the app soft — no amount of stroke weight reads as hard-edged when
+// every box is rounded off by a slightly different amount. The keys are kept so
+// no call site has to change; they just resolve to fewer distinct values now.
+//
+// `none` is here because it is the honest neo-brutalist default, and the boxes
+// that most want it (tables, banners, the toast stack) are the ones that read
+// worst with a radius on them.
 export const radius = {
-  sm: 8,
-  md: 14,
-  card: 16,
-  lg: 22,
+  none: 0,
+  sm: 12,
+  md: 12,
+  card: 12,
+  lg: 24,
   sheet: 24,
   pill: 999,
 };
@@ -149,6 +159,27 @@ export const shadow = {
   flat: {},
   card: {},
   raised: {},
+  // The neo-brutalist drop: solid colour, ZERO blur, offset on both axes.
+  //
+  // iOS-ONLY. Android's `elevation` is always a blurred material shadow
+  // pointing straight down and cannot express this, so `elevation: 0` is
+  // deliberate: a soft grey blur under a hard-edged card reads as the style
+  // failing rather than as a platform difference. For a hard shadow that
+  // survives both platforms use the `HardShadow` component in components/ui,
+  // which draws a real offset rectangle instead of asking the compositor.
+  //
+  // Defined HERE rather than in nb.js, which is where the rest of the
+  // neo-brutalist tokens live, purely to keep the import graph one-way:
+  // nb.js already reads `readableInk` from this file, and pointing this back
+  // at nb.js would close the loop. `npm run check:tdz` exists because that
+  // class of cycle has bitten this codebase before.
+  hard: (color, offset = 4) => ({
+    shadowColor: color,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: offset, height: offset },
+    elevation: 0,
+  }),
   glow: (color) => ({
     shadowColor: color,
     shadowOpacity: 0.55,

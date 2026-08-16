@@ -411,8 +411,8 @@ export default function ChooseAttack({
                 style={[styles.recFrame, unavailable && styles.recUnavailable]}
                 contentStyle={styles.recChip}
               >
-                <r.Icon size={14} color={active ? '#FFFFFF' : r.color} strokeWidth={2.8} />
-                <Text style={[styles.recText, { color: active ? '#FFFFFF' : D.text }]} numberOfLines={1}>
+                <r.Icon size={30} color={active ? '#FFFFFF' : r.color} strokeWidth={2.6} />
+                <Text style={[styles.recText, { color: active ? '#FFFFFF' : D.text }]} numberOfLines={2}>
                   {r.label}
                 </Text>
               </Framed>
@@ -525,20 +525,29 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     // them rather than sitting unused, so they read as three deliberate
     // choices instead of three squeezed into a row sized for a fourth.
     gap: 10,
-    alignItems: 'stretch',
-    marginBottom: 5,
+    // Each button sizes itself from its own square, so the row must not try to
+    // stretch them to a common height it has worked out first.
+    alignItems: 'flex-start',
+    marginBottom: 7,
   },
   recPressable: { flex: 1, minWidth: 0 },
   recFill: { width: '100%' },
-  recFrame: { minHeight: 40 },
+  // SQUARE, from the column width the row gives it. These are the three big
+  // choices on the screen and the letterbox they used to be sized the label
+  // down to 7.5pt to fit; a square has room for an icon you can read at a
+  // glance and type at a normal size. The sheet below the map was grown to
+  // match (ResultScreen's `claimSheet`).
+  recFrame: { width: '100%', aspectRatio: 1 },
   recUnavailable: { opacity: 0.38 },
   recChip: {
-    flex: 1, paddingVertical: 3, paddingHorizontal: 2,
+    flex: 1, paddingVertical: 6, paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 1,
+    gap: 6,
   },
-  recText: { ...type.captionMedium, letterSpacing: 0, fontSize: 7.5, lineHeight: 9, textAlign: 'center' },
+  // Two lines allowed: "BEST DEFENCE" wraps rather than truncating on a narrow
+  // phone, and centred in a square that reads as deliberate.
+  recText: { ...type.captionMedium, letterSpacing: 0, fontSize: 11, lineHeight: 13, textAlign: 'center' },
 
   railWrap: { marginBottom: 4 },
   railLabels: {

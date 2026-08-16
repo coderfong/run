@@ -1,6 +1,13 @@
-// Card — the one elevated surface. Light: white + soft card shadow, no
-// border. Dark: raised surface step, no shadow, no border (constitution:
-// never border + shadow together; dark uses surface steps for depth).
+// Card — the one elevated surface, and now the app's canonical neo-brutalist
+// box: a heavy stroke with a hard zero-blur drop offset down-right. Both are
+// picked against the card's own fill rather than off the scheme, so the same
+// component reads correctly on paper, on the dark page, and as a `dark` card
+// inside the light scheme. See `toonSurface`.
+//
+// The old rule here was "never border + shadow together, and dark gets depth
+// from surface steps instead of shadows". That was written about SOFT shadows,
+// which genuinely do nothing on a near-black page. This drop is a solid offset
+// block in a saturated accent, so neither half of it applies.
 //
 // `frame` swaps that quiet surface for a HAND-DRAWN box (assets/frames). The
 // two are alternatives, not layers: a framed card drops its radius, its shadow
@@ -15,13 +22,14 @@
 // layer is the actual answer, so the fill, the radius and the fudge all go.
 
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
-import { darkColors, radius, shadow, space, useTheme } from '../../theme';
-import { PressableScale } from '../../ui/motion';
+import { darkColors, radius, space, toonSurface, useTheme } from '../../theme';
+import { PressableScale, PressableShift } from '../../ui/motion';
 import ArtFrame from '../../ui/ArtFrame';
 import { INK, framePadding, getFrame, weightScale } from '../../ui/frameRegistry';
 import { frameInkFor } from './Framed';
+import HardShadow from './HardShadow';
 
 export default function Card({
   children,
@@ -37,13 +45,23 @@ export default function Card({
   framePose = 0,
   frameBoil = false,
   style,
+  // Taken by name rather than left in `rest`: a framed card measures itself to
+  // size its own artwork, and `rest` is spread AFTER that handler — so a caller
+  // that wanted to know where its card landed would silently replace the
+  // measurement and the frame would draw at zero by zero.
+  onLayout: onLayoutProp,
   ...rest
 }) {
   const { colors, scheme } = useTheme();
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const isDark = dark || scheme === 'dark';
   const spec = frame ? getFrame(frame) : null;
   const fill = dark ? darkColors.card : colors.card;
+  // Only consulted on the unframed path. A framed card must NOT also get a
+  // stroke and a drop: the frame is already the edge and already the depth, and
+  // stacking the two gives a hand-drawn box with a machine-drawn box printed
+  // just inside it. Frames and neo-brutalist strokes are alternatives, which is
+  // the same rule this file already applies to the fill and the radius.
+  const nb = toonSurface(colors, scheme, { on: fill });
   const drawScale = frame ? frameScale * weightScale(frame, frameWeight) : frameScale;
 
   const surface = spec ? {
@@ -59,14 +77,23 @@ export default function Card({
     backgroundColor: fill,
     borderRadius: radius.card,
     padding: padded ? space.lg : 0,
-    ...(isDark ? {} : shadow.card),
+    // The unframed card is now the neo-brutalist box: heavy stroke plus the hard
+    // offset drop, which the HardShadow wrapper below paints rather than this
+    // style. `on: fill` is what makes the stroke work in both schemes without a
+    // branch here — it is chosen against the card's OWN surface, so a `dark`
+    // card sitting in the light scheme gets the cream stroke it needs rather
+    // than the black one the scheme would have picked.
+    ...nb.outline,
   };
 
-  const onLayout = spec
+  const onLayout = (spec || onLayoutProp)
     ? (event) => {
-      const { width, height } = event.nativeEvent.layout;
-      const next = { width: Math.round(width), height: Math.round(height) };
-      setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+      if (spec) {
+        const { width, height } = event.nativeEvent.layout;
+        const next = { width: Math.round(width), height: Math.round(height) };
+        setSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+      }
+      onLayoutProp?.(event);
     }
     : undefined;
 
@@ -92,17 +119,69 @@ export default function Card({
     />
   ) : null);
 
-  const Box = onPress ? PressableScale : View;
+  if (spec) {
+    const Box = onPress ? PressableScale : View;
+    return (
+      <Box style={[surface, style]} onPress={onPress} onLayout={onLayout} {...rest}>
+        {sheet('paper')}
+        {children}
+        {sheet('ink')}
+      </Box>
+    );
+  }
+
+  // The unframed card, wrapped in its own hard shadow.
+  //
+  // HardShadow rather than `nb.shadow` for the same two reasons Button uses it:
+  // Android cannot render a zero-blur offset drop from style props at all, and
+  // a pressable card has to slide INTO a shadow that stays put — an iOS layer
+  // shadow travels with its layer, so the press would move card and shadow
+  // together and never land.
+  //
+  // `style` has to be split for this. Anything that positions the card in its
+  // parent (margins, absolute placement, self-alignment) belongs on the WRAPPER,
+  // or the shadow block is measured against a box that has already been moved
+  // and lands somewhere the card is not. Everything else — padding, fills,
+  // radius — stays on the card itself. Callers pass both: a `marginBottom` on
+  // every feed row, and Crossroads positions its settings card absolutely.
+  const [outer, inner] = splitPlacement(style);
+  const Box = onPress ? PressableShift : View;
   return (
-    <Box
-      style={[surface, style]}
-      onPress={onPress}
-      onLayout={onLayout}
-      {...rest}
+    <HardShadow
+      offset={nb.offset}
+      radius={radius.card}
+      on={fill}
+      style={outer}
     >
-      {sheet('paper')}
-      {children}
-      {sheet('ink')}
-    </Box>
+      <Box
+        style={[surface, inner]}
+        offset={onPress ? nb.offset : undefined}
+        onPress={onPress}
+        onLayout={onLayout}
+        {...rest}
+      >
+        {children}
+      </Box>
+    </HardShadow>
   );
+}
+
+// Style keys that place a box in its PARENT rather than describe the box. These
+// move to the shadow wrapper; everything else stays on the card.
+const PLACEMENT = new Set([
+  'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+  'marginHorizontal', 'marginVertical', 'marginStart', 'marginEnd',
+  'position', 'top', 'right', 'bottom', 'left', 'start', 'end',
+  'alignSelf', 'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'zIndex',
+]);
+
+function splitPlacement(style) {
+  const flat = StyleSheet.flatten(style);
+  if (!flat) return [null, null];
+  const outer = {};
+  const inner = {};
+  Object.keys(flat).forEach((key) => {
+    (PLACEMENT.has(key) ? outer : inner)[key] = flat[key];
+  });
+  return [outer, inner];
 }

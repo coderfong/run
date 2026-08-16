@@ -1,7 +1,7 @@
 // Run detail — route on the game board, splits, claim outcome, kudos,
 // comments. Reached from the feed and the You tab's recent runs.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MoreHorizontal, Send } from 'lucide-react-native';
 import { useIsFocused } from '@react-navigation/native';
@@ -12,7 +12,7 @@ import { useQuery } from '../hooks/useQuery';
 import { NEUTRAL } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, StatValue, Skeleton } from '../components/ui';
-import { PressableScale, haptic } from '../ui/motion';
+import { Arrival, PressableScale, haptic, useArrival } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
 import GameLottie from '../components/GameLottie';
@@ -52,7 +52,7 @@ export default function RunDetailScreen({ navigation, route }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
-  const { runId } = route.params;
+  const { runId, focusComments = false } = route.params;
   // Cached per run: reopening a run from the feed or your recent-runs list
   // draws the route, splits and comments immediately rather than rebuilding
   // the page from two skeletons.
@@ -71,10 +71,32 @@ export default function RunDetailScreen({ navigation, route }) {
   const [kudosFx, setKudosFx] = useState(0);
   const [reactOpen, setReactOpen] = useState(false);
   const screenFocused = useIsFocused();
+  const scrollRef = useRef(null);
+  const inputRef = useRef(null);
+  // The comment button on a feed card arrives here asking for the composer.
+  // Honoured once per visit: `focusComments` used to be passed and then
+  // silently ignored, so tapping comment opened this page at the map and the
+  // comment box was two screenfuls down — which reads as the button being
+  // broken rather than as a page that scrolled to the wrong place.
+  const jumped = useRef(false);
 
   useEffect(() => {
     if (!screenFocused) setReactOpen(false);
   }, [screenFocused]);
+
+  // Measured rather than guessed: the page above the composer is a map, a stat
+  // row and a splits table whose height depends on how far the run was.
+  const onCommentsLayout = useCallback((event) => {
+    if (!focusComments || jumped.current) return;
+    jumped.current = true;
+    const y = event.nativeEvent.layout.y;
+    // After the layout pass that produced this y, and after the keyboard has
+    // somewhere to push: focus last so the scroll is not fighting it.
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - space.lg), animated: true });
+      inputRef.current?.focus();
+    });
+  }, [focusComments]);
 
   // `d` is undefined until the first fetch or cache hit lands, which is fine:
   // the summary starts empty and fills in with everything else.
@@ -122,6 +144,8 @@ export default function RunDetailScreen({ navigation, route }) {
     }
   };
 
+  const arriving = useArrival(loading);
+
   if (loading && error) return <Screen center><Text style={type.body}>Run not found.</Text></Screen>;
   if (loading) {
     return (
@@ -141,9 +165,11 @@ export default function RunDetailScreen({ navigation, route }) {
   // into the discussion.
   const textComments = (comments || []).filter((cm) => cm.body?.trim());
 
-  return (
+  // Bound and wrapped below rather than in place — see the same pattern in
+  // ClubScreen; the page is far too long to re-indent for one parent.
+  const page = (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-    <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
+    <Screen scroll scrollRef={scrollRef} contentStyle={{ paddingBottom: space.xxl }}>
       {/* map */}
       <View style={styles.map}>
         {MAP_READY && path.length > 1 ? (
@@ -166,7 +192,17 @@ export default function RunDetailScreen({ navigation, route }) {
           <Text style={type.caption}>{new Date(d.created_at).toLocaleString()}</Text>
         </View>
         <View style={styles.kudosSlot}>
-          {kudosFx > 0 ? <GameLottie name="kudos" size={96} trigger={kudosFx} style={styles.kudosFx} /> : null}
+          {/* Cleared on finish — left up, it is an invisible last frame sitting
+              over the button it just celebrated. */}
+          {kudosFx > 0 ? (
+            <GameLottie
+              name="kudos"
+              size={96}
+              trigger={kudosFx}
+              onFinish={() => setKudosFx(0)}
+              style={styles.kudosFx}
+            />
+          ) : null}
           <Row gap={2}>
             {!d.is_you ? (
               <PressableScale
@@ -189,8 +225,16 @@ export default function RunDetailScreen({ navigation, route }) {
               color={c.stroke}
               onPress={() => { haptic.light(); setReactOpen((v) => !v); }}
             />
-            <PressableScale onPress={kudos} style={styles.kudos} accessibilityRole="button" accessibilityLabel="Give kudos">
-              <AppIcon name="like" size={28} />
+            <PressableScale
+              onPress={kudos}
+              style={styles.kudos}
+              accessibilityRole="button"
+              accessibilityState={{ selected: !!d.kudoed }}
+              accessibilityLabel={d.kudoed ? 'Remove kudos' : 'Give kudos'}
+            >
+              {/* Same two states as the feed card's heart: full strength once
+                  you have given it, a step down before. */}
+              <AppIcon name="like" size={28} opacity={d.kudoed ? 1 : 0.62} />
               <Text style={[type.bodySmBold, { color: d.kudoed ? c.stroke : colors.textMuted }]}>{d.kudos_count}</Text>
             </PressableScale>
           </Row>
@@ -238,7 +282,12 @@ export default function RunDetailScreen({ navigation, route }) {
       )}
 
       {/* comments */}
-      <Card frame="panel" frameTint={c.stroke} style={[styles.framedPanel, { marginTop: space.xl }]}>
+      <Card
+        frame="panel"
+        frameTint={c.stroke}
+        onLayout={onCommentsLayout}
+        style={[styles.framedPanel, { marginTop: space.xl }]}
+      >
         <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>
           Comments{textComments.length ? ` · ${textComments.length}` : ''}
         </Text>
@@ -280,6 +329,7 @@ export default function RunDetailScreen({ navigation, route }) {
 
         <View style={styles.commentInputRow}>
           <TextInput
+            ref={inputRef}
             style={styles.commentInput}
             placeholder="Add a comment…"
             placeholderTextColor={colors.textDim}
@@ -302,6 +352,12 @@ export default function RunDetailScreen({ navigation, route }) {
       </Card>
     </Screen>
     </KeyboardAvoidingView>
+  );
+
+  return (
+    <Arrival active={arriving} style={{ flex: 1 }}>
+      {page}
+    </Arrival>
   );
 }
 

@@ -12,11 +12,12 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { colors, darkColors, radius, space } from '../../theme';
+import { darkColors, radius, space, useTheme } from '../../theme';
 import { spring } from '../../theme/motion';
 import { useReduceMotion } from '../../ui/motion';
 
 export default function Sheet({ visible, onClose, children, dark = false }) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const reduce = useReduceMotion();
   const progress = useSharedValue(0);

@@ -38,20 +38,23 @@ import RouteThumb, { hasRouteData } from '../components/RouteThumb';
 import CaptureEncounter from '../components/claim/CaptureEncounter';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
 import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
+import { ROLE, isExitAction } from '../effects/choreography';
 import useCaptureStage from '../effects/useCaptureStage';
 import { buildTerritoryAnchorModel, layoutDefenders, resolveRevealOrigin } from '../effects/anchors';
 import { CAPTURE_LAYER } from '../effects/layers';
 import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
 import CutsceneBackdrop from '../components/claim/CutsceneBackdrop';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
-import { isEncounterPhase } from '../components/claim/phases';
 import LeaderboardTransition from '../components/claim/LeaderboardTransition';
 import TerritoryRevealCanvas from '../components/claim/TerritoryRevealCanvas';
 import TerritoryVictoryBeat, { victoryLabel } from '../components/claim/TerritoryVictoryBeat';
 import useClaimSequence from '../components/claim/useClaimSequence';
 import PaserbyReveal from '../components/paserby/PaserbyReveal';
 import RunShareSheet from '../components/share/RunShareSheet';
+import DevShareDebugPanel from '../components/DevShareDebugPanel';
+import { SHARE_DEBUG_FLAGS } from '../utils/shareDebugFlags';
 import XpProgress from '../components/XpProgress';
+import { Image } from '../ui/image';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useAvatar } from '../state/avatar';
 import { useAuth } from '../auth/AuthContext';
@@ -390,6 +393,18 @@ export default function ResultScreen({ navigation, route }) {
   // a parse error, so the camera's stage carries the longer name.
   const captureStage = useCaptureStage(reducedMotion);
   const castRef = useRef(null);
+
+  // Whether any defender has started leaving. CutsceneBackdrop (the solid
+  // black stage behind the character performance) stays up until this fires,
+  // rather than clearing at the reveal phase transition — the ground
+  // changing colour and the rival fleeing it are meant to read as one payoff
+  // revealed together, not the black lifting early and the flee happening
+  // over an already-visible map.
+  const [defendersExiting, setDefendersExiting] = useState(false);
+  useEffect(() => { setDefendersExiting(false); }, [seq.playToken]);
+  const handleCharacterAction = useCallback((name, role) => {
+    if (role === ROLE.DEFENDER && isExitAction(name)) setDefendersExiting(true);
+  }, []);
   // The encounter and victory beats are laid out in the map's own pixel space,
   // so they need its box to keep characters inside the card.
   const [mapBox, setMapBox] = useState(null);
@@ -423,6 +438,16 @@ export default function ResultScreen({ navigation, route }) {
     captureSafeInsets, mapBox, seq.captureStyle, seq.castSeed,
     seq.defenderCount, seq.projection,
   ]);
+
+  // Memoized so CaptureEncounter (now React.memo'd) sees a stable object
+  // instead of a fresh one on every ResultScreen render — an inline literal
+  // here would defeat that memo for the whole duration of an encounter.
+  const contactPoint = useMemo(
+    () => (defenderRects[0]
+      ? { x: defenderRects[0].x + defenderRects[0].width / 2, y: defenderRects[0].y + defenderRects[0].height / 2 }
+      : null),
+    [defenderRects]
+  );
 
   // Where this style's wipe opens from.
   //
@@ -468,7 +493,12 @@ export default function ResultScreen({ navigation, route }) {
   // first idle (a fitBounds issued before Mapbox has settled is dropped) and
   // only once, or the fit would re-trigger itself on the idle it causes.
   const fitted = useRef(false);
-  const fitToNeighbourhood = () => {
+  // useCallback so this stays referentially stable across ResultScreen's own
+  // re-renders — it's passed straight through to GameMap as `onIdle`, and
+  // GameMap/ShapeSource are PureComponents that treat a changed callback
+  // reference as "re-render me," forcing a full re-stringify of this screen's
+  // map GeoJSON on every unrelated state change (same issue as GlobalMapScreen).
+  const fitToNeighbourhood = useCallback(() => {
     if (fitted.current || seq.isRunning || path.length < 2) return;
     fitted.current = true;
     const lats = path.map((p) => p.latitude);
@@ -488,7 +518,7 @@ export default function ResultScreen({ navigation, route }) {
       24,
       700
     );
-  };
+  }, [seq.isRunning, path]);
 
   // The trail as far as the 3D replay has flown. `replayProgress` is 1 unless
   // a flyover is actually running, so this is the whole path at every other
@@ -946,6 +976,16 @@ export default function ResultScreen({ navigation, route }) {
   };
   const goToShare = () => {
     haptic.light();
+    // DIAGNOSTIC — the claim sequence just behind this transition is the
+    // heaviest thing in the app (map, capture-style effects, every cosmetic
+    // layer on every character in the scene), and expo-image's memory cache
+    // is deliberately built to keep all of it decoded and resident after
+    // those views unmount — see ui/image.js. The share screen crashes on
+    // open with a native OOM-shaped signature (EXC_BAD_ACCESS, ~150MB free
+    // at the time) that survived removing the share card's own character
+    // preview, so the next thing to rule out is that residual cache rather
+    // than anything the share screen renders itself.
+    Image.clearMemoryCache?.();
     setStage(STAGE.SHARE);
   };
 
@@ -1077,9 +1117,7 @@ export default function ResultScreen({ navigation, route }) {
                 visible
                 variant={seq.variant}
                 claimScreenPoint={seq.projection?.claimPoint}
-                contactPoint={defenderRects[0]
-                  ? { x: defenderRects[0].x + defenderRects[0].width / 2, y: defenderRects[0].y + defenderRects[0].height / 2 }
-                  : null}
+                contactPoint={contactPoint}
                 bounds={mapBox}
                 onImpact={seq.onImpact}
                 onComplete={seq.onEncounterComplete}
@@ -1107,14 +1145,21 @@ export default function ResultScreen({ navigation, route }) {
               />
             )}
 
-            {/* A black stage behind the cast for the character-performance
-                part of the cutscene only — gone by the time the ground itself
-                changes colour. See CutsceneBackdrop's own header for why this
-                is a real sibling of CaptureCast rather than another
+            {/* A black stage behind the cast, up until the defenders actually
+                START LEAVING (`defendersExiting`, set from the style's own
+                `onCharacterAction` callback below) — not the reveal phase
+                transition, which fires earlier. The ground changing colour
+                and the rival fleeing it are meant to read as one payoff
+                uncovered together, not the black lifting before either has
+                happened. `showCaptureStyle` already exactly brackets when
+                this cutscene is mounted (POST_REVEAL_BUDGET guarantees every
+                style's exit beat fires before it goes false), so that alone
+                is the "on" condition. See CutsceneBackdrop's own header for
+                why this is a real sibling of CaptureCast rather than another
                 environment primitive inside CaptureStylePlayer. */}
             {seq.showCaptureStyle && (
               <CutsceneBackdrop
-                active={isEncounterPhase(seq.phase)}
+                active={!defendersExiting}
                 playToken={seq.playToken}
                 reducedMotion={reducedMotion}
               />
@@ -1161,6 +1206,7 @@ export default function ResultScreen({ navigation, route }) {
                 tint={team.stroke}
                 ink={team.glow}
                 onTerritoryReveal={seq.onCaptureRevealCue}
+                onCharacterAction={handleCharacterAction}
                 onContact={seq.onContact}
                 stage={captureStage}
                 cast={castRef}
@@ -1233,22 +1279,22 @@ export default function ResultScreen({ navigation, route }) {
               )}
             </View>
             {canPlace && (
+              // Just the conversion, in one weight and one colour. The
+              // instructions that used to follow it said what the controls
+              // below already say by being there, and the two coloured numbers
+              // made a short line read as three different things.
               <Text style={styles.placeHint} pointerEvents="none">
-                <Text style={[type.bodySmBold, { color: team.glow }]}>
-                  {(result.distance_m / 1000).toFixed(2)} km
-                </Text>
-                {'  →  '}
-                <Text style={[type.bodySmBold, { color: team.glow }]}>{formatArea(claimArea)}</Text>
-                {canChoose
-                  ? ' of land. Pick a shortcut or place it along your route.'
-                  : ' of land, shaped by the route you ran.'}
+                {(result.distance_m / 1000).toFixed(2)} km  →  {formatArea(claimArea)} of land
               </Text>
             )}
           </View>
         </View>
 
         {/* the controls, in their own sheet under the map */}
-        <View style={[styles.claimSheet, { maxHeight: winHeight * 0.46 }]}>
+        {/* 0.56, not 0.46: the three recommendations are square now (see
+            ChooseAttack's `recFrame`), which is about 70pt taller than the row
+            of letterboxes they replaced. The map keeps the larger share. */}
+        <View style={[styles.claimSheet, { maxHeight: winHeight * 0.56 }]}>
           <ScrollView
             scrollEnabled={!claimControlActive}
             contentContainerStyle={[
@@ -1579,12 +1625,17 @@ export default function ResultScreen({ navigation, route }) {
           </LinearGradient>
         </PressableScale>
       </Reveal>
+
+      {/* Toggles reachable from HERE because the share-screen crash fires the
+          instant Continue is pressed — there is no chance to reach a control
+          on the crashing screen itself. Self-gates on dev_tools. */}
+      <DevShareDebugPanel style={{ marginHorizontal: space.lg }} />
     </ScrollView>
 
     {/* STAGE 3 — the outward-facing card, story/post shaped and built for
         Instagram rather than cropped out of this screen. The last thing
         before Home: its Done goes back, sharing or not. */}
-    <RunShareSheet
+    {SHARE_DEBUG_FLAGS.mountSheet && <RunShareSheet
       // `&& !crossedOpen` for the same reason `leaveResult` drops the stage:
       // the plaza and the share card must never both be presented. The
       // condition is stated at BOTH ends because they are reached by different
@@ -1599,7 +1650,7 @@ export default function ResultScreen({ navigation, route }) {
       run={shareRun}
       // The runner's own avatar, to stand at the end of their route.
       equipped={equipped}
-    />
+    />}
 
     {/* CROSSED PATHS — the last beat, after the standings have been dismissed
         and only when this run turned somebody up. */}
@@ -1699,7 +1750,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // once OutlinedText added its ink stroke, which produced the blob seen on
   // the claim-complete screen.
   placeTitle: { color: '#FFFFFF', marginBottom: 4 },
-  placeHint: { ...type.bodySm, color: colors.textMuted, marginBottom: space.md },
+  // One weight, one colour, no accents: the theme's plain text ink, which is
+  // black on the light gradient this sits on. NOT a fixed '#000' — the same
+  // gradient goes near-black in dark mode and black on black is nothing.
+  placeHint: { ...type.bodySmBold, color: colors.text, marginBottom: space.md },
 
   takeCard: {
     backgroundColor: colors.cardAlt,

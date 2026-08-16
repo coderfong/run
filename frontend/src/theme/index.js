@@ -6,7 +6,8 @@
 // light surfaces. `darkColors` stays for code that asks for dark explicitly.
 //
 //   tokens.js  — fonts, radius, spacing, elevation, type, run tuning
-//   light.js   — legacy light surfaces (kept for reference/exports)
+//   nb.js      — neo-brutalist tokens: stroke, hard shadow, accents, ink rules
+//   light.js   — the neo-brutalist paper palette
 //   dark.js    — the shipped palette (3 surface elevation steps)
 //   motion.js  — spring/timing presets
 //   haptics.js — restrained haptic wrappers
@@ -14,6 +15,7 @@
 export * from './tokens';
 export * from './dark';
 export * from './motion';
+export * from './nb';
 export * from './toon';
 export { haptic } from './haptics';
 export { colors as lightColors } from './light';

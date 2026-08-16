@@ -337,6 +337,26 @@ export const ENVIRONMENT = Object.freeze({
   DUST: 'dust',
 });
 
+// Which of the above are drawn as vector shapes rather than as sprite art.
+//
+// The project's direction is that a capture scene shows real drawn animation or
+// it does not ship: a handful of fully-authored scenes beats a large pool
+// padded out with shapes. FLASH and DARKEN are excluded from this set on
+// purpose — they are full-screen tinted views, not drawings of anything, and
+// carry no illustrative content a sprite would replace.
+export const VECTOR_ENVIRONMENT_KINDS = Object.freeze(new Set([
+  ENVIRONMENT.SHADOW,
+  ENVIRONMENT.SHADOW_SWEEP,
+  ENVIRONMENT.CRACKS,
+  ENVIRONMENT.GLOW_SEAMS,
+  ENVIRONMENT.RISE,
+  ENVIRONMENT.SWEEP_BAND,
+  ENVIRONMENT.SCANLINE,
+  ENVIRONMENT.WIND,
+  ENVIRONMENT.PULL_FIELD,
+  ENVIRONMENT.DUST,
+]));
+
 // ---------------------------------------------------------------------------
 // How the ground changes hands
 // ---------------------------------------------------------------------------

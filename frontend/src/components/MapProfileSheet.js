@@ -11,6 +11,7 @@ import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { space, useTheme, useThemedType } from '../theme';
 import { Sheet, Card, Row, Button, StatValue, Skeleton } from './ui';
+import { Arrival, useArrival } from '../ui/motion';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 
@@ -26,6 +27,7 @@ export default function MapProfileSheet({ userId, onClose, navigation }) {
   );
 
   const accent = p?.clan_color?.stroke || colors.textMuted;
+  const arriving = useArrival(loading);
 
   return (
     <Sheet visible={!!userId} onClose={onClose}>
@@ -36,7 +38,7 @@ export default function MapProfileSheet({ userId, onClose, navigation }) {
           Runner not found.
         </Text>
       ) : (
-        <>
+        <Arrival active={arriving}>
           <View style={{ alignItems: 'center' }}>
             <PortraitBorder borderKey={p.rank_key || 'wood'} size={84}>
               <CharacterBust equipped={p.avatar} size={84} ring={accent} />
@@ -79,7 +81,7 @@ export default function MapProfileSheet({ userId, onClose, navigation }) {
               }}
             />
           ) : null}
-        </>
+        </Arrival>
       )}
     </Sheet>
   );

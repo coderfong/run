@@ -6,13 +6,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { brand, radius, space, useTheme, useThemedType } from '../theme';
+import { NB, brand, nbInk, radius, space, useTheme, useThemedType } from '../theme';
 import { Bar } from '../ui/motion';
 import AppIcon from './AppIcon';
 import GameLottie from './GameLottie';
 
 export default function EnergyMeter({ status, onPress, compact = false, style }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const [energy, setEnergy] = useState(status?.energy ?? 0);
   const [fx, setFx] = useState(null);
@@ -52,9 +52,21 @@ export default function EnergyMeter({ status, onPress, compact = false, style })
   const barColor = low ? colors.danger : brand.pink;
 
   const Wrap = onPress ? TouchableOpacity : View;
+  // The chip and its track both get a stroke. A progress bar is the one control
+  // where the neo-brutalist edge is doing more than styling: a bare track tinted
+  // `cardAlt` sitting inside a bare chip tinted `card` is two surface steps
+  // apart, which on the dark palette is six percent of lightness and on paper is
+  // almost nothing — so the EMPTY portion of the bar was invisible and the meter
+  // read as a floating pink stub rather than as a bar with a level in it.
+  const ink = nbInk(scheme, colors.card);
   return (
     <Wrap
-      style={[styles.wrap, compact && styles.compact, { backgroundColor: colors.card }, style]}
+      style={[
+        styles.wrap,
+        compact && styles.compact,
+        { backgroundColor: colors.card, borderWidth: NB.strokeThin, borderColor: ink },
+        style,
+      ]}
       onPress={onPress}
       activeOpacity={0.85}
       accessibilityRole={onPress ? 'button' : undefined}
@@ -77,7 +89,7 @@ export default function EnergyMeter({ status, onPress, compact = false, style })
           tick above adding one back. */}
       <Bar
         pct={pct}
-        trackStyle={[styles.track, { backgroundColor: colors.cardAlt }]}
+        trackStyle={[styles.track, { backgroundColor: colors.cardAlt, borderColor: ink }]}
         fillStyle={[styles.fill, { backgroundColor: barColor }]}
       />
       <Text style={[type.bodySmBold, { color: colors.text, minWidth: 46, textAlign: 'right' }]}>
@@ -100,6 +112,8 @@ const styles = StyleSheet.create({
   iconSlot: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   iconSlotCompact: { width: 16, height: 16 },
   energyFx: { position: 'absolute' },
-  track: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', minWidth: 60 },
-  fill: { height: '100%', borderRadius: 4 },
+  // Taller than the 8 it was: a 1pt stroke on each side of an 8pt track leaves
+  // 6pt of actual bar, and the fill stops reading as a quantity.
+  track: { flex: 1, height: 12, borderRadius: 6, overflow: 'hidden', minWidth: 60, borderWidth: 1 },
+  fill: { height: '100%', borderRadius: 6 },
 });

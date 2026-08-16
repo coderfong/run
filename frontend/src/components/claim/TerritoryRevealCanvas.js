@@ -268,7 +268,7 @@ function DissolveBand({ d, fillColor, clipId, y, height, at, progress }) {
 
 // ---------------------------------------------------------------------------
 
-export default function TerritoryRevealCanvas({
+function TerritoryRevealCanvas({
   rings,
   claimPoint,
   fillColor,
@@ -649,3 +649,8 @@ export default function TerritoryRevealCanvas({
     </Animated.View>
   );
 }
+
+// Memoized for the same reason as CaptureStylePlayer (see that file's note):
+// ResultScreen re-renders through the claim sequence's phase transitions and
+// replay-progress ticks far more often than this reveal's own props change.
+export default React.memo(TerritoryRevealCanvas);

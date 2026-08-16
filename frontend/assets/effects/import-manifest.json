@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "sourceRoot": "C:\\Users\\user\\Desktop\\animations",
-  "curatedAssets": 45,
-  "selectedAssets": 44,
-  "selectedBaseBytes": 1114854,
-  "selectedBytes": 4464371,
+  "curatedAssets": 59,
+  "selectedAssets": 58,
+  "selectedBaseBytes": 1716149,
+  "selectedBytes": 6766838,
   "densityScales": [
     1,
     2,
@@ -1949,6 +1949,643 @@
         }
       },
       "runtimeBytes": 9447
+    },
+    {
+      "id": "protection_circle_01",
+      "name": "Protection Circle",
+      "package": "free_pixel",
+      "entry": "8_protectioncircle_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "ward",
+        "shield",
+        "seal"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 61,
+      "fps": 30,
+      "visualScale": 1.8,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::8_protectioncircle_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\protection_circle_01.png",
+      "requirePath": "../../assets/effects/magic/protection_circle_01.png",
+      "fileSize": 53784,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\protection_circle_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 72892
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\protection_circle_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 89166
+        }
+      },
+      "runtimeBytes": 215842
+    },
+    {
+      "id": "weapon_hit_01",
+      "name": "Weapon Hit",
+      "package": "free_pixel",
+      "entry": "10_weaponhit_spritesheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "hit",
+        "impact",
+        "strike"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 6,
+      "rows": 6,
+      "frameCount": 31,
+      "fps": 30,
+      "visualScale": 1.8,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::10_weaponhit_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\weapon_hit_01.png",
+      "requirePath": "../../assets/effects/impact/weapon_hit_01.png",
+      "fileSize": 6515,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\weapon_hit_01@2x.png",
+          "width": 1200,
+          "height": 1200,
+          "fileSize": 10576
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\impact\\weapon_hit_01@3x.png",
+          "width": 1800,
+          "height": 1800,
+          "fileSize": 18363
+        }
+      },
+      "runtimeBytes": 35454
+    },
+    {
+      "id": "phantom_cross_01",
+      "name": "Phantom Cross",
+      "package": "free_pixel",
+      "entry": "14_phantom_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "phantom",
+        "spectral",
+        "residue"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 61,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::14_phantom_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\phantom_cross_01.png",
+      "requirePath": "../../assets/effects/magic/phantom_cross_01.png",
+      "fileSize": 30395,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\phantom_cross_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 41091
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\phantom_cross_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 58019
+        }
+      },
+      "runtimeBytes": 129505
+    },
+    {
+      "id": "fel_spell_01",
+      "name": "Fel Spell",
+      "package": "free_pixel",
+      "entry": "17_felspell_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "corruption",
+        "acid",
+        "spread"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 10,
+      "rows": 10,
+      "frameCount": 91,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::17_felspell_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\fel_spell_01.png",
+      "requirePath": "../../assets/effects/magic/fel_spell_01.png",
+      "fileSize": 263943,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\fel_spell_01@2x.png",
+          "width": 2000,
+          "height": 2000,
+          "fileSize": 305561
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\fel_spell_01@3x.png",
+          "width": 3000,
+          "height": 3000,
+          "fileSize": 375939
+        }
+      },
+      "runtimeBytes": 945443
+    },
+    {
+      "id": "midnight_01",
+      "name": "Midnight",
+      "package": "free_pixel",
+      "entry": "18_midnight_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "dark",
+        "night",
+        "storm"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 61,
+      "fps": 30,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::18_midnight_spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\midnight_01.png",
+      "requirePath": "../../assets/effects/magic/midnight_01.png",
+      "fileSize": 134851,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\midnight_01@2x.png",
+          "width": 1600,
+          "height": 1600,
+          "fileSize": 156463
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\midnight_01@3x.png",
+          "width": 2400,
+          "height": 2400,
+          "fileSize": 185068
+        }
+      },
+      "runtimeBytes": 476382
+    },
+    {
+      "id": "boom_mid_01",
+      "name": "Mid Boom",
+      "package": "ansimuz_explosions",
+      "entry": "explosion pack 1/Explosions pack/explosion-1-b/spritesheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "chain"
+      ],
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "columns": 8,
+      "rows": 1,
+      "frameCount": 8,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-b/spritesheet.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_mid_01.png",
+      "requirePath": "../../assets/effects/explosion/boom_mid_01.png",
+      "fileSize": 3110,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_mid_01@2x.png",
+          "width": 1024,
+          "height": 128,
+          "fileSize": 3974
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_mid_01@3x.png",
+          "width": 1536,
+          "height": 192,
+          "fileSize": 5020
+        }
+      },
+      "runtimeBytes": 12104
+    },
+    {
+      "id": "boom_large_01",
+      "name": "Large Boom",
+      "package": "ansimuz_explosions",
+      "sequence": {
+        "prefix": "explosion pack 1/Explosions pack/explosion-1-d/Sprites/explosion-d",
+        "extension": ".png",
+        "columns": 4
+      },
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "chain",
+        "large"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 4,
+      "rows": 3,
+      "frameCount": 12,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-d/Sprites/explosion-d*.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_large_01.png",
+      "requirePath": "../../assets/effects/explosion/boom_large_01.png",
+      "fileSize": 7622,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_large_01@2x.png",
+          "width": 1024,
+          "height": 768,
+          "fileSize": 11283
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_large_01@3x.png",
+          "width": 1536,
+          "height": 1152,
+          "fileSize": 16636
+        }
+      },
+      "runtimeBytes": 35541
+    },
+    {
+      "id": "boom_huge_01",
+      "name": "Huge Boom",
+      "package": "ansimuz_explosions",
+      "sequence": {
+        "prefix": "explosion pack 1/Explosions pack/explosion-1-e/Sprites/explosion-e",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "chain",
+        "finale"
+      ],
+      "frameWidth": 192,
+      "frameHeight": 192,
+      "columns": 6,
+      "rows": 4,
+      "frameCount": 22,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-e/Sprites/explosion-e*.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_huge_01.png",
+      "requirePath": "../../assets/effects/explosion/boom_huge_01.png",
+      "fileSize": 7419,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_huge_01@2x.png",
+          "width": 2304,
+          "height": 1536,
+          "fileSize": 19807
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\explosion\\boom_huge_01@3x.png",
+          "width": 3456,
+          "height": 2304,
+          "fileSize": 39917
+        }
+      },
+      "runtimeBytes": 67143
+    },
+    {
+      "id": "emote_note_01",
+      "name": "Note Balloon",
+      "package": "icons_emote",
+      "entry": "Icons emote/Center/12 - Note.png",
+      "category": "emoji",
+      "tags": [
+        "capture",
+        "emote",
+        "balloon",
+        "note"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 8,
+      "rows": 2,
+      "frameCount": 9,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Icons emote.zip::Icons emote/Center/12 - Note.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_note_01.png",
+      "requirePath": "../../assets/effects/emoji/emote_note_01.png",
+      "fileSize": 2558,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_note_01@2x.png",
+          "width": 512,
+          "height": 128,
+          "fileSize": 2099
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_note_01@3x.png",
+          "width": 768,
+          "height": 192,
+          "fileSize": 2680
+        }
+      },
+      "runtimeBytes": 7337
+    },
+    {
+      "id": "emote_sleeping_01",
+      "name": "Sleeping Balloon",
+      "package": "icons_emote",
+      "entry": "Icons emote/Center/10 - Sleeping.png",
+      "category": "emoji",
+      "tags": [
+        "capture",
+        "emote",
+        "balloon",
+        "sleeping"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 8,
+      "rows": 2,
+      "frameCount": 9,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Icons emote.zip::Icons emote/Center/10 - Sleeping.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_sleeping_01.png",
+      "requirePath": "../../assets/effects/emoji/emote_sleeping_01.png",
+      "fileSize": 2128,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_sleeping_01@2x.png",
+          "width": 512,
+          "height": 128,
+          "fileSize": 1913
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_sleeping_01@3x.png",
+          "width": 768,
+          "height": 192,
+          "fileSize": 2701
+        }
+      },
+      "runtimeBytes": 6742
+    },
+    {
+      "id": "emote_dots_01",
+      "name": "Dots Balloon",
+      "package": "icons_emote",
+      "entry": "Icons emote/Center/09 - Dots.png",
+      "category": "emoji",
+      "tags": [
+        "capture",
+        "emote",
+        "balloon",
+        "dots"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 8,
+      "rows": 2,
+      "frameCount": 9,
+      "fps": 14,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Icons emote.zip::Icons emote/Center/09 - Dots.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_dots_01.png",
+      "requirePath": "../../assets/effects/emoji/emote_dots_01.png",
+      "fileSize": 1778,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_dots_01@2x.png",
+          "width": 512,
+          "height": 128,
+          "fileSize": 1357
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\emoji\\emote_dots_01@3x.png",
+          "width": 768,
+          "height": 192,
+          "fileSize": 1896
+        }
+      },
+      "runtimeBytes": 5031
+    },
+    {
+      "id": "attack_up_01",
+      "name": "Attack Up Aura",
+      "package": "super_pixel_fantasy",
+      "sequence": {
+        "prefix": "Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_attack_up_large_red/frame",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "magic",
+      "tags": [
+        "capture",
+        "aura",
+        "buff",
+        "character"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 6,
+      "rows": 3,
+      "frameCount": 18,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Fantasy FX Pack 3 Free Version.zip::Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_attack_up_large_red/frame*.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\attack_up_01.png",
+      "requirePath": "../../assets/effects/magic/attack_up_01.png",
+      "fileSize": 25805,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\attack_up_01@2x.png",
+          "width": 1536,
+          "height": 768,
+          "fileSize": 35269
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\attack_up_01@3x.png",
+          "width": 2304,
+          "height": 1152,
+          "fileSize": 47316
+        }
+      },
+      "runtimeBytes": 108390
+    },
+    {
+      "id": "defense_up_01",
+      "name": "Defense Up Aura",
+      "package": "super_pixel_fantasy",
+      "sequence": {
+        "prefix": "Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_defense_up_large_blue/frame",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "magic",
+      "tags": [
+        "capture",
+        "aura",
+        "buff",
+        "character"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 6,
+      "rows": 3,
+      "frameCount": 18,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Fantasy FX Pack 3 Free Version.zip::Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_defense_up_large_blue/frame*.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\defense_up_01.png",
+      "requirePath": "../../assets/effects/magic/defense_up_01.png",
+      "fileSize": 23373,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\defense_up_01@2x.png",
+          "width": 1536,
+          "height": 768,
+          "fileSize": 32512
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\defense_up_01@3x.png",
+          "width": 2304,
+          "height": 1152,
+          "fileSize": 43588
+        }
+      },
+      "runtimeBytes": 99473
+    },
+    {
+      "id": "haste_01",
+      "name": "Haste Aura",
+      "package": "super_pixel_fantasy",
+      "sequence": {
+        "prefix": "Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_haste_large_green/frame",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "magic",
+      "tags": [
+        "capture",
+        "aura",
+        "buff",
+        "character"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 6,
+      "rows": 5,
+      "frameCount": 29,
+      "fps": 20,
+      "releaseApproved": true,
+      "sourcePath": "C:\\Users\\user\\Desktop\\animations\\Super Pixel Fantasy FX Pack 3 Free Version.zip::Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_haste_large_green/frame*.png",
+      "importedPath": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\haste_01.png",
+      "requirePath": "../../assets/effects/magic/haste_01.png",
+      "fileSize": 38014,
+      "densityScales": [
+        1,
+        2,
+        3
+      ],
+      "densityVariants": {
+        "2": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\haste_01@2x.png",
+          "width": 1536,
+          "height": 1280,
+          "fileSize": 52075
+        },
+        "3": {
+          "path": "C:\\Users\\user\\Desktop\\run\\frontend\\assets\\effects\\magic\\haste_01@3x.png",
+          "width": 2304,
+          "height": 1920,
+          "fileSize": 67991
+        }
+      },
+      "runtimeBytes": 158080
     }
   ],
   "packages": {
@@ -1996,6 +2633,20 @@
       "license": "CC0-1.0",
       "releaseApproved": true,
       "credit": "Tiny RPG - Emoji Pack I by Gabriel \"tiopalada\" Lima (CC0 1.0)"
+    },
+    "icons_emote": {
+      "container": "Icons emote.zip",
+      "license": "Commercial and personal use; free editing; no redistribution or resale; attribution appreciated",
+      "releaseApproved": true,
+      "credit": "Emote balloons by RiaKare",
+      "licenseNote": "License.txt inside the download permits both commercial and personal use, free editing, and game or production use; it prohibits redistributing or reselling the assets themselves, which PASER does not do."
+    },
+    "super_pixel_fantasy": {
+      "container": "Super Pixel Fantasy FX Pack 3 Free Version.zip",
+      "license": "Bundle with game OK (commercial and non-commercial); no redistribution of the pack itself; attribution required; not for bundling into a large game engine/tool product",
+      "releaseApproved": true,
+      "credit": "Super Pixel Fantasy FX Pack 3 - Will Tice / unTied Games",
+      "licenseNote": "license.txt inside the download points to untiedgames.com/files/license.txt and is quoted in full there: bundling assets with a game is explicitly OK, reselling or reuploading the pack itself is not, and PASER only ships the compiled sprites inside the app."
     }
   }
 }

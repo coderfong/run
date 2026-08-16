@@ -24,19 +24,30 @@ export default function GameLottie({
 
   if (!visible || reduced || !spec) return null;
 
+  // NEVER INTERACTIVE. Almost every caller drops one of these over a control —
+  // the kudos burst sits on top of the heart, the rank-up burst on top of a
+  // leaderboard row — at a size several times the control's own. A bare
+  // LottieView is a normal view that hit-tests, so once one had played it went
+  // on swallowing every tap aimed at what it was celebrating: liking a run on
+  // the feed made the heart (and its neighbour, the comment button) dead for
+  // the rest of that card's life. The wrapper carries the positioning so
+  // `pointerEvents` covers the animation whatever the caller's style does with
+  // it, and the Lottie fills the wrapper.
   return (
-    <LottieView
-      key={`${name}:${trigger}`}
-      source={spec.source}
-      autoPlay
-      loop={loop ?? !!spec.loop}
-      speed={speed}
-      resizeMode="contain"
-      onAnimationFinish={(cancelled) => {
-        if (!cancelled) onFinish?.();
-      }}
-      style={[{ width: size, height: size }, style]}
-    />
+    <View pointerEvents="none" style={[{ width: size, height: size }, style]}>
+      <LottieView
+        key={`${name}:${trigger}`}
+        source={spec.source}
+        autoPlay
+        loop={loop ?? !!spec.loop}
+        speed={speed}
+        resizeMode="contain"
+        onAnimationFinish={(cancelled) => {
+          if (!cancelled) onFinish?.();
+        }}
+        style={StyleSheet.absoluteFill}
+      />
+    </View>
   );
 }
 

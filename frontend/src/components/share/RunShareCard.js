@@ -1,5 +1,12 @@
-// The image that leaves the app, built to Strava's shape: the route drawn big,
-// a stat stack under it and the brand mark at the bottom — on NOTHING.
+// The image that leaves the app, built to Strava's shape: a route, four
+// numbers under it and the wordmark at the bottom — on NOTHING.
+//
+// THREE THINGS. That is the whole card, and the simplification on 2026-08-16
+// is what got it there: the territory headline (an eyebrow and a 44pt km²) came
+// off the top, area moved into the numbers where it is said once instead of
+// twice, the route stopped taking every pixel the furniture did not and now
+// gets a capped band, and the runner figure starts switched off. Empty space on
+// a sticker is not waste — it is the runner's own story showing through.
 //
 // The card is a STICKER and only a sticker. It exports as a transparent PNG,
 // and Instagram lays it over whatever the runner already has on their story.
@@ -17,13 +24,15 @@
 //      carry its own contrast — the text shadows and the route's dark
 //      under-stroke are not decoration, they are what stops white on white.
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Image, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
-import PaserMark from '../PaserMark';
 import LogoRunner, { MARK_FEET } from '../character/LogoRunner';
+import TrailDecorations, { TRAIL_NONE } from './trailDecorations';
+import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 import { brand, type, withAlpha } from '../../theme';
+import { SHARE_DEBUG_FLAGS, shareCrumb } from '../../utils/shareDebugFlags';
 
 // The canvas colour Instagram paints BEHIND the sticker, until the runner picks
 // their own background. Never painted on the card itself, which is transparent
@@ -43,6 +52,11 @@ const STORY_SAFE_BOTTOM = 0.15;
 // resolution. Keeping every recorder fix can create a multi-thousand-command
 // path exactly when Continue mounts the share preview.
 const MAX_DRAW_POINTS = 480;
+// How much of the card the route is allowed to take. The same share in both
+// formats: the square's numbers sat right under the line when it was given
+// more, and "the route is smaller" is not a thing that should depend on which
+// shape you picked.
+const ROUTE_SHARE = 0.3;
 
 // --- geometry ---------------------------------------------------------------
 
@@ -84,13 +98,29 @@ function projectGroups(groups, w, h, pad) {
       : Array.from({ length: MAX_DRAW_POINTS }, (_, i) =>
         pts[Math.round((i * (pts.length - 1)) / (MAX_DRAW_POINTS - 1))]
       );
+    // Kept as points as well as as a path string: the trail decorations are
+    // placed BY DISTANCE along the line, which a `d` string cannot answer.
+    const xy = drawPts.map(at);
     let d = '';
-    drawPts.forEach((p, i) => {
-      const [x, y] = at(p);
+    xy.forEach(([x, y], i) => {
       d += `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)} `;
     });
-    return { d: g.close ? `${d}Z` : d.trim(), start: at(pts[0]), end: at(pts[pts.length - 1]) };
+    return {
+      d: g.close ? `${d}Z` : d.trim(),
+      pts: xy,
+      start: at(pts[0]),
+      end: at(pts[pts.length - 1]),
+    };
   });
+}
+
+// The recorder hands over `{latitude, longitude}` objects; the feed and the
+// claim rings speak `[lon, lat]` pairs. The card is drawn from both — a run
+// card opened off the home feed is the same component as the one the result
+// screen mounts — so it takes either and says so in one place.
+function lonLat(p) {
+  if (Array.isArray(p)) return [Number(p[0]), Number(p[1])];
+  return [Number(p?.longitude), Number(p?.latitude)];
 }
 
 // --- formatting -------------------------------------------------------------
@@ -161,8 +191,11 @@ export function availableStats(run = {}) {
   return out;
 }
 
-// What a card shows before anyone touches anything.
-export const DEFAULT_STATS = ['distance', 'pace', 'time', 'elevation'];
+// What a card shows before anyone touches anything: Strava's three, plus the
+// ground — the one number Strava does not have. Pace came out when the card was
+// simplified; it is still a chip, it is just not on by default, because four
+// numbers is a 2x2 block and five is a block with a gap in it.
+export const DEFAULT_STATS = ['distance', 'time', 'elevation', 'territory'];
 
 
 // The accents on offer. The clan colour leads (it is the runner's own), then a
@@ -186,7 +219,12 @@ export const ACCENTS = [
 // The row these sit in has a FIXED height (STAT_ROW_U) that the route's band is
 // measured against — a stat block that grows without the route shrinking is how
 // a long route ends up drawn straight through the numbers.
-const STAT_ROW_U = 46;
+//
+// It is deliberately taller than the type in it. Four numbers sit two above and
+// two below, and at the old 46 the first row's digits ran straight into the
+// second row's label — two rows that read as one block of text. The extra
+// height IS the gap between them; each pair gets its own line.
+const STAT_ROW_U = 62;
 
 // Alignment, as the two things a layout needs it for.
 const FLEX_ALIGN = { left: 'flex-start', center: 'center', right: 'flex-end' };
@@ -198,18 +236,19 @@ const ROW_JUSTIFY = { left: 'flex-start', center: 'center', right: 'flex-end' };
 // where translucent labels simply vanish. So everything is fully opaque and
 // carries a tight shadow that reads as an outline rather than a glow.
 //
-// `dark` flips the whole thing for a bright story: ink type carrying a white
-// halo. Without it the only options on a snowy or sunlit shot are "washed out"
-// and "washed out".
-function toneFor(textColor = 'light') {
-  const dark = textColor === 'dark';
-  const ink = dark ? '#0C0C10' : '#FFFFFF';
-  const shadow = dark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.85)';
-  const fade = (a) => (dark ? `rgba(12,12,16,${a})` : `rgba(255,255,255,${a})`);
-  return { text: ink, label: fade(0.98), unit: fade(0.96), shadow, radius: 5 };
-}
+// WHITE, always. There used to be a second tone here — ink type carrying a
+// white halo, offered as a Light/Dark switch on the sheet — and it was cut:
+// black type on a sticker with no background of its own is the one combination
+// that disappears, and nobody wanted it over their own story anyway.
+const TONE = {
+  text: '#FFFFFF',
+  label: 'rgba(255,255,255,0.98)',
+  unit: 'rgba(255,255,255,0.96)',
+  shadow: 'rgba(0,0,0,0.85)',
+  radius: 5,
+};
 
-function Stat({ label, value, unit, u, tone, align }) {
+function Stat({ label, value, unit, u, tone, align, color }) {
   return (
     <View style={{ flex: 1, alignItems: FLEX_ALIGN[align] }}>
       <Text
@@ -235,7 +274,7 @@ function Stat({ label, value, unit, u, tone, align }) {
             {
               fontSize: 27 * u,
               lineHeight: 32 * u,
-              color: tone.text,
+              color: color || tone.text,
               textShadowColor: tone.shadow,
               textShadowRadius: tone.radius * u,
             },
@@ -274,10 +313,12 @@ function Stat({ label, value, unit, u, tone, align }) {
  * @param {Array}    props.path          recorded route [{latitude, longitude}]
  * @param {Array}    props.rings         claimed/claimable rings [[[lon,lat], …]]
  * @param {string}   props.accent        accent colour; defaults to the clan's
- * @param {'light'|'dark'} props.textColor
  * @param {'left'|'center'|'right'} props.align
  * @param {string[]} props.stats         which metrics to show (keys)
  * @param {boolean}  props.showRoute     draw the route at all
+ * @param {string}   props.trail         decoration growing out of the route;
+ *                                       ignored while TRAIL_DECORATIONS_ENABLED
+ *                                       is false
  * @param {object}   props.equipped      the avatar, running at the route's end
  * @param {boolean}  props.showCharacter
  * @param {boolean}  props.flip          face the other way
@@ -290,15 +331,18 @@ export default function RunShareCard({
   path = [],
   rings = null,
   accent,
-  textColor = 'light',
   align = 'left',
   stats: statKeys = DEFAULT_STATS,
   showRoute = true,
+  trail: wantedTrail = TRAIL_NONE,
   equipped = null,
   showCharacter = true,
   flip = false,
   cardRef,
 }) {
+  // The one gate that matters: parked means parked, whatever a caller asks
+  // for. See TRAIL_DECORATIONS_ENABLED.
+  const trail = TRAIL_DECORATIONS_ENABLED ? wantedTrail : TRAIL_NONE;
   const spec = SHARE_FORMATS[format] || SHARE_FORMATS.story;
   const height = width * spec.ratio;
   const u = width / 360; // one design unit — every size below is in these
@@ -312,21 +356,33 @@ export default function RunShareCard({
 
   // No fill of any kind, so the export keeps its alpha and Instagram lays it
   // over the runner's own selfie.
-  const tone = toneFor(textColor);
+  const tone = TONE;
 
-  // The route owns the card rather than a little square in the middle of it:
-  // it takes every pixel the fixed furniture does not. Measured, not guessed —
-  // the headline, the numbers and the signature all have known heights, so the
-  // route can fill the rest without ever running into them.
+  // THREE THINGS AND NOTHING ELSE: the route, the numbers, the wordmark. That
+  // is the Strava shape and it is what this card is now.
+  //
+  // The territory headline that used to sit at the top — the eyebrow and the
+  // big km² — is gone. Area is one of the four numbers instead, so it is said
+  // once rather than twice, and losing the block is most of what makes the card
+  // read as simple.
+  //
   // Chosen order is the run's own order, not the tap order — a card whose
   // numbers rearrange as you toggle them is a card you cannot aim.
   const stats = availableStats(run).filter((s) => statKeys.includes(s.key));
   const signatureH = 26 * u;
   const statRows = Math.ceil(stats.length / 2);
   const statsH = statRows * STAT_ROW_U * u;
-  const headH = 62 * u; // the territory headline at the top
   const bottomBlock = padBottom + signatureH + 14 * u + statsH;
-  const artH = Math.max(height * 0.18, height - padTop - headH - bottomBlock - 16 * u);
+  // The route no longer takes every pixel the furniture does not. It gets a
+  // BAND, capped at a share of the card, and whatever is left over stays empty
+  // — on a sticker that space is not waste, it is the runner's own story
+  // showing through. A route drawn as large as the card allows is the single
+  // thing that made this look like a poster instead of a sticker.
+  const free = height - padTop - bottomBlock - 16 * u;
+  const artH = Math.max(height * 0.16, Math.min(free, height * ROUTE_SHARE));
+  // Centred in the space it was given, so the gap above the route and the gap
+  // down to the numbers are the same gap.
+  const artTop = padTop + Math.max(0, (free - artH) / 2);
   const shapes = useMemo(() => {
     const groups = [];
     const outer = (rings?.[0] || []).filter(
@@ -334,7 +390,7 @@ export default function RunShareCard({
     );
     if (outer.length >= 3) groups.push({ points: outer, close: true, kind: 'territory' });
     const routePoints = (path || [])
-      .map((p) => [Number(p?.longitude), Number(p?.latitude)])
+      .map(lonLat)
       .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
     if (routePoints.length >= 2) {
       groups.push({
@@ -354,23 +410,25 @@ export default function RunShareCard({
   // where they stopped: feet on the route's end dot, the one point on the card
   // that means anything. Clamped so a run that finished at an edge doesn't post
   // half a figure.
+  useEffect(() => {
+    shareCrumb('RunShareCard mounted', { ...SHARE_DEBUG_FLAGS });
+  }, []);
+
   const runnerSize = width * 0.21;
   const runner = (() => {
-    // DIAGNOSTIC — the share screen crashes on open (EXC_BAD_ACCESS deep in
-    // Hermes, a different exact call site each build) and every fix so far
-    // has landed on the character rig without stopping it. This forces the
-    // runner off entirely so a rebuild can prove or rule out LogoRunner /
-    // CharacterRig as the cause before chasing it further. Revert once that
-    // answer is in hand — see the conversation this landed in for context.
-    if (true) return null;
+    // The rig spent months as the prime suspect for the crash-on-open and was
+    // never it: the sheet still died with this whole card unmounted. The real
+    // cause was an `undefined` brand icon in RunShareSheet.js. The flag stays
+    // as a way to take the avatar out from the device, but it is ON.
+    if (!SHARE_DEBUG_FLAGS.runner) return null;
     if (!showCharacter || !equipped || !route) return null;
     // The mark's feet are not at the bottom edge of its square, so the drop is
     // measured to the soles rather than to the image.
-    const wanted = padTop + headH + route.end[1] - runnerSize * MARK_FEET + 3 * u;
-    // A route that finished high or low would otherwise put the figure through
-    // the headline or the numbers. Vertical room is whatever is left between
-    // them; if there is none, the top of that gap wins.
-    const ceiling = padTop + headH * 0.5;
+    const wanted = artTop + route.end[1] - runnerSize * MARK_FEET + 3 * u;
+    // A route that finished high or low would otherwise put the figure off the
+    // top of the card or through the numbers. Vertical room is whatever is left
+    // between them; if there is none, the top of that gap wins.
+    const ceiling = padTop;
     const floor = height - (padBottom + signatureH + 14 * u + statsH) - runnerSize - 6 * u;
     return {
       left: Math.max(6 * u, Math.min(width - runnerSize - 6 * u, route.end[0] - runnerSize / 2)),
@@ -392,75 +450,18 @@ export default function RunShareCard({
       }}
     >
 
-      {/* --- the headline: the ground, which is the whole point of PASER --- */}
-      <View
-        style={{
-          position: 'absolute',
-          left: padX,
-          right: padX,
-          top: padTop,
-          alignItems: FLEX_ALIGN[align],
-        }}
-      >
-        <Text
-          style={[
-            type.labelSm,
-            {
-              fontSize: 11 * u,
-              letterSpacing: 1.8 * u,
-              color: tone.label,
-              textShadowColor: tone.shadow,
-              textShadowRadius: tone.radius * u,
-            },
-          ]}
-        >
-          {run.claimed ? 'TERRITORY CLAIMED' : 'TERRITORY EARNED'}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 2 * u }}>
-          <Text
-            style={[
-              type.statHero,
-              {
-                fontSize: 44 * u,
-                lineHeight: 50 * u,
-                color: glow,
-                textShadowColor: tone.shadow,
-                textShadowRadius: tone.radius * u,
-              },
-            ]}
-          >
-            {km2(run.areaM2)}
-          </Text>
-          <Text
-            style={[
-              type.statMd,
-              {
-                fontSize: 18 * u,
-                color: tone.unit,
-                textShadowColor: tone.shadow,
-                textShadowRadius: tone.radius * u,
-                marginLeft: 4 * u,
-                marginBottom: 8 * u,
-              },
-            ]}
-          >
-            km²
-          </Text>
-        </View>
-      </View>
-
-      {/* --- the route, drawn across the card --- */}
+      {/* --- the route: a band, not the whole card --- */}
       <View
         style={{
           position: 'absolute',
           left: 0,
-          top: padTop + headH,
+          top: artTop,
           width,
           height: artH,
           opacity: showRoute ? 1 : 0,
         }}
       >
-        <Svg width={width} height={artH}>
+        {SHARE_DEBUG_FLAGS.cardSvg && <Svg width={width} height={artH}>
           {territory && (
             <Path
               d={territory.d}
@@ -478,7 +479,7 @@ export default function RunShareCard({
               <Path
                 d={route.d}
                 fill="none"
-                stroke={textColor === 'dark' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.4)'}
+                stroke="rgba(0,0,0,0.4)"
                 strokeWidth={11 * u}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -491,11 +492,19 @@ export default function RunShareCard({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
+              {/* Over the line, under the dots: the trail is decorated, but
+                  where the run started and where it ended still win.
+
+                  PARKED — `TRAIL_DECORATIONS_ENABLED` is false, so `trail` is
+                  pinned to none and nothing draws here. The component, its
+                  shapes and its placement maths are kept whole for whenever it
+                  is switched back on. */}
+              <TrailDecorations points={route.pts} decoration={trail} color={glow} u={u} />
               <Circle cx={route.start[0]} cy={route.start[1]} r={7 * u} fill={tone.text} />
               <Circle cx={route.end[0]} cy={route.end[1]} r={7 * u} fill={glow} />
             </>
           )}
-        </Svg>
+        </Svg>}
       </View>
 
       {/* --- the runner: the PASER mark, wearing the player's own head --- */}
@@ -522,6 +531,9 @@ export default function RunShareCard({
         }}
       >
         {stats.map(({ key, ...stat }) => (
+          // The ground is the one number Strava does not have, so it is the one
+          // that wears the accent. It also gives the accent swatches something
+          // to do now that the big coloured headline is gone.
           <View
             key={key}
             style={{
@@ -531,14 +543,21 @@ export default function RunShareCard({
               height: STAT_ROW_U * u,
             }}
           >
-            <Stat {...stat} u={u} tone={tone} align={align} />
+            <Stat
+              {...stat}
+              u={u}
+              tone={tone}
+              align={align}
+              color={key === 'territory' ? glow : undefined}
+            />
           </View>
         ))}
       </View>
 
-      {/* --- signature. The mark and the wordmark only: the handle, clan and
-              date were noise on somebody's own story, where the handle is
-              already at the top of the screen and the date is today. --- */}
+      {/* --- signature. THE WORDMARK ALONE — no mark beside it, no handle, no
+              clan, no date. Every one of those was noise on somebody's own
+              story, where the handle is already at the top of the screen and
+              the date is today. --- */}
       <View
         style={{
           position: 'absolute',
@@ -548,10 +567,8 @@ export default function RunShareCard({
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: ROW_JUSTIFY[align],
-          gap: 9 * u,
         }}
       >
-        <PaserMark size={26 * u} color={tone.text} />
         <Text
           style={[
             type.labelSm,

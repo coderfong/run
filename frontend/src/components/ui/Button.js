@@ -1,16 +1,22 @@
 // Button — the one button. Variants: primary (accent fill), secondary
-// (neutral surface), destructive (desaturated danger), ghost (text only),
-// gradient (the PASER pink→purple brand CTA), outline (thin brand border).
-// Press feedback = scale 0.97 + light haptic.
+// (neutral surface), destructive (danger fill), ghost (text only), gradient
+// (the PASER brand CTA), outline (paper fill, accent stroke).
+//
+// Press feedback is now the NEO-BRUTALIST PRESS on every variant that has a
+// box: the button sits above the page on a hard offset shadow and slides down
+// into it under the thumb, landing flush. See `PressableShift`. Only `ghost`
+// and the framed path keep the old scale-and-haptic, because neither of them
+// has a shadow to press into.
 
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { brand, radius, space, useTheme, useThemedType } from '../../theme';
-import { haptic, PressableScale } from '../../ui/motion';
+import { brand, radius, space, toonSurface, useTheme, useThemedType } from '../../theme';
+import { haptic, PressableScale, PressableShift } from '../../ui/motion';
 import { INK, framePose as poseFor, frameVariant } from '../../ui/frameRegistry';
 import Framed from './Framed';
+import HardShadow from './HardShadow';
 
 // A framed button's fill is the frame's PAPER — the outline's own silhouette,
 // wobble and all. Anything the button paints for itself is a rounded rectangle,
@@ -62,7 +68,7 @@ export default function Button({
   frameBoil = false,
   style,
 }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const acc = accent ?? colors.primary;
   // A caller that has to line a button up with something beside it (the Join
@@ -94,7 +100,16 @@ export default function Button({
     bg = 'transparent';
     fg = acc;
   } else if (variant === 'outline') {
-    bg = 'transparent';
+    // Was a transparent box with a 1.5pt pink hairline, which sat next to a
+    // filled button reading as a disabled input. The neo-brutalist secondary is
+    // a PAPER-FILLED box wearing the same heavy stroke as its filled neighbour,
+    // in the accent colour — same weight, different fill, unmistakably the
+    // second option rather than a lesser one.
+    //
+    // It also has to be filled for a much more mechanical reason: the hard
+    // shadow is a real rectangle sitting behind the button, so a transparent
+    // button shows its own shadow straight through itself.
+    bg = colors.card;
     fg = brand.pink;
     border = brand.pink;
   }
@@ -198,25 +213,64 @@ export default function Button({
     );
   }
 
+  // The unframed button: the neo-brutalist control. `ghost` is the exception
+  // and stays a bare label — the reference system sheet has the same three
+  // rungs (filled, outlined, text) and the third one is deliberately chrome-
+  // free, so giving it a stroke would flatten the hierarchy to two.
+  const nb = toonSurface(colors, scheme, { on: bg, accent: acc });
+  const hollow = variant === 'ghost';
+
+  if (hollow) {
+    return (
+      <PressableScale
+        onPress={handlePress}
+        disabled={disabled || loading}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ disabled: disabled || loading }}
+        style={[{ ...shape, alignSelf: full ? 'stretch' : 'flex-start', opacity: disabled ? 0.5 : 1 }, style]}
+      >
+        {inner}
+      </PressableScale>
+    );
+  }
+
   return (
-    <PressableScale
-      onPress={handlePress}
-      disabled={disabled || loading}
-      accessibilityRole="button"
-      accessibilityLabel={title}
-      accessibilityState={{ disabled: disabled || loading }}
-      style={[
-        {
-          ...shape,
-          backgroundColor: bg,
-          ...(border ? { borderWidth: 1.5, borderColor: border } : {}),
-          alignSelf: full ? 'stretch' : 'flex-start',
-          opacity: disabled ? 0.5 : 1,
-        },
-        style,
-      ]}
+    // HardShadow rather than `nb.shadow`, for two reasons. It is the only form
+    // that renders on Android at all, and — the one that matters here — the
+    // drop has to be a real view that STAYS PUT while the button slides into
+    // it. An iOS layer shadow travels with the layer, so pressing would move
+    // the button and its shadow together and nothing would ever land flush.
+    <HardShadow
+      offset={nb.offset}
+      radius={shape.borderRadius}
+      accent={acc}
+      on={bg}
+      style={{ alignSelf: full ? 'stretch' : 'flex-start' }}
     >
-      {inner}
-    </PressableScale>
+      <PressableShift
+        onPress={handlePress}
+        disabled={disabled || loading}
+        offset={nb.offset}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ disabled: disabled || loading }}
+        style={[
+          {
+            ...shape,
+            backgroundColor: bg,
+            borderWidth: nb.outline.borderWidth,
+            // The accent stroke when a variant asked for one, otherwise the
+            // scheme's ink judged against this button's own fill — so a pink
+            // CTA and a paper secondary both get a stroke that shows.
+            borderColor: border || nb.ink,
+            opacity: disabled ? 0.5 : 1,
+          },
+          style,
+        ]}
+      >
+        {inner}
+      </PressableShift>
+    </HardShadow>
   );
 }

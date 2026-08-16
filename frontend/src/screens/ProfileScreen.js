@@ -25,7 +25,7 @@ import PrivacySettings from '../components/PrivacySettings';
 import HealthSyncSettings from '../components/HealthSyncSettings';
 import RecoveryEmail from '../components/RecoveryEmail';
 import RivalCard from '../components/RivalCard';
-import { Bar, PressableScale, Reveal, haptic } from '../ui/motion';
+import { Arrival, Bar, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
 import { brand, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { levelBandColor } from '../config/progression';
 import { IAP_ENABLED } from '../config/releaseFeatures';
@@ -149,6 +149,10 @@ export default function ProfileScreen({ navigation }) {
   // fetch on a fresh install.
   const { data: stats } = useQuery('me:stats', api.meStats, { fallback: {} });
   const { data: runs } = useQuery('me:runs', api.meRuns, { fallback: [] });
+  // The wall and the run list fill in independently of each other, so each
+  // keeps its own latch — one of them arriving must not fade the other.
+  const statsArriving = useArrival(!stats);
+  const runsArriving = useArrival(!runs);
   const { data: runDays } = useQuery('me:run-days', api.runDays, {
     fallback: { days: [] },
     select: (d) => d.days || [],
@@ -371,7 +375,7 @@ export default function ProfileScreen({ navigation }) {
             <Skeleton key={i} width="31%" height={80} style={{ borderRadius: 16, marginBottom: space.md }} />
           ))
         ) : (
-          <>
+          <Arrival active={statsArriving} style={styles.wallInner}>
             {/* One counting number per screen (see theme/motion). Area held is
                 the headline — it is the thing the whole game is about — so it
                 counts and the other five arrive settled. */}
@@ -388,7 +392,7 @@ export default function ProfileScreen({ navigation }) {
             <StatTile label="Biggest claim" value={km2(stats.biggest_claim_m2 || 0)} unit="km²" accent={accent} />
             <StatTile label="Streak" value={String(stats.current_streak_weeks || 0)} unit="wk" />
             <StatTile label="Zones" value={String(stats.territory_count || 0)} />
-          </>
+          </Arrival>
         )}
       </Reveal>
 
@@ -543,7 +547,8 @@ export default function ProfileScreen({ navigation }) {
         ) : runs.length === 0 ? (
           <Text style={[type.caption, { padding: space.lg }]}>No runs yet.</Text>
         ) : (
-          runs.slice(0, 8).map((r, i) => (
+          <Arrival active={runsArriving}>
+          {runs.slice(0, 8).map((r, i) => (
             <TouchableOpacity
               key={r.run_id}
               style={[styles.runRow, i > 0 && styles.runDivider]}
@@ -559,7 +564,8 @@ export default function ProfileScreen({ navigation }) {
               </View>
               {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
             </TouchableOpacity>
-          ))
+          ))}
+          </Arrival>
         )}
       </Card>
 
@@ -771,6 +777,9 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   header: { alignItems: 'center', marginTop: space.md, marginBottom: space.md, paddingTop: space.lg },
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  // The fade wrapper sits BETWEEN the wall and its tiles, so it has to carry
+  // the wall's own layout or the six tiles collapse into one column.
+  wallInner: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: { width: '31.5%', marginBottom: space.md },
 
   xpWrap: { flexDirection: 'row', alignItems: 'center', gap: space.md, alignSelf: 'stretch', marginTop: space.lg },

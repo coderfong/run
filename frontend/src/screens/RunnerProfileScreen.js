@@ -13,7 +13,7 @@ import { radius, space, useTheme, useThemedType, useThemedStyles } from '../them
 import { Screen, Card, Row, Button, Pill, StatValue, SectionHeader, Skeleton, EmptyState } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
-import { PressableScale, Reveal } from '../ui/motion';
+import { Arrival, PressableScale, Reveal, useArrival } from '../ui/motion';
 import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
@@ -58,6 +58,8 @@ export default function RunnerProfileScreen({ navigation, route }) {
       setBusy(false);
     }
   };
+
+  const arriving = useArrival(loading);
 
   if (loading && error) {
     return (
@@ -141,7 +143,7 @@ export default function RunnerProfileScreen({ navigation, route }) {
     }
   };
 
-  return (
+  const page = (
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
       <Reveal style={styles.header}>
         {/* Border comes from RANK (territorial standing), not level — same
@@ -204,6 +206,12 @@ export default function RunnerProfileScreen({ navigation, route }) {
         ))
       )}
     </Screen>
+  );
+
+  return (
+    <Arrival active={arriving} style={{ flex: 1 }}>
+      {page}
+    </Arrival>
   );
 }
 

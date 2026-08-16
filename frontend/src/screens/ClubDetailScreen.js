@@ -15,7 +15,7 @@ import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } fr
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import { toast } from '../ui/toast';
-import { Bar, Reveal, staggerDelay } from '../ui/motion';
+import { Arrival, Bar, Reveal, staggerDelay, useArrival } from '../ui/motion';
 
 const km2 = (m) => (m / 1e6).toFixed(2);
 const km = (m) => (m / 1000).toFixed(1);
@@ -34,6 +34,8 @@ export default function ClubDetailScreen({ route, navigation }) {
     () => api.getClan(clanId)
   );
   const [busy, setBusy] = useState(false);
+
+  const arriving = useArrival(loading);
 
   if (loading && error) {
     return <Screen center><Text style={type.body}>This club no longer exists.</Text></Screen>;
@@ -85,7 +87,7 @@ export default function ClubDetailScreen({ route, navigation }) {
     }
   };
 
-  return (
+  const page = (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
@@ -181,6 +183,12 @@ export default function ClubDetailScreen({ route, navigation }) {
         )}
       </View>
     </ScrollView>
+  );
+
+  return (
+    <Arrival active={arriving} style={{ flex: 1 }}>
+      {page}
+    </Arrival>
   );
 }
 

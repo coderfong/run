@@ -19,7 +19,7 @@ import ClubAvatar from '../components/ClubAvatar';
 import { toast } from '../ui/toast';
 import { pickPhoto } from '../ui/photoPicker';
 import { framePose, frameVariant } from '../ui/frameRegistry';
-import { Bar } from '../ui/motion';
+import { Arrival, Bar, useArrival } from '../ui/motion';
 import GameLottie from '../components/GameLottie';
 import { INK } from '../ui/frameRegistry';
 
@@ -220,6 +220,8 @@ function MemberHub({ clanId, navigation }) {
     }
   };
 
+  const arriving = useArrival(loading);
+
   if (loading) {
     return (
       <Screen>
@@ -379,7 +381,10 @@ function MemberHub({ clanId, navigation }) {
     );
   }
 
-  return (
+  // Bound to a name and wrapped below rather than wrapped in place: the hub is
+  // a hundred lines of JSX and re-indenting all of it to gain one parent would
+  // bury the change.
+  const hub = (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
@@ -514,6 +519,15 @@ function MemberHub({ clanId, navigation }) {
       <Button title="Leave club" variant="secondary" onPress={leave} style={{ marginTop: space.xl }} />
     </ScrollView>
   );
+
+  // Fades up only when the hub follows the placeholder blocks above. Coming
+  // back to a club that is already in cache, this is a plain view and the fade
+  // is skipped entirely — see useArrival.
+  return (
+    <Arrival active={arriving} style={{ flex: 1 }}>
+      {hub}
+    </Arrival>
+  );
 }
 
 function GoalBar({ label, pct, mine, accent }) {
@@ -584,6 +598,8 @@ export default function ClubScreen({ navigation }) {
     if (clan?.clan_id) AsyncStorage.setItem(`${CLUB_INTRO_KEY}:${clan.clan_id}`, '1').catch(() => {});
   };
 
+  const arriving = useArrival(loading);
+
   if (loading) {
     return (
       <Screen>
@@ -592,7 +608,15 @@ export default function ClubScreen({ navigation }) {
       </Screen>
     );
   }
-  if (!clan?.clan_id) return <Directory navigation={navigation} />;
+  // The directory is the whole screen for anyone without a club, so it fades
+  // out of the same placeholders the hub does.
+  if (!clan?.clan_id) {
+    return (
+      <Arrival active={arriving} style={{ flex: 1 }}>
+        <Directory navigation={navigation} />
+      </Arrival>
+    );
+  }
   return (
     <View style={{ flex: 1 }}>
       <MemberHub clanId={clan.clan_id} navigation={navigation} />

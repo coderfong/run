@@ -11,9 +11,9 @@
 // behind it. That keeps it cheap enough to run on the same screen as the rest
 // of the sequence, and it works with whatever map style is loaded.
 //
-// Two things here are load-bearing and both are about the JOINTS between hops.
-// The flyover is a chain of short `setCamera` calls rather than one long one,
-// because a single call cannot follow a bent route. So:
+// Everything load-bearing here is about the JOINTS between hops. The flyover
+// is a chain of short `setCamera` calls rather than one long one, because a
+// single call cannot follow a bent route. So:
 //
 //   * every hop uses animationMode 'linearTo'. The default easeTo accelerates
 //     and decelerates within each hop, which at ten hops a second reads as a
@@ -22,6 +22,22 @@
 //     flown to, not the one being flown to. Turning to face where you are
 //     going already looks like flying; turning to face where you have arrived
 //     means the camera swings after the fact, at the corner, every corner.
+//   * the camera path is SMOOTHED (`smoothPath`) before it is flown. Sampled
+//     waypoints sit on the route, and a route has corners; a camera that hits
+//     each corner exactly has to change direction instantly there. Rounding
+//     the path costs a couple of metres of fidelity — nobody is checking the
+//     camera against the pavement — and buys a continuous curve.
+//   * the headings are smoothed too, and UNWRAPPED first (`flightHeadings`).
+//     Averaging 359 and 1 naively gives 180: a camera that whips round to face
+//     backwards at the one corner that crosses north.
+//   * each hop is given slightly MORE time than it is allowed to run before
+//     the next one retargets it (`HOP_LEAD_MS`). Timers fire late, and a hop
+//     that lands early sits still until its successor arrives — visible as a
+//     tick at every joint. Overlapping them means the camera is always in
+//     flight and simply trails its target by a fixed fraction of a hop.
+//   * hop deadlines are measured from the start of the flight, not from "now
+//     plus a hop", so late timers do not accumulate into a flyover that
+//     overruns the beat it was budgeted.
 
 const EARTH_R = 6371000;
 const toRad = (d) => (d * Math.PI) / 180;
@@ -85,11 +101,87 @@ export function evenlySpaced(path, count) {
   return out;
 }
 
-// How far apart the sampled waypoints are. Fewer, longer hops are smoother
-// (less to stutter between) but cut corners; more, shorter hops trace the
-// route faithfully and cost a `setCamera` each. ~14 is where a city loop still
-// reads as its own shape.
-export const FLYOVER_STEPS = 14;
+/**
+ * Round the corners off a sampled camera path.
+ *
+ * A moving average of three, endpoints pinned so the flight still starts where
+ * the run started and finishes where it finished. This is applied to the
+ * CAMERA path only — the trail on the map is drawn from the real recording, so
+ * nothing the runner sees moves off the pavement.
+ *
+ * Two passes takes a right-angled corner and spreads the turn over about a
+ * third of the hops either side of it, which is the difference between a
+ * camera that pivots and a camera that banks.
+ */
+export function smoothPath(points, passes = 2) {
+  let out = (points || []).filter((p) => p && isFinite(p.latitude) && isFinite(p.longitude));
+  if (out.length < 3) return out;
+  for (let pass = 0; pass < passes; pass++) {
+    const next = out.slice();
+    for (let i = 1; i < out.length - 1; i++) {
+      next[i] = {
+        latitude: (out[i - 1].latitude + out[i].latitude * 2 + out[i + 1].latitude) / 4,
+        longitude: (out[i - 1].longitude + out[i].longitude * 2 + out[i + 1].longitude) / 4,
+      };
+    }
+    out = next;
+  }
+  return out;
+}
+
+/**
+ * The heading to hold at each waypoint: continuous, and facing where the
+ * camera is going rather than where it has arrived.
+ *
+ * Bearings are angles on a circle, so they are UNWRAPPED before anything is
+ * averaged — a run that crosses north hands out 359 next to 1, and the mean of
+ * those two is 180, i.e. the exact opposite of the truth. Unwrapped, the pair
+ * is 359 and 361 and the mean is the 0 it should always have been. The result
+ * is wrapped back into [0, 360) because that is what Mapbox's `heading` wants.
+ */
+export function flightHeadings(route, lookAhead = 2, passes = 2) {
+  if (!route || route.length < 2) return route ? route.map(() => 0) : [];
+
+  const raw = [];
+  for (let i = 0; i < route.length; i++) {
+    const from = route[Math.max(0, i - 1)];
+    const to = route[Math.min(route.length - 1, i + lookAhead)];
+    // Two identical points have no bearing between them — a runner who stood
+    // still keeps whatever they were last facing rather than snapping north.
+    const same = from.latitude === to.latitude && from.longitude === to.longitude;
+    raw.push(same ? raw[i - 1] ?? 0 : bearing(from, to));
+  }
+
+  // Unwrap: each heading is carried to whichever revolution sits nearest its
+  // predecessor, so the series is continuous and safe to average.
+  const open = [raw[0]];
+  for (let i = 1; i < raw.length; i++) {
+    open.push(open[i - 1] + (((raw[i] - open[i - 1] + 540) % 360) - 180));
+  }
+
+  let smooth = open;
+  for (let pass = 0; pass < passes; pass++) {
+    const next = smooth.slice();
+    for (let i = 1; i < smooth.length - 1; i++) {
+      next[i] = (smooth[i - 1] + smooth[i] * 2 + smooth[i + 1]) / 4;
+    }
+    smooth = next;
+  }
+  return smooth.map((h) => ((h % 360) + 360) % 360);
+}
+
+// How far apart the sampled waypoints are. Fewer, longer hops used to be the
+// smoother option because every joint was a visible stop; now that the joints
+// overlap and both the path and the headings are smoothed, more waypoints just
+// means a finer curve. ~22 traces a city loop as its own shape and still costs
+// only about six `setCamera` calls a second.
+export const FLYOVER_STEPS = 22;
+
+// How much longer than its slice of the flight each hop is animated for. The
+// next hop retargets the camera before this one lands, so the camera never
+// comes to rest at a waypoint — it trails its target by a constant fraction of
+// a hop, which is invisible, instead of ticking at every one, which is not.
+const HOP_LEAD_MS = 60;
 
 /**
  * Fly the camera along `path`, pitched over, drawing the trail behind it.
@@ -121,10 +213,16 @@ export async function flyRun(mapRef, path, opts = {}) {
 
   const map = mapRef?.current;
   const sleep = wait || ((ms) => new Promise((r) => setTimeout(r, ms)));
-  const route = evenlySpaced(path, steps);
+  // Sample by distance, then round the corners: one gives a camera that moves
+  // at one speed, the other a camera that changes direction gradually.
+  const route = smoothPath(evenlySpaced(path, steps));
   if (!map?.setCameraTo || route.length < 2) return false;
 
-  const hop = Math.max(120, Math.round(totalMs / route.length));
+  const headings = flightHeadings(route);
+  // The approach is part of the budget, not extra on top of it, so a flyover
+  // asked for 4.2s takes 4.2s however many waypoints it ends up with.
+  const approach = Math.min(900, Math.max(320, Math.round(totalMs * 0.16)));
+  const hop = Math.max(90, Math.round((totalMs - approach) / (route.length - 1)));
 
   // Open at the start of the run, already pitched and already facing the way
   // the runner set off. Getting into position is not part of the replay, so it
@@ -134,29 +232,37 @@ export async function flyRun(mapRef, path, opts = {}) {
     center: route[0],
     zoom,
     pitch,
-    heading: bearing(route[0], route[1]),
-    durationMs: Math.min(900, hop * 3),
+    heading: headings[0],
+    durationMs: approach,
   });
   onProgress?.(0);
-  await sleep(Math.min(900, hop * 3));
+  await sleep(approach);
   if (!alive()) return false;
 
+  // Deadlines are measured from here rather than each hop waiting a full `hop`
+  // from whenever the last timer happened to fire. Timers run late, and late
+  // that accumulates over twenty hops is a flyover that overruns its beat.
+  const started = Date.now();
   for (let i = 1; i < route.length; i++) {
-    // Face where the camera is GOING, not where it has just arrived.
-    const ahead = route[Math.min(i + 1, route.length - 1)];
     map.setCameraTo({
       center: route[i],
       zoom,
       pitch,
-      heading: bearing(route[i - 1], ahead),
-      durationMs: hop,
+      heading: headings[i],
+      // Longer than the slice it gets: the next hop cuts this one short, so
+      // the camera is retargeted mid-flight rather than after a pause.
+      durationMs: hop + HOP_LEAD_MS,
       mode: 'linearTo',
     });
     onProgress?.(i / (route.length - 1));
-    await sleep(hop);
+    const due = started + i * hop;
+    await sleep(Math.max(16, due - Date.now()));
     if (!alive()) return false;
   }
-  return true;
+  // Let the last hop finish the extra it was given, so the flight ends on the
+  // finish line instead of being levelled a few metres short of it.
+  await sleep(HOP_LEAD_MS);
+  return alive();
 }
 
 /**

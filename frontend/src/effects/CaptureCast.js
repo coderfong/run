@@ -155,4 +155,7 @@ const styles = StyleSheet.create({
   cast: { zIndex: CAPTURE_LAYER.CHARACTER },
 });
 
-export default CaptureCast;
+// Memoized for the same reason as CaptureStylePlayer (see that file's note) —
+// `cast` is driven imperatively via `ref.play(...)`, not by prop churn, so its
+// own re-renders should only come from an actual prop change.
+export default React.memo(CaptureCast);

@@ -14,7 +14,7 @@ import {
   effect,
   reveal,
 } from '../src/effects/choreography';
-import { getCaptureStyle } from '../src/effects/captureStyles';
+import { getCaptureStyle, resolveCaptureStyle } from '../src/effects/captureStyles';
 
 jest.mock('../src/effects/EffectPlayer', () => () => null);
 jest.mock('../src/effects/ReactionEffect', () => () => null);
@@ -107,7 +107,7 @@ describe('CaptureStylePlayer lifecycle', () => {
         <CaptureStylePlayer {...common} style="glitch_takeover" defenderCount={2} onComplete={onComplete} />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('glitch_takeover').duration + 100));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('glitch_takeover').duration + 100));
     expect(onComplete).toHaveBeenCalledTimes(1);
     act(() => tree.unmount());
   });
@@ -120,14 +120,14 @@ describe('CaptureStylePlayer lifecycle', () => {
     let tree;
     act(() => {
       tree = renderer.create(
-        <CaptureStylePlayer {...common} style="earthshaker" onTerritoryReveal={onTerritoryReveal} />
+        <CaptureStylePlayer {...common} style="energy_pulse" onTerritoryReveal={onTerritoryReveal} />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('earthshaker').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('energy_pulse').duration + 200));
     expect(onTerritoryReveal).toHaveBeenCalledTimes(1);
     expect(onTerritoryReveal).toHaveBeenCalledWith(
       expect.objectContaining({
-        transition: REVEAL_TRANSITION.CRACK_GLOW,
+        transition: REVEAL_TRANSITION.SHOCKWAVE,
         origin: REVEAL_ORIGIN.CHARACTER_FEET,
       })
     );
@@ -139,13 +139,13 @@ describe('CaptureStylePlayer lifecycle', () => {
     let tree;
     act(() => {
       tree = renderer.create(
-        <CaptureStylePlayer {...common} style="earthshaker" defenderCount={2} cast={castOf(played)} />
+        <CaptureStylePlayer {...common} style="energy_pulse" defenderCount={2} cast={castOf(played)} />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('earthshaker').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('energy_pulse').duration + 200));
 
     const attackerBeats = played.filter((s) => s.role === ROLE.ATTACKER).map((s) => s.name);
-    expect(attackerBeats).toEqual(['jump', 'slam', 'moveTo', 'celebrate']);
+    expect(attackerBeats).toEqual(['charge', 'slam', 'recoil', 'moveTo', 'celebrate']);
 
     // Both rivals are driven, individually, and every one of them is addressed
     // by index rather than as a group transform.
@@ -177,7 +177,7 @@ describe('CaptureStylePlayer lifecycle', () => {
         />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('meteor_claim').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('meteor_claim').duration + 200));
     const thrown = played.filter((s) => s.name === 'shockwaveKnockback');
     expect(thrown).toHaveLength(3);
     thrown.forEach((step) => {
@@ -193,13 +193,12 @@ describe('CaptureStylePlayer lifecycle', () => {
     let tree;
     act(() => {
       tree = renderer.create(
-        <CaptureStylePlayer {...common} style="void_collapse" defenderCount={1} stage={stage} />
+        <CaptureStylePlayer {...common} style="energy_pulse" defenderCount={1} stage={stage} />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('void_collapse').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('energy_pulse').duration + 200));
     const cues = runCamera.mock.calls.map(([step]) => step.name);
     expect(cues).toContain('zoomIn');
-    expect(cues).toContain('freeze');
     // Whatever a style does to the scene, the victory beat must not inherit
     // it — a claim that ended zoomed would frame the payoff wrong.
     expect(cues[cues.length - 1]).toBe('release');
@@ -215,16 +214,16 @@ describe('CaptureStylePlayer lifecycle', () => {
         <CaptureStylePlayer {...common} style="meteor_claim" defenderCount={2} onContact={environmental} />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('meteor_claim').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('meteor_claim').duration + 200));
     expect(environmental).not.toHaveBeenCalled();
     act(() => tree.unmount());
 
     act(() => {
       tree = renderer.create(
-        <CaptureStylePlayer {...common} style="sword_slash" defenderCount={2} onContact={duel} />
+        <CaptureStylePlayer {...common} style="angel_vs_demon" defenderCount={2} onContact={duel} />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('sword_slash').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('angel_vs_demon').duration + 200));
     expect(duel).toHaveBeenCalledTimes(1);
     act(() => tree.unmount());
   });
@@ -243,7 +242,7 @@ describe('CaptureStylePlayer lifecycle', () => {
         />
       );
     });
-    act(() => jest.advanceTimersByTime(getCaptureStyle('meteor_claim').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('meteor_claim').duration + 200));
     expect(order).toEqual(['ground', 'won']);
     act(() => tree.unmount());
   });
@@ -266,7 +265,7 @@ describe('CaptureStylePlayer lifecycle', () => {
     });
     // "inferno" is not a real style id — resolveCaptureStyle falls back to
     // DEFAULT_CAPTURE_STYLE_ID (meteor_claim), so that is what actually plays.
-    act(() => jest.advanceTimersByTime(getCaptureStyle('meteor_claim').duration + 200));
+    act(() => jest.advanceTimersByTime(resolveCaptureStyle('meteor_claim').duration + 200));
     expect(onTerritoryReveal).toHaveBeenCalledTimes(1);
     expect(onComplete).toHaveBeenCalledTimes(1);
     act(() => tree.unmount());
@@ -318,7 +317,7 @@ describe('reduced motion keeps the story', () => {
       tree = renderer.create(
         <CaptureStylePlayer
           {...common}
-          style="earthshaker"
+          style="energy_pulse"
           defenderCount={1}
           reducedMotion
           stage={stage}
@@ -330,7 +329,7 @@ describe('reduced motion keeps the story', () => {
     // A freeze and a shatter are different events, not different amounts of
     // motion, so the transition survives even here.
     expect(onTerritoryReveal).toHaveBeenCalledWith(
-      expect.objectContaining({ transition: REVEAL_TRANSITION.CRACK_GLOW })
+      expect.objectContaining({ transition: REVEAL_TRANSITION.SHOCKWAVE })
     );
     expect(runShake).not.toHaveBeenCalled();
     expect(runCamera.mock.calls.filter(([s]) => s.name !== 'release')).toHaveLength(0);
@@ -338,7 +337,7 @@ describe('reduced motion keeps the story', () => {
   });
 
   test('every style collapses to one reveal, one light haptic and a cast that acts', () => {
-    ['meteor_claim', 'black_hole', 'sword_slash', 'dragon_sweep'].forEach((id) => {
+    ['paint_bomb', 'energy_pulse', 'angel_vs_demon', 'ink_flood'].forEach((id) => {
       const plan = buildCapturePlan(getCaptureStyle(id), true);
       expect(plan.duration).toBe(REDUCED_BEATS.duration);
       expect(plan.sequence.filter((s) => s.action === 'territoryReveal')).toHaveLength(1);

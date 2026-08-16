@@ -15,7 +15,7 @@ Generated 2026-08-10T19:39:59.887747+00:00 from `C:\Users\user\Desktop\animation
 - Supported/usable records: **1802**
 - Unsupported or broken records: **619**
 - Oversized records: **9**
-- Assets selected for the Expo bundle: **44**
+- Assets selected for the Expo bundle: **58**
 
 ## Formats found
 

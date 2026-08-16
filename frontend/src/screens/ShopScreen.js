@@ -44,7 +44,7 @@ import BuyEnergySheet from '../components/BuyEnergySheet';
 import PitStopScene from '../components/shop/PitStopScene';
 import { PIT_STOP_ANIM } from '../config/pitStop';
 import { IAP_ENABLED } from '../config/releaseFeatures';
-import { CountUpText, haptic, Reveal, useReduceMotion } from '../ui/motion';
+import { Arrival, CountUpText, haptic, Reveal, useArrival, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 
@@ -146,16 +146,18 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
           fill={selected ? withAlpha(tint, 0.2) : colors.card}
           weight={selected ? INK.medium : INK.thin}
           pose={framePose(`shop:${item.item_id}`)}
+          // Only the selected tile boils — see ProgressionScreen's header
+          // frame for the same rule: a grid of boiling tiles is a grid that
+          // will not sit still, so the animated look is reserved for the one
+          // thing you actually picked.
+          boil={selected}
           inset={false}
           style={styles.cell}
           contentStyle={styles.cellContent}
         >
-          {/* The name keeps similarly shaped tops/shoes distinguishable; rarity
-              remains both a section heading and the card's tinted frame. */}
+          {/* Rarity remains both a section heading and the card's tinted
+              frame now that the name is gone from the tile itself. */}
           <PartThumb slot={item.slot} item={cat} size={52} />
-          <Text style={[type.captionMedium, styles.cellName, { color: colors.text }]} numberOfLines={2}>
-            {cat?.label || item.item_id}
-          </Text>
           {item.owned ? (
             <Text style={[type.caption, { color: colors.textMuted }]}>Owned</Text>
           ) : (
@@ -329,6 +331,10 @@ export default function ShopScreen() {
     .map((rarity) => ({ rarity, items: items.filter((item) => item.rarity === rarity) }))
     .filter((section) => section.items.length > 0), [items]);
   const coins = data?.coins ?? 0;
+  // The wallet is held back until the real balance lands (a placeholder 0
+  // reads as "you're broke"), so it is the one block on this screen that
+  // swaps in cold. The item grid arrives on its own Reveals.
+  const walletArriving = useArrival(!data);
 
   const selected = useMemo(
     () => items.find((i) => i.item_id === selectedId) || null,
@@ -460,6 +466,7 @@ export default function ShopScreen() {
           {/* balance + top-up. Held back until the real balance arrives — a
               placeholder 0 reads as "you're broke", not as "still loading". */}
           {data ? (
+            <Arrival active={walletArriving}>
             <Card style={styles.wallet}>
               <Row gap={8} style={{ alignItems: 'center', flex: 1 }}>
                 <AppIcon name="coin" size={28} />
@@ -482,6 +489,7 @@ export default function ShopScreen() {
                 <Button title="Get more" size="sm" full={false} onPress={() => setGetMore(true)} />
               ) : null}
             </Card>
+            </Arrival>
           ) : (
             <Skeleton width="100%" height={76} style={{ borderRadius: radius.card }} />
           )}
@@ -575,10 +583,9 @@ const styles = StyleSheet.create({
   cellWrap: { width: '31.5%' },
   cellTouch: { width: '100%' },
   cell: {
-    width: '100%', minHeight: 116,
+    width: '100%', minHeight: 92,
   },
   cellContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, padding: 7 },
-  cellName: { minHeight: 28, textAlign: 'center', fontSize: 10 },
   panel: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,
     borderWidth: 1.5,

@@ -6,8 +6,12 @@
 // range: eight emotes, one per person, so a brutal hill lap and a gentle
 // shuffle can be answered differently.
 //
-// The detail-page picker floats near its trigger. Feed-card pickers reserve a
-// row inside their own card so they never cover the runner header or route.
+// The picker OPENS UPWARD, off the top edge of whatever it is anchored to. The
+// detail page has room above its bar and lays it out in place; the feed card's
+// trigger is in the card header with nothing above it but the card's own edge,
+// so that one hands this strip to an overlay and positions it there (see
+// FeedCard's `openPicker`). Both go up. A picker that drops down lands on the
+// route and the caption, which is the half of the card you are reacting to.
 //
 // THE CHIPS ARE STILL FRAMES (EmoteIcon), not animations. A feed page can carry
 // fifty rows and each row up to six chips; running three hundred sprite clocks
@@ -33,20 +37,23 @@ const POPOVER_PAD = 5;
 export const POPOVER_WIDTH = TILE * REACTION_PICKER.length
   + TILE_GAP * (REACTION_PICKER.length - 1)
   + POPOVER_PAD * 2;
+// One row, so the height is knowable without measuring it — which is what a
+// caller placing the strip in an overlay needs to know BEFORE it is on screen,
+// to work out whether "above the trigger" fits.
+export const POPOVER_HEIGHT = TILE + POPOVER_PAD * 2;
 
 function Chip({ row, onPress, color, styles, type, colors }) {
   return (
     <PressableScale
       onPress={() => onPress(row.emote)}
-      style={[
-        styles.chip,
-        row.mine && { backgroundColor: withAlpha(color, 0.18) },
-      ]}
+      style={styles.chip}
       accessibilityRole="button"
       accessibilityState={{ selected: !!row.mine }}
       accessibilityLabel={`${getReactionLabel(row.emote)}, ${row.count}`}
     >
       <EmoteIcon reaction={row.emote} size={22} />
+      {/* "Mine" reads from the count's colour, not a background tint behind
+          the whole chip — that tint was the other half of the pill look. */}
       <Text style={[type.captionMedium, { color: row.mine ? color : colors.textMuted }]}>
         {row.count}
       </Text>
@@ -219,14 +226,16 @@ const makeStyles = (colors) => StyleSheet.create({
   wrap: { position: 'relative' },
   burst: { zIndex: 5 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: space.xs },
+  // Flat — no pill background, no border. It sat oddly on Home, where the
+  // route box and the caption below it are both drawn ink frames and this
+  // was the one bubble-chrome shape on the card; the emoji and its count
+  // carry the chip on their own.
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 3,
-    borderRadius: radius.pill,
-    backgroundColor: colors.bgElevated,
   },
   // Floating. `bottom: '100%'` hangs it off the top edge of the bar, so it
   // costs no layout and nothing below it moves when it opens. Deliberately NOT

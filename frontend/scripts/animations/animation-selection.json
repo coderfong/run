@@ -46,6 +46,20 @@
       "license": "CC0-1.0",
       "releaseApproved": true,
       "credit": "Tiny RPG - Emoji Pack I by Gabriel \"tiopalada\" Lima (CC0 1.0)"
+    },
+    "icons_emote": {
+      "container": "Icons emote.zip",
+      "license": "Commercial and personal use; free editing; no redistribution or resale; attribution appreciated",
+      "releaseApproved": true,
+      "credit": "Emote balloons by RiaKare",
+      "licenseNote": "License.txt inside the download permits both commercial and personal use, free editing, and game or production use; it prohibits redistributing or reselling the assets themselves, which PASER does not do."
+    },
+    "super_pixel_fantasy": {
+      "container": "Super Pixel Fantasy FX Pack 3 Free Version.zip",
+      "license": "Bundle with game OK (commercial and non-commercial); no redistribution of the pack itself; attribution required; not for bundling into a large game engine/tool product",
+      "releaseApproved": true,
+      "credit": "Super Pixel Fantasy FX Pack 3 - Will Tice / unTied Games",
+      "licenseNote": "license.txt inside the download points to untiedgames.com/files/license.txt and is quoted in full there: bundling assets with a game is explicitly OK, reselling or reuploading the pack itself is not, and PASER only ships the compiled sprites inside the app."
     }
   },
   "effects": [
@@ -901,6 +915,293 @@
       "rows": 4,
       "frameCount": 16,
       "fps": 14
+    },
+    {
+      "id": "protection_circle_01",
+      "name": "Protection Circle",
+      "package": "free_pixel",
+      "entry": "8_protectioncircle_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "ward",
+        "shield",
+        "seal"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 61,
+      "fps": 30,
+      "visualScale": 1.8
+    },
+    {
+      "id": "weapon_hit_01",
+      "name": "Weapon Hit",
+      "package": "free_pixel",
+      "entry": "10_weaponhit_spritesheet.png",
+      "category": "impact",
+      "tags": [
+        "capture",
+        "hit",
+        "impact",
+        "strike"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 6,
+      "rows": 6,
+      "frameCount": 31,
+      "fps": 30,
+      "visualScale": 1.8
+    },
+    {
+      "id": "phantom_cross_01",
+      "name": "Phantom Cross",
+      "package": "free_pixel",
+      "entry": "14_phantom_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "phantom",
+        "spectral",
+        "residue"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 61,
+      "fps": 30
+    },
+    {
+      "id": "fel_spell_01",
+      "name": "Fel Spell",
+      "package": "free_pixel",
+      "entry": "17_felspell_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "corruption",
+        "acid",
+        "spread"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 10,
+      "rows": 10,
+      "frameCount": 91,
+      "fps": 30
+    },
+    {
+      "id": "midnight_01",
+      "name": "Midnight",
+      "package": "free_pixel",
+      "entry": "18_midnight_spritesheet.png",
+      "category": "magic",
+      "tags": [
+        "capture",
+        "dark",
+        "night",
+        "storm"
+      ],
+      "frameWidth": 100,
+      "frameHeight": 100,
+      "columns": 8,
+      "rows": 8,
+      "frameCount": 61,
+      "fps": 30
+    },
+    {
+      "id": "boom_mid_01",
+      "name": "Mid Boom",
+      "package": "ansimuz_explosions",
+      "entry": "explosion pack 1/Explosions pack/explosion-1-b/spritesheet.png",
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "chain"
+      ],
+      "frameWidth": 64,
+      "frameHeight": 64,
+      "columns": 8,
+      "rows": 1,
+      "frameCount": 8,
+      "fps": 14
+    },
+    {
+      "id": "boom_large_01",
+      "name": "Large Boom",
+      "package": "ansimuz_explosions",
+      "sequence": {
+        "prefix": "explosion pack 1/Explosions pack/explosion-1-d/Sprites/explosion-d",
+        "extension": ".png",
+        "columns": 4
+      },
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "chain",
+        "large"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 4,
+      "rows": 3,
+      "frameCount": 12,
+      "fps": 14
+    },
+    {
+      "id": "boom_huge_01",
+      "name": "Huge Boom",
+      "package": "ansimuz_explosions",
+      "sequence": {
+        "prefix": "explosion pack 1/Explosions pack/explosion-1-e/Sprites/explosion-e",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "explosion",
+      "tags": [
+        "capture",
+        "explosion",
+        "chain",
+        "finale"
+      ],
+      "frameWidth": 192,
+      "frameHeight": 192,
+      "columns": 6,
+      "rows": 4,
+      "frameCount": 22,
+      "fps": 14
+    },
+    {
+      "id": "emote_note_01",
+      "name": "Note Balloon",
+      "package": "icons_emote",
+      "entry": "Icons emote/Center/12 - Note.png",
+      "category": "emoji",
+      "tags": [
+        "capture",
+        "emote",
+        "balloon",
+        "note"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 8,
+      "rows": 2,
+      "frameCount": 9,
+      "fps": 14
+    },
+    {
+      "id": "emote_sleeping_01",
+      "name": "Sleeping Balloon",
+      "package": "icons_emote",
+      "entry": "Icons emote/Center/10 - Sleeping.png",
+      "category": "emoji",
+      "tags": [
+        "capture",
+        "emote",
+        "balloon",
+        "sleeping"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 8,
+      "rows": 2,
+      "frameCount": 9,
+      "fps": 14
+    },
+    {
+      "id": "emote_dots_01",
+      "name": "Dots Balloon",
+      "package": "icons_emote",
+      "entry": "Icons emote/Center/09 - Dots.png",
+      "category": "emoji",
+      "tags": [
+        "capture",
+        "emote",
+        "balloon",
+        "dots"
+      ],
+      "frameWidth": 32,
+      "frameHeight": 32,
+      "columns": 8,
+      "rows": 2,
+      "frameCount": 9,
+      "fps": 14
+    },
+    {
+      "id": "attack_up_01",
+      "name": "Attack Up Aura",
+      "package": "super_pixel_fantasy",
+      "sequence": {
+        "prefix": "Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_attack_up_large_red/frame",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "magic",
+      "tags": [
+        "capture",
+        "aura",
+        "buff",
+        "character"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 6,
+      "rows": 3,
+      "frameCount": 18,
+      "fps": 20
+    },
+    {
+      "id": "defense_up_01",
+      "name": "Defense Up Aura",
+      "package": "super_pixel_fantasy",
+      "sequence": {
+        "prefix": "Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_defense_up_large_blue/frame",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "magic",
+      "tags": [
+        "capture",
+        "aura",
+        "buff",
+        "character"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 6,
+      "rows": 3,
+      "frameCount": 18,
+      "fps": 20
+    },
+    {
+      "id": "haste_01",
+      "name": "Haste Aura",
+      "package": "super_pixel_fantasy",
+      "sequence": {
+        "prefix": "Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_haste_large_green/frame",
+        "extension": ".png",
+        "columns": 6
+      },
+      "category": "magic",
+      "tags": [
+        "capture",
+        "aura",
+        "buff",
+        "character"
+      ],
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "columns": 6,
+      "rows": 5,
+      "frameCount": 29,
+      "fps": 20
     }
   ]
 }

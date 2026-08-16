@@ -11,8 +11,20 @@ import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { brand, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
-import { useReduceMotion, PressableScale } from '../ui/motion';
+import {
+  NB,
+  brand,
+  hardShadow,
+  nbDrop,
+  nbInk,
+  radius,
+  space,
+  toon,
+  useTheme,
+  useThemedType,
+  useThemedStyles,
+} from '../theme';
+import { useReduceMotion, PressableScale, PressableShift } from '../ui/motion';
 import { EmptyState, Framed, OutlinedText, Skeleton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import FeedCard from '../components/FeedCard';
@@ -260,7 +272,10 @@ function FeedList({ navigation, header }) {
       renderItem={({ item, index }) => (
         <View style={styles.feedRow}>
           {loading ? (
-            <Skeleton width="100%" height={110} style={{ borderRadius: 16, marginBottom: space.md }} />
+            // Matches the card it stands in for: the feed card's radius comes
+            // from the limited scale now, and the literal 16 that used to be
+            // here left the placeholder visibly rounder than its replacement.
+            <Skeleton width="100%" height={110} style={{ borderRadius: radius.card, marginBottom: space.md }} />
           ) : (
             <Animated.View entering={reduce ? undefined : FadeInDown.delay(Math.min(index, 12) * 30).duration(240)}>
               <FeedCard
@@ -285,6 +300,11 @@ export default function HomeScreen({ navigation }) {
   // letters against a near-white page, so the word all but vanished. The
   // sticker flips instead — ink letters, white outline.
   const wordmarkOutline = scheme === 'light' ? '#ffffff' : toon.ink;
+  // The header sits directly on the page, so its strokes are judged against the
+  // page rather than against a card. Both the bell box and its unread dot take
+  // this, so the dot reads as punched out of the same sheet of ink.
+  const headerInk = nbInk(scheme, colors.bg);
+  const bellShadow = hardShadow(nbDrop(scheme, { on: colors.bg }), NB.offsetSm);
   const insets = useSafeAreaInsets();
   const { refreshRank } = useAvatar();
   const [shopOpen, setShopOpen] = useState(false);
@@ -328,7 +348,10 @@ export default function HomeScreen({ navigation }) {
   const feedHeader = (
     <View style={styles.feedHeader}>
       <View style={styles.header}>
-        <OutlinedText style={styles.wordmark} outline={wordmarkOutline} width={2.5} align="left">
+        {/* Outline width taken from the token rather than a literal 2.5, so the
+            wordmark, the bell box beside it and the buttons down the page are
+            all drawn with one pen. */}
+        <OutlinedText style={styles.wordmark} outline={wordmarkOutline} width={NB.stroke} align="left">
           {brand.name}
         </OutlinedText>
         <View style={styles.headerRight}>
@@ -340,8 +363,14 @@ export default function HomeScreen({ navigation }) {
               style={styles.headerEnergy}
             />
           )}
-          <PressableScale
-            style={styles.bell}
+          {/* A stroked box, not a bare glyph. The bell used to be the only
+              tappable thing in the header with no edge on it, which next to a
+              stroked energy chip read as decoration rather than as a control —
+              and it is the one that takes you somewhere. */}
+          <PressableShift
+            offset={NB.offsetSm}
+            style={[styles.bell, { borderColor: headerInk }]}
+            containerStyle={bellShadow}
             onPress={() => {
               // Clear the dot in the cache too, so coming back to Home doesn't
               // briefly show a badge for notifications already read.
@@ -351,9 +380,9 @@ export default function HomeScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Notifications"
           >
-            <AppIcon name="bell" size={24} />
-            {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
-          </PressableScale>
+            <AppIcon name="bell" size={22} />
+            {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink, borderColor: headerInk }]} />}
+          </PressableShift>
         </View>
       </View>
 
@@ -397,8 +426,19 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   wordmark: { ...type.title, color: scheme === 'light' ? toon.ink : '#ffffff' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 },
   headerEnergy: { flexShrink: 1 },
-  bell: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  bellDot: { position: 'absolute', top: 7, right: 8, width: 9, height: 9, borderRadius: 5, borderWidth: 1.5, borderColor: colors.bg },
+  bell: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radius.sm,
+    borderWidth: NB.strokeThin,
+  },
+  // Nudged inside the box's stroke rather than hanging over the old bare icon's
+  // corner. Its ring is the header ink now, not the page colour: a dot ringed in
+  // `bg` sitting on a card-coloured box punched a hole in the box.
+  bellDot: { position: 'absolute', top: 4, right: 4, width: 9, height: 9, borderRadius: 5, borderWidth: 1.5 },
 
   // The art is ~square, so with resizeMode="contain" its size is capped by the
   // card HEIGHT, not the art box's width — past ~65% width a wider box gains
@@ -430,8 +470,15 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: 8,
   },
+  // Pagination as flat blocks with an edge, per the reference system sheet —
+  // the current page is a long pink bar, the others are small hollow squares.
+  // They were a pink lozenge next to two dots in `colors.border`, which on the
+  // paper page is a warm hairline grey: the inactive pages read as smudges.
+  // SQUARE, not round. These sit directly under the hero, which is the most
+  // hand-drawn thing on the screen, and a hard-edged row of blocks under a
+  // wobbly ink box is the contrast the whole style runs on.
   dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: space.md },
-  dot: { height: 6, borderRadius: 3 },
-  dotOn: { width: 18, backgroundColor: brand.pink },
-  dotOff: { width: 6, backgroundColor: colors.border },
+  dot: { height: 8, borderRadius: 0, borderWidth: 1.5, borderColor: nbInk(scheme, colors.bg) },
+  dotOn: { width: 22, backgroundColor: brand.pink },
+  dotOff: { width: 8, backgroundColor: 'transparent' },
 });

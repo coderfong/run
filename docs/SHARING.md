@@ -27,11 +27,56 @@ Strava-shaped flow:
    because "transparent" and "dark grey" look identical against a dark screen.
 3. **Customise it** — under the preview:
    * **Accent** — the clan colour first, then eight swatches (including ink,
-     for a bright story). Drives the territory number and the route's end dot.
-   * **Text** — Light or Dark. Dark flips the whole card to ink type with a
-     white halo, which is the only thing that reads on a snowy or sunlit shot.
-   * **Align** — Left / Centre / Right, applied to the headline, the stat grid
+     for a bright story). Drives the territory number, the route's end dot and
+     the trail decorations.
+   * **Text** — Left / Centre / Right, applied to the headline, the stat grid
      and the signature together.
+
+     The type itself is **WHITE and only white**. There used to be a Light /
+     Dark switch here, and it was **cut on 2026-08-16**: ink type on a card with
+     no background of its own is the one combination that disappears, and it was
+     never what anyone wanted over their own story. `RunShareCard`'s `TONE` is a
+     constant now rather than a function of a prop.
+   * **Trail** — **PARKED, NOT SHIPPED.** Built and then switched off the same
+     day (2026-08-16). `TRAIL_DECORATIONS_ENABLED` in
+     `src/config/releaseFeatures.js` is `false`, so the row is not on the sheet
+     and `RunShareCard` pins `trail` to none whatever a caller passes — no
+     screen can put decorations back on a card by passing a prop. Nothing else
+     was removed: the module, the shapes, the placement maths, its tests and
+     this section are all live, so flipping that one switch brings the whole
+     thing back. The rest of this bullet describes it as built.
+
+     What grows along the route: None, Flowers, Grass, Mushrooms, Trees,
+     Hearts, Stars, Fire, Sparks.
+
+     **Side on, not from above.** The route is a map, but these are not map
+     symbols lying flat on it — each one is rooted on the line and sprouts UP
+     out of it, drawn the way you would see it standing there. That is the whole
+     look, and four things carry it:
+
+     * nothing turns to the direction of travel (things grow towards the top of
+       the card whichever way the runner was going), only a few degrees of lean;
+     * a contact shadow where each one meets the line;
+     * `depth` — 0 at the top of the route band, 1 at the bottom — sizes each
+       mark, so the ones nearer the bottom of the card are bigger;
+     * they are drawn nearest-last, so a mark lower down the card overlaps
+       whatever is standing behind it.
+
+     Spacing is by DISTANCE along the line (a recorder samples by time, so index
+     spacing bunches everything up wherever the runner slowed down), between the
+     start and finish dots only, and the lean is seeded off the index rather
+     than `Math.random` — capture re-renders the card, so a random one would
+     post a different picture than the preview.
+
+     Everything lives in `components/share/trailDecorations.js`: each shape is
+     react-native-svg primitives drawn in the same box — 20 wide, 20 tall, ORIGIN
+     AT ITS ROOT, growing from y=0 up to y=-20 — so a new decoration is a shape
+     in that box plus a line in `TRAIL_DECORATIONS`. The accent colours the part
+     meant to be looked at (bloom, cap, flame) while stems, canopies and trunks
+     keep natural colours: a green-stemmed flower in the runner's colour reads
+     as a flower, an entirely pink one reads as a smudge. Every piece carries its
+     own dark edge for the same reason the route carries its under stroke. The
+     row hides itself when Route is switched off.
    * **Runner** — the PASER mark wearing the player's head, feet on the end dot
      of their own route (the one point on the card that means something),
      clamped so a run that finished high or low doesn't put it through the
@@ -62,13 +107,58 @@ Strava-shaped flow:
 
    There is no **Copy Link**: a run has no public URL to link to.
 
+### Two ways in
+
+* **Straight after a run** — `ResultScreen` mounts the sheet as its last stage
+  (Continue), with everything the recorder measured.
+* **From a run card on Home** (added 2026-08-16) — the share icon on a feed
+  row, **your own runs only**: the card that gets posted carries your avatar and
+  says the ground was claimed, which is not a thing to hand somebody about a run
+  they did not do. It pushes `RunShare` (`screens/RunShareScreen.js`), a
+  boundaried **root-stack full screen modal** — at the root for the same reason
+  Record is, so the sheet is not posted from under the tab bar, and a screen
+  rather than a `<Modal>` inside the card because the sheet positions itself
+  with `absoluteFill` and `captureRef` has to rasterise the preview.
+
+  Nothing is fetched between the tap and the preview: the feed row already
+  carries the route, the rings and the numbers. Two consequences —
+  the feed's `path` is `[lon, lat]` PAIRS where the recorder's is
+  `{latitude, longitude}` objects (`RunShareCard` takes either, see `lonLat`),
+  and a feed row knows nothing about elevation, best km or average speed, so an
+  old run offers fewer stat chips than a fresh one.
+
 ### The card
 
-Layout, top to bottom: the territory headline (the number that makes PASER not
-Strava), the route drawn big across the card, a two-up grid of Distance / Elev
-gain / Pace / Time, then the brand mark. Everything is sized off
-`u = width / 360`, so one component serves the small preview and the 1080-wide
-export.
+**Three things: a route, four numbers, the wordmark.** Layout, top to bottom:
+the route in a capped band, then Distance / Time / Elev gain / Territory as
+**two above and two below**, then **PASER on its own** — no brand mark beside
+it. Everything is sized off `u = width / 360`, so one component serves the small
+preview and the 1080-wide export.
+
+**Simplified 2026-08-16** to that Strava shape. What changed and why:
+
+* **The territory headline came off** — an eyebrow (`TERRITORY CLAIMED`) over a
+  44pt km². Area is one of the four numbers now, so the ground is said once
+  instead of twice, and losing that block is most of what makes the card read as
+  simple.
+* **The route stopped owning the card.** It used to take every pixel the fixed
+  furniture did not; it now gets a band capped at `ROUTE_SHARE` (30% of the
+  card, both formats) and centred in the space between the safe area and the
+  numbers. Whatever is left over stays empty, which on a sticker is not waste —
+  it is the runner's own story showing through.
+* **Each pair of numbers gets its own line.** `STAT_ROW_U` went 46 → 62: at 46
+  the first row's digits ran into the second row's label and the four read as
+  one block of text. The extra row height IS the gap, so the cells stay
+  top-aligned and the space falls between the rows.
+* **The brand mark came off the signature**, leaving the wordmark alone. That
+  makes `SHARE_DEBUG_FLAGS.paserMark` dead; the key stays because those flags
+  persist on device.
+* **Pace is off by default**, because four numbers is a 2×2 block and five is a
+  block with a gap in it. It is still a chip.
+* **The runner figure starts off** (see "The runner on the route" — the code and
+  the control both stay).
+* The accent moved with the headline: it now colours the **Territory** value,
+  the one number Strava does not have, so the swatches still drive something.
 
 No handle, no clan, no date, no "took N km² from X". On somebody's own story the
 handle is already at the top of the screen, the date is today, and the steal
@@ -139,7 +229,7 @@ Their face, hair and headwear do.
   sticker, until the runner picks their own background.
 * **Type carries its own legibility.** There is no scrim to hide behind: the
   labels are fully opaque and the shadow is tight enough to read as an outline
-  (`toneFor`), because a translucent label vanishes on a pale sky or a white
+  (`TONE`), because a translucent label vanishes on a pale sky or a white
   t-shirt.
 * **Measured, not hand-tuned.** The route band takes the height the headline,
   stats, brag line and signature do not — that is what stops a long route being
@@ -216,6 +306,9 @@ No Meta SDK, no login, nothing else to configure.
 | Blank/black exported image | Something non-static got into `RunShareCard` (map, `expo-image`, animation) |
 | Card content clipped | A text block grew past its estimate in `RunShareCard` (`headH` / `statsH` / `signatureH`) |
 | A metric has no chip | `availableStats` dropped it — the run has no honest number for it (elevation needs altitude, which only runs recorded after 2026-08-06 carry) |
-| Sticker text invisible | Bright story background with Light text; switch Text to Dark |
+| An old run offers fewer stats than a fresh one | The feed ships distance, duration and area and nothing else — elevation, best km and average speed exist only on the post-run path |
+| No Trail row on the sheet | Expected — `TRAIL_DECORATIONS_ENABLED` is false. That is the switch, not a bug |
+| No trail decorations on a very short route (once switched on) | There is always at least one; if there are none at all the route itself did not draw (fewer than two usable points) |
+| A trail decoration lying on its side | Nothing should ever follow the route's tangent — check `lean` in `TRAIL_DECORATIONS`, it is a tilt in degrees, not a rotation |
 | No Save / Copy button | A binary built before `expo-media-library` / `expo-clipboard` |
 | Preview looks like grey squares | That is the transparency checkerboard, not the card |

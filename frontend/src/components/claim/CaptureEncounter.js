@@ -57,7 +57,7 @@ function clampOrigin(point, bounds) {
   };
 }
 
-export default function CaptureEncounter({
+function CaptureEncounter({
   visible,
   variant = 'grin-knock',
   // Where the contact happens. Defaults to the claim point, but a duel style
@@ -181,3 +181,6 @@ const makeStyles = () => StyleSheet.create({
     opacity: 0.8,
   },
 });
+
+// Memoized for the same reason as CaptureStylePlayer (see that file's note).
+export default React.memo(CaptureEncounter);

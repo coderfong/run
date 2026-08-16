@@ -1,8 +1,10 @@
 import {
   CAPTURE_STYLES,
+  DEFAULT_CAPTURE_STYLE_ID,
   PLAYABLE_CAPTURE_STYLES,
   getCaptureStyle,
   pickCaptureStyle,
+  resolveCaptureStyle,
 } from '../src/effects/captureStyles';
 import { DRAMA_SCALE } from '../src/effects/choreography';
 import {
@@ -125,8 +127,8 @@ describe('all capture styles and territory scenarios', () => {
     });
   });
 
-  test('all 30 have bounded duration, metadata, one reveal, one primary haptic, and valid required effects', () => {
-    expect(CAPTURE_STYLES).toHaveLength(30);
+  test('all 38 have bounded duration, metadata, one reveal, one primary haptic, and valid required effects', () => {
+    expect(CAPTURE_STYLES).toHaveLength(38);
     CAPTURE_STYLES.forEach((style) => {
       expect(getCaptureStyle(style.id)).toBe(style);
       expect(validateCaptureStyle(style)).toEqual([]);
@@ -245,12 +247,28 @@ describe('which capture animation a claim gets', () => {
     expect(seen.size).toBe(PLAYABLE_CAPTURE_STYLES.length);
   });
 
-  test('only release-approved styles are ever picked', () => {
+  test('only release-approved, sprite-only styles are ever picked', () => {
     const approved = new Set(PLAYABLE_CAPTURE_STYLES.map((style) => style.id));
-    expect(approved.size).toBe(CAPTURE_STYLES.length);
+    expect(approved.size).toBeLessThan(CAPTURE_STYLES.length);
+    expect(approved.size).toBeGreaterThan(0);
     for (let i = 0; i < 200; i += 1) {
       expect(approved.has(pickCaptureStyle(`seed-${i}`))).toBe(true);
     }
+  });
+
+  // The pool is art, not shapes: a scene that draws any part of the world with
+  // vector primitives is held out until those beats are real sprites.
+  test('no playable style draws the world with vector primitives', () => {
+    PLAYABLE_CAPTURE_STYLES.forEach((style) => {
+      expect(style.usesVectorEnvironment).toBe(false);
+    });
+    expect(getCaptureStyle(DEFAULT_CAPTURE_STYLE_ID).usesVectorEnvironment).toBe(false);
+  });
+
+  test('a held-out style resolves to a playable one instead of replaying vectors', () => {
+    const held = CAPTURE_STYLES.find((style) => style.usesVectorEnvironment);
+    expect(held).toBeTruthy();
+    expect(resolveCaptureStyle(held.id).usesVectorEnvironment).toBe(false);
   });
 
   test('no seed means variety, for a dev replay with no claim behind it', () => {

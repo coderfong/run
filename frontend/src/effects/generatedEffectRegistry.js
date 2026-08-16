@@ -178,4 +178,60 @@ export const GENERATED_EFFECTS = {
     ...{"id":"reaction_frustrated","name":"Frustrated","category":"emoji","tags":["reaction","frustrated"],"frameWidth":32,"frameHeight":32,"columns":5,"rows":4,"frameCount":16,"fps":14,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\emojiPackI.zip::20250405emoticons-SheetFrustrated.png","requirePath":"../../assets/effects/emoji/reaction_frustrated.png","fileSize":2239,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"tiny_rpg","originalName":"20250405emoticons-SheetFrustrated.png"},
     source: require("../../assets/effects/emoji/reaction_frustrated.png"),
   },
+  "protection_circle_01": {
+    ...{"id":"protection_circle_01","name":"Protection Circle","category":"magic","tags":["capture","ward","shield","seal"],"frameWidth":100,"frameHeight":100,"columns":8,"rows":8,"frameCount":61,"fps":30,"visualScale":1.8,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::8_protectioncircle_spritesheet.png","requirePath":"../../assets/effects/magic/protection_circle_01.png","fileSize":53784,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"free_pixel","originalName":"8_protectioncircle_spritesheet.png"},
+    source: require("../../assets/effects/magic/protection_circle_01.png"),
+  },
+  "weapon_hit_01": {
+    ...{"id":"weapon_hit_01","name":"Weapon Hit","category":"impact","tags":["capture","hit","impact","strike"],"frameWidth":100,"frameHeight":100,"columns":6,"rows":6,"frameCount":31,"fps":30,"visualScale":1.8,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::10_weaponhit_spritesheet.png","requirePath":"../../assets/effects/impact/weapon_hit_01.png","fileSize":6515,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"free_pixel","originalName":"10_weaponhit_spritesheet.png"},
+    source: require("../../assets/effects/impact/weapon_hit_01.png"),
+  },
+  "phantom_cross_01": {
+    ...{"id":"phantom_cross_01","name":"Phantom Cross","category":"magic","tags":["capture","phantom","spectral","residue"],"frameWidth":100,"frameHeight":100,"columns":8,"rows":8,"frameCount":61,"fps":30,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::14_phantom_spritesheet.png","requirePath":"../../assets/effects/magic/phantom_cross_01.png","fileSize":30395,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"free_pixel","originalName":"14_phantom_spritesheet.png"},
+    source: require("../../assets/effects/magic/phantom_cross_01.png"),
+  },
+  "fel_spell_01": {
+    ...{"id":"fel_spell_01","name":"Fel Spell","category":"magic","tags":["capture","corruption","acid","spread"],"frameWidth":100,"frameHeight":100,"columns":10,"rows":10,"frameCount":91,"fps":30,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::17_felspell_spritesheet.png","requirePath":"../../assets/effects/magic/fel_spell_01.png","fileSize":263943,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"free_pixel","originalName":"17_felspell_spritesheet.png"},
+    source: require("../../assets/effects/magic/fel_spell_01.png"),
+  },
+  "midnight_01": {
+    ...{"id":"midnight_01","name":"Midnight","category":"magic","tags":["capture","dark","night","storm"],"frameWidth":100,"frameHeight":100,"columns":8,"rows":8,"frameCount":61,"fps":30,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Free Pixel Effects Pack.zip::18_midnight_spritesheet.png","requirePath":"../../assets/effects/magic/midnight_01.png","fileSize":134851,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"free_pixel","originalName":"18_midnight_spritesheet.png"},
+    source: require("../../assets/effects/magic/midnight_01.png"),
+  },
+  "boom_mid_01": {
+    ...{"id":"boom_mid_01","name":"Mid Boom","category":"explosion","tags":["capture","explosion","chain"],"frameWidth":64,"frameHeight":64,"columns":8,"rows":1,"frameCount":8,"fps":14,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-b/spritesheet.png","requirePath":"../../assets/effects/explosion/boom_mid_01.png","fileSize":3110,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"ansimuz_explosions","originalName":"spritesheet.png"},
+    source: require("../../assets/effects/explosion/boom_mid_01.png"),
+  },
+  "boom_large_01": {
+    ...{"id":"boom_large_01","name":"Large Boom","category":"explosion","tags":["capture","explosion","chain","large"],"frameWidth":128,"frameHeight":128,"columns":4,"rows":3,"frameCount":12,"fps":14,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-d/Sprites/explosion-d*.png","requirePath":"../../assets/effects/explosion/boom_large_01.png","fileSize":7622,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"ansimuz_explosions","originalName":"boom_large_01"},
+    source: require("../../assets/effects/explosion/boom_large_01.png"),
+  },
+  "boom_huge_01": {
+    ...{"id":"boom_huge_01","name":"Huge Boom","category":"explosion","tags":["capture","explosion","chain","finale"],"frameWidth":192,"frameHeight":192,"columns":6,"rows":4,"frameCount":22,"fps":14,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\explosion pack 1.zip::explosion pack 1/Explosions pack/explosion-1-e/Sprites/explosion-e*.png","requirePath":"../../assets/effects/explosion/boom_huge_01.png","fileSize":7419,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"ansimuz_explosions","originalName":"boom_huge_01"},
+    source: require("../../assets/effects/explosion/boom_huge_01.png"),
+  },
+  "emote_note_01": {
+    ...{"id":"emote_note_01","name":"Note Balloon","category":"emoji","tags":["capture","emote","balloon","note"],"frameWidth":32,"frameHeight":32,"columns":8,"rows":2,"frameCount":9,"fps":14,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Icons emote.zip::Icons emote/Center/12 - Note.png","requirePath":"../../assets/effects/emoji/emote_note_01.png","fileSize":2558,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"icons_emote","originalName":"12 - Note.png"},
+    source: require("../../assets/effects/emoji/emote_note_01.png"),
+  },
+  "emote_sleeping_01": {
+    ...{"id":"emote_sleeping_01","name":"Sleeping Balloon","category":"emoji","tags":["capture","emote","balloon","sleeping"],"frameWidth":32,"frameHeight":32,"columns":8,"rows":2,"frameCount":9,"fps":14,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Icons emote.zip::Icons emote/Center/10 - Sleeping.png","requirePath":"../../assets/effects/emoji/emote_sleeping_01.png","fileSize":2128,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"icons_emote","originalName":"10 - Sleeping.png"},
+    source: require("../../assets/effects/emoji/emote_sleeping_01.png"),
+  },
+  "emote_dots_01": {
+    ...{"id":"emote_dots_01","name":"Dots Balloon","category":"emoji","tags":["capture","emote","balloon","dots"],"frameWidth":32,"frameHeight":32,"columns":8,"rows":2,"frameCount":9,"fps":14,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Icons emote.zip::Icons emote/Center/09 - Dots.png","requirePath":"../../assets/effects/emoji/emote_dots_01.png","fileSize":1778,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"icons_emote","originalName":"09 - Dots.png"},
+    source: require("../../assets/effects/emoji/emote_dots_01.png"),
+  },
+  "attack_up_01": {
+    ...{"id":"attack_up_01","name":"Attack Up Aura","category":"magic","tags":["capture","aura","buff","character"],"frameWidth":128,"frameHeight":128,"columns":6,"rows":3,"frameCount":18,"fps":20,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Super Pixel Fantasy FX Pack 3 Free Version.zip::Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_attack_up_large_red/frame*.png","requirePath":"../../assets/effects/magic/attack_up_01.png","fileSize":25805,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"super_pixel_fantasy","originalName":"attack_up_01"},
+    source: require("../../assets/effects/magic/attack_up_01.png"),
+  },
+  "defense_up_01": {
+    ...{"id":"defense_up_01","name":"Defense Up Aura","category":"magic","tags":["capture","aura","buff","character"],"frameWidth":128,"frameHeight":128,"columns":6,"rows":3,"frameCount":18,"fps":20,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Super Pixel Fantasy FX Pack 3 Free Version.zip::Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_defense_up_large_blue/frame*.png","requirePath":"../../assets/effects/magic/defense_up_01.png","fileSize":23373,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"super_pixel_fantasy","originalName":"defense_up_01"},
+    source: require("../../assets/effects/magic/defense_up_01.png"),
+  },
+  "haste_01": {
+    ...{"id":"haste_01","name":"Haste Aura","category":"magic","tags":["capture","aura","buff","character"],"frameWidth":128,"frameHeight":128,"columns":6,"rows":5,"frameCount":29,"fps":20,"releaseApproved":true,"sourcePath":"C:\\Users\\user\\Desktop\\animations\\Super Pixel Fantasy FX Pack 3 Free Version.zip::Super Pixel Fantasy FX Pack 3 Free Version/PNG/fanfx3_haste_large_green/frame*.png","requirePath":"../../assets/effects/magic/haste_01.png","fileSize":38014,"densityScales":[1,2,3],"type":"sprite","sourcePackage":"super_pixel_fantasy","originalName":"haste_01"},
+    source: require("../../assets/effects/magic/haste_01.png"),
+  },
 };

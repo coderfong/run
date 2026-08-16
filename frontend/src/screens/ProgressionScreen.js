@@ -27,7 +27,7 @@ import { art } from '../config/onboardingArt';
 import { MAX_LEVEL } from '../config/progression';
 import { getItem, ITEMS } from '../config/cosmetics';
 import { toast } from '../ui/toast';
-import { Bar, Pulse, useReduceMotion } from '../ui/motion';
+import { Arrival, Bar, Pulse, useArrival, useReduceMotion } from '../ui/motion';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 
@@ -457,6 +457,8 @@ export default function ProgressionScreen() {
 
   // Only a failure with NOTHING cached is a dead end; a failed refresh over a
   // ladder that's already on screen leaves the ladder alone.
+  const arriving = useArrival(loading);
+
   if (loading && error) {
     return <Screen center><Text style={type.body}>Couldn’t load progression.</Text></Screen>;
   }
@@ -487,7 +489,9 @@ export default function ProgressionScreen() {
     return n;
   }, 0);
 
-  return (
+  // Bound and wrapped at the end rather than in place: the ladder is 250 lines
+  // of JSX and re-indenting it for one parent would bury the change.
+  const page = (
     <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}>
       {/* The header IS the banner. The purple crew art used to be a separate
           strip above a plain card, so the screen opened with two stacked
@@ -738,6 +742,12 @@ export default function ProgressionScreen() {
         onClose={() => setReveal(null)}
       />
     </ScrollView>
+  );
+
+  return (
+    <Arrival active={arriving} style={{ flex: 1 }}>
+      {page}
+    </Arrival>
   );
 }
 

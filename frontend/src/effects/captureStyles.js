@@ -38,6 +38,7 @@ import {
   REVEAL_ORIGIN,
   REVEAL_TRANSITION,
   ROLE,
+  VECTOR_ENVIRONMENT_KINDS,
   actor,
   attacker,
   camera,
@@ -78,6 +79,11 @@ function scene({
 }) {
   const ordered = sort(scaleSequence(sequence));
   const ground = ordered.find((step) => step.action === 'territoryReveal');
+  // Derived rather than declared: a scene cannot claim to be sprite-only and
+  // then quietly gain a vector beat in a later edit.
+  const usesVectorEnvironment = ordered.some(
+    (step) => step.action === 'environment' && VECTOR_ENVIRONMENT_KINDS.has(step.kind)
+  );
   return Object.freeze({
     id,
     name,
@@ -88,6 +94,7 @@ function scene({
     usesProjectile: ordered.some((step) => step.action === 'projectile'),
     usesContact: ordered.some((step) => step.action === 'contact'),
     usesEnvironment: ordered.some((step) => step.action === 'environment'),
+    usesVectorEnvironment,
     territoryTransition: ground?.transition || REVEAL_TRANSITION.SPREAD_FROM_CENTER,
     revealOrigin: ground?.origin || REVEAL_ORIGIN.TERRITORY_CENTER,
     duration: Math.round(duration * DRAMA_SCALE),
@@ -1387,9 +1394,444 @@ export const CAPTURE_STYLES = Object.freeze([
       victory(3340),
     ],
   }),
+
+  // -------------------------------------------------------------------------
+  // WARD BREAK — the only style where the rivals have a defence.
+  //
+  // Every other scene happens TO people who are standing on ground. Here they
+  // put something up, hold it while it is hit, and lose it. That changes what
+  // the middle of the scene is for: the beat between the strike and the
+  // collapse is them failing to hold, which is a thing you can only stage if
+  // they were doing something in the first place.
+  //
+  // The ward is `protection_circle_01` and the collapse is `void_implosion_01`
+  // played at the ward's own anchor, so the thing that breaks is visibly the
+  // thing they raised.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'ward_break',
+    name: 'Ward Break',
+    encounterMode: M.ATTACKER_ONLY,
+    description: 'The rivals throw a ward up over the claim and hold it; the runner charges one shot, cracks it, and the ward collapses inward taking the ground with it.',
+    beats: [
+      'The rivals raise a ward over the claim',
+      'The runner charges a single shot',
+      'The ward cracks under it and they strain to hold it',
+      'It collapses inward and the ground goes with it',
+    ],
+    duration: 4060,
+    sequence: [
+      attacker(140, ACTION.STEP_FORWARD, { duration: 150 }),
+      // They act second, but they act before the reveal, which is the rule.
+      defenders(300, ACTION.BRACE),
+      effect(360, 'protection_circle_01', { anchor: S.TERRITORY_CENTER, size: 320, speed: 0.9 }),
+      attacker(560, ACTION.CHARGE, { duration: 760 }),
+      effect(660, 'magic_infinity_01', { anchor: 'characterCenter', size: 170, speed: 0.9 }),
+      camera(700, CAMERA_ACTION.ZOOM_IN, { amount: 1.08, duration: 620 }),
+      // Holding it up: directional, so they lean into their own ward.
+      defenders(880, ACTION.RESIST_PULL, { toward: S.TERRITORY_CENTER, duration: 620 }),
+      projectile(1340, 'magical_projectile_01', 'characterCenter', S.TERRITORY_CENTER, {
+        duration: 240, size: 150, speed: 1.6,
+      }),
+      effect(1580, 'weapon_hit_01', { anchor: S.TERRITORY_CENTER, size: 260, speed: 1.2 }),
+      // Cracks in the WARD, not in the ground. Last of them ends at 2100.
+      environment(1600, E.CRACKS, { anchor: S.TERRITORY_CENTER, size: 300, duration: 520, count: 6 }),
+      scatter(1560, [ACTION.WINCE, ACTION.SURPRISED, ACTION.WINCE], { stagger: 70, duration: 400 }),
+      // The ward holding for one beat after it has visibly failed.
+      pause(2100, 180),
+      effect(2280, 'void_implosion_01', { anchor: S.TERRITORY_CENTER, size: 280, speed: 1.3 }),
+      environment(2280, E.FLASH, { duration: 300, opacity: 0.6, color: '#9BE8FF' }),
+      haptic(2280, 'heavy'),
+      shake(2290, { intensity: 1.3, axis: 'both' }),
+      camera(2300, CAMERA_ACTION.PUNCH_IN, { amount: 1.14 }),
+      defenders(2340, ACTION.SHOCKWAVE_KNOCKBACK, { from: S.TERRITORY_CENTER }),
+      reveal(2420, { transition: T.IMPLODE, origin: S.TERRITORY_CENTER, duration: 860 }),
+      effect(2620, 'phantom_cross_01', { anchor: 'randomTerritoryPoint', size: 200, opacity: 0.8 }),
+      // The zoom that opened on the ward has to be handed back before victory.
+      camera(2660, CAMERA_ACTION.RELEASE, { duration: 380 }),
+      scatter(3200, FLIGHT_POOL, { stagger: 60, duration: 620, from: S.TERRITORY_CENTER }),
+      attacker(2820, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3460, ACTION.CELEBRATE, { duration: 600 }),
+      victory(3460),
+    ],
+  }),
+
+  // -------------------------------------------------------------------------
+  // CHAIN REACTION — escalation, which no other style does.
+  //
+  // `domino_capture` travels but stays the same size the whole way across;
+  // `meteor_claim` is one bang. Here the four booms are four different sheets
+  // at 32, 64, 128 and 192 px, so the growth is real art rather than the same
+  // sprite scaled up, and the rivals' first reaction is deliberately a shrug.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'chain_reaction',
+    name: 'Chain Reaction',
+    encounterMode: M.PROJECTILE,
+    description: 'The runner rolls one small charge onto the edge of the claim; each blast sets off a bigger one, walking toward the rivals until the last one takes everything.',
+    beats: [
+      'The runner rolls a charge onto the edge of the claim',
+      'The first pop is small and the rivals barely look',
+      'Every blast is bigger than the last and they are coming this way',
+      'The last one goes off under everybody',
+    ],
+    duration: 4040,
+    sequence: [
+      attacker(150, ACTION.THROW, { toward: S.TERRITORY_TOP }),
+      projectile(480, 'bomb_blast_01', 'characterCenter', S.TERRITORY_TOP, {
+        duration: 380, size: 90, arc: -70, spin: 260,
+        bounce: { height: 22, duration: 260, drift: 16 },
+      }),
+      // Small, and deliberately unimpressive. Rendered small rather than drawn
+      // small: the 32px sheet in this pack cannot open a scene without being
+      // enlarged past what it has pixels for.
+      effect(900, 'boom_mid_01', { anchor: S.TERRITORY_TOP, size: 110, speed: 1.35 }),
+      scatter(940, [ACTION.LOOK_RIGHT, ACTION.NOTICE, ACTION.LOOK_LEFT], {
+        stagger: 70, duration: 340, from: S.TERRITORY_TOP,
+      }),
+      effect(1180, 'boom_large_01', { anchor: 'randomTerritoryPoint', size: 180, speed: 1.25 }),
+      effect(1440, 'boom_huge_01', { anchor: 'randomTerritoryPoint', size: 240, speed: 1.2 }),
+      // Now they move. Last of them ends at 2000, clear of the pause.
+      scatter(1460, [ACTION.HOP_BACK, ACTION.DODGE_LEFT, ACTION.DODGE_RIGHT], {
+        stagger: 70, duration: 400, from: S.TERRITORY_TOP,
+      }),
+      attacker(1600, ACTION.BRACE),
+      camera(1700, CAMERA_ACTION.WHIP_DOWN, { duration: 240 }),
+      pause(2000, 160),
+      effect(2160, 'boom_huge_01', { anchor: 'defenderGroupCenter', size: 330, speed: 1.1 }),
+      environment(2160, E.FLASH, { duration: 340, opacity: 0.7, color: '#FFC98A' }),
+      haptic(2160, 'heavy'),
+      shake(2170, { intensity: 1.5, axis: 'both' }),
+      camera(2180, CAMERA_ACTION.PUNCH_IN, { amount: 1.16 }),
+      environment(2200, E.DUST, {
+        anchor: 'defenderGroupCenter', size: 320, duration: 1400, count: 9, color: '#4A3A32',
+      }),
+      defenders(2220, ACTION.SHOCKWAVE_KNOCKBACK, { from: 'defenderGroupCenter' }),
+      reveal(2340, { transition: T.SHOCKWAVE, origin: S.TERRITORY_CENTER, duration: 900 }),
+      effect(2560, 'explosion_orange_01', { anchor: 'randomTerritoryPoint', size: 180, opacity: 0.8 }),
+      scatter(3080, FLIGHT_POOL, { stagger: 60, duration: 620, from: 'defenderGroupCenter' }),
+      attacker(2800, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3440, ACTION.CELEBRATE, { duration: 600 }),
+      victory(3440),
+    ],
+  }),
+
+  // -------------------------------------------------------------------------
+  // CORROSION CREEP — slow and unstoppable rather than sudden.
+  //
+  // Nothing detonates and nobody is thrown. The rivals give up a step every
+  // time a branch reaches them, three times, and then simply run out of ground.
+  // The haptic is `medium` on purpose: nothing in this scene hits anybody, and
+  // a heavy buzz under a spreading stain would be a lie about what happened.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'corrosion_creep',
+    name: 'Corrosion Creep',
+    encounterMode: M.TERRAIN_TRANSFORM,
+    description: 'One drop goes down and eats outward in branches; the rivals give up a step every time a branch reaches them, until there is nothing left to stand on.',
+    beats: [
+      'The runner puts a single drop on the ground',
+      'It starts eating outward in branches',
+      'The rivals back off from every branch that reaches them',
+      'The whole surface goes over',
+    ],
+    duration: 3760,
+    sequence: [
+      attacker(150, ACTION.PLANT),
+      effect(460, 'acid_splash_01', { anchor: 'characterFeet', size: 160, speed: 1.1 }),
+      environment(640, E.CRACKS, { anchor: 'characterFeet', size: 260, duration: 700, count: 5 }),
+      scatter(700, NOTICE_POOL, { stagger: 90, duration: 380, from: 'characterFeet' }),
+      effect(1000, 'acid_splash_01', { anchor: 'randomTerritoryPoint', size: 210, speed: 1.0 }),
+      environment(1040, E.CRACKS, { anchor: S.TERRITORY_CENTER, size: 340, duration: 800, count: 7 }),
+      effect(1340, 'acid_splash_01', { anchor: S.TERRITORY_BOTTOM, size: 240, speed: 1.1 }),
+      // Ground given up a step at a time, not lost all at once. Ends 1920.
+      scatter(1300, [ACTION.HOP_BACK, ACTION.STUMBLE_LEFT, ACTION.HOP_BACK], {
+        stagger: 90, duration: 440, from: 'characterFeet',
+      }),
+      reveal(1560, { transition: T.CORRUPTION_SPREAD, origin: S.CHARACTER_FEET, duration: 1100 }),
+      effect(1800, 'fel_spell_01', { anchor: S.TERRITORY_CENTER, size: 280, speed: 1.35 }),
+      haptic(1900, 'medium'),
+      shake(1910, { intensity: 0.8, axis: 'x' }),
+      camera(1920, CAMERA_ACTION.ZOOM_IN, { amount: 1.06, duration: 520 }),
+      defenders(1960, ACTION.SLIDE_TOWARD, { toward: 'perimeter' }),
+      effect(2200, 'acid_splash_01', { anchor: 'randomTerritoryPoint', size: 210, opacity: 0.85 }),
+      environment(2260, E.GLOW_SEAMS, { anchor: S.TERRITORY_CENTER, size: 320, duration: 700, count: 7 }),
+      camera(2480, CAMERA_ACTION.RELEASE, { duration: 380 }),
+      scatter(2700, [ACTION.RUN_LEFT, ACTION.FLEE_FROM, ACTION.RUN_RIGHT], {
+        stagger: 70, duration: 640, from: 'characterFeet',
+      }),
+      attacker(2500, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3140, ACTION.CELEBRATE, { duration: 620 }),
+      victory(3140),
+    ],
+  }),
+
+  // -------------------------------------------------------------------------
+  // LIGHTS OUT — the comedy register the pack was missing.
+  //
+  // `ghost_theft` is the quiet one but it is still eerie. This one is boring on
+  // purpose: the runner hums, the claim goes dark, and the rivals lose interest
+  // and wander off rather than being displaced by anything. The lightest haptic
+  // in the pack, and the only style where nobody is knocked over, pulled, or
+  // hit at all.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'lights_out',
+    name: 'Lights Out',
+    encounterMode: M.TERRITORY_ONLY,
+    description: 'The runner hums one note over the claim and the lights go down; the rivals yawn, lose interest and drift off the ground rather than fight for it.',
+    beats: [
+      'The runner hums a note over the claim',
+      'The lights go down across the ground',
+      'The rivals yawn and stop paying attention',
+      'They drift off and the claim is already someone else’s',
+    ],
+    duration: 3800,
+    sequence: [
+      attacker(150, ACTION.CAST, { hold: true }),
+      // The hum leaves them first and the note pops out of it. The puff also
+      // keeps a 32px balloon off the front of the scene, which the effect
+      // guard in effects.test.js rightly refuses.
+      effect(360, 'magic_bubbles_01', { anchor: 'characterHead', size: 90, speed: 1.3, opacity: 0.6 }),
+      effect(560, 'emote_note_01', { anchor: 'characterHead', size: 110 }),
+      scatter(700, [ACTION.NOTICE, ACTION.LOOK_LEFT, ACTION.LOOK_RIGHT], {
+        stagger: 95, duration: 380, from: 'characterCenter',
+      }),
+      environment(760, E.DARKEN, { duration: 1600, opacity: 0.4 }),
+      effect(1000, 'midnight_01', { anchor: S.TERRITORY_CENTER, size: 280, speed: 0.7, opacity: 0.85 }),
+      effect(1300, 'emote_sleeping_01', { anchor: 'defenderGroupCenter', size: 120 }),
+      // Shaking themselves awake, and failing. Ends 1940.
+      defenders(1320, ACTION.SHAKE_OFF),
+      camera(1500, CAMERA_ACTION.ZOOM_IN, { amount: 1.05, duration: 600 }),
+      reveal(1680, { transition: T.RADIAL, origin: S.TERRITORY_CENTER, duration: 1100 }),
+      // The lightest haptic in the pack. This style should barely register.
+      haptic(1900, 'light'),
+      defenders(1980, ACTION.SLIDE_TOWARD, { toward: 'perimeter' }),
+      effect(2140, 'emote_dots_01', { anchor: 'defenderGroupCenter', size: 110 }),
+      environment(2240, E.WIND, { duration: 900, count: 6 }),
+      camera(2360, CAMERA_ACTION.RELEASE, { duration: 400 }),
+      scatter(2720, [ACTION.RUN_LEFT, ACTION.RUN_RIGHT, ACTION.RUN_LEFT], {
+        stagger: 95, duration: 640,
+      }),
+      attacker(2540, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3180, ACTION.CELEBRATE, { duration: 620 }),
+      victory(3180),
+    ],
+  }),
+
+  // -------------------------------------------------------------------------
+  // STORM FRONT — a weather system, not a bolt.
+  //
+  // `lightning_conquest` puts one strike into the middle of the group. This
+  // walks three strikes down the claim in order, top then middle then bottom,
+  // so the threat has a direction and the rivals can see where the next one
+  // goes. The reveal follows the front rather than blooming from the middle,
+  // which is the whole reason it uses SPREAD_FROM_EDGE from the top.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'storm_front',
+    name: 'Storm Front',
+    encounterMode: M.PROJECTILE,
+    description: 'A weather front crosses the claim top to bottom; three strikes walk down the ground in order and the rivals can see exactly where the next one lands.',
+    beats: [
+      'The runner pulls a front in off the edge',
+      'The sky closes over the claim and the rivals look up',
+      'Strikes walk down the ground, one after another',
+      'The last one lands under them and the front passes over',
+    ],
+    duration: 3780,
+    sequence: [
+      attacker(150, ACTION.RAISE_ARMS),
+      environment(420, E.DARKEN, { duration: 1500, opacity: 0.34 }),
+      effect(520, 'midnight_01', { anchor: S.TERRITORY_TOP, size: 300, speed: 1.2, opacity: 0.7 }),
+      defenders(680, ACTION.LOOK_UP),
+      environment(940, E.WIND, { duration: 1400, count: 10, color: '#9FD8FF' }),
+      // Strike one, at the top. Nobody is under it yet.
+      projectile(1100, 'magical_projectile_01', 'screenTop', S.TERRITORY_TOP, {
+        duration: 200, size: 140, speed: 1.7,
+      }),
+      scatter(1160, [ACTION.DUCK, ACTION.BRACE, ACTION.DUCK], {
+        stagger: 90, duration: 420, from: 'screenTop',
+      }),
+      effect(1300, 'electric_impact_01', { anchor: S.TERRITORY_TOP, size: 230, speed: 1.3 }),
+      // Strike two, closer.
+      projectile(1420, 'magical_projectile_01', 'screenTop', 'defenderGroupCenter', {
+        duration: 190, size: 150, speed: 1.7,
+      }),
+      attacker(1500, ACTION.BRACE),
+      effect(1610, 'electric_burst_01', { anchor: 'defenderGroupCenter', size: 250, speed: 1.2 }),
+      // Strike three, on them.
+      projectile(1740, 'magical_projectile_01', 'screenTop', S.TERRITORY_BOTTOM, {
+        duration: 180, size: 160, speed: 1.8,
+      }),
+      effect(1920, 'electric_impact_01', { anchor: S.TERRITORY_BOTTOM, size: 280, speed: 1.15 }),
+      environment(1920, E.FLASH, { duration: 280, opacity: 0.75, color: '#CFF6FF' }),
+      haptic(1920, 'heavy'),
+      shake(1930, { intensity: 1.25, axis: 'x' }),
+      camera(1940, CAMERA_ACTION.PUNCH_IN, { amount: 1.12 }),
+      defenders(1960, ACTION.SHOCKWAVE_KNOCKBACK, { from: S.TERRITORY_BOTTOM }),
+      reveal(2060, { transition: T.SPREAD_FROM_EDGE, origin: S.TERRITORY_TOP, duration: 1000 }),
+      effect(2300, 'solar_shrapnel_01', { anchor: 'randomTerritoryPoint', size: 200, opacity: 0.8 }),
+      scatter(2820, FLIGHT_POOL, { stagger: 60, duration: 620, from: S.TERRITORY_BOTTOM }),
+      attacker(2540, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3180, ACTION.CELEBRATE, { duration: 600 }),
+      victory(3180),
+    ],
+  }),
+
+  // -------------------------------------------------------------------------
+  // SEAL OF OWNERSHIP — a signature being drawn, not a hit.
+  //
+  // `stamp_of_ownership` is one enormous impact. This is its opposite: nothing
+  // lands anywhere until the last ring closes, and the tension is that the
+  // rivals can watch the thing tightening around them for two full seconds and
+  // cannot get out of it. `protection_circle_01` is used as the seal rather
+  // than as a shield, the same trick Dragon Sweep plays with a shadow.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'hex_seal',
+    name: 'Seal of Ownership',
+    encounterMode: M.TERRITORY_ONLY,
+    description: 'A seal inscribes itself under the claim and locks one ring at a time; the rivals feel it closing around them and are lifted out as the last ring snaps shut.',
+    beats: [
+      'The runner starts drawing a seal under the claim',
+      'Rings lock one after another and the rivals feel it closing',
+      'The pattern spreads cell by cell across the ground',
+      'The last ring snaps shut and the claim is signed',
+    ],
+    duration: 3680,
+    sequence: [
+      attacker(150, ACTION.CAST, { hold: true }),
+      effect(420, 'protection_circle_01', { anchor: S.TERRITORY_CENTER, size: 200, speed: 0.8 }),
+      scatter(620, NOTICE_POOL, { stagger: 85, duration: 380, from: S.TERRITORY_CENTER }),
+      effect(900, 'magic_spell_01', { anchor: S.TERRITORY_CENTER, size: 260, speed: 0.9, opacity: 0.85 }),
+      environment(940, E.SWEEP_BAND, {
+        anchor: S.TERRITORY_CENTER, size: 320, duration: 1000, opacity: 0.35, color: '#FFD98A',
+      }),
+      effect(1200, 'magic_spell_01', { anchor: 'randomTerritoryPoint', size: 220, speed: 1.1 }),
+      // Pulling against a ring that is closing on them. Ends 1840.
+      defenders(1220, ACTION.RESIST_PULL, { toward: S.TERRITORY_CENTER, duration: 620 }),
+      effect(1500, 'magic_spell_01', { anchor: S.TERRITORY_BOTTOM, size: 240, speed: 1.1 }),
+      reveal(1660, { transition: T.TILE_CONVERT, origin: S.TERRITORY_CENTER, duration: 900 }),
+      camera(1700, CAMERA_ACTION.ZOOM_IN, { amount: 1.06, duration: 520 }),
+      effect(1900, 'protection_circle_01', { anchor: S.TERRITORY_CENTER, size: 320, speed: 1.2 }),
+      defenders(1900, ACTION.SLIDE_TOWARD, { toward: 'perimeter' }),
+      haptic(1980, 'success'),
+      shake(1990, { intensity: 0.9, axis: 'y' }),
+      camera(2000, CAMERA_ACTION.PUNCH_IN, { amount: 1.08 }),
+      effect(2200, 'sunburn_ring_01', { anchor: S.TERRITORY_CENTER, size: 240, opacity: 0.85 }),
+      camera(2320, CAMERA_ACTION.RELEASE, { duration: 380 }),
+      scatter(2640, [ACTION.PORTAL_EXIT, ACTION.RUN_LEFT, ACTION.RUN_RIGHT], {
+        stagger: 70, duration: 640, toward: 'perimeter',
+      }),
+      attacker(2420, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3060, ACTION.CELEBRATE, { duration: 620 }),
+      victory(3060),
+    ],
+  }),
+
+  // -------------------------------------------------------------------------
+  // OVERDRIVE — the runner is the spectacle, not the sky.
+  //
+  // Every other style opens with a gesture and lets the world do the work.
+  // Here three auras stack visibly onto the runner while the rivals stand and
+  // watch it build, and the whole claim is one stomp at the end of it — the
+  // anticipation is the character, not the environment.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'overdrive_claim',
+    name: 'Overdrive',
+    encounterMode: M.ATTACKER_ONLY,
+    description: 'Three auras stack onto the runner in plain sight while the rivals back off, and the whole claim is taken with one stomp at the end of it.',
+    beats: [
+      'The runner starts stacking up',
+      'Three auras land on them and the rivals stop to watch',
+      'They drive one stomp into the ground',
+      'A single pulse clears the claim',
+    ],
+    duration: 3680,
+    sequence: [
+      attacker(150, ACTION.CHARGE, { duration: 900 }),
+      effect(200, 'attack_up_01', { anchor: 'characterCenter', size: 180, speed: 1.1 }),
+      effect(520, 'defense_up_01', { anchor: 'characterCenter', size: 200, speed: 1.1 }),
+      scatter(560, NOTICE_POOL, { stagger: 80, duration: 380, from: 'characterCenter' }),
+      effect(840, 'haste_01', { anchor: 'characterCenter', size: 220, speed: 1.15 }),
+      camera(400, CAMERA_ACTION.ZOOM_IN, { amount: 1.1, duration: 800 }),
+      pause(1080, 180),
+      defenders(1140, ACTION.HOP_BACK, { from: 'characterCenter' }),
+      attacker(1260, ACTION.STOMP),
+      effect(1560, 'impact_shock_01', { anchor: 'characterFeet', size: 300, speed: 1.3 }),
+      effect(1600, 'frost_nova_01', { anchor: S.TERRITORY_CENTER, size: 320, speed: 1.2 }),
+      environment(1600, E.FLASH, { duration: 300, opacity: 0.6, color: '#FFD9A8' }),
+      haptic(1600, 'heavy'),
+      shake(1610, { intensity: 1.35, axis: 'both' }),
+      camera(1620, CAMERA_ACTION.RELEASE, { duration: 280 }),
+      defenders(1680, ACTION.SHOCKWAVE_KNOCKBACK, { from: 'characterFeet' }),
+      reveal(1760, { transition: T.SHOCKWAVE, origin: S.CHARACTER_FEET, duration: 880 }),
+      attacker(1860, ACTION.RECOIL),
+      effect(1980, 'nebula_burst_01', { anchor: 'randomTerritoryPoint', size: 210, opacity: 0.85 }),
+      scatter(2540, FLIGHT_POOL, { stagger: 70, duration: 640, from: 'characterFeet' }),
+      attacker(2420, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3060, ACTION.CELEBRATE, { duration: 620 }),
+      victory(3060),
+    ],
+  }),
+
+  // -------------------------------------------------------------------------
+  // GEYSER BREAK — the ground swells under the rivals specifically.
+  //
+  // Not from the sky, not from the runner's feet: the event comes up through
+  // the rivals themselves, and they feel the surface move under them for a
+  // full beat before anything breaks. That dread beat is the whole scene.
+  // `acid_splash_01` (PVFX Foundry, already CC0-approved) stands in for the
+  // pack's own water-wave frame in the falling-rain beat, since that frame
+  // ships in a pack whose download carries no license text of any kind.
+  // -------------------------------------------------------------------------
+  scene({
+    id: 'geyser_break',
+    name: 'Geyser Break',
+    encounterMode: M.TERRAIN_TRANSFORM,
+    description: 'The ground swells under the rivals for a beat before it opens; a column comes up through them and falls back as rain onto ground that has changed hands.',
+    beats: [
+      'The runner drives a heel into the ground',
+      'The surface swells under the rivals and they lose their footing',
+      'A column comes up through them',
+      'It falls back as rain and the claim has changed hands',
+    ],
+    duration: 3720,
+    sequence: [
+      attacker(150, ACTION.STOMP),
+      effect(460, 'magic_bubbles_01', { anchor: 'defenderGroupCenter', size: 180, speed: 0.9 }),
+      environment(520, E.RISE, { anchor: 'defenderGroupCenter', size: 280, duration: 900, count: 5 }),
+      scatter(660, [ACTION.LOOK_LEFT, ACTION.NOTICE, ACTION.LOOK_RIGHT], {
+        stagger: 85, duration: 380, from: 'defenderGroupCenter',
+      }),
+      effect(1000, 'magic_bubbles_01', { anchor: 'defenderGroupCenter', size: 170, opacity: 0.7 }),
+      // Losing their feet on ground that is moving. Ends 1840.
+      scatter(1240, [ACTION.STUMBLE_LEFT, ACTION.HOP_BACK, ACTION.STUMBLE_RIGHT], {
+        stagger: 80, duration: 440, from: 'defenderGroupCenter',
+      }),
+      attacker(1400, ACTION.BRACE),
+      effect(1600, 'fire_column_01', { anchor: 'defenderGroupCenter', size: 320, speed: 1.1 }),
+      environment(1620, E.FLASH, { duration: 280, opacity: 0.5, color: '#BFE9FF' }),
+      haptic(1620, 'heavy'),
+      shake(1630, { intensity: 1.3, axis: 'y' }),
+      camera(1640, CAMERA_ACTION.PUNCH_IN, { amount: 1.12 }),
+      defenders(1880, ACTION.SHOCKWAVE_KNOCKBACK, { from: 'defenderGroupCenter' }),
+      reveal(1960, { transition: T.SPREAD_FROM_CENTER, origin: S.TERRITORY_CENTER, duration: 900 }),
+      effect(2200, 'acid_splash_01', { anchor: 'randomTerritoryPoint', size: 220, opacity: 0.8 }),
+      environment(2300, E.DUST, {
+        anchor: 'defenderGroupCenter', size: 280, duration: 1100, count: 6, color: '#8FB8CC',
+      }),
+      scatter(2740, FLIGHT_POOL, { stagger: 60, duration: 620, from: 'defenderGroupCenter' }),
+      attacker(2460, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER }),
+      attacker(3100, ACTION.CELEBRATE, { duration: 620 }),
+      victory(3100),
+    ],
+  }),
 ]);
 
-export const DEFAULT_CAPTURE_STYLE_ID = 'meteor_claim';
+export const DEFAULT_CAPTURE_STYLE_ID = 'paint_bomb';
 
 // Old ids may exist in persisted dev replays and gallery deep links. Resolve
 // them to the closest new scene without keeping duplicate styles in the pool.
@@ -1420,8 +1862,21 @@ export function isReleaseApprovedCaptureStyle(item) {
   return !!item && item.releaseApproved !== false;
 }
 
+// A scene reaches players only if every visual in it is drawn art.
+//
+// Scenes that lean on the vector environment primitives stay defined — they are
+// authored choreography and the beats are still right — but they are held out
+// of the pool until their vector beats are replaced with sprite equivalents.
+// Better a small pool of scenes that all look hand-made than a large one where
+// some captures are shapes.
+export function isSpriteOnlyCaptureStyle(item) {
+  return !!item && !item.usesVectorEnvironment;
+}
+
 export const PLAYABLE_CAPTURE_STYLES = Object.freeze(
-  CAPTURE_STYLES.filter(isReleaseApprovedCaptureStyle)
+  CAPTURE_STYLES.filter(
+    (item) => isReleaseApprovedCaptureStyle(item) && isSpriteOnlyCaptureStyle(item)
+  )
 );
 
 function hashSeed(seed) {
@@ -1444,7 +1899,11 @@ export function pickCaptureStyle(seed) {
 }
 
 export function resolveCaptureStyle(id) {
-  return getCaptureStyle(id) || getCaptureStyle(DEFAULT_CAPTURE_STYLE_ID);
+  // Saved runs and deep links can name a scene that is held out of the pool, so
+  // resolution falls through to a playable one rather than replaying vectors.
+  const found = getCaptureStyle(id);
+  if (found && isSpriteOnlyCaptureStyle(found)) return found;
+  return getCaptureStyle(DEFAULT_CAPTURE_STYLE_ID);
 }
 
 export { ENCOUNTER_MODE, choreographySignature, choreographyProfile };

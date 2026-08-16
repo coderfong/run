@@ -23,7 +23,7 @@ import { radius, space, toon, withAlpha, useTheme, useThemedStyles, useThemedTyp
 import { NEUTRAL } from '../state/clan';
 import { Screen, Card, Row, Skeleton, EmptyState, PANEL_INK, ToonHeader } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
-import { PressableScale } from '../ui/motion';
+import { Arrival, PressableScale, useArrival } from '../ui/motion';
 import { SEASON_CATEGORY_ART, SEASON_SCOPE_ART } from '../config/seasonArt';
 
 const km2 = (m) => (m / 1e6).toFixed(2);
@@ -167,6 +167,8 @@ export default function SeasonScreen({ navigation, route }) {
     </ToonHeader>
   );
 
+  const arriving = useArrival(loading);
+
   if (loading) {
     return (
       <Screen gutter={false} edges={[]}>
@@ -258,7 +260,14 @@ export default function SeasonScreen({ navigation, route }) {
             style={{ marginTop: space.xxl }}
           />
         }
-        renderItem={({ item, index }) => (mode === 'clans' ? renderClan(item, index) : renderSolo(item, index))}
+        // The board's HEADER is on screen in both branches — it is drawn above
+        // the placeholders too — so the fade goes on the rows alone. Fading the
+        // whole page would take a header that never left and blink it.
+        renderItem={({ item, index }) => (
+          <Arrival active={arriving}>
+            {mode === 'clans' ? renderClan(item, index) : renderSolo(item, index)}
+          </Arrival>
+        )}
       />
     </Screen>
   );

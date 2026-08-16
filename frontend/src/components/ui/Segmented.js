@@ -17,11 +17,11 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 
-import { radius, useTheme, useThemedType } from '../../theme';
+import { NB, nbInk, radius, useTheme, useThemedType } from '../../theme';
 import { PressableScale } from '../../ui/motion';
 
 export default function Segmented({ options, value, onChange, style, labelSuffix }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   return (
     <View
@@ -32,6 +32,12 @@ export default function Segmented({ options, value, onChange, style, labelSuffix
           borderRadius: radius.pill,
           padding: 5,
           gap: 10,
+          // The track gets the stroke, the segments do not. A stroke on each
+          // option would draw three or four boxes sitting in a fourth, which
+          // reads as a table; the control is ONE object with a moving fill in
+          // it, and the outline is what says so.
+          borderWidth: NB.strokeThin,
+          borderColor: nbInk(scheme, colors.bgElevated),
         },
         style,
       ]}

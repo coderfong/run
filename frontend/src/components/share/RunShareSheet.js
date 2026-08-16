@@ -26,8 +26,8 @@ import {
 import * as Sentry from '@sentry/react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path, Rect } from 'react-native-svg';
-import { Copy, Download, Instagram, Share2 } from 'lucide-react-native';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { Copy, Download, Share2 } from 'lucide-react-native';
 
 import RunShareCard, {
   ACCENTS,
@@ -36,11 +36,14 @@ import RunShareCard, {
   SHARE_FORMATS,
   availableStats,
 } from './RunShareCard';
+import { TRAIL_DECORATIONS, TRAIL_NONE } from './trailDecorations';
 import RunPostEditor from '../RunPostEditor';
 import { Segmented } from '../ui';
 import { radius, space, useTheme, useThemedStyles } from '../../theme';
 import { PressableScale, haptic } from '../../ui/motion';
 import { toast } from '../../ui/toast';
+import { SHARE_DEBUG_FLAGS, shareCrumb } from '../../utils/shareDebugFlags';
+import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 
 // Instagram's own gradient, so the destination is recognisable at a glance.
 const IG_GRADIENT = ['#F9CE34', '#EE2A7B', '#6228D7'];
@@ -144,13 +147,58 @@ function Chip({ label, on, onPress }) {
   );
 }
 
+// Instagram's own mark, drawn here rather than imported.
+//
+// THIS WAS THE CRASH-ON-OPEN. lucide dropped every brand icon in v1, so
+// `import { Instagram } from 'lucide-react-native'` resolves to `undefined` —
+// a named import Metro does not warn about and Hermes does not fault on until
+// the element is created. `<undefined />` then throws during the render of the
+// destinations row, which is the first thing that happens after the sheet goes
+// ready, and an uncaught throw there takes the whole screen down. Nothing was
+// ever wrong with the card, the route SVG, the avatar or the checkerboard.
+//
+// Three nodes on lucide's own 24-grid and stroke weight, so it sits level with
+// the Download / Copy / Share icons beside it. The stroke is repeated on every
+// child rather than inherited from <Svg>, because that is what lucide's own
+// icons do — and those are the ones this app has been rendering for months.
+function InstagramGlyph({ size, color }) {
+  const line = {
+    fill: 'none',
+    stroke: color,
+    strokeWidth: 2,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+  };
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect {...line} x={2} y={2} width={20} height={20} rx={5} ry={5} />
+      <Circle {...line} cx={12} cy={12} r={4} />
+      <Circle cx={17.5} cy={6.5} r={1.35} fill={color} />
+    </Svg>
+  );
+}
+
+// A lucide icon, or a plain dot in its place when `icons` is off — one more
+// suspect isolated from the crash-on-open without losing the destination
+// button's layout.
+function DestIcon({ Icon, size, color }) {
+  // A missing `Icon` is not hypothetical here — see InstagramGlyph above. The
+  // dot costs the runner one glyph; rendering `<undefined />` costs them the
+  // screen, so an icon that went away upstream degrades instead of crashing.
+  if (!SHARE_DEBUG_FLAGS.icons || !Icon) {
+    return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
+  }
+  return <Icon size={size} color={color} strokeWidth={2} />;
+}
+
 // One destination in the "Share to" row: a round target with its name under it,
 // which is the shape every share sheet in every app already uses.
 function Destination({ label, busyLabel, busy, disabled, onPress, gradient, children }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const Body = gradient ? LinearGradient : View;
-  const bodyProps = gradient
+  const useGradient = !!gradient && SHARE_DEBUG_FLAGS.gradient;
+  const Body = useGradient ? LinearGradient : View;
+  const bodyProps = useGradient
     ? { colors: gradient, start: { x: 0, y: 1 }, end: { x: 1, y: 0 } }
     : {};
   return (
@@ -164,7 +212,7 @@ function Destination({ label, busyLabel, busy, disabled, onPress, gradient, chil
     >
       <Body
         {...bodyProps}
-        style={[styles.destinationDisc, !gradient && { backgroundColor: colors.cardAlt }]}
+        style={[styles.destinationDisc, !useGradient && { backgroundColor: colors.cardAlt }]}
       >
         {children}
       </Body>
@@ -194,10 +242,14 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   // before anyone touches a control.
   const clanColor = cardProps.team?.glow;
   const [accent, setAccent] = useState(clanColor);
-  const [textColor, setTextColor] = useState('light');
   const [align, setAlign] = useState('left');
   const [showRoute, setShowRoute] = useState(true);
-  const [showCharacter, setShowCharacter] = useState(true);
+  const [trail, setTrail] = useState(TRAIL_NONE);
+  // The simplified card is the route, four numbers and the wordmark, so the
+  // figure starts OFF. The control stays: it is one tap to put the runner back
+  // on, and it is the only part of the card that is theirs rather than the
+  // run's.
+  const [showCharacter, setShowCharacter] = useState(false);
   const [flip, setFlip] = useState(false);
   const offered = useMemo(() => availableStats(cardProps.run), [cardProps.run]);
   const [statKeys, setStatKeys] = useState(() =>
@@ -229,11 +281,15 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       setEditorReady(false);
       return undefined;
     }
+    shareCrumb('RunShareSheet opened', { ...SHARE_DEBUG_FLAGS });
     let alive = true;
     let timer;
     const task = InteractionManager.runAfterInteractions(() => {
       timer = setTimeout(() => {
-        if (alive) setEditorReady(true);
+        if (alive) {
+          shareCrumb('editorReady -> true');
+          setEditorReady(true);
+        }
       }, 80);
     });
     return () => {
@@ -337,11 +393,25 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       if (!res.ok) toast.error(res.reason);
     });
 
-  const shareCapabilities = editorReady ? socialShare() : null;
+  // `nativeShareProbe` gates the instant this runs `require('expo-media-library')`
+  // / `require('expo-clipboard')` (see socialShare.js's `lazy()`, which
+  // breadcrumbs each require) — the moment editorReady flips, before any
+  // button press. Suspect #1 for a crash that fires the instant the sheet
+  // becomes ready with everything else disabled.
+  const shareCapabilities =
+    editorReady && SHARE_DEBUG_FLAGS.nativeShareProbe ? socialShare() : null;
   const canSave = !!shareCapabilities?.canSaveToPhotos?.();
   const canCopy = !!shareCapabilities?.canCopyImage?.();
 
   if (!visible) return null;
+
+  // `sheetBody` is the widest cut available without a rebuild: off, nothing
+  // below the head bar (title + Close) mounts at all — format switch,
+  // ScrollView, every control row, the destinations row. If the crash
+  // survives THIS off, it isn't in RunShareSheet's body; it's either in the
+  // head bar itself or upstream (ResultScreen's own stage-change effects,
+  // React Navigation). See `mountSheet` in ResultScreen.js for the next cut.
+  const bodyOn = editorReady && SHARE_DEBUG_FLAGS.sheetBody;
 
   return (
     <View style={[styles.screen, styles.fullScreen, { paddingTop: insets.top + space.sm }]}>
@@ -357,7 +427,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           </PressableScale>
         </View>
 
-        {editorReady ? <Segmented
+        {bodyOn ? <Segmented
           style={styles.formats}
           value={format}
           onChange={setFormat}
@@ -368,7 +438,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           ]}
         /> : null}
 
-        {editorReady ? <ScrollView
+        {bodyOn ? <ScrollView
           style={styles.scroller}
           contentContainerStyle={styles.previewWrap}
           showsVerticalScrollIndicator={false}
@@ -377,18 +447,18 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           {/* The exact pixels that get posted, on a checkerboard so the empty
               parts read as empty rather than as dark grey. */}
           <View style={styles.previewShadow}>
-            <Checkerboard
+            {SHARE_DEBUG_FLAGS.checkerboard && <Checkerboard
               width={previewW}
               height={previewW * spec.ratio}
               style={StyleSheet.absoluteFill}
-            />
+            />}
             {/* Boundaried. The card composites a runner's whole avatar over a
                 projected route, and it is the LAST thing between a finished run
                 and the way home — a throw in here used to take the result
                 screen down with it, losing the recap the runner was looking at.
                 Now the card is the only thing lost, and everything else on the
                 sheet still works. */}
-            <ShareBoundary
+            {SHARE_DEBUG_FLAGS.card && <ShareBoundary
               width={previewW}
               height={previewW * spec.ratio}
               styles={styles}
@@ -399,14 +469,14 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 format={format}
                 width={previewW}
                 accent={accent}
-                textColor={textColor}
                 align={align}
                 stats={statKeys}
                 showRoute={showRoute}
+                trail={trail}
                 showCharacter={showCharacter}
                 flip={flip}
               />
-            </ShareBoundary>
+            </ShareBoundary>}
             <View style={styles.transparentBadge} pointerEvents="none">
               <Text style={styles.transparentText}>TRANSPARENT</Text>
             </View>
@@ -438,43 +508,44 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </ScrollView>
           </Row>
 
+          {/* Text is WHITE and only white now — the dark option is gone. See
+              the tone note in RunShareCard: black type on a card with no
+              background of its own is the one combination that vanishes. */}
           <Row label="Text">
-            <View style={styles.controlStack}>
-              <View style={styles.controlGroup}>
-                <Text style={styles.controlLabel}>COLOUR</Text>
-                <View style={styles.chipWrap}>
-                  {[
-                    { key: 'light', label: 'Light' },
-                    { key: 'dark', label: 'Dark' },
-                  ].map((o) => (
-                    <Chip
-                      key={o.key}
-                      label={o.label}
-                      on={textColor === o.key}
-                      onPress={() => setTextColor(o.key)}
-                    />
-                  ))}
-                </View>
-              </View>
-              <View style={styles.controlGroup}>
-                <Text style={styles.controlLabel}>ALIGNMENT</Text>
-                <View style={styles.chipWrap}>
-                  {[
-                    { key: 'left', label: 'Left' },
-                    { key: 'center', label: 'Centre' },
-                    { key: 'right', label: 'Right' },
-                  ].map((o) => (
-                    <Chip
-                      key={o.key}
-                      label={o.label}
-                      on={align === o.key}
-                      onPress={() => setAlign(o.key)}
-                    />
-                  ))}
-                </View>
-              </View>
+            <View style={styles.chipWrap}>
+              {[
+                { key: 'left', label: 'Left' },
+                { key: 'center', label: 'Centre' },
+                { key: 'right', label: 'Right' },
+              ].map((o) => (
+                <Chip
+                  key={o.key}
+                  label={o.label}
+                  on={align === o.key}
+                  onPress={() => setAlign(o.key)}
+                />
+              ))}
             </View>
           </Row>
+
+          {/* What grows along the line the runner actually ran: side-on marks
+              rooted on the route, drawn in the accent and spaced by distance.
+              PARKED behind TRAIL_DECORATIONS_ENABLED — built, kept, not shipped
+              yet — and only offered while the route is on the card at all. */}
+          {TRAIL_DECORATIONS_ENABLED && showRoute ? (
+            <Row label="Trail">
+              <View style={styles.chipWrap}>
+                {TRAIL_DECORATIONS.map((d) => (
+                  <Chip
+                    key={d.key}
+                    label={d.label}
+                    on={trail === d.key}
+                    onPress={() => setTrail(d.key)}
+                  />
+                ))}
+              </View>
+            </Row>
+          ) : null}
 
           <Row label="Runner">
             <View style={styles.chipWrap}>
@@ -503,21 +574,27 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </View>
           </Row>
 
-          <Row label="Home post">
+          {SHARE_DEBUG_FLAGS.postEditor && <Row label="Home post">
             <RunPostEditor
               runId={cardProps.run?.runId}
               initialCaption={cardProps.run?.caption}
               initialMedia={cardProps.run?.media}
             />
-          </Row>
+          </Row>}
         </ScrollView> : (
           <View style={styles.preparing}>
-            <ActivityIndicator color={colors.primary} size="large" />
-            <Text style={styles.preparingText}>Preparing your run card…</Text>
+            {editorReady ? (
+              <Text style={styles.preparingText}>Sheet body off (debug)</Text>
+            ) : (
+              <>
+                <ActivityIndicator color={colors.primary} size="large" />
+                <Text style={styles.preparingText}>Preparing your run card…</Text>
+              </>
+            )}
           </View>
         )}
 
-        {editorReady ? <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
+        {bodyOn ? <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
           <Text style={styles.actionsLabel}>Share to</Text>
           <View style={styles.destinations}>
             <Destination
@@ -528,7 +605,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 onPress={toStory}
                 gradient={IG_GRADIENT}
               >
-                <Instagram size={24} color="#fff" strokeWidth={2} />
+                <DestIcon Icon={InstagramGlyph} size={24} color="#fff" />
               </Destination>
 
             {canSave && (
@@ -539,7 +616,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 disabled={!!busy}
                 onPress={toPhotos}
               >
-                <Download size={22} color={colors.text} strokeWidth={2} />
+                <DestIcon Icon={Download} size={22} color={colors.text} />
               </Destination>
             )}
 
@@ -551,7 +628,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 disabled={!!busy}
                 onPress={toClipboard}
               >
-                <Copy size={22} color={colors.text} strokeWidth={2} />
+                <DestIcon Icon={Copy} size={22} color={colors.text} />
               </Destination>
             )}
 
@@ -562,7 +639,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               disabled={!!busy}
               onPress={toSystemSheet}
             >
-              <Share2 size={22} color={colors.text} strokeWidth={2} />
+              <DestIcon Icon={Share2} size={22} color={colors.text} />
             </Destination>
           </View>
         </View> : null}
@@ -591,9 +668,6 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   rowLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.sm },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  controlStack: { gap: space.md },
-  controlGroup: { gap: 6 },
-  controlLabel: { ...type.caption, color: colors.textDim },
   chip: {
     paddingHorizontal: space.md,
     paddingVertical: 7,

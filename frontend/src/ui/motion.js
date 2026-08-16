@@ -99,6 +99,148 @@ export function Reveal({ delay = 0, from = 'down', duration = 340, children, sty
 }
 
 // ---------------------------------------------------------------------------
+// ScreenIn — a whole screen arriving as ONE fade instead of in pieces.
+//
+// Reveal staggers elements that are already there. This is for the other case:
+// a screen whose content cannot be drawn until something lands (the map style,
+// the first page of data), where the honest options are a half-built screen
+// that fills in piecemeal or a hold followed by a single clean fade up. The
+// second one is what reads as the app arriving rather than assembling.
+//
+// Children RENDER the whole time — only the opacity is held at zero — so
+// layout, measurement and the map's own load all happen behind the fade and
+// nothing is waiting on the reveal to start working.
+//
+// `timeoutMs` is the reason this is safe to gate a whole screen on: a `ready`
+// that never turns true (a map event that doesn't fire, a fetch that hangs)
+// would otherwise leave someone staring at the background colour. The guard
+// shows the screen anyway. It is a floor, not a target — reaching it means the
+// content faded in mid-build, which is still better than a blank page.
+//
+// `armed` starts the guard's clock. It matters for a tab screen, because the
+// tabs all MOUNT at launch (App.js preloads them) and are looked at much
+// later: measuring the wait from mount would burn the guard while the screen
+// is still off-screen, and the reveal would play to nobody. Arm on focus and
+// the guard measures the wait somebody is actually sitting through.
+//
+// The reveal plays ONCE. A screen re-fading every time its data refreshes is
+// a flicker, not an entrance.
+// ---------------------------------------------------------------------------
+
+export function ScreenIn({
+  ready = true,
+  armed = true,
+  duration = 420,
+  delay = 0,
+  timeoutMs = 1400,
+  style,
+  children,
+  ...rest
+}) {
+  const reduced = useReduceMotion();
+  const opacity = useSharedValue(reduced ? 1 : 0);
+  const [expired, setExpired] = useState(false);
+  const played = useRef(false);
+
+  useEffect(() => {
+    if (reduced || !armed || ready || played.current) return undefined;
+    const t = setTimeout(() => setExpired(true), timeoutMs);
+    return () => clearTimeout(t);
+  }, [armed, ready, reduced, timeoutMs]);
+
+  useEffect(() => {
+    if (reduced) {
+      opacity.value = 1;
+      return;
+    }
+    if (played.current || !(ready || (armed && expired))) return;
+    played.current = true;
+    opacity.value = withDelay(
+      delay,
+      withTiming(1, { duration, easing: Easing.out(Easing.quad) })
+    );
+  }, [ready, armed, expired, reduced, delay, duration, opacity]);
+
+  const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Animated.View style={[style, fade]} {...rest}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// useArrival / Arrival — covering the skeleton-to-data swap.
+//
+// ScreenIn is for content that can be HELD until it is whole. Most screens
+// can't be: they show placeholder blocks so the page has a shape while the
+// request is out, and then hard-swap to the real thing. The swap is the ugly
+// part — grey slabs replaced by dense cards in a single frame, which reads as
+// a jolt however fast the network was.
+//
+// The pair below fades that content up over the page instead. It is a dissolve
+// rather than a true crossfade: the placeholder leaves and the content ramps up
+// from the same background it was drawn on. Overlapping the two would mean
+// keeping a positioned ghost of the placeholder alive through the swap, and no
+// screen here is laid out such that that ghost would land where its original
+// sat.
+//
+// The point of `useArrival` is that the fade only happens where somebody was
+// actually kept waiting. Most visits hit the response cache (see api/cache.js)
+// and draw real content on the first frame — there is no jump to cover there,
+// and fading in content that was already in hand is exactly the "everything is
+// always loading" look the cache was built to get rid of. Hold the hook where
+// the loading flag lives (above the early return, so it survives both
+// branches) and hand its answer to the wrapper.
+//
+//   const arriving = useArrival(loading);
+//   if (loading) return <Screen>{placeholders}</Screen>;
+//   return <Arrival active={arriving} style={{ flex: 1 }}><Screen>…</Screen></Arrival>;
+// ---------------------------------------------------------------------------
+
+export function useArrival(loading) {
+  // A latch, deliberately written during render: it has to be true on the very
+  // render that flips `loading` off, which a state update is a frame too late
+  // for. Idempotent — re-rendering with the same input can only re-set it.
+  const waited = useRef(false);
+  if (loading) waited.current = true;
+  return waited.current;
+}
+
+export function Arrival({
+  active = true,
+  duration = 280,
+  delay = 0,
+  style,
+  children,
+  ...rest
+}) {
+  const reduced = useReduceMotion();
+  const skip = !active || reduced;
+  const opacity = useSharedValue(skip ? 1 : 0);
+
+  useEffect(() => {
+    if (skip) {
+      opacity.value = 1;
+      return;
+    }
+    opacity.value = withDelay(
+      delay,
+      withTiming(1, { duration, easing: Easing.out(Easing.quad) })
+    );
+  }, [skip, delay, duration, opacity]);
+
+  const fade = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Animated.View style={[style, fade]} {...rest}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Confetti — a one-shot celebration burst. Renders `count` pieces that fall
 // and drift with a little spin, then fade. Absolutely positioned; drop it in
 // an overlay. No-op under Reduce Motion. pointerEvents none — never blocks.
@@ -214,6 +356,70 @@ export function PressableScale({
       }}
       onPressOut={(event) => {
         if (!reduced) scale.value = withSpring(1, { damping: 20, stiffness: 300 });
+        onPressOut?.(event);
+      }}
+      onPress={onPress}
+      disabled={disabled}
+      {...rest}
+    >
+      <Animated.View style={[style, animatedStyle]}>{children}</Animated.View>
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PressableShift — the neo-brutalist press.
+//
+// A box with a hard offset shadow is drawn as though it sits ABOVE the page by
+// exactly that offset. Pressing it should put it down: the box slides into the
+// shadow's place and the shadow collapses to nothing, so the whole thing lands
+// flush. Releasing lifts it back. It is the one interaction that makes the
+// style feel physical rather than decorative, and it is the reason the shadow
+// is worth having on a button at all.
+//
+// The shadow half is the caller's job — `shift` is exported as a shared value
+// through the render prop so a HardShadow can collapse in step. A caller that
+// only wants the movement ignores it.
+//
+// Scale is deliberately NOT applied. Scaling a box with a 3pt stroke scales the
+// stroke too, so the outline visibly thins under the thumb, which is the exact
+// opposite of what a heavy-stroke style should advertise when touched.
+// ---------------------------------------------------------------------------
+
+export function PressableShift({
+  children,
+  style,
+  containerStyle,
+  onPress,
+  onPressIn,
+  onPressOut,
+  disabled,
+  // How far the box travels. Match it to its shadow's offset, or the box lands
+  // somewhere its shadow was not and the press reads as a wobble.
+  offset = 4,
+  ...rest
+}) {
+  const reduced = useReduceMotion();
+  const down = useSharedValue(0);
+
+  // Timing, not spring: the box is meant to LAND. A spring overshoots past
+  // flush and bounces back out of the shadow it just filled.
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: down.value * offset },
+      { translateY: down.value * offset },
+    ],
+  }));
+
+  return (
+    <Pressable
+      style={containerStyle}
+      onPressIn={(event) => {
+        if (!reduced) down.value = withTiming(1, { duration: 60 });
+        onPressIn?.(event);
+      }}
+      onPressOut={(event) => {
+        if (!reduced) down.value = withTiming(0, { duration: 90 });
         onPressOut?.(event);
       }}
       onPress={onPress}

@@ -5,7 +5,10 @@
 import React, { useEffect, useState } from 'react';
 import {
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api, apiPhotoSource } from '../api/client';
 import { invalidate, updateCached } from '../api/cache';
-import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { PressableScale, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { MAX_DATA_URI_LENGTH, dataUri, imagePicker } from '../ui/photoPicker';
@@ -228,39 +231,67 @@ export default function RunPostEditor({
   );
 }
 
+// A centered dialog, not the full-screen page this used to be — this is one
+// caption and up to four photos, not a screen's worth of content, and a page
+// that happened to be blank around the edges read as unfinished. `transparent`
+// + a dim backdrop is what makes "centred" possible at all: an opaque Modal
+// is always exactly the size of the screen.
 export function RunPostEditorModal({ visible, onClose, ...props }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
-      <View
-        style={[
-          styles.modal,
-          { paddingTop: insets.top + space.sm, paddingBottom: insets.bottom + space.lg },
-        ]}
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.backdrop}
       >
-        <View style={styles.modalHead}>
-          <View style={{ flex: 1 }}>
-            <Text style={[type.title, { color: colors.text }]}>Edit post</Text>
-            <Text style={[type.caption, { color: colors.textMuted, marginTop: 2 }]}>
-              These photos and this caption appear on your Home runner card.
-            </Text>
+        {/* Tapping the dim area cancels, same as the X — the dialog itself
+            sits on top of this in paint order, so a tap ON it never reaches
+            here. */}
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityLabel="Cancel"
+          accessibilityRole="button"
+        />
+        <View
+          style={[
+            styles.dialog,
+            { backgroundColor: colors.card, maxHeight: `${100 - Math.round((insets.top + insets.bottom) / 6)}%` },
+            scheme === 'light' && shadow.card,
+          ]}
+        >
+          <View style={styles.modalHead}>
+            <View style={{ flex: 1 }}>
+              <Text style={[type.title, { color: colors.text }]}>Edit post</Text>
+              <Text style={[type.caption, { color: colors.textMuted, marginTop: 2 }]}>
+                These photos and this caption appear on your Home runner card.
+              </Text>
+            </View>
+            {/* Was a bare 24pt icon on the plain background — easy to miss
+                entirely, which is what "the cancel button is hidden" was
+                about. A filled circle behind it is what makes it read as a
+                button rather than decoration. */}
+            <PressableScale
+              style={[styles.close, { backgroundColor: colors.cardAlt }]}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
+              <X size={18} color={colors.text} strokeWidth={2.4} />
+            </PressableScale>
           </View>
-          <PressableScale
-            style={styles.close}
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close post editor"
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.modalBody}
+            showsVerticalScrollIndicator={false}
           >
-            <X size={24} color={colors.text} />
-          </PressableScale>
+            <RunPostEditor {...props} onSaved={(post) => { props.onSaved?.(post); onClose?.(); }} />
+          </ScrollView>
         </View>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalBody}>
-          <RunPostEditor {...props} onSaved={(post) => { props.onSaved?.(post); onClose?.(); }} />
-        </ScrollView>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -317,8 +348,20 @@ const makeStyles = (colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   disabled: { opacity: 0.5 },
-  modal: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg },
-  modalHead: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  modalBody: { paddingTop: space.xl, paddingBottom: space.xxl },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: space.lg,
+  },
+  dialog: {
+    width: '100%',
+    maxWidth: 440,
+    borderRadius: radius.lg,
+    padding: space.lg,
+  },
+  modalHead: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, marginBottom: space.sm },
+  close: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  modalBody: { paddingTop: space.sm, paddingBottom: space.xs },
 });

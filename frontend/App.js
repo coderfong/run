@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, StatusBar, TouchableOpacity, useWindowDimensions, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import Animated, { Easing, FadeIn } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
@@ -12,6 +12,7 @@ import {
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { enableFreeze } from 'react-native-screens';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
@@ -29,6 +30,7 @@ import {
 import { Anton_400Regular } from '@expo-google-fonts/anton';
 import { Poppins_700Bold, Poppins_900Black } from '@expo-google-fonts/poppins';
 
+import { hydrateShareDebugFlags } from './src/utils/shareDebugFlags';
 import HomeScreen from './src/screens/HomeScreen';
 import RunningScreen from './src/screens/RunningScreen';
 import ResultScreen from './src/screens/ResultScreen';
@@ -40,6 +42,7 @@ import TutorialOverlay from './src/onboarding/TutorialOverlay';
 import ProfileScreen from './src/screens/ProfileScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
 import RunDetailScreen from './src/screens/RunDetailScreen';
+import RunShareScreen from './src/screens/RunShareScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ClubScreen from './src/screens/ClubScreen';
 import ClubJoinScreen from './src/screens/ClubJoinScreen';
@@ -89,7 +92,18 @@ const SENTRY_DSN =
   process.env.EXPO_PUBLIC_SENTRY_DSN || Constants?.expoConfig?.extra?.sentryDsn || '';
 if (SENTRY_DSN) Sentry.init({ dsn: SENTRY_DSN, tracesSampleRate: 0.1 });
 
+// Loads any on-device flags flipped from DevShareDebugPanel before the app
+// gets anywhere near the crashing share screen. See shareDebugFlags.js.
+hydrateShareDebugFlags();
+
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Screens that go off-screen (a backgrounded stack screen, an unfocused tab's
+// nested stack) stop rendering/updating instead of quietly running on. Without
+// this a blurred screen's timers and effects (e.g. GlobalMapScreen's heat-pulse
+// interval) kept ticking and competing with the transition animation for JS
+// thread time — part of why navigating between screens felt laggy.
+enableFreeze(true);
 
 // React Navigation paints the surface UNDER every screen — including the strip
 // behind the floating tab pill, which our TabBar leaves transparent on purpose.
@@ -382,7 +396,33 @@ function CloseRecordButton({ navigation }) {
 }
 
 const RecordStackNav = createNativeStackNavigator();
+// Boundaried like the tabs are, and for a reason paid for in full: the record
+// modal sits at the ROOT, outside every tab's boundary, so a render throw in
+// the run or its result had nothing above it to catch it — and an uncaught
+// throw in a release build is not a retry state, it is the app closing. That
+// is exactly how one `undefined` icon on the share sheet read as "PASER
+// crashes when I finish a run". The run flow is the worst possible place to
+// leave unguarded: it is the end of an effort the runner cannot repeat.
 function RecordModal() {
+  return (
+    <ErrorBoundary>
+      <RecordStack />
+    </ErrorBoundary>
+  );
+}
+
+// Same deal for the share screen reached from a feed card: it is at the root,
+// outside every tab's boundary, and it mounts the one card that has taken the
+// app down before.
+function RunShareModal(props) {
+  return (
+    <ErrorBoundary>
+      <RunShareScreen {...props} />
+    </ErrorBoundary>
+  );
+}
+
+function RecordStack() {
   return (
     <RecordStackNav.Navigator
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: darkColors.bg } }}
@@ -441,6 +481,15 @@ function RootStack() {
       <RootStackNav.Screen
         name="Record"
         component={RecordModal}
+        options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+      />
+      {/* Sharing an OLD run, from its card in the feed. At the root and full
+          screen for the same reason Record is: the sheet is a whole screen and
+          must not be posted from under the tab bar. Boundaried too — the share
+          card is the one surface in this app with a crash history. */}
+      <RootStackNav.Screen
+        name="RunShare"
+        component={RunShareModal}
         options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
       />
       {__DEV__ && (
@@ -597,7 +646,11 @@ function RootNavigator() {
     <Animated.View
       key={phase}
       style={{ flex: 1, backgroundColor: colors.bg }}
-      entering={reduced ? undefined : FadeIn.duration(300)}
+      // Slower than it was, and eased out rather than linear: the app should
+      // read as arriving, and a 300ms linear ramp is quick enough that the
+      // first half is spent at an opacity nobody can see, so it lands as a
+      // slightly soft cut. The long tail is the part that reads as a fade.
+      entering={reduced ? undefined : FadeIn.duration(440).easing(Easing.out(Easing.quad))}
     >
       {content}
     </Animated.View>

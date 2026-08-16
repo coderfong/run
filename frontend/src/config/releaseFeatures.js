@@ -26,5 +26,17 @@
 // purpose string ship in the binary, and src/health.js writes a finished run
 // as a running workout. It stays a per-runner opt-in switch in Settings and
 // still degrades to a no-op anywhere Health is unavailable.
+// Trail decorations on the share card — the things that sprout out of the
+// route line (flowers, grass, mushrooms, trees; see
+// components/share/trailDecorations.js and docs/SHARING.md). Built 2026-08-16
+// and PARKED the same day: the card ships without the control, and nothing
+// draws on the route.
+//
+// Kept whole rather than deleted, because it is wanted later. Everything it
+// needs is behind this one switch: flip it true and the Trail row is back on
+// the sheet with the decorations drawing on the card. The module, its tests and
+// its documentation stay live either way, so it cannot rot in the meantime.
+export const TRAIL_DECORATIONS_ENABLED = false;
+
 export const IAP_ENABLED = false;
 export const HEALTH_SYNC_ENABLED = true;

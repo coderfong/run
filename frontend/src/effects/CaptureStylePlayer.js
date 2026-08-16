@@ -222,7 +222,7 @@ function TravellingEffect({ step, from, to, size, playToken, onDone }) {
 
 // ---------------------------------------------------------------------------
 
-export default function CaptureStylePlayer({
+function CaptureStylePlayer({
   style: styleId,
   playToken = 0,
   bounds,
@@ -540,3 +540,9 @@ const styles = StyleSheet.create({
   stage: { zIndex: CAPTURE_LAYER.FOREGROUND_FX },
   travelling: { position: 'absolute', left: 0, top: 0, alignItems: 'center', justifyContent: 'center' },
 });
+
+// Memoized: ResultScreen re-renders often during the claim sequence (phase
+// transitions, replay-progress ticks) and most of those renders don't change
+// this player's own props — a plain function component would re-run its whole
+// cast/effects reconciliation on every one of them regardless.
+export default React.memo(CaptureStylePlayer);

@@ -9,10 +9,15 @@
 // miss, so this is a real sibling of CaptureCast instead, given its own
 // zIndex that is genuinely compared against CHARACTER.
 //
-// Active for exactly the character-performance portion of the cutscene
-// (`isEncounterPhase`) and not a moment longer: it fades out as the phase
-// machine reaches TERRITORY_REVEAL, so the ground actually changing colour
-// plays against the real scene, not hidden under black until the end.
+// RETUNED: `active` used to be `isEncounterPhase(phase)`, which faded this
+// out the moment the phase machine reached TERRITORY_REVEAL — before the
+// ground had actually finished changing colour, and well before the defeated
+// rival had left. ResultScreen now keeps it active through the reveal and
+// only drops it once the style's own choreography fires a defender EXIT
+// action (`onCharacterAction`, checked against `isExitAction` in
+// choreography.js) — the ground turning over and the rival fleeing it read as
+// one payoff uncovered together, rather than the black lifting early over a
+// scene nothing has happened in yet.
 
 import React, { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
@@ -23,7 +28,7 @@ import { CAPTURE_LAYER } from '../../effects/layers';
 const FADE_IN_MS = 200;
 const FADE_OUT_MS = 280;
 
-export default function CutsceneBackdrop({ active, playToken, reducedMotion = false }) {
+function CutsceneBackdrop({ active, playToken, reducedMotion = false }) {
   const opacity = useSharedValue(0);
 
   useEffect(() => {
@@ -50,3 +55,6 @@ export default function CutsceneBackdrop({ active, playToken, reducedMotion = fa
     />
   );
 }
+
+// Memoized for the same reason as CaptureStylePlayer (see that file's note).
+export default React.memo(CutsceneBackdrop);

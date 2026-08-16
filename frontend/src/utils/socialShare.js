@@ -22,6 +22,8 @@ import { Linking, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Sharing from 'expo-sharing';
 
+import { shareCrumb } from './shareDebugFlags';
+
 const IG_ANDROID_PACKAGE = 'com.instagram.android';
 const IG_STORIES_PROBE = 'instagram-stories://share';
 
@@ -32,10 +34,13 @@ const IG_STORIES_PROBE = 'instagram-stories://share';
 let shareModule;
 function nativeShare() {
   if (shareModule === undefined) {
+    shareCrumb('require react-native-share: start');
     try {
       shareModule = require('react-native-share').default;
+      shareCrumb('require react-native-share: ok');
     } catch {
       shareModule = null;
+      shareCrumb('require react-native-share: threw');
     }
   }
   return shareModule;
@@ -133,22 +138,25 @@ export async function shareToInstagramStories(
 
 // Same lazy-require shape as `nativeShare`: a binary built before the module
 // was added must lose the button, not crash on import.
-function lazy(load) {
+function lazy(name, load) {
   let mod;
   return () => {
     if (mod === undefined) {
+      shareCrumb(`require ${name}: start`);
       try {
         mod = load();
+        shareCrumb(`require ${name}: ok`);
       } catch {
         mod = null;
+        shareCrumb(`require ${name}: threw`);
       }
     }
     return mod;
   };
 }
 
-const mediaLibrary = lazy(() => require('expo-media-library'));
-const clipboard = lazy(() => require('expo-clipboard'));
+const mediaLibrary = lazy('expo-media-library', () => require('expo-media-library'));
+const clipboard = lazy('expo-clipboard', () => require('expo-clipboard'));
 
 export function canSaveToPhotos() {
   return !!mediaLibrary();

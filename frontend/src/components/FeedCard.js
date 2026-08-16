@@ -2,8 +2,8 @@
 // taken), the shape of the territory it grew, and — when the run took land off
 // somebody — the steal itself, played out on the card.
 
-import React, { useEffect, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Pencil } from 'lucide-react-native';
 import AppIcon from './AppIcon';
 import RouteThumb, { hasRouteData } from './RouteThumb';
@@ -22,7 +22,7 @@ import Framed from './ui/Framed';
 import { Card, Row, StatValue } from './ui';
 import { fmtArea } from './RivalCard';
 import GameLottie from './GameLottie';
-import ReactionBar, { ReactionTrigger } from './ReactionBar';
+import ReactionBar, { POPOVER_HEIGHT, POPOVER_WIDTH, ReactionPopover, ReactionTrigger } from './ReactionBar';
 import { useRunReactions } from '../hooks/useRunReactions';
 import { RunPostEditorModal } from './RunPostEditor';
 
@@ -39,11 +39,20 @@ const POST_PHOTO_W = 272;
 // its separator.
 const NO_VALUE = '·';
 
-// The photo half of the paired map+photo row. Sized by measuring itself
-// rather than a fixed pixel width, because it shares the row with the route
-// map at whatever width that leaves it — there is no width to hand a
-// snapToInterval ScrollView up front the way the full-width photo strip can.
-function PairedPhotoCard({ media, photoPage, onPage }) {
+// The photo half of the paired map+photo row. Measures its own width rather
+// than trusting a fixed pixel size, since it shares the row with the route
+// map at whatever width flex leaves it — and that measured width is also
+// exactly what each page needs to be for `pagingEnabled` to land on whole
+// photos instead of somewhere between two of them.
+//
+// `inset={false}`: the frame's own ink clearance would otherwise pad the
+// ScrollView's content area to something NARROWER than the box this
+// component measured, and paging math done against the wrong width is what
+// used to make the second and third photo unreachable — a swipe landed
+// partway into the next photo instead of squarely on it, and glancing at the
+// card mid-swipe read as "it only ever shows the first one".
+function PairedPhotoCard({ media, photoPage, onPage, color, itemId }) {
+  const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const [width, setWidth] = useState(0);
@@ -51,37 +60,47 @@ function PairedPhotoCard({ media, photoPage, onPage }) {
   return (
     <View
       testID="paired-photo-card"
-      style={styles.pairedPhoto}
+      style={styles.pairedPhotoWrap}
       onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}
     >
-      {width > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          pagingEnabled
-          onMomentumScrollEnd={(event) => {
-            const page = Math.round(event.nativeEvent.contentOffset.x / width);
-            onPage(Math.max(0, Math.min(media.length - 1, page)));
-          }}
-        >
-          {media.map((uri, index) => (
-            <Image
-              key={`${index}:${uri.length}`}
-              source={apiPhotoSource(uri)}
-              style={{ width, height: '100%' }}
-              resizeMode="cover"
-              accessibilityLabel={`Run post photo ${index + 1} of ${media.length}`}
-            />
-          ))}
-        </ScrollView>
-      ) : null}
-      {media.length > 1 ? (
-        <View style={styles.photoCount}>
-          <Text style={[type.captionMedium, { color: '#FFFFFF' }]}>
-            {photoPage + 1}/{media.length}
-          </Text>
-        </View>
-      ) : null}
+      <Framed
+        frame={frameVariant('box', `photos:${itemId}`)}
+        on={colors.card}
+        tint={withAlpha(color, 0.55)}
+        weight={INK.thin}
+        pose={framePose(`photos:${itemId}`)}
+        inset={false}
+        style={width > 0 ? { height: width } : styles.pairedPhotoFallback}
+      >
+        {width > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            pagingEnabled
+            onMomentumScrollEnd={(event) => {
+              const page = Math.round(event.nativeEvent.contentOffset.x / width);
+              onPage(Math.max(0, Math.min(media.length - 1, page)));
+            }}
+          >
+            {media.map((uri, index) => (
+              <Image
+                key={`${index}:${uri.length}`}
+                source={apiPhotoSource(uri)}
+                style={{ width, height: '100%' }}
+                resizeMode="cover"
+                accessibilityLabel={`Run post photo ${index + 1} of ${media.length}`}
+              />
+            ))}
+          </ScrollView>
+        ) : null}
+        {media.length > 1 ? (
+          <View style={styles.photoCount}>
+            <Text style={[type.captionMedium, { color: '#FFFFFF' }]}>
+              {photoPage + 1}/{media.length}
+            </Text>
+          </View>
+        ) : null}
+      </Framed>
     </View>
   );
 }
@@ -122,7 +141,9 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
   const [kudoed, setKudoed] = useState(item.kudoed);
   const [count, setCount] = useState(item.kudos_count || 0);
   const [kudosFx, setKudosFx] = useState(0);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerAt, setPickerAt] = useState(null);
+  const anchorRef = useRef(null);
+  const pickerOpen = pickerAt !== null;
   const [editOpen, setEditOpen] = useState(false);
   const [post, setPost] = useState({
     caption: item.caption || '',
@@ -135,13 +156,59 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
   // Seeded from the row the feed already handed us, so the chips are on the
   // card at first paint rather than a fetch later.
   const { reactions, mine, burst, react } = useRunReactions(item.id, item);
-  // Matches ReactionBar's own `compact` visibility rule — needed here too, so
-  // the steal banner below knows whether this row is actually taking a line.
-  const showsReactionsRow = reactions.length > 0 || pickerOpen;
 
   useEffect(() => {
-    if (!screenFocused) setPickerOpen(false);
+    if (!screenFocused) setPickerAt(null);
   }, [screenFocused]);
+
+  // The picker opens UPWARD, out of the card, so it never lands on the route or
+  // the caption the way a drop-down did. That puts it outside every ancestor's
+  // bounds, which on Android means it would draw and then refuse to be tapped,
+  // so it is hosted in an overlay and placed against the trigger's position on
+  // screen instead of being laid out inside the card.
+  const openPicker = () => {
+    haptic.light();
+    if (pickerOpen) { setPickerAt(null); return; }
+    anchorRef.current?.measureInWindow?.((x, y, width, height) => {
+      const screen = Dimensions.get('window');
+      // Prefer to hang above the trigger; drop below only when the row is so
+      // close to the top of the screen that "above" would be off it.
+      const above = y - POPOVER_HEIGHT - space.xs;
+      setPickerAt({
+        // Centred on the trigger, then held clear of both screen edges.
+        left: Math.max(
+          space.md,
+          Math.min(
+            x + width / 2 - POPOVER_WIDTH / 2,
+            screen.width - POPOVER_WIDTH - space.md
+          )
+        ),
+        top: above >= space.md ? above : y + height + space.xs,
+      });
+    });
+  };
+
+  // Your own run, out to Instagram. The card the sheet draws is built from
+  // exactly what this row already has — the feed ships the route, the rings and
+  // the numbers — so there is no fetch between the tap and the preview.
+  //
+  // `path` here is the feed's [lon, lat] pairs, NOT the recorder's
+  // {latitude, longitude} objects; RunShareCard takes either.
+  const share = () => {
+    setPickerAt(null);
+    navigation?.navigate('RunShare', {
+      team: c,
+      path: item.path || [],
+      rings: (item.rings || []).filter((r) => r?.length >= 3),
+      run: {
+        runId: item.id,
+        distanceM: item.distance_m,
+        durationS: item.duration_s,
+        areaM2: item.area_m2,
+        claimed: !!item.closed_loop,
+      },
+    });
+  };
 
   const kudos = async () => {
     haptic.light();
@@ -171,7 +238,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
     <>
     <Card
       onPress={() => {
-        setPickerOpen(false);
+        setPickerAt(null);
         navigation?.navigate('RunDetail', { runId: item.id });
       }}
       style={{ marginBottom: space.md }}
@@ -212,28 +279,49 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           </View>
         </Row>
         <Row gap={2}>
+          {/* Your own runs only. The card that gets posted carries YOUR avatar
+              and says the ground was claimed, which is not a thing to hand
+              somebody about a run they did not do. */}
           {item.is_you ? (
             <PressableScale
-              onPress={() => { setPickerOpen(false); setEditOpen(true); }}
+              onPress={share}
               style={styles.action}
               accessibilityRole="button"
-              accessibilityLabel="Edit run post"
+              accessibilityLabel="Share this run"
+            >
+              <AppIcon name="share" size={28} />
+            </PressableScale>
+          ) : null}
+          {/* One shot: once a caption or a photo has actually been saved, the
+              pencil goes away rather than staying up as a standing "edit me
+              again" invitation. */}
+          {item.is_you && !post.caption && post.media.length === 0 ? (
+            <PressableScale
+              onPress={() => { setPickerAt(null); setEditOpen(true); }}
+              style={styles.action}
+              accessibilityRole="button"
+              accessibilityLabel="Add a caption or photo"
             >
               <Pencil size={22} color={colors.text} strokeWidth={2.3} />
             </PressableScale>
           ) : null}
           {/* Reactions sit LEFT of comment and kudos: those two are the actions
               that have always been here, and the new one should not displace
-              the muscle memory for either. */}
-          <ReactionTrigger
-            mine={mine}
-            active={pickerOpen}
-            color={c.stroke}
-            onPress={() => { haptic.light(); setPickerOpen((v) => !v); }}
-          />
+              the muscle memory for either. This wrapper is what the picker is
+              measured against — the strip itself is drawn in an overlay (see
+              `openPicker`), which is also what keeps it clear of the steal
+              banner's explosion rather than fighting it over a zIndex. */}
+          <View ref={anchorRef} collapsable={false} style={styles.reactionAnchor}>
+            <ReactionTrigger
+              mine={mine}
+              active={pickerOpen}
+              color={c.stroke}
+              onPress={openPicker}
+            />
+          </View>
           <PressableScale
             onPress={() => {
-              setPickerOpen(false);
+              setPickerAt(null);
               navigation?.navigate('RunDetail', { runId: item.id, focusComments: true });
             }}
             style={styles.action}
@@ -249,29 +337,64 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
             ) : null}
           </PressableScale>
           <View style={styles.kudosSlot}>
-            {kudosFx > 0 ? <GameLottie name="kudos" size={86} trigger={kudosFx} style={styles.kudosFx} /> : null}
-            <PressableScale onPress={kudos} style={styles.action} accessibilityRole="button" accessibilityLabel="Give kudos">
+            {/* Cleared when it finishes. It used to be left mounted on its last
+                frame forever, which is a burst you cannot see sitting over a
+                button you can no longer press. */}
+            {kudosFx > 0 ? (
+              <GameLottie
+                name="kudos"
+                size={86}
+                trigger={kudosFx}
+                onFinish={() => setKudosFx(0)}
+                style={styles.kudosFx}
+              />
+            ) : null}
+            <PressableScale
+              onPress={kudos}
+              style={styles.action}
+              accessibilityRole="button"
+              accessibilityState={{ selected: kudoed }}
+              accessibilityLabel={kudoed ? 'Remove kudos' : 'Give kudos'}
+            >
               {/* Kudos still has two states, but the "not yet" one is a step
                   down rather than a fade to grey — the heart keeps its colour so
-                  the difference reads as weight, not as availability. */}
-              <AppIcon name="like" size={28} />
+                  the difference reads as weight, not as availability. Without
+                  the step there was nothing to see at all on a run nobody else
+                  has kudoed: the count is hidden at zero, so tapping the heart
+                  on and off changed the card not at all. */}
+              <AppIcon name="like" size={28} opacity={kudoed ? 1 : 0.62} />
               {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
             </PressableScale>
           </View>
         </Row>
       </Row>
 
-      {/* A photo sits BESIDE the map rather than stacked under it, so the two
-          read as one row about the run instead of two separate blocks.
-          Standalone, each keeps the fuller layout it already had — a photo
-          alone does not need to give up half its width to nothing. */}
-      {hasPhotos && hasRoute ? (
+      {/* Map on the left, photos on the right, when there are both — one row
+          about the run instead of two stacked blocks. Standalone, each keeps
+          the fuller full-width layout: a lone map or a lone photo strip does
+          not need to give up half its width to nothing. */}
+      {hasRoute && hasPhotos ? (
         <View style={styles.pairedRow}>
           <RouteThumb id={item.id} rings={item.rings} path={item.path} color={c.stroke} style={styles.thumbCompact} compact />
-          <PairedPhotoCard media={post.media} photoPage={photoPage} onPage={setPhotoPage} />
+          <PairedPhotoCard
+            media={post.media}
+            photoPage={photoPage}
+            onPage={setPhotoPage}
+            color={c.stroke}
+            itemId={item.id}
+          />
         </View>
+      ) : hasRoute ? (
+        <RouteThumb id={item.id} rings={item.rings} path={item.path} color={c.stroke} style={styles.thumb} />
       ) : hasPhotos ? (
-        <View style={styles.postPhotoWrap}>
+        <Framed
+          frame={frameVariant('box', `photos:${item.id}`)}
+          tint={withAlpha(c.stroke, 0.55)}
+          on={colors.card}
+          weight={INK.thin}
+          pose={framePose(`photos:${item.id}`)}
+          style={styles.postPhotoFrame}
+        >
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -302,10 +425,8 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
               </Text>
             </View>
           ) : null}
-        </View>
-      ) : (
-        <RouteThumb id={item.id} rings={item.rings} path={item.path} color={c.stroke} style={styles.thumb} />
-      )}
+        </Framed>
+      ) : null}
 
       {/* Caption sits directly under the map, above its reactions — read
           order goes what happened → what they said about it → how people
@@ -328,11 +449,9 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         </Framed>
       ) : null}
 
-      {/* Reactions below the caption, not above it — this is the same bar
-          that also hosts the "add a reaction" popover, so the chip summary
-          and the picker never compete for separate space. It costs no row at
-          all when there is nothing to show and no picker open (ReactionBar's
-          own `compact` rule). */}
+      {/* The chip summary only — the picker itself now lives on the trigger
+          up in the header (see `reactionAnchor`), not here. It costs no row
+          at all when there is nothing to show. */}
       <ReactionBar
         compact
         reactions={reactions}
@@ -340,9 +459,6 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         color={c.stroke}
         onReact={react}
         burst={burst}
-        open={pickerOpen}
-        inlinePicker
-        onRequestClose={() => setPickerOpen(false)}
         style={styles.reactionsRow}
       />
 
@@ -351,15 +467,16 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           feed that blows itself up as you scroll is noise rather than a
           payoff. The newest steal on the page is the one that plays itself.
 
-          Pulled up by its own headroom: the banner reserves 90pt of empty stage
-          above the bar for the fireball to have somewhere to go, and stacked
-          normally that stage was a blank white gap between the route and the
-          STOLEN bar. Negative margin puts the bar directly under the map and
-          lets the blast play OVER it, which is where an explosion should be
-          anyway. That trick only works when the map is what sits directly
-          above it — with the reactions row or a caption in between, the pull
-          would drag the bar up over one of those instead, so it only pulls
-          tight when there is neither. */}
+          Pulled up by its own headroom: the banner reserves 90pt of empty
+          stage above the bar for the fireball to have somewhere to go, and
+          stacked normally that stage is a big blank gap between whatever
+          comes before it and the STOLEN bar. The negative margin ALWAYS
+          applies now — trying to spare it only when there was no caption or
+          reactions row put that same blank gap right back the moment either
+          one was on the card, which was most of them. The blast plays over
+          the caption or the reactions instead of over the map in that case;
+          a gap the height of the card's next section reads far worse than an
+          explosion crossing a line of text it is already sitting under. */}
       {victims.length > 0 && (
         <TerritoryStealBanner
           trigger={item.id}
@@ -367,9 +484,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           amount={fmtArea(item.stolen_m2 || 0)}
           autoPlay={autoPlaySteal}
           haptics={autoPlaySteal}
-          style={{
-            marginTop: post.caption || showsReactionsRow ? space.md : space.sm - STEAL_HEADROOM,
-          }}
+          style={{ marginTop: space.sm - STEAL_HEADROOM }}
         />
       )}
 
@@ -385,6 +500,38 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         />
       </Row>
     </Card>
+    {/* The picker. `transparent` and un-animated, so what you see is the strip
+        arriving on its own 160ms rise and nothing else — a modal that dims or
+        slides would read as a screen, not as a thing that popped up under your
+        thumb. Anywhere else closes it. */}
+    {pickerOpen ? (
+      <Modal
+        transparent
+        visible
+        animationType="none"
+        // NOT statusBarTranslucent: the strip is placed from measureInWindow,
+        // whose origin is the app window. A modal that reaches up under the
+        // status bar has a different origin, and the picker would sit a status
+        // bar's height off on Android.
+        onRequestClose={() => setPickerAt(null)}
+      >
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={() => setPickerAt(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Close reactions"
+        />
+        <ReactionPopover
+          selected={mine}
+          onPick={(emote) => {
+            haptic.light();
+            react(emote);
+            setPickerAt(null);
+          }}
+          style={[styles.pickerOverlay, { left: pickerAt.left, top: pickerAt.top }]}
+        />
+      </Modal>
+    ) : null}
     <RunPostEditorModal
       visible={editOpen}
       onClose={() => setEditOpen(false)}
@@ -411,13 +558,10 @@ const makeStyles = (colors) =>
       gap: space.sm,
       marginTop: space.md,
     },
-    pairedPhoto: {
-      flex: 1,
-      aspectRatio: 1,
-      borderRadius: radius.md,
-      overflow: 'hidden',
-      backgroundColor: colors.cardAlt,
-    },
+    pairedPhotoWrap: { flex: 1 },
+    // Only used for the one frame before its first onLayout — square, same
+    // as the route's compact box, so the row doesn't jump once measured.
+    pairedPhotoFallback: { aspectRatio: 1 },
     kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
     kudosFx: { position: 'absolute', zIndex: 4 },
     action: {
@@ -429,6 +573,18 @@ const makeStyles = (colors) =>
       gap: 5,
       padding: 4,
     },
+    // The trigger's own wrapper — what the picker is measured against, so the
+    // strip lands on the button that was actually tapped.
+    reactionAnchor: { position: 'relative' },
+    // Placed by `openPicker` against the trigger's position on screen. `bottom`
+    // is cleared because the shared floating style hangs the strip off the
+    // bottom of whatever it is laid out in, and in here there is no such thing.
+    pickerOverlay: {
+      position: 'absolute',
+      bottom: undefined,
+      marginBottom: 0,
+      width: POPOVER_WIDTH,
+    },
     // Its own line under the map now, not scattered on top of it — see
     // RouteThumb and the note above the ReactionBar render.
     reactionsRow: { marginTop: space.md },
@@ -438,10 +594,10 @@ const makeStyles = (colors) =>
     // use — bumped a couple of points so a caption reads as the bigger, more
     // deliberate thing it is now that it has its own framed box and header.
     captionBody: { fontSize: 17, lineHeight: 23, marginTop: 2 },
-    postPhotoWrap: {
-      height: 190,
-      marginTop: space.md,
-    },
+    // Framed like the route box and the caption box above it — a photo used
+    // to sit on the bare card background, the one piece of the card with no
+    // drawn edge of its own.
+    postPhotoFrame: { marginTop: space.md },
     postPhotoRow: { gap: space.sm, paddingRight: space.md },
     postPhoto: {
       width: POST_PHOTO_W,

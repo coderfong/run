@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Flame, X } from 'lucide-react-native';
@@ -13,7 +13,7 @@ import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
-import { useReduceMotion } from '../ui/motion';
+import { ScreenIn, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { territoryRings } from '../components/claim/geometry';
@@ -119,6 +119,10 @@ export default function GlobalMapScreen({ route, navigation }) {
   const { equipped } = useAvatar();
   const accent = useAccent();
   const reduce = useReduceMotion();
+  // The board's entrance is keyed to arriving on the tab, not to mounting:
+  // this screen mounts at launch behind Home (App.js preloads every tab), so
+  // a mount-time reveal would have finished long before anyone looked at it.
+  const focused = useIsFocused();
   const mapRef = useRef(null);
   // The padded region we've already loaded: { minLon,minLat,maxLon,maxLat, capped }.
   const coveredRef = useRef(null);
@@ -134,7 +138,13 @@ export default function GlobalMapScreen({ route, navigation }) {
   // Tapped territory/avatar's owner — drives the quick-look profile popup.
   const [profileUserId, setProfileUserId] = useState(null);
   const [zoom, setZoom] = useState(12);
+  // Mirrors `zoom` so onIdle can read a fallback value without depending on
+  // the `zoom` state itself — see the note on onIdle below.
+  const zoomRef = useRef(12);
   const [heatOn, setHeatOn] = useState(false);
+  // Mapbox has parsed the style and drawn a frame. Half of the board's
+  // entrance (see the ScreenIn below); the other half is the land itself.
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [pulse, setPulse] = useState(0.85);
   const [myLoc, setMyLoc] = useState(null);
@@ -190,10 +200,14 @@ export default function GlobalMapScreen({ route, navigation }) {
   // INSIDE what we already loaded (and the server's zoom cap band hasn't
   // changed) — never on a lossy rounded key. `force` bypasses the skip so a
   // fresh claim shows when returning to the map.
-  const fetchViewport = async (bbox, z, force = false) => {
+  //
+  // useCallback with a stable identity (`zoomRef` instead of the `zoom` state
+  // for the fallback) — onIdle below closes over this function, and a plain
+  // per-render redefinition here would have made that closure stale.
+  const fetchViewport = useCallback(async (bbox, z, force = false) => {
     // Mirrors the backend feature cap (map_zoom_vlow=11): crossing it changes
     // how much comes back, so re-fetch rather than reuse the capped set.
-    const capped = (z ?? zoom) < 11;
+    const capped = (z ?? zoomRef.current) < 11;
     const cov = coveredRef.current;
     if (!force && cov && cov.capped === capped && bboxContains(cov, bbox)) return;
 
@@ -212,19 +226,30 @@ export default function GlobalMapScreen({ route, navigation }) {
       setLoadError(true);
       setList((prev) => prev || []);
     }
-  };
+  }, []);
 
-  const onIdle = ({ bounds, zoom: z }) => {
-    if (z != null) setZoom(z);
+  // useCallback with a stable identity (no `zoom` in deps — `zoomRef` covers
+  // the fallback read instead) so this survives GlobalMapScreen's own
+  // re-renders unchanged. GameMap/ShapeSource are PureComponents: an onIdle
+  // prop that changed reference every render defeated that gate, forcing a
+  // full re-render (and a JSON.stringify of the whole board's GeoJSON) on
+  // every single pan/zoom settle, whether or not the viewport actually moved
+  // enough to need new data.
+  const onIdle = useCallback(({ bounds, zoom: z }) => {
+    if (z != null) {
+      zoomRef.current = z;
+      setZoom(z);
+    }
     const bbox = {
       minLon: bounds.sw[0],
       minLat: bounds.sw[1],
       maxLon: bounds.ne[0],
       maxLat: bounds.ne[1],
     };
-    lastViewRef.current = { bbox, z: z ?? zoom };
-    fetchViewport(bbox, z ?? zoom);
-  };
+    const zz = z ?? zoomRef.current;
+    lastViewRef.current = { bbox, z: zz };
+    fetchViewport(bbox, zz);
+  }, [fetchViewport]);
 
   // Coming back to the map (e.g. straight after claiming) refetches the current
   // view — otherwise no camera move means no idle, and the new land is missing.
@@ -319,11 +344,18 @@ export default function GlobalMapScreen({ route, navigation }) {
     setLegendOpen(false);
   };
 
-  const onTerritoryPress = (e) => {
+  // useCallback so TerritoryLayer/ShapeSource (a PureComponent) doesn't see a
+  // changed onPress — and re-stringify the whole board's GeoJSON — on every
+  // GlobalMapScreen render that isn't actually about a new tap.
+  const onTerritoryPress = useCallback((e) => {
     const id = e?.features?.[0]?.properties?.territoryId;
     const t = rows.find((x) => x.id === id);
     if (t) setSelected(t);
-  };
+  }, [rows]);
+
+  // Same reasoning: GameMap's onPress prop must stay referentially stable.
+  const clearSelected = useCallback(() => setSelected(null), []);
+  const onMapReady = useCallback(() => setMapLoaded(true), []);
 
   if (!MAP_READY) {
     return (
@@ -342,72 +374,85 @@ export default function GlobalMapScreen({ route, navigation }) {
 
   return (
     <View style={styles.container}>
-      <GameMap ref={mapRef} onIdle={onIdle} onPress={() => setSelected(null)}>
-        {/* The glow line was built in but never switched on, which is a lot of
-            why the board read pastel — the plain 2px stroke alone. Dark mode
-            is where a blurred neon outline actually reads as vivid rather
-            than muddy against a light basemap. */}
-        <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} dark={scheme === 'dark'} />
-        {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
-        {/* owner portrait in the middle of every territory in view */}
-        {landPortraits.map((m) => (
-          <UserMarker key={m.id} point={m.at} onPress={() => setProfileUserId(m.userId)}>
-            <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={colors.card} />
-          </UserMarker>
-        ))}
-        {/* Keep location visible when pulled back without covering the land. */}
-        {myLoc && (
-          <UserMarker point={myLoc} onPress={() => setProfileUserId(user.id)}>
-            {showPortraits ? (
-              // The "this is you" ring has to be the opposite of the map it
-              // sits on — a white ring vanished on the light style.
-              <CharacterBust equipped={equipped} size={44} ring={colors.text} bg={colors.card} />
-            ) : (
-              <View style={[styles.locationDot, { backgroundColor: accent, borderColor: colors.card }]} />
-            )}
-          </UserMarker>
-        )}
-      </GameMap>
+      {/* The board arrives as one move. A map builds itself in visible stages
+          — grey tile grid, then roads, then labels, then our land a round trip
+          later — and watching that assemble is the difference between a screen
+          loading and a game world appearing. Everything is drawn behind a held
+          opacity and fades up together once the style has rendered AND the
+          first territories are in hand. Both are normally true well before the
+          tab is opened (it loads at launch, in the background), so what this
+          usually costs is nothing and what it buys is the board washing in
+          under the tab transition instead of being there already. ScreenIn's
+          guard, armed on focus, shows the screen anyway if either is slow —
+          a stalled fetch can never leave the map blank. */}
+      <ScreenIn ready={focused && mapLoaded && loaded} armed={focused} style={styles.fill}>
+        <GameMap ref={mapRef} onIdle={onIdle} onPress={clearSelected} onReady={onMapReady}>
+          {/* The glow line was built in but never switched on, which is a lot
+              of why the board read pastel — the plain 2px stroke alone. Dark
+              mode is where a blurred neon outline actually reads as vivid
+              rather than muddy against a light basemap. */}
+          <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} dark={scheme === 'dark'} />
+          {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
+          {/* owner portrait in the middle of every territory in view */}
+          {landPortraits.map((m) => (
+            <UserMarker key={m.id} point={m.at} onPress={() => setProfileUserId(m.userId)}>
+              <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={colors.card} />
+            </UserMarker>
+          ))}
+          {/* Keep location visible when pulled back without covering the land. */}
+          {myLoc && (
+            <UserMarker point={myLoc} onPress={() => setProfileUserId(user.id)}>
+              {showPortraits ? (
+                // The "this is you" ring has to be the opposite of the map it
+                // sits on — a white ring vanished on the light style.
+                <CharacterBust equipped={equipped} size={44} ring={colors.text} bg={colors.card} />
+              ) : (
+                <View style={[styles.locationDot, { backgroundColor: accent, borderColor: colors.card }]} />
+              )}
+            </UserMarker>
+          )}
+        </GameMap>
 
-      {/* One map tool rail. Grouping heat, layers and recentering keeps three
-          equal controls in one predictable place instead of scattering one
-          button near the tab bar and two mismatched buttons at the top. */}
-      <View style={[styles.topControls, { top: insets.top + space.md }]}>
-        <TouchableOpacity
-          style={[styles.controlButton, heatOn && { backgroundColor: colors.warn }]}
-          onPress={() => setHeatOn((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel="Toggle contested zones"
-        >
-          <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={() => setLegendOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Show clubs in view"
-          hitSlop={8}
-        >
-          <AppIcon name="layers" size={30} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.controlButton}
-          onPress={locateMe}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Center map on my location"
-          hitSlop={8}
-        >
-          <AppIcon name="locate" size={30} />
-        </TouchableOpacity>
-      </View>
-
-      {showEmpty && (
-        <View style={[styles.noticePill, { top: insets.top + space.md }]}>
-          <Text style={type.heading}>Unclaimed. Be first.</Text>
-          <Text style={[type.caption, { marginTop: 2 }]}>Close a loop here to claim the first land.</Text>
+        {/* One map tool rail. Grouping heat, layers and recentering keeps three
+            equal controls in one predictable place instead of scattering one
+            button near the tab bar and two mismatched buttons at the top. */}
+        <View style={[styles.topControls, { top: insets.top + space.md }]}>
+          <TouchableOpacity
+            style={[styles.controlButton, heatOn && { backgroundColor: colors.warn }]}
+            onPress={() => setHeatOn((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel="Toggle contested zones"
+          >
+            <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={() => setLegendOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Show clubs in view"
+            hitSlop={8}
+          >
+            <AppIcon name="layers" size={30} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={locateMe}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Center map on my location"
+            hitSlop={8}
+          >
+            <AppIcon name="locate" size={30} />
+          </TouchableOpacity>
         </View>
-      )}
+
+        {showEmpty && (
+          <View style={[styles.noticePill, { top: insets.top + space.md }]}>
+            <Text style={type.heading}>Unclaimed. Be first.</Text>
+            <Text style={[type.caption, { marginTop: 2 }]}>Close a loop here to claim the first land.</Text>
+          </View>
+        )}
+      </ScreenIn>
 
       {/* tapped-territory card */}
       {selected && selectedColor && (
@@ -483,6 +528,9 @@ export default function GlobalMapScreen({ route, navigation }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  // The reveal layer sits inside `container`, so the screen's background is
+  // what shows through while the board is still held at zero opacity.
+  fill: { flex: 1 },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', padding: space.xl },
 
   topControls: {

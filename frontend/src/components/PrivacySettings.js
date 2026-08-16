@@ -17,7 +17,7 @@ import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { radius, space, useTheme, useThemedType } from '../theme';
 import { Card, Row, Button, SectionHeader, Segmented, Skeleton } from './ui';
-import { PressableScale } from '../ui/motion';
+import { Arrival, PressableScale, useArrival } from '../ui/motion';
 import { toast } from '../ui/toast';
 
 // Offered values. "Off" is deliberately available — this is the runner's call,
@@ -49,6 +49,7 @@ export default function PrivacySettings() {
   const type = useThemedType();
   const { data, setData, refresh } = useQuery('me:privacy', api.privacy);
   const [busy, setBusy] = useState(false);
+  const arriving = useArrival(!data);
 
   if (!data) {
     return (
@@ -125,8 +126,12 @@ export default function PrivacySettings() {
 
   return (
     <>
+      {/* The header is drawn over the placeholder too, so it stays OUTSIDE the
+          fade — taking a title that never left and ramping it up from nothing
+          reads as a blink, not as an entrance. Only the controls arrive. */}
       <SectionHeader title="Privacy" style={{ marginTop: space.xl, marginBottom: space.md }} />
 
+      <Arrival active={arriving}>
       {/* Age floors are enforced server-side; saying so is better than letting
           a control snap back with no explanation. */}
       {data.minor ? (
@@ -212,6 +217,7 @@ export default function PrivacySettings() {
           style={{ marginTop: space.sm }}
         />
       </Card>
+      </Arrival>
     </>
   );
 }

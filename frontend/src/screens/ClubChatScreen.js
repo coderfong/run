@@ -21,7 +21,7 @@ import { getCached, setCached } from '../api/cache';
 import { useClan } from '../state/clan';
 import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Skeleton, EmptyState } from '../components/ui';
-import { PressableScale, haptic } from '../ui/motion';
+import { Arrival, PressableScale, haptic, useArrival } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { openSafetyActions } from '../utils/safety';
 
@@ -45,6 +45,8 @@ export default function ClubChatScreen({ route }) {
   const [sending, setSending] = useState(false);
   const listRef = useRef(null);
   const pollRef = useRef(null);
+  // undefined is "the first fetch is still out" — the cache seeds an array.
+  const arriving = useArrival(messages === undefined);
 
   const load = useCallback(async () => {
     try {
@@ -95,6 +97,7 @@ export default function ClubChatScreen({ route }) {
             <EmptyState title="Say hi" body="Kick off the club chat. Plan the next run together." />
           </View>
         ) : (
+          <Arrival active={arriving} style={{ flex: 1 }}>
           <FlatList
             ref={listRef}
             data={messages}
@@ -144,6 +147,7 @@ export default function ClubChatScreen({ route }) {
               );
             }}
           />
+          </Arrival>
         )}
 
         {/* composer */}

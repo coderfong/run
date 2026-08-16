@@ -9,7 +9,7 @@
 // build (see SETUP_MAPBOX.md). MAP_READY is false until a public token is
 // configured; screens can render a placeholder in that case.
 
-import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Constants from 'expo-constants';
 
@@ -77,7 +77,7 @@ function polygonFeature(points) {
 // the app is wearing. Every screen used to hard-code theme="dark", so the one
 // surface that fills the whole screen stayed black in light mode.
 const GameMap = forwardRef(function GameMap(
-  { theme, onPress, onIdle, showsUserLocation = false, children, style, initialCenter, initialZoom, locked = false },
+  { theme, onPress, onIdle, onReady, showsUserLocation = false, children, style, initialCenter, initialZoom, locked = false },
   ref
 ) {
   const { scheme } = useTheme();
@@ -87,12 +87,27 @@ const GameMap = forwardRef(function GameMap(
 
   // Map settled → hand the viewport (bounds + zoom) up so screens can query
   // /map-polygons for what's visible. Fires only when movement stops.
-  const handleIdle = (state) => {
+  //
+  // useCallback (keyed only on `onIdle`, which screens now keep stable) so
+  // this function's identity survives GameMap's own re-renders. MapView and
+  // ShapeSource are PureComponents (react-native @rnmapbox/maps) — an
+  // onMapIdle prop that changes reference every render was defeating that,
+  // forcing a full re-render (and a JSON.stringify of the territory
+  // GeoJSON) on every pan/zoom settle even when nothing visible changed.
+  const handleIdle = useCallback((state) => {
     if (!onIdle) return;
     const p = state?.properties || {};
     if (!p.bounds) return;
     onIdle({ bounds: p.bounds, zoom: p.zoom, center: p.center });
-  };
+  }, [onIdle]);
+
+  // The placeholder path below never loads a map, so it would never report
+  // ready — and a screen that holds its content until this fires (see
+  // ScreenIn) would sit blank forever in Expo Go. Say ready on mount instead:
+  // the placeholder IS the finished content there.
+  useEffect(() => {
+    if (!MAPBOX_AVAILABLE) onReady?.();
+  }, [onReady]);
 
   // Imperative API screens use instead of touching Mapbox directly.
   useImperativeHandle(ref, () => ({
@@ -168,6 +183,9 @@ const GameMap = forwardRef(function GameMap(
       styleURL={styleForTheme(theme || scheme)}
       onPress={locked ? undefined : onPress}
       onMapIdle={handleIdle}
+      // Style parsed and the first frame drawn. Screens use it to hold their
+      // reveal until there is a map to reveal, rather than fading up over grey.
+      onDidFinishLoadingMap={onReady}
       scaleBarEnabled={false}
       logoEnabled={false}
       attributionEnabled
@@ -197,7 +215,10 @@ const GameMap = forwardRef(function GameMap(
   );
 });
 
-export default GameMap;
+// Memoized: screens now pass stable onIdle/onPress callbacks (see the note on
+// handleIdle above), so this guards against re-rendering the whole native map
+// tree when an unrelated ancestor re-renders with the same props.
+export default React.memo(GameMap);
 
 // --- layer helpers (screens compose these; none import Mapbox) ------------
 

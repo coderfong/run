@@ -18,6 +18,10 @@ export default function Screen({
   contentStyle,
   refreshControl,
   center = false,
+  // For pages that have to drive their own scroll position — arriving at a run
+  // to leave a comment should land on the comment box, not at the top of a page
+  // whose composer is a map and a splits table below the fold.
+  scrollRef,
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -32,6 +36,7 @@ export default function Screen({
     return (
       <View style={[{ flex: 1, backgroundColor: bg }, style]}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[pad, contentStyle]}
           showsVerticalScrollIndicator={false}
           refreshControl={refreshControl}
