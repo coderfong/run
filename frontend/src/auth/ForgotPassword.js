@@ -16,7 +16,6 @@ import {
   Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -25,8 +24,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
 import { useAuth } from './AuthContext';
-import { radius, space, type, useTheme } from '../theme';
-import { Screen, Button } from '../components/ui';
+import { nbField, radius, space, type, useTheme } from '../theme';
+import { Screen, Button, Input } from '../components/ui';
 import { Reveal } from '../ui/motion';
 
 const CODE_LENGTH = 6;
@@ -58,10 +57,10 @@ const DEAD_END = {
 };
 
 export default function ForgotPassword({ onBack, initialUsername = '' }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { adoptSession } = useAuth();
   const insets = useSafeAreaInsets();
-  const s = styles(colors);
+  const s = styles(colors, scheme);
 
   const [step, setStep] = useState('ask'); // ask | code | password | blocked
   const [username, setUsername] = useState(initialUsername);
@@ -150,7 +149,7 @@ export default function ForgotPassword({ onBack, initialUsername = '' }) {
           Tell us your username. If your account has a confirmed email, we will send a code to it.
         </Text>
         <Text style={s.label}>Username</Text>
-        <TextInput
+        <Input
           style={s.input}
           placeholder="runner_42"
           placeholderTextColor={colors.textDim}
@@ -182,7 +181,7 @@ export default function ForgotPassword({ onBack, initialUsername = '' }) {
           We sent a {CODE_LENGTH} digit code to the email on your account. It works once and
           expires in 15 minutes.
         </Text>
-        <TextInput
+        <Input
           style={[s.input, s.codeInput]}
           placeholder="000000"
           placeholderTextColor={colors.textDim}
@@ -221,7 +220,7 @@ export default function ForgotPassword({ onBack, initialUsername = '' }) {
           Signing in on your other devices will need this new password.
         </Text>
         <Text style={s.label}>New password</Text>
-        <TextInput
+        <Input
           style={s.input}
           placeholder="At least 8 characters, letter and digit"
           placeholderTextColor={colors.textDim}
@@ -291,7 +290,7 @@ export default function ForgotPassword({ onBack, initialUsername = '' }) {
   );
 }
 
-const styles = (colors) =>
+const styles = (colors, scheme) =>
   StyleSheet.create({
     back: {
       position: 'absolute',
@@ -313,11 +312,9 @@ const styles = (colors) =>
       ...type.body,
       color: colors.text,
       backgroundColor: colors.card,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: radius.md,
       paddingHorizontal: space.md,
       paddingVertical: 14,
+      ...nbField(scheme, { on: colors.card }),
     },
     // The code is the whole screen at that step, so it is set large and spaced
     // rather than sitting in a field that looks like every other field.

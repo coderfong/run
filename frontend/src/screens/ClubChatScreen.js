@@ -10,7 +10,6 @@ import {
   Platform,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,8 +18,8 @@ import { MoreHorizontal, Send } from 'lucide-react-native';
 import { api } from '../api/client';
 import { getCached, setCached } from '../api/cache';
 import { useClan } from '../state/clan';
-import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Skeleton, EmptyState } from '../components/ui';
+import { NB, nbField, radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { Screen, Skeleton, EmptyState, Input } from '../components/ui';
 import { Arrival, PressableScale, haptic, useArrival } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { openSafetyActions } from '../utils/safety';
@@ -152,7 +151,7 @@ export default function ClubChatScreen({ route }) {
 
         {/* composer */}
         <View style={styles.composer}>
-          <TextInput
+          <Input
             style={styles.input}
             placeholder="Message your club…"
             placeholderTextColor={colors.textDim}
@@ -177,7 +176,7 @@ export default function ClubChatScreen({ route }) {
   );
 }
 
-const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   bubbleRow: { marginBottom: space.sm, alignItems: 'flex-start' },
   messageRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
   sender: { ...type.caption, color: colors.textMuted, marginBottom: 2, marginLeft: 4 },
@@ -201,15 +200,19 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     backgroundColor: colors.bg,
     paddingBottom: space.lg,
   },
+  // Thin, unlike the full-width fields on the forms. A composer is not the
+  // whole control — it is one half of a docked row with a send button beside
+  // it — and 3pt of ink around a field this short reads as a box drawn around
+  // the message rather than as the field's own edge.
   input: {
     ...type.bodySm,
     flex: 1,
     backgroundColor: colors.card,
-    borderRadius: radius.md,
     paddingHorizontal: space.md,
     paddingVertical: 10,
     maxHeight: 100,
     color: colors.text,
+    ...nbField(scheme, { on: colors.card, stroke: NB.strokeThin }),
   },
   sendBtn: {
     width: 42,

@@ -290,11 +290,33 @@ export const api = {
   // Sweeps every unlocked, unclaimed tier server-side — a returning player can
   // have eighty of them, and eighty round trips is not a reward.
   claimAllRewards: () => request('/me/rewards/claim-all', { method: 'POST', timeoutMs: 60000 }),
+  // RETIRED, restore-only. The lifetime pass is no longer sold — PRO is a
+  // subscription now — but an old receipt replayed by the store still has to
+  // land, so this stays. New purchases go through `subscribePro`.
   purchasePass: (receipt, platform) =>
     request('/me/pass/purchase', {
       method: 'POST',
       body: JSON.stringify({ product_id: 'premium_pass', receipt, platform }),
     }),
+
+  // ----- PASER PRO (subscription) ---------------------------------------
+  // Entitlement is the SERVER's answer, never the store's and never a local
+  // flag: the client's job is to keep feeding it receipts and to render what
+  // it says back. See backend app/entitlements.py.
+  // What a finished run achieved. The free half is the accomplishment; `pro`
+  // is null unless the account is subscribed. Fetched separately from the
+  // claim itself, which is a much hotter path.
+  runInsights: (runId) => request(`/runs/${runId}/insights`),
+  proStatus: () => request('/me/pro'),
+  subscribePro: (productId, receipt, platform) =>
+    request('/me/pro/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, receipt, platform }),
+    }),
+  // Re-posts whatever the store says is owned, so a renewal that happened
+  // while the app was closed is picked up. Safe to call repeatedly.
+  syncPro: (purchases) =>
+    request('/me/pro/sync', { method: 'POST', body: JSON.stringify({ purchases }) }),
 
   // Standings by rank points (the competitive board) rather than land held.
   rankLeaderboard: (limit = 50) => request(`/leaderboard/ranks?limit=${limit}`),
@@ -404,8 +426,32 @@ export const api = {
   updateClan: (clanId, body) => request(`/clans/${clanId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   clanFeed: (clanId) => request(`/clans/${clanId}/feed`),
   clanLeaderboard: () => request('/leaderboard/clans'),
-  seasonLeaderboard: (scope = 'clans', category = 'land') =>
-    request(`/leaderboard/season?scope=${encodeURIComponent(scope)}&category=${encodeURIComponent(category)}`),
+  // `window` and `filter` are the PASER PRO half of the board and default to
+  // the free view, so omitting them asks for exactly the board this endpoint
+  // has always returned. `filter: 'local'` additionally needs lat/lon; the
+  // server refuses rather than quietly answering globally.
+  seasonLeaderboard: (scope = 'clans', category = 'land', opts = {}) => {
+    const q = new URLSearchParams({ scope, category });
+    if (opts.window && opts.window !== 'season') q.set('window', opts.window);
+    if (opts.filter && opts.filter !== 'all') q.set('filter', opts.filter);
+    if (opts.lat != null && opts.lon != null) {
+      q.set('lat', String(opts.lat));
+      q.set('lon', String(opts.lon));
+    }
+    return request(`/leaderboard/season?${q.toString()}`);
+  },
+  // Where the signed-in runner stands on a board, at ANY position. Never
+  // gated on the free board — see the rule at the top of routes/leaderboard.py.
+  myStanding: (category = 'land', opts = {}) => {
+    const q = new URLSearchParams({ category });
+    if (opts.window && opts.window !== 'season') q.set('window', opts.window);
+    if (opts.filter && opts.filter !== 'all') q.set('filter', opts.filter);
+    if (opts.lat != null && opts.lon != null) {
+      q.set('lat', String(opts.lat));
+      q.set('lon', String(opts.lon));
+    }
+    return request(`/leaderboard/standing?${q.toString()}`);
+  },
 
   mapPolygons: (bbox, zoom) => {
     const parts = [];

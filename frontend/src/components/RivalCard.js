@@ -12,6 +12,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { brand, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
+import { haptic, PressableScale } from '../ui/motion';
 import { ToonButton, ToonCard, ToonGhostButton, OutlinedText } from './ui';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
@@ -125,9 +126,22 @@ export default function RivalCard({
   const behind = rival.net_m2 < 0;
   const line = headline(rival);
 
+  // The card's BODY opens the rivalry; the two buttons underneath keep their
+  // own jobs, which is why this wraps the body rather than the whole card.
+  // `onPress` used to be a FALLBACK for `onTakeBack`, so a caller passing both
+  // never saw it fire — hence the explicit split here.
+  const Body = onPress ? PressableScale : View;
+  const bodyProps = onPress
+    ? {
+        onPress: () => { haptic.light(); onPress(); },
+        accessibilityRole: 'button',
+        accessibilityLabel: `Rivalry with ${rival.username}. Open the head to head`,
+      }
+    : {};
+
   return (
     <ToonCard style={style} padded={false}>
-      <View style={styles.body}>
+      <Body style={styles.body} {...bodyProps}>
         <View style={styles.eyebrowRow}>
           <OutlinedText
             style={[toonType.label, { color: behind ? '#ef4444' : brand.teal }]}
@@ -169,7 +183,7 @@ export default function RivalCard({
         {line ? (
           <Text style={[type.bodySm, { color: colors.textMuted, marginTop: space.sm }]}>{line}</Text>
         ) : null}
-      </View>
+      </Body>
 
       <View style={styles.actions}>
         {onViewLand ? (

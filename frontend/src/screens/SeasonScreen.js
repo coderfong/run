@@ -18,7 +18,11 @@ import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
+import useCoarsePosition from '../hooks/useCoarsePosition';
+import usePro from '../hooks/usePro';
 import { useAuth } from '../auth/AuthContext';
+import BuyProSheet from '../components/BuyProSheet';
+import StandingBar from '../components/StandingBar';
 import { radius, space, toon, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { NEUTRAL } from '../state/clan';
 import { Screen, Card, Row, Skeleton, EmptyState, PANEL_INK, ToonHeader } from '../components/ui';
@@ -41,6 +45,25 @@ const CATEGORY_OPTIONS = [
 ];
 const CATEGORY_BY_KEY = Object.fromEntries(CATEGORY_OPTIONS.map((item) => [item.key, item]));
 
+// The PASER PRO half of the board. These change the QUESTION — over what
+// stretch of time, against which runners — and never the answer to "where am
+// I", which StandingBar answers for free underneath. Every option here is
+// `season`/`all` for a free runner, which is the board they already had.
+const WINDOW_OPTIONS = [
+  { key: 'season', label: 'Season', sentence: 'this season' },
+  { key: 'week', label: 'This week', sentence: 'this week' },
+  { key: 'month', label: 'This month', sentence: 'this month' },
+  { key: 'all', label: 'All time', sentence: 'all time' },
+];
+const FIELD_OPTIONS = [
+  { key: 'all', label: 'Everyone', sentence: '' },
+  { key: 'pasers', label: 'Pasers', sentence: ', among your pasers' },
+  { key: 'club', label: 'My club', sentence: ', within your club' },
+  { key: 'local', label: 'Near me', sentence: ', near you' },
+];
+const WINDOW_BY_KEY = Object.fromEntries(WINDOW_OPTIONS.map((i) => [i.key, i]));
+const FIELD_BY_KEY = Object.fromEntries(FIELD_OPTIONS.map((i) => [i.key, i]));
+
 // The seven chips, in strip order. `axis` is what a tap sets — the backend
 // board is still scope × category (see routes/leaderboard.py), so the two
 // scope chips and the five category chips stay independently selectable
@@ -51,6 +74,28 @@ const BOARD_OPTIONS = [
   ...CATEGORY_OPTIONS.map((option) => ({ ...option, axis: 'category' })),
 ];
 const BOARD_BY_KEY = Object.fromEntries(BOARD_OPTIONS.map((item) => [item.key, item]));
+
+// One chip on the PRO row. `locked` still renders as a live control: tapping
+// it opens the paywall, which is a better answer than a chip that looks broken
+// or one that has been hidden so nobody knows the view exists.
+function FilterChip({ label, active, locked, onPress, styles, type }) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      style={[styles.chip, active && styles.chipActive]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={locked ? `${label}. Paser Pro` : label}
+    >
+      <Text
+        style={[type.bodySmBold, styles.chipLabel, active && styles.chipLabelActive]}
+        numberOfLines={1}
+      >
+        {locked ? `${label} ✦` : label}
+      </Text>
+    </PressableScale>
+  );
+}
 
 function metricAmount(item, category) {
   switch (category) {
@@ -89,11 +134,36 @@ export default function SeasonScreen({ navigation, route }) {
   // instantly instead of blanking to skeletons on every toggle. useQuery
   // re-seeds itself when the key changes, which also retires the request-id
   // guard that used to be needed to ignore a slow board arriving late.
+  // The PRO filters. `season` + `all` is the free board, so a runner who never
+  // touches these chips has exactly the screen they had before.
+  const [window_, setWindow] = useState('season');
+  const [field, setField] = useState('all');
+  const [payOpen, setPayOpen] = useState(false);
+  const { isPro } = usePro();
+  // Only fetched for the one filter that needs it, and only when it is chosen
+  // — asking for a position to draw a board nobody has asked for would be a
+  // location prompt out of nowhere.
+  const here = useCoarsePosition(field === 'local');
+
+  const boardOpts = { window: window_, filter: field, lat: here?.lat, lon: here?.lon };
+  // `local` cannot be requested until a position arrives; the server refuses
+  // it outright rather than quietly answering globally.
+  const ready = field !== 'local' || !!here;
+
   const { data: rows, loading } = useQuery(
-    `season:${mode}:${category}`,
-    () => api.seasonLeaderboard(mode, category),
+    ready ? `season:${mode}:${category}:${window_}:${field}` : null,
+    () => api.seasonLeaderboard(mode, category, boardOpts),
     { fallback: [] }
   );
+
+  const selectFilter = (axis, key) => {
+    // A free runner gets the paywall, not a silent no-op and not a 402 toast.
+    if (!isPro && key !== (axis === 'window' ? 'season' : 'all')) {
+      setPayOpen(true);
+      return;
+    }
+    (axis === 'window' ? setWindow : setField)(key);
+  };
 
   const banner = BOARD_BY_KEY[bannerKey] || CATEGORY_BY_KEY.land;
 
@@ -116,7 +186,7 @@ export default function SeasonScreen({ navigation, route }) {
       // is why it needed white outlined text over it.
       art={banner.art.source}
       solid={banner.art.bg}
-      subtitle={`${mode === 'clans' ? 'Clubs' : 'Solo runners'} ranked by ${CATEGORY_BY_KEY[category].description} this season.`}
+      subtitle={`${mode === 'clans' ? 'Clubs' : 'Solo runners'} ranked by ${CATEGORY_BY_KEY[category].description} ${WINDOW_BY_KEY[window_].sentence}${FIELD_BY_KEY[field].sentence}.`}
       // The two things that differ per board are the art's shape and the
       // length of that sentence, and both were sizing the header — tapping
       // from Captures (a wide illustration, a short sentence) to Land (a tall
@@ -164,12 +234,46 @@ export default function SeasonScreen({ navigation, route }) {
           );
         })}
       </View>
+
+      {/* The PRO row: WHEN and WHO, under the free "who is ranked by what"
+          row above. Locked chips stay visible and tappable rather than being
+          hidden or dimmed out of reach — a runner should be able to see what
+          PRO would give them and open the paywall from the thing itself. */}
+      <View style={styles.chipRow}>
+        {WINDOW_OPTIONS.map((option) => (
+          <FilterChip
+            key={`w:${option.key}`}
+            label={option.label}
+            active={window_ === option.key}
+            locked={!isPro && option.key !== 'season'}
+            onPress={() => selectFilter('window', option.key)}
+            styles={styles}
+            type={type}
+          />
+        ))}
+        <View style={styles.chipDivider} />
+        {FIELD_OPTIONS.map((option) => (
+          <FilterChip
+            key={`f:${option.key}`}
+            label={option.label}
+            active={field === option.key}
+            locked={!isPro && option.key !== 'all'}
+            onPress={() => selectFilter('field', option.key)}
+            styles={styles}
+            type={type}
+          />
+        ))}
+      </View>
     </ToonHeader>
   );
 
-  const arriving = useArrival(loading);
+  // A disabled query never resolves, so its `loading` never clears — without
+  // this, choosing "Near me" with no location permission would sit on
+  // skeletons forever instead of reaching the empty state that explains why.
+  const waiting = loading && ready;
+  const arriving = useArrival(waiting);
 
-  if (loading) {
+  if (waiting) {
     return (
       <Screen gutter={false} edges={[]}>
         {header}
@@ -244,21 +348,48 @@ export default function SeasonScreen({ navigation, route }) {
   return (
     <Screen gutter={false} edges={[]}>
       <FlatList
-        data={rows}
+        // `rows` holds the last board while the query is disabled, which would
+        // show the global standings under a "Near me" heading. Empty is the
+        // honest state, and the empty component below says why.
+        data={ready ? rows : []}
         keyExtractor={(item) => item.clan_id || item.user_id}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl }}
         // The header is the full-bleed art rectangle, so it cancels the list's
         // own gutter rather than sitting inside it.
-        ListHeaderComponent={<View style={{ marginHorizontal: -space.gutter }}>{header}</View>}
+        ListHeaderComponent={
+          <>
+            <View style={{ marginHorizontal: -space.gutter }}>{header}</View>
+            {/* Free, and deliberately ABOVE the board rather than pinned to the
+                bottom of it: the first thing a runner should be able to read on
+                a standings screen is their own standing. Solo boards only —
+                the club board ranks clubs, and one runner has no place on it. */}
+            {mode === 'solo' ? (
+              <StandingBar
+                category={category}
+                opts={boardOpts}
+                style={{ marginBottom: space.sm }}
+              />
+            ) : null}
+          </>
+        }
         ListEmptyComponent={
-          <EmptyState
-            icon={<AppIcon name="trophy" size={44} />}
-            title={mode === 'clans' ? 'No clubs on the board yet' : 'No solo runners yet'}
-            body={mode === 'clans'
-              ? `No club has recorded ${CATEGORY_BY_KEY[category].description} this season.`
-              : `No solo runner has recorded ${CATEGORY_BY_KEY[category].description} this season.`}
-            style={{ marginTop: space.xxl }}
-          />
+          field === 'local' && !here ? (
+            <EmptyState
+              icon={<AppIcon name="locate" size={44} />}
+              title="PASER needs your location for this board"
+              body="Turn location on for PASER in your device settings to see the runners around you."
+              style={{ marginTop: space.xxl }}
+            />
+          ) : (
+            <EmptyState
+              icon={<AppIcon name="trophy" size={44} />}
+              title={mode === 'clans' ? 'No clubs on the board yet' : 'No solo runners yet'}
+              body={mode === 'clans'
+                ? `No club has recorded ${CATEGORY_BY_KEY[category].description} ${WINDOW_BY_KEY[window_].sentence}.`
+                : `No solo runner has recorded ${CATEGORY_BY_KEY[category].description} ${WINDOW_BY_KEY[window_].sentence}${FIELD_BY_KEY[field].sentence}.`}
+              style={{ marginTop: space.xxl }}
+            />
+          )
         }
         // The board's HEADER is on screen in both branches — it is drawn above
         // the placeholders too — so the fade goes on the rows alone. Fading the
@@ -269,6 +400,7 @@ export default function SeasonScreen({ navigation, route }) {
           </Arrival>
         )}
       />
+      <BuyProSheet visible={payOpen} onClose={() => setPayOpen(false)} />
     </Screen>
   );
 }

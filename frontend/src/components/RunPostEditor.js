@@ -12,7 +12,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { Camera, Images, Trash2, X } from 'lucide-react-native';
@@ -20,7 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api, apiPhotoSource } from '../api/client';
 import { invalidate, updateCached } from '../api/cache';
-import { radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { nbField, radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { Input } from './ui';
 import { PressableScale, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { MAX_DATA_URI_LENGTH, dataUri, imagePicker } from '../ui/photoPicker';
@@ -162,7 +162,7 @@ export default function RunPostEditor({
 
   return (
     <View style={styles.editor}>
-      <TextInput
+      <Input
         style={[styles.caption, type.body, { color: colors.text }]}
         value={caption}
         onChangeText={setCaption}
@@ -296,15 +296,13 @@ export function RunPostEditorModal({ visible, onClose, ...props }) {
   );
 }
 
-const makeStyles = (colors) => StyleSheet.create({
+const makeStyles = (colors, scheme) => StyleSheet.create({
   editor: { alignSelf: 'stretch' },
   caption: {
     minHeight: 92,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
     backgroundColor: colors.cardAlt,
     padding: space.md,
+    ...nbField(scheme, { on: colors.cardAlt }),
   },
   count: { alignSelf: 'flex-end', color: colors.textDim, marginTop: 4 },
   errorText: { color: colors.danger, marginTop: space.sm },

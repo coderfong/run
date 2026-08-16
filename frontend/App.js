@@ -55,6 +55,7 @@ import ShopScreen from './src/screens/ShopScreen';
 import ProgressionScreen from './src/screens/ProgressionScreen';
 import PasersScreen from './src/screens/PasersScreen';
 import RivalsScreen from './src/screens/RivalsScreen';
+import RivalDetailScreen from './src/screens/RivalDetailScreen';
 import CrossroadsScreen from './src/screens/CrossroadsScreen';
 import RunnerProfileScreen from './src/screens/RunnerProfileScreen';
 
@@ -72,6 +73,7 @@ import { LandCaptureAlertHost } from './src/components/LandCaptureAlert';
 import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
+import { useProSync } from './src/hooks/usePro';
 import { hydrateCache } from './src/api/cache';
 import { preloadCriticalImages, preloadStartupImages } from './src/config/screenAssets';
 // No static `colors` here on purpose — App used to build the nav theme and the
@@ -213,6 +215,12 @@ function HomeStack() {
         options={{ headerShown: true, title: 'Levels & rewards' }}
       />
       <HomeStackNav.Screen name="Rivals" component={RivalsScreen} />
+      <HomeStackNav.Screen
+        name="RivalDetail"
+        component={RivalDetailScreen}
+        // title is set by the screen once the rival's name loads
+        options={{ headerShown: true, title: 'Rivalry' }}
+      />
       <HomeStackNav.Screen name="Crossroads" component={CrossroadsScreen} />
       {/* Reachable from Crossroads, so it has to exist on this stack too. */}
       <HomeStackNav.Screen
@@ -298,6 +306,12 @@ function YouStack() {
           back button), so the native one is off. */}
       <YouStackNav.Screen name="Pasers" component={PasersScreen} />
       <YouStackNav.Screen name="Rivals" component={RivalsScreen} />
+      <YouStackNav.Screen
+        name="RivalDetail"
+        component={RivalDetailScreen}
+        // title is set by the screen once the rival's name loads
+        options={{ headerShown: true, title: 'Rivalry' }}
+      />
       <YouStackNav.Screen name="Crossroads" component={CrossroadsScreen} />
       <YouStackNav.Screen
         name="RunnerProfile"
@@ -533,6 +547,10 @@ function RootNavigator() {
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
   usePushRegistration(signedIn);
+  // A subscription renews with the app closed, so the expiry the backend
+  // holds goes stale on its own. This re-posts whatever the store says is
+  // live; it can only ever extend PRO, never take it away.
+  useProSync(signedIn);
 
   useEffect(() => {
     if (!signedIn) return;

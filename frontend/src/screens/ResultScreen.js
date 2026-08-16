@@ -52,6 +52,7 @@ import useClaimSequence from '../components/claim/useClaimSequence';
 import PaserbyReveal from '../components/paserby/PaserbyReveal';
 import RunShareSheet from '../components/share/RunShareSheet';
 import DevShareDebugPanel from '../components/DevShareDebugPanel';
+import TerritoryInsights from '../components/TerritoryInsights';
 import { SHARE_DEBUG_FLAGS } from '../utils/shareDebugFlags';
 import XpProgress from '../components/XpProgress';
 import { Image } from '../ui/image';
@@ -1597,6 +1598,13 @@ export default function ResultScreen({ navigation, route }) {
           </View>
         </Reveal>
       )}
+
+      {/* What the claim actually achieved, and where it leaves you on the
+          board. Above the splits because it is about the GAME; the splits are
+          about the run. Renders nothing when no ground was claimed. */}
+      <Reveal delay={270}>
+        <TerritoryInsights runId={result.run_id} style={{ marginHorizontal: space.lg }} />
+      </Reveal>
 
       {/* splits */}
       <Reveal delay={300}>

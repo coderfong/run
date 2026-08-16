@@ -12,12 +12,13 @@ import AppIcon from './AppIcon';
 
 import { api } from '../api/client';
 import { fetchAndCache, getCached, setCached } from '../api/cache';
-import { radius, shadow, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { NB, nbInk, radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAccent } from '../hooks/useAccent';
 import { Skeleton, shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
 import { EmptyState } from './ui';
+import StandingBar from './StandingBar';
 import { toast } from '../ui/toast';
 import { art } from '../config/onboardingArt';
 import GameLottie from './GameLottie';
@@ -120,7 +121,7 @@ function RowSkeleton() {
 // competitive read — it decays and can be lost, so it answers "who's winning
 // now", where land answers "who holds the most".
 export default function LeaderboardView({ board = 'land' }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
@@ -214,6 +215,13 @@ export default function LeaderboardView({ board = 'land' }) {
   const myRow = rows.find((r) => r.user_id === user.id);
   // Podium members are always visible in the header — never pin them.
   const showPinned = myRow && myRow.rank > 3 && !myVisible;
+  // The board is a TOP N. A runner outside it has no row to pin, so before
+  // this there was simply nothing on screen telling them where they stand —
+  // the exact doubt the whole competitive game cannot afford. StandingBar asks
+  // the server for their real position at any depth, and is free for
+  // everybody: PRO sells other QUESTIONS about the board, never the answer to
+  // "am I winning". See backend routes/leaderboard.py.
+  const showStanding = !myRow;
   const podiumRows = rows.slice(0, 3);
   const listRows = rows.slice(3);
 
@@ -295,8 +303,25 @@ export default function LeaderboardView({ board = 'land' }) {
           </Animated.View>
         )}
       />
+      {showStanding && (
+        <StandingBar
+          category={board === 'rank' ? 'rank' : 'land'}
+          style={styles.standing}
+        />
+      )}
       {showPinned && (
-        <View style={[styles.pinned, { backgroundColor: withAlpha((myRow.clan_color || NEUTRAL).stroke, 0.12) }]}>
+        <View
+          style={[
+            styles.pinned,
+            {
+              backgroundColor: withAlpha((myRow.clan_color || NEUTRAL).stroke, 0.12),
+              // Judged against the PAGE, not against the 12% tint: the tint is
+              // nearly transparent, so what the stroke is really drawn against
+              // is the list behind it.
+              borderColor: nbInk(scheme, colors.bg),
+            },
+          ]}
+        >
           {myRow.delta > 0 ? <GameLottie name="rankUp" size={74} trigger={myRow.delta} style={styles.pinnedRankFx} /> : null}
           <Text style={styles.rank}>#{myRow.rank}</Text>
           <View style={[styles.dot, { backgroundColor: (myRow.clan_color || NEUTRAL).stroke }]} />
@@ -314,9 +339,19 @@ export default function LeaderboardView({ board = 'land' }) {
   );
 }
 
-const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   list: { backgroundColor: colors.bg },
   listContent: { paddingHorizontal: space.gutter, paddingTop: space.md, paddingBottom: space.xxl },
+  // A standings row is a STACK of identical boxes, which is the one shape the
+  // hard drop is wrong for: forty rows each casting a solid block four points
+  // down-right means every row is printed on top of the shadow of the row above
+  // it, and the list reads as a smear. So these take the stroke and not the
+  // drop — the same split `nbField` makes for text fields, arrived at from the
+  // other direction.
+  //
+  // `shadow.card` is what the stroke replaces. It was a soft blurred elevation,
+  // which is the device neo-brutalism is defined against, and on the dark
+  // palette it was doing almost nothing anyway.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,7 +360,8 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.md,
     marginBottom: space.sm,
-    ...shadow.card,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.card),
   },
   rank: { ...type.statSm, width: 36 },
   placeBadge: { width: 36, height: 30, marginRight: 2 },
@@ -334,6 +370,15 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   rankFx: { position: 'absolute' },
   dot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
   area: { ...type.statSm },
+  // The FULL stroke, where the list rows take the thin one. This is the single
+  // pinned element on the screen and the heavier edge is how the style says so
+  // — it is the one thing here that is on top of everything else.
+  //
+  // Still no hard drop, and here the reason is mechanical rather than
+  // aesthetic: the fill is a 12% clan tint, and a drop is a solid block sitting
+  // behind the box. A translucent box shows its own shadow straight through
+  // itself, which is the same trap that forced Button's `outline` variant to be
+  // paper-filled instead of hollow.
   pinned: {
     position: 'absolute',
     left: space.gutter,
@@ -344,9 +389,17 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     paddingVertical: space.md,
     paddingHorizontal: space.md,
     borderRadius: radius.md,
-    ...shadow.raised,
+    borderWidth: NB.stroke,
   },
   pinnedRankFx: { position: 'absolute', left: 4 },
+  // Same berth as the pinned row — the two are mutually exclusive (you are
+  // either ON the board or being told where you are), so they can share it.
+  standing: {
+    position: 'absolute',
+    left: space.gutter,
+    right: space.gutter,
+    bottom: space.lg,
+  },
 
   podium: {
     flexDirection: 'row',

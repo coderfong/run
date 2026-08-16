@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, ranks, schemas
+from .. import entitlements, models, ranks, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -26,6 +26,13 @@ from ..security import current_user
 router = APIRouter(tags=["rivals"])
 
 DEFAULT_LIMIT = 25
+
+# How close two beats have to be to count as the same place. Loose on purpose:
+# this is naming a park or a neighbourhood, not a street corner.
+BATTLEGROUND_RADIUS_M = 1500
+# The density search self-joins, so the input is bounded. A rivalry with this
+# many beats has established where it lives many times over.
+BATTLEGROUND_MAX_BEATS = 200
 
 # Territory expires; a rivalry compares LIVE holdings, so the same decay
 # window the rest of the app uses has to be applied here too.
@@ -157,6 +164,161 @@ def _cards(db: Session, uid, limit: int, other_id: str | None = None):
     return cards
 
 
+def _battleground(db: Session, uid, other_id: str):
+    """The ground two runners actually keep fighting over → (lat, lon, beats).
+
+    NOT the average of where they have met. A mean is dragged by outliers, and
+    one skirmish on the far side of a city moves the answer several kilometres
+    to a spot where nothing has ever happened — which is worse than saying
+    nothing, because it names the wrong park with total confidence.
+
+    So: find the DENSEST point instead. Every beat is scored by how many other
+    beats fall within `BATTLEGROUND_RADIUS_M` of it, the busiest wins, and the
+    reported centre is the middle of that cluster alone. A rivalry spread
+    evenly over a city correctly comes back with a small count, which is the
+    caller's cue not to name a place at all.
+
+    The self-join is O(n²), so the input is capped at the most recent beats —
+    a rivalry with hundreds of them has long since established where it lives.
+    """
+    row = db.execute(
+        text(
+            f"""
+            WITH ev AS ({_EVENTS}),
+            pair AS (
+                SELECT lat, lon FROM ev
+                WHERE other_id = CAST(:other AS uuid) AND lat IS NOT NULL
+                ORDER BY created_at DESC
+                LIMIT :cap
+            ),
+            pts AS (
+                SELECT p.lat, p.lon, COUNT(*) AS n
+                FROM pair p
+                JOIN pair q ON ST_DWithin(
+                    ST_SetSRID(ST_Point(p.lon, p.lat), 4326)::geography,
+                    ST_SetSRID(ST_Point(q.lon, q.lat), 4326)::geography,
+                    :radius)
+                GROUP BY p.lat, p.lon
+                ORDER BY n DESC, p.lat, p.lon
+                LIMIT 1
+            )
+            SELECT AVG(q.lat), AVG(q.lon), COUNT(*)
+            FROM pts
+            JOIN pair q ON ST_DWithin(
+                ST_SetSRID(ST_Point(pts.lon, pts.lat), 4326)::geography,
+                ST_SetSRID(ST_Point(q.lon, q.lat), 4326)::geography,
+                :radius)
+            """
+        ),
+        {"uid": uid, "other": other_id, "radius": BATTLEGROUND_RADIUS_M,
+         "cap": BATTLEGROUND_MAX_BEATS},
+    ).fetchone()
+    if not row or row[0] is None:
+        return None, None, 0
+    return float(row[0]), float(row[1]), int(row[2] or 0)
+
+
+def _analytics(db: Session, uid, other_id: str) -> schemas.RivalAnalytics:
+    """The PRO read of one rivalry.
+
+    Two queries and a small loop, all of it over rows that already exist. No
+    new state, nothing precomputed, nothing to keep in step with the map —
+    which is the same promise the rivalry cards themselves make.
+
+    A note on defence rate, because it is the one number that could be read
+    backwards: a `defended` row means the ATTACKER bounced, so YOUR defence
+    rate is the share of THEIR attacks that failed.
+    """
+    row = db.execute(
+        text(
+            f"""
+            WITH ev AS ({_EVENTS}),
+            pair AS (SELECT * FROM ev WHERE other_id = CAST(:other AS uuid))
+            SELECT
+                COUNT(*),
+                MIN(created_at),
+                -- their attacks on you, and how many of them bounced
+                COUNT(*) FILTER (WHERE NOT mine),
+                COUNT(*) FILTER (WHERE NOT mine AND defended),
+                -- your attacks on them, and how many bounced
+                COUNT(*) FILTER (WHERE mine),
+                COUNT(*) FILTER (WHERE mine AND defended),
+                COUNT(*) FILTER (WHERE mine AND NOT defended AND created_at > now() - interval '30 days'),
+                COUNT(*) FILTER (WHERE NOT mine AND NOT defended AND created_at > now() - interval '30 days')
+            FROM pair
+            """
+        ),
+        {"uid": uid, "other": other_id},
+    ).fetchone()
+
+    total = int(row[0] or 0)
+    their_attacks, their_bounced = int(row[2] or 0), int(row[3] or 0)
+    your_attacks, your_bounced = int(row[4] or 0), int(row[5] or 0)
+    lat, lon, near = _battleground(db, uid, other_id)
+
+    # Streak: walk back from the newest beat while the takes stay one-sided.
+    # Defences end nothing — bouncing an attack does not break the attacker's
+    # run of successful ones, and counting it as a break made a streak read
+    # as broken while the ground kept moving one way.
+    streak_rows = db.execute(
+        text(
+            f"""
+            WITH ev AS ({_EVENTS})
+            SELECT mine FROM ev
+            WHERE other_id = CAST(:other AS uuid) AND NOT defended
+            ORDER BY created_at DESC LIMIT 50
+            """
+        ),
+        {"uid": uid, "other": other_id},
+    ).fetchall()
+    streak = 0
+    if streak_rows:
+        mine_first = bool(streak_rows[0][0])
+        for r in streak_rows:
+            if bool(r[0]) != mine_first:
+                break
+            streak += 1
+        if not mine_first:
+            streak = -streak
+
+    dist = db.execute(
+        text(
+            """
+            SELECT
+                COALESCE(SUM(distance_m) FILTER (WHERE user_id = :uid), 0),
+                COALESCE(SUM(distance_m) FILTER (WHERE user_id = CAST(:other AS uuid)), 0)
+            FROM runs
+            -- `runs.started_at` is written by Python as naive UTC, while
+            -- Postgres `now()` is the server's LOCAL time. Comparing them
+            -- directly shifts this window by the server's UTC offset: zero on
+            -- Render, hours anywhere else, which is exactly how a bug like
+            -- this survives to production untouched.
+            WHERE user_id IN (:uid, CAST(:other AS uuid))
+              AND started_at > timezone('utc', now()) - interval '30 days'
+              AND verified
+            """
+        ),
+        {"uid": uid, "other": other_id},
+    ).fetchone()
+
+    return schemas.RivalAnalytics(
+        total_beats=total,
+        first_met=row[1],
+        # None rather than 0 when nobody has attacked: a wall that has never
+        # been tested has no success rate, and showing 0% would call it weak.
+        your_defence_rate=(their_bounced / their_attacks) if their_attacks else None,
+        their_defence_rate=(your_bounced / your_attacks) if your_attacks else None,
+        streak=streak,
+        your_distance_m_30d=float(dist[0] or 0),
+        their_distance_m_30d=float(dist[1] or 0),
+        your_beats_30d=int(row[6] or 0),
+        their_beats_30d=int(row[7] or 0),
+        battleground_lat=lat,
+        battleground_lon=lon,
+        battleground_beats=near,
+    )
+
+
 @router.get("/me/rivals", response_model=schemas.RivalsOut)
 def my_rivals(
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=50),
@@ -210,4 +372,8 @@ def rival_detail(
         )
         for r in rows
     ]
-    return schemas.RivalDetail(rival=cards[0], events=events)
+    # PRO deepens the rivalry; it never gates it. A free runner still gets the
+    # card, the full blow-by-blow and everything that says who is winning —
+    # only the analysis of it is paid for.
+    analytics = _analytics(db, user.id, user_id) if entitlements.is_pro(user) else None
+    return schemas.RivalDetail(rival=cards[0], events=events, analytics=analytics)

@@ -11,15 +11,20 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { Image } from '../../ui/image';
 
-import { radius, space, useTheme, useThemedType } from '../../theme';
+import { NB, darkColors, nbInk, radius, space, useTheme, useThemedType } from '../../theme';
 import { frameVariant } from '../../ui/frameRegistry';
 import Button from './Button';
 import Framed from './Framed';
+import HardShadow from './HardShadow';
 
 export default function EmptyState({ icon, art, title, body, actionLabel, onAction, accent, dark = false, style }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const muted = dark ? 'rgba(255,255,255,0.66)' : colors.textMuted;
+  // `dark` means this empty state is sitting on a forced-dark page (a map
+  // overlay, the run screen), so its box has to take the dark card fill rather
+  // than the scheme's — same contract the copy above follows.
+  const iconFill = dark ? darkColors.card : colors.card;
   return (
     <View style={[{ alignItems: 'center', justifyContent: 'center', padding: space.xl }, style]}>
       {art ? (
@@ -62,18 +67,38 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
           </View>
         </Framed>
       ) : icon ? (
-        <View
-          style={{
-            width: 80,
-            height: 80,
-            borderRadius: radius.lg,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: space.lg,
-          }}
+        // The art path gets a DRAWN box; this one gets the neo-brutalist box,
+        // which is the same decision made twice for the two things this
+        // component can be handed. It used to be neither: an 80 point view with
+        // a radius, no fill and no edge, which is not a box at all — the icon
+        // simply floated in the middle of the page with a rounded rectangle's
+        // worth of nothing around it.
+        //
+        // A hard drop rather than the framed path's own depth, because this is
+        // the plainer of the two empty states — the one a screen falls back to
+        // when it has no mascot for the occasion — and it should read as
+        // chrome rather than as an occasion.
+        <HardShadow
+          offset={NB.offset}
+          radius={radius.lg}
+          on={iconFill}
+          style={{ marginBottom: space.lg }}
         >
-          {icon}
-        </View>
+          <View
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: radius.lg,
+              backgroundColor: iconFill,
+              borderWidth: NB.stroke,
+              borderColor: nbInk(scheme, iconFill),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {icon}
+          </View>
+        </HardShadow>
       ) : null}
       <Text style={[type.title, dark && { color: '#fff' }, { textAlign: 'center', marginBottom: space.sm }]}>
         {title}

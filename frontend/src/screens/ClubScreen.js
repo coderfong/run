@@ -2,7 +2,7 @@
 // the club hub (header, weekly goal, members, role-gated management).
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from '../ui/image';
 import { ArrowRight, Camera, MessageCircle, Trophy, UserPlus, Users } from 'lucide-react-native';
@@ -12,9 +12,9 @@ import { invalidate } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
-import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { nbField, radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { art } from '../config/onboardingArt';
-import { Screen, Card, Framed, Row, Button, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
+import { Screen, Card, Framed, Row, Button, Input, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import { toast } from '../ui/toast';
 import { pickPhoto } from '../ui/photoPicker';
@@ -113,7 +113,7 @@ function Directory({ navigation }) {
 
       {/* the Join button matches the input height and centres with it */}
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md, alignItems: 'center' }}>
-        <TextInput
+        <Input
           style={[styles.input, { flex: 1, height: 48 }]}
           value={code}
           onChangeText={setCode}
@@ -125,7 +125,7 @@ function Directory({ navigation }) {
       </View>
 
       <SectionHeader title="Find a club" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <TextInput
+      <Input
         style={styles.input}
         value={q}
         onChangeText={setQ}
@@ -625,14 +625,15 @@ export default function ClubScreen({ navigation }) {
   );
 }
 
-const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // title and crew sit together on the left rather than pushed to opposite edges
   dirHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
   dirCrewWrap: { flex: 1, maxWidth: 190, aspectRatio: 2.57 },
   dirCrew: { width: '100%', height: '100%' },
   input: {
-    ...type.body, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1,
-    borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: 12,
+    ...type.body, backgroundColor: colors.card,
+    paddingHorizontal: space.md, paddingVertical: 12,
+    ...nbField(scheme, { on: colors.card }),
   },
   crestEdit: {
     position: 'absolute', right: -4, bottom: -4,

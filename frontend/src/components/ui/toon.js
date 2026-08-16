@@ -3,9 +3,25 @@
 // headers with outlined titles, chips, list rows, progress tracks, and the
 // "Get started" checklist strip.
 //
-// Every piece is scheme-aware via `toonSurface()`: the hard black outline +
-// drop shadow are a LIGHT-UI device, so on dark they become a soft rim with
-// no shadow (see src/theme/toon.js).
+// Every piece is scheme-aware via `toonSurface()`. That used to mean "the hard
+// black outline and drop shadow are a LIGHT-UI device, so on dark they become a
+// soft rim with no shadow" — which is exactly the opt-out that kept the app
+// looking neo-brutalist in one scheme only. It now means the device is
+// INVERTED on dark: a cream stroke, and the drop moved to a saturated accent.
+// See the header of src/theme/nb.js.
+//
+// Two rules this file has to keep in mind, because it is the widest surface in
+// the app:
+//
+//   The drop is drawn by `HardShadow`, not by `s.shadow`. The latter is the
+//   iOS-only form — Android cannot render a zero-blur offset block from style
+//   props at all — and these pieces are the app's chrome, so they render on
+//   both. `s.shadow` survives only where a caller has already committed to a
+//   frame doing the drawing.
+//
+//   `colors.border` stays a HAIRLINE. The heavy stroke is `colors.ink`, opted
+//   into per box. The divider between two list rows is not a neo-brutalist
+//   edge and never was; making it one would draw a table.
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -15,7 +31,9 @@ import Svg, { Circle } from 'react-native-svg';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
 
 import {
+  NB,
   brand,
+  nbInk,
   space,
   toon,
   toonRadius,
@@ -25,6 +43,7 @@ import {
   useThemedType,
 } from '../../theme';
 import { Bar, PressableScale } from '../../ui/motion';
+import HardShadow from './HardShadow';
 import OutlinedText from './OutlinedText';
 
 // The copy colour on a `panel` header. Fixed, not `colors.text`: a panel is a
@@ -45,26 +64,59 @@ const PANEL_ART_COMPACT_W = 112;
 
 // The shadow lives on an OUTER view: iOS drops a layer's shadow as soon as it
 // clips its content (`overflow: 'hidden'`), and these cards always clip.
+//
+// That outer view is a `HardShadow` now rather than a spread of `s.shadow`, so
+// the drop exists on Android too — see the note at the top of this file.
+//
+// `overflow` is pulled OUT of the caller's style and moved to the inner box,
+// which is the one change the swap forces. The drop is a real sibling view
+// inset by NEGATIVE offset on its right and bottom, so an `overflow: 'hidden'`
+// on the wrapper crops the shadow away on exactly the two edges it occupies.
+// Callers passing it (ToonRowGroup, GetStartedCard) mean "clip my content",
+// which is the inner box's job and something it already does unconditionally.
 export function ToonCard({ children, style, padded = true, flat = false, bg }) {
   const { colors, scheme } = useTheme();
-  const s = toonSurface(colors, scheme);
-  return (
-    <View style={[flat ? null : s.shadow, style]}>
-      <View
-        style={[
-          {
-            backgroundColor: bg || colors.card,
-            borderRadius: toonRadius.card,
-            overflow: 'hidden',
-            ...s.outline,
-          },
-          padded && { padding: space.lg },
-        ]}
-      >
-        {children}
-      </View>
+  const fill = bg || colors.card;
+  // Judged against the card's OWN fill, not the scheme, so a `bg` a caller
+  // chose (a clan tint, an accent panel) gets a stroke that shows on it.
+  const s = toonSurface(colors, scheme, { on: fill });
+  const [placement] = stripOverflow(style);
+
+  const box = (
+    <View
+      style={[
+        {
+          backgroundColor: fill,
+          borderRadius: toonRadius.card,
+          overflow: 'hidden',
+          ...s.outline,
+        },
+        padded && { padding: space.lg },
+      ]}
+    >
+      {children}
     </View>
   );
+
+  // `flat` is for a card nested inside another one, where a second drop would
+  // read as two sheets of paper rather than as one box with something in it.
+  // It keeps the stroke and skips the shadow view entirely, rather than drawing
+  // a zero-offset block that is covered by the card in front of it anyway.
+  if (flat) return <View style={placement}>{box}</View>;
+
+  return (
+    <HardShadow offset={s.offset} radius={toonRadius.card} on={fill} style={placement}>
+      {box}
+    </HardShadow>
+  );
+}
+
+// Splits `overflow` off a style. Returns [rest, overflow] — see ToonCard.
+function stripOverflow(style) {
+  const flat = StyleSheet.flatten(style);
+  if (!flat || flat.overflow == null) return [flat || null, undefined];
+  const { overflow, ...rest } = flat;
+  return [rest, overflow];
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +191,7 @@ export function ToonHeader({
   children,
   style,
 }) {
+  const { scheme } = useTheme();
   const framed = framedProp ?? !!(leftArt || rightArt);
 
   // The panel cut-out is sized to ITS OWN SHAPE, not to a square. `contain`
@@ -164,6 +217,7 @@ export function ToonHeader({
   }, [art, stableArt, compact]);
 
   if (panel) {
+    const panelFill = solid || brand.pink;
     return (
       <View
         style={[
@@ -173,7 +227,20 @@ export function ToonHeader({
           // that a strip of breathing room protects — the inset already
           // clears the notch, and anything past that is just a band of flat
           // colour above the art.
-          { paddingTop: top, backgroundColor: solid || brand.pink },
+          { paddingTop: top, backgroundColor: panelFill },
+          // The BOTTOM EDGE ONLY, and that is the whole neo-brutalist device
+          // available to a page header. A panel bleeds off the left, right and
+          // top of the screen, so a full box would run a line down both bezels
+          // and another one under the notch — which does not read as a stroke,
+          // it reads as a rendering fault. The bottom is the only edge that is
+          // actually an edge: it is where the panel stops and the page starts,
+          // and it is the line that makes the header sit ON the page rather
+          // than bleed into it.
+          //
+          // Judged against the panel's own fill, because the panel is a
+          // saturated brand colour in BOTH schemes — picking off the scheme
+          // would put a cream stroke under a yellow header on dark.
+          { borderBottomWidth: NB.stroke, borderBottomColor: nbInk(scheme, panelFill) },
           compact && styles.panelCompact,
           style,
         ]}
@@ -356,20 +423,29 @@ export function ToonHeader({
 // ToonChip — the outlined pill used for counters (coins, energy, level).
 // ---------------------------------------------------------------------------
 
+// The stroke is `strokeThin` and the drop is `offsetSm`. A counter chip is
+// about 32pt tall: 3pt of ink closes up the counters in the label (the same
+// reason Pill went thin), and the full 4pt drop under something that small
+// reads as the chip being knocked askew rather than as depth.
 export function ToonChip({ icon, label, bg, color, style }) {
   const { colors, scheme } = useTheme();
-  const s = toonSurface(colors, scheme);
+  const fill = bg || colors.card;
+  const s = toonSurface(colors, scheme, {
+    on: fill,
+    stroke: NB.strokeThin,
+    offset: NB.offsetSm,
+  });
   return (
-    <View
-      style={[
-        styles.chip,
-        { backgroundColor: bg || colors.card, ...s.outline, ...s.shadow },
-        style,
-      ]}
-    >
-      {icon}
-      <Text style={[toonType.sub, { fontSize: 15, color: color || colors.text }]}>{label}</Text>
-    </View>
+    // HardShadow, so the drop exists on Android — a chip is chrome and turns up
+    // in headers on both platforms. `style` rides the wrapper: every caller
+    // passes it to place the chip in a row, and a margin left on the inner box
+    // would move the chip out from under its own shadow.
+    <HardShadow offset={s.offset} radius={toonRadius.pill} on={fill} style={style}>
+      <View style={[styles.chip, { backgroundColor: fill, ...s.outline }]}>
+        {icon}
+        <Text style={[toonType.sub, { fontSize: 15, color: color || colors.text }]}>{label}</Text>
+      </View>
+    </HardShadow>
   );
 }
 
@@ -380,8 +456,11 @@ export function ToonChip({ icon, label, bg, color, style }) {
 
 export function ToonRowGroup({ children, style }) {
   const kids = React.Children.toArray(children).filter(Boolean);
+  // No `overflow: 'hidden'` here: ToonCard's inner box already clips, always,
+  // and passing it in only reached the shadow wrapper — where it cropped the
+  // drop off the two edges the drop lives on.
   return (
-    <ToonCard padded={false} style={[{ overflow: 'hidden' }, style]}>
+    <ToonCard padded={false} style={style}>
       {kids.map((child, i) => (
         <React.Fragment key={child.key || i}>
           {i > 0 ? <Divider /> : null}
@@ -392,14 +471,25 @@ export function ToonRowGroup({ children, style }) {
   );
 }
 
+// Stays a HAIRLINE. `colors.border` is the divider token and a neo-brutalist
+// stroke is not what a divider is for: the group is ONE outlined box with rows
+// inside it, and giving each row a 3pt edge would turn it into a table. This is
+// the same call Segmented makes about its segments.
 function Divider() {
   const { colors } = useTheme();
   return <View style={{ height: 1, backgroundColor: colors.border, marginLeft: 68 }} />;
 }
 
 export function ToonRow({ icon, iconBg, label, sub, onPress, right, disabled }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
+  // The icon bubble is the EnergyMeter bug in miniature. Its default tint is
+  // `cardAlt` sitting on the group's `card` — one surface step, which is a few
+  // percent of lightness in either palette, so the bubble did not read as a
+  // bubble at all and the icon looked like it was floating in the row. A thin
+  // stroke judged against the bubble's own fill is what makes it an object,
+  // and it holds up when a caller passes a saturated `iconBg` too.
+  const bubble = iconBg || colors.cardAlt;
   return (
     <PressableScale
       onPress={onPress}
@@ -409,7 +499,14 @@ export function ToonRow({ icon, iconBg, label, sub, onPress, right, disabled }) 
       accessibilityLabel={label}
       style={[styles.row, disabled && { opacity: 0.5 }]}
     >
-      <View style={[styles.rowIcon, { backgroundColor: iconBg || colors.cardAlt }]}>{icon}</View>
+      <View
+        style={[
+          styles.rowIcon,
+          { backgroundColor: bubble, borderWidth: NB.strokeThin, borderColor: nbInk(scheme, bubble) },
+        ]}
+      >
+        {icon}
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={[toonType.sub, { fontSize: 16, color: colors.text, textAlign: 'left' }]}>
           {label}
@@ -429,19 +526,32 @@ export function ProgressTrack({
   value = 0,
   height = 14,
   fill = brand.pink,
+  // What the track is sitting ON, for the stroke. Defaults to the card, which
+  // is where a progress bar almost always is. A caller drawing one straight
+  // onto the page or onto a coloured panel should say so.
+  on,
   style,
   animateOnMount = false,
   delay = 0,
   durationMs,
 }) {
   const { colors, scheme } = useTheme();
-  const s = toonSurface(colors, scheme);
+  // EXACTLY the EnergyMeter bug, and it was here too. A track tinted `cardAlt`
+  // inside a card tinted `card` is two surface steps apart, which is about six
+  // percent of lightness on the dark palette and almost nothing on paper — so
+  // the EMPTY portion of the bar was invisible and the control read as a
+  // floating pink stub with no track behind it. The stroke is what makes the
+  // unfilled part a quantity rather than a gap.
+  //
+  // Thin, not the full 3pt: at the default height of 14 a 3pt stroke on each
+  // side leaves 8pt of actual bar, and the fill stops reading as a level.
+  const s = toonSurface(colors, scheme, { on: on || colors.card, stroke: NB.strokeThin });
   // The outline lives on this wrapper, not on the Bar's own track. Bar sizes
   // its fill off a measured layout width, which INCLUDES the border, while the
   // percentage fill this replaced resolved against the content box — so hanging
-  // the 2.5px toon outline on the measured element would run every fill a few
-  // pixels long. Bar sits inside it on absoluteFill, which Yoga positions
-  // against the padding box, and measures exactly the width the fill may use.
+  // the toon outline on the measured element would run every fill a few pixels
+  // long. Bar sits inside it on absoluteFill, which Yoga positions against the
+  // padding box, and measures exactly the width the fill may use.
   return (
     <View
       style={[
@@ -461,15 +571,14 @@ export function ProgressTrack({
         delay={delay}
         durationMs={durationMs}
         trackStyle={StyleSheet.absoluteFill}
-        fillStyle={{ height: '100%' }}
-      >
-        <LinearGradient
-          colors={[fill, '#F97CBB']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Bar>
+        // A FLAT fill. This was a two-stop gradient from `fill` to a fixed
+        // lighter pink, which is the one thing the style has no room for: flat
+        // saturated colour is the third of the three decisions in theme/nb.js,
+        // alongside the heavy stroke and the hard drop. The gradient also
+        // ignored `fill` for half its width, so a caller passing a clan colour
+        // got a bar that faded into PASER pink regardless.
+        fillStyle={{ height: '100%', backgroundColor: fill }}
+      />
     </View>
   );
 }
@@ -479,9 +588,14 @@ export function ProgressTrack({
 // `filled` entries render whatever node you pass; the rest are dashed adds.
 // ---------------------------------------------------------------------------
 
-export function SlotDots({ filled = [], total = 3, size = 46, onPress }) {
-  const { colors } = useTheme();
+export function SlotDots({ filled = [], total = 3, size = 46, onPress, on }) {
+  const { colors, scheme } = useTheme();
   const empty = Math.max(0, total - filled.length);
+  // Ink, not `textDim`. An empty slot is an INVITATION — the thing the card is
+  // asking you to tap — and drawing it in the disabled-text grey said the
+  // opposite in both schemes. The dashes are what make it read as empty; the
+  // weight is what makes it read as available.
+  const ink = nbInk(scheme, on || colors.card);
   if (total <= 0) return null;
   return (
     <View style={styles.slots}>
@@ -498,19 +612,22 @@ export function SlotDots({ filled = [], total = 3, size = 46, onPress }) {
           style={[styles.slotEmpty, { width: size, height: size }]}
         >
           {/* SVG ring, not a dashed border: iOS silently renders dashed
-              borders as solid once a view has a border radius. */}
+              borders as solid once a view has a border radius. Inset by half
+              the stroke so the ring is drawn INSIDE the box — an SVG stroke
+              straddles its path, so a radius of size/2 would clip its outer
+              half against the viewport on all four sides. */}
           <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
             <Circle
               cx={size / 2}
               cy={size / 2}
-              r={size / 2 - 2}
-              stroke={colors.textDim}
-              strokeWidth={2}
+              r={size / 2 - NB.strokeThin}
+              stroke={ink}
+              strokeWidth={NB.strokeThin}
               strokeDasharray="6 5"
               fill="none"
             />
           </Svg>
-          <Plus size={size * 0.44} color={colors.textDim} strokeWidth={2.5} />
+          <Plus size={size * 0.44} color={ink} strokeWidth={2.5} />
         </PressableScale>
       ))}
     </View>
@@ -533,8 +650,10 @@ export function GetStartedCard({
   style,
 }) {
   const { colors } = useTheme();
+  // Same as ToonRowGroup: the clipping the bookend art needs comes from
+  // ToonCard's inner box, not from a style passed to its shadow wrapper.
   return (
-    <ToonCard padded={false} style={[{ overflow: 'hidden' }, style]}>
+    <ToonCard padded={false} style={style}>
       <PressableScale
         onPress={onPress}
         disabled={!onPress}
@@ -636,12 +755,16 @@ const styles = StyleSheet.create({
   panelArtCompact: { width: PANEL_ART_COMPACT_W, marginLeft: space.xs },
   // A white pill, not the dark disc the scrimmed headers use: on a bright flat
   // panel a black-22% circle reads as a smudge.
+  //
+  // The stroke is `strokeThin` and a fixed ink rather than `nbInk`, because the
+  // fill is a fixed near-white in both schemes — the same reason the copy on a
+  // panel is PANEL_INK. There is nothing here for the scheme to decide.
   panelBack: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.72)',
-    borderWidth: 2,
+    borderWidth: NB.strokeThin,
     borderColor: PANEL_INK,
     alignItems: 'center',
     justifyContent: 'center',

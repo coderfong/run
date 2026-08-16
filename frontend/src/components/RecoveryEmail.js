@@ -15,14 +15,14 @@
 // sees this card at all.
 
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { MailCheck, ShieldAlert } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useQuery } from '../hooks/useQuery';
-import { radius, space, useTheme, useThemedType } from '../theme';
-import { Card, Row, Button, SectionHeader, Skeleton } from './ui';
+import { nbField, radius, space, useTheme, useThemedType } from '../theme';
+import { Card, Row, Button, Input, SectionHeader, Skeleton } from './ui';
 import { toast } from '../ui/toast';
 import { Arrival, useArrival } from '../ui/motion';
 
@@ -31,11 +31,11 @@ function looksLikeEmail(raw) {
 }
 
 export default function RecoveryEmail() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const { refreshUser } = useAuth();
   const { data, setData, refresh } = useQuery('me:recovery', api.recovery);
-  const s = styles(colors, type);
+  const s = styles(colors, scheme, type);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -153,7 +153,7 @@ export default function RecoveryEmail() {
               We sent a 6 digit code there. Until you type it in, this address cannot reset your
               password.
             </Text>
-            <TextInput
+            <Input
               value={code}
               onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
               placeholder="000000"
@@ -211,7 +211,7 @@ export default function RecoveryEmail() {
         {editing ? (
           <>
             <Text style={type.labelSm}>Email</Text>
-            <TextInput
+            <Input
               value={draft}
               onChangeText={setDraft}
               placeholder="you@example.com"
@@ -228,7 +228,7 @@ export default function RecoveryEmail() {
             {verified ? (
               <>
                 <Text style={[type.labelSm, { marginTop: space.md }]}>Current password</Text>
-                <TextInput
+                <Input
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
@@ -261,18 +261,19 @@ export default function RecoveryEmail() {
   );
 }
 
-const styles = (colors, type) =>
+const styles = (colors, scheme, type) =>
   StyleSheet.create({
     input: {
       ...type.body,
       color: colors.text,
       backgroundColor: colors.cardAlt,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: radius.md,
       paddingHorizontal: space.md,
       paddingVertical: 12,
       marginTop: 6,
+      // `cardAlt`, and this field sits inside a Card — so the ink is judged
+      // against the field's own fill rather than the card's, which is the same
+      // one-surface-step problem the EnergyMeter track had.
+      ...nbField(scheme, { on: colors.cardAlt }),
     },
     codeInput: { textAlign: 'center', fontSize: 24, letterSpacing: 8 },
   });

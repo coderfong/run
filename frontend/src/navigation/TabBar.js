@@ -3,6 +3,20 @@
 // middle, sitting IN the row rather than breaking out above it. The active tab
 // gets a filled pill behind it; the sticker icons are full-colour art, so
 // state is shown with the pill + opacity, never a colour swap.
+//
+// THE BAR IS FRAMED, so it takes no neo-brutalist stroke and no hard drop.
+// Frames and NB strokes are alternatives, never layers — a drawn box with a
+// machine-drawn box printed just inside it is the failure this rule exists to
+// prevent, and Card.js applies the same rule to its own framed path.
+//
+// The ACTIVE PILL is the piece that needed the sweep. It was `cardAlt` sitting
+// on the bar's `card` fill: one surface step, a few percent of lightness in
+// either palette, so the thing marking which tab you are on was very nearly
+// invisible. It cannot be fixed the way Segmented fixed it — an ink fill under
+// a full-colour sticker icon would fight the art, which is the whole reason
+// this bar shows state with a pill instead of a tint. So it keeps its quiet
+// fill and gets a thin stroke, which is what makes a one-step surface read.
+// Same fix, same reason, as the EnergyMeter track.
 
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -13,7 +27,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { space, toonRadius, toonSurface, type, useTheme } from '../theme';
+import { NB, nbInk, space, toonRadius, type, useTheme } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { framePose } from '../ui/frameRegistry';
 import { useAccent } from '../hooks/useAccent';
@@ -28,16 +42,29 @@ const ICON_KEY = { Home: 'tab-home', Map: 'tab-map', Club: 'tab-club', You: 'tab
 const LABELS = { Home: 'Home', Map: 'Map', Club: 'Club', You: 'You' };
 
 function TabItem({ route, isFocused, accent, onPress, onWarm }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const key = ICON_KEY[route.name] || 'tab-home';
   const color = isFocused ? accent : INACTIVE;
+  // Thin: the pill is about 44pt tall and sits four across, and 3pt of ink on
+  // each of them turns the bar into a row of boxes rather than one bar with a
+  // current tab in it.
+  //
+  // The INACTIVE pill carries the same border width in transparent. A border is
+  // part of the box in Yoga, so switching it on only for the focused tab would
+  // grow that slot by two points a side and shove its neighbours along every
+  // time you changed tabs.
+  const pill = {
+    backgroundColor: isFocused ? colors.cardAlt : 'transparent',
+    borderWidth: NB.strokeThin,
+    borderColor: isFocused ? nbInk(scheme, colors.cardAlt) : 'transparent',
+  };
   // The flex:1 lives on this wrapper View, not on PressableScale — PressableScale
   // forwards its style prop to an inner Animated.View, so flex there wouldn't
   // stretch the pressable and every item would collapse to content width.
   return (
     <View style={styles.slot}>
       <PressableScale
-        style={[styles.item, isFocused && { backgroundColor: colors.cardAlt }]}
+        style={[styles.item, pill]}
         onPressIn={onWarm}
         onPress={onPress}
         accessibilityRole="button"
@@ -87,8 +114,7 @@ function RecordButton({ accent, onPress, onWarm }) {
 }
 
 export default function TabBar({ state, navigation }) {
-  const { colors, scheme } = useTheme();
-  const surface = toonSurface(colors, scheme);
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const accent = useAccent();
 
@@ -130,14 +156,23 @@ export default function TabBar({ state, navigation }) {
 
           The frame is the bar's own edge now, not a decal over it: `inset` is a
           real number, so the tabs are laid out INSIDE the measured line rather
-          than underneath it. */}
+          than underneath it.
+
+          No hard drop under it. It used to spread `toonSurface().shadow`, which
+          was wrong twice over: a frame already brings its own depth, and that
+          is the iOS-only shadow form, so it was drawing nothing on Android at
+          all. It could not have drawn the right thing on iOS either — the bar
+          paints no background of its own (the frame's paper is the fill), and
+          an iOS layer shadow on a transparent view is traced from the contents'
+          alpha, so what it offered was a smear following the nine-slice art
+          rather than a hard-edged block. */}
       <Framed
         frame="label"
         tint={accent}
         fill={colors.card}
         pose={framePose('main-navigation')}
         inset={space.xs}
-        style={[styles.bar, surface.shadow]}
+        style={styles.bar}
         contentStyle={styles.barContent}
       >
         {left.map(item)}

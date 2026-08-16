@@ -395,6 +395,20 @@ class Settings(BaseSettings):
     google_play_access_token: str = ""
     android_package: str = "com.pacerrun.app"
 
+    # ---- PASER PRO subscription -------------------------------------------
+    # PRO is an auto-renewable subscription (app/entitlements.py). These are
+    # the only product ids `/me/pro/subscribe` will accept — an id not on this
+    # list is rejected before a receipt is looked at, so a client cannot name
+    # its own product and have an expiry taken on trust. Both must sit in the
+    # SAME subscription group in App Store Connect / the Play Console, or
+    # switching plans starts a second parallel subscription instead of
+    # replacing the first.
+    pro_products: tuple[str, ...] = ("paser_pro_monthly", "paser_pro_annual")
+    # How long PRO survives past its expiry, covering a store-side billing
+    # retry. Short on purpose: cover for a failed charge, not a free period.
+    # Set to 0 to cut entitlement off exactly at expiry.
+    pro_grace_days: int = 3
+
     # ---- Account recovery (forgot password) -------------------------------
     # A six digit code mailed to the account's VERIFIED address. Six digits is
     # only safe because guessing is bounded three ways: the code dies after

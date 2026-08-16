@@ -2,7 +2,7 @@
 // comments. Reached from the feed and the You tab's recent runs.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { MoreHorizontal, Send } from 'lucide-react-native';
 import { useIsFocused } from '@react-navigation/native';
 
@@ -10,8 +10,8 @@ import { api } from '../api/client';
 import { updateCached } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { NEUTRAL } from '../state/clan';
-import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Card, Row, StatValue, Skeleton } from '../components/ui';
+import { NB, nbField, radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { Screen, Card, Row, Input, StatValue, Skeleton } from '../components/ui';
 import { Arrival, PressableScale, haptic, useArrival } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
@@ -328,7 +328,7 @@ export default function RunDetailScreen({ navigation, route }) {
         )}
 
         <View style={styles.commentInputRow}>
-          <TextInput
+          <Input
             ref={inputRef}
             style={styles.commentInput}
             placeholder="Add a comment…"
@@ -361,7 +361,7 @@ export default function RunDetailScreen({ navigation, route }) {
   );
 }
 
-const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   map: { height: 240, borderRadius: radius.card, overflow: 'hidden', marginTop: space.md, backgroundColor: colors.bgElevated },
   mapPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   kudos: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, paddingVertical: space.sm },
@@ -383,15 +383,17 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
 
   commentRow: { marginBottom: space.md },
   commentInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, marginTop: space.sm },
+  // Thin for the same reason as the club chat composer: it is half of a docked
+  // row, not a field standing on its own.
   commentInput: {
     ...type.bodySm,
     flex: 1,
     backgroundColor: colors.bgElevated,
-    borderRadius: radius.md,
     paddingHorizontal: space.md,
     paddingVertical: 10,
     maxHeight: 90,
     color: colors.text,
+    ...nbField(scheme, { on: colors.bgElevated, stroke: NB.strokeThin }),
   },
   sendBtn: {
     width: 40,

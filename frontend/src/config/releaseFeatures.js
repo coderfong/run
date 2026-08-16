@@ -8,9 +8,11 @@
 // What is still outside this repo, and has to happen before this flips on:
 //   1. A fresh dev-client / EAS build — expo-iap is a new native module,
 //      Fast Refresh will not pick it up and Expo Go can't run it at all.
-//   2. The product ids in BuyPassSheet.js / BuyEnergySheet.js registered in
+//   2. The product ids in config/pro.js and BuyEnergySheet.js registered in
 //      App Store Connect and the Play Console, at the prices those files
-//      assume until the store answers with the real ones.
+//      assume until the store answers with the real ones. PASER PRO is an
+//      AUTO RENEWABLE SUBSCRIPTION, and its two plans must be created in one
+//      subscription group — across two groups, switching plan bills for both.
 //   3. Two settings only the app owner can produce, both on the backend
 //      (Render env vars, not anything in this repo): `apple_app_apple_id`
 //      (App Store Connect → App Information → Apple ID — needed only for

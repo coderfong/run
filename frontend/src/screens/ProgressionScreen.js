@@ -1,7 +1,7 @@
 // ProgressionScreen — the two-track reward pass over the permanent 1..50
 // career ladder. Free track on the left, Premium (gold) on the right, tier
 // diamonds down the middle. Tiers you've reached are tap-to-claim; premium
-// tiers need the pass (one-time IAP via BuyPassSheet). Levels never reset —
+// tiers need PASER PRO (subscription, via BuyProSheet). Levels never reset —
 // this is the battle-pass LOOK on career progression, not a season.
 //
 // Data is server-owned via /me/progression; claims persist in reward_claims.
@@ -22,7 +22,8 @@ import PortraitBorder from '../components/PortraitBorder';
 import GameAnimation from '../components/GameAnimation';
 import RewardArt, { RARITY_COLOR } from '../components/RewardArt';
 import RewardReveal from '../components/RewardReveal';
-import BuyPassSheet, { GOLD } from '../components/BuyPassSheet';
+import BuyProSheet from '../components/BuyProSheet';
+import { GOLD } from '../config/pro';
 import { art } from '../config/onboardingArt';
 import { MAX_LEVEL } from '../config/progression';
 import { getItem, ITEMS } from '../config/cosmetics';
@@ -730,7 +731,7 @@ export default function ProgressionScreen() {
       })}
 
       {IAP_ENABLED ? (
-        <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={load} />
+        <BuyProSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={load} />
       ) : null}
       <ProgressionInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
       <RewardReveal

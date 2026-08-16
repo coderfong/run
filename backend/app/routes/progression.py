@@ -26,6 +26,7 @@ from ..ratelimit import limiter
 from ..security import current_user
 from .. import coins as coins_mod
 from .. import energy as energy_mod
+from .. import entitlements
 from .. import iap
 from .. import ranks
 from ..progression import (
@@ -86,11 +87,14 @@ def my_energy(user: models.User = Depends(current_user), db: Session = Depends(g
 @router.get("/me/progression")
 def my_progression(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     row = db.execute(
-        text("SELECT COALESCE(xp,0), COALESCE(premium_pass,false) FROM users WHERE id = :u"),
+        text("SELECT COALESCE(xp,0) FROM users WHERE id = :u"),
         {"u": user.id},
     ).fetchone()
     xp = int(row[0]) if row else 0
-    premium = bool(row[1]) if row else False
+    # The gold track is part of PRO, so it follows the one entitlement — a
+    # subscriber and a lifetime holder both have it. Reading `premium_pass`
+    # directly here would have shown the ladder locked to every subscriber.
+    premium = entitlements.is_pro(user)
     level = level_from_xp(xp)
     base = xp_for_level(level)
     nxt = xp_for_level(level + 1)
@@ -150,14 +154,14 @@ def claim_reward(request: Request, response: Response, body: dict,
         raise HTTPException(400, "bad level")
 
     row = db.execute(
-        text("SELECT COALESCE(xp,0), COALESCE(premium_pass,false) FROM users WHERE id = :u"),
+        text("SELECT COALESCE(xp,0) FROM users WHERE id = :u"),
         {"u": user.id},
     ).fetchone()
     level = level_from_xp(int(row[0]))
     if tier > level:
         raise HTTPException(403, "level not reached yet")
-    if track == "premium" and not bool(row[1]):
-        raise HTTPException(402, "premium pass required")
+    if track == "premium" and not entitlements.is_pro(user):
+        raise HTTPException(402, "PASER PRO required")
 
     inserted = db.execute(
         text("INSERT INTO reward_claims (user_id, level, track) VALUES (:u, :l, :t) "
@@ -213,11 +217,11 @@ def claim_all_rewards(request: Request, response: Response,
     actually wrote are exactly the tiers this call is allowed to pay out, so
     two concurrent sweeps can never grant the same tier twice."""
     row = db.execute(
-        text("SELECT COALESCE(xp,0), COALESCE(premium_pass,false) FROM users WHERE id = :u"),
+        text("SELECT COALESCE(xp,0) FROM users WHERE id = :u"),
         {"u": user.id},
     ).fetchone()
     level = level_from_xp(int(row[0]))
-    premium = bool(row[1])
+    premium = entitlements.is_pro(user)
     if level < 1:
         return {"ok": True, "claimed": 0, "rewards": [], "energy": energy_mod.status_for_user(db, user)}
 
@@ -245,9 +249,12 @@ def claim_all_rewards(request: Request, response: Response,
     return {"ok": True, "claimed": len(won), "rewards": rewards, "energy": st}
 
 
-# The premium track unlock. One product; permanent (the ladder is career-long,
-# not seasonal), so re-buying is a no-op rather than an error — store retries
-# and restore-purchases both land here.
+# RETIRED, restore-only. `premium_pass` was the one-time lifetime unlock of the
+# gold track, from before PRO became a subscription (see app/entitlements.py and
+# alembic 0037). It is no longer sold and the app no longer offers it, but this
+# endpoint stays reachable so an old receipt replayed by the store — a
+# reinstall, a restore-purchases tap — still lands the entitlement its owner
+# paid for. Anyone holding it keeps it forever.
 PASS_PRODUCTS = {"premium_pass"}
 
 

@@ -1,13 +1,13 @@
 // Create-club flow: name, tag, color (12), photo, privacy.
 
 import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Camera, ChevronLeft, Images, Trash2 } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useClan } from '../state/clan';
-import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Button, Framed, Segmented } from '../components/ui';
+import { nbField, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { Screen, Button, Framed, Input, Segmented } from '../components/ui';
 import ClanBadge from '../components/ClanBadge';
 import { Image } from '../ui/image';
 import { pickPhoto } from '../ui/photoPicker';
@@ -132,10 +132,10 @@ export default function ClubCreateScreen({ navigation }) {
       </Reveal>
 
       <Text style={styles.label}>Name</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} maxLength={24} placeholder="Night Owls" placeholderTextColor={colors.textDim} />
+      <Input style={styles.input} value={name} onChangeText={setName} maxLength={24} placeholder="Night Owls" placeholderTextColor={colors.textDim} />
 
       <Text style={styles.label}>Tag (2 to 5 characters)</Text>
-      <TextInput style={styles.input} value={tag} onChangeText={(v) => setTag(v.toUpperCase())} maxLength={5} autoCapitalize="characters" placeholder="OWLS" placeholderTextColor={colors.textDim} />
+      <Input style={styles.input} value={tag} onChangeText={(v) => setTag(v.toUpperCase())} maxLength={5} autoCapitalize="characters" placeholder="OWLS" placeholderTextColor={colors.textDim} />
 
       <Text style={styles.label}>Color</Text>
       <View style={styles.swatchRow}>
@@ -201,7 +201,7 @@ export default function ClubCreateScreen({ navigation }) {
   );
 }
 
-const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   pageHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm, marginBottom: space.md },
   back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   preview: { minHeight: 170, marginBottom: space.lg },
@@ -212,8 +212,9 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   },
   label: { ...type.labelSm, marginTop: space.md, marginBottom: 6 },
   input: {
-    ...type.body, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1,
-    borderRadius: radius.md, paddingHorizontal: space.md, paddingVertical: 14,
+    ...type.body, backgroundColor: colors.card,
+    paddingHorizontal: space.md, paddingVertical: 14,
+    ...nbField(scheme, { on: colors.card }),
   },
   swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   swatch: { width: 40, height: 40, borderRadius: 20, borderWidth: 3, borderColor: 'transparent' },

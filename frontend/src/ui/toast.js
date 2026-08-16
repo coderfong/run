@@ -9,7 +9,8 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { radius, space, type, useTheme } from '../theme';
+import { NB, nbInk, radius, space, type, useTheme } from '../theme';
+import HardShadow from '../components/ui/HardShadow';
 import { useReduceMotion } from './motion';
 
 const IN_MS = 240;
@@ -36,7 +37,7 @@ export function ToastHost() {
   // the dark palette whatever the scheme is — so on light mode an info toast
   // painted a near-black bubble with near-black text on it. Same bug the
   // Skeleton had, same fix.
-  const { colors: themed } = useTheme();
+  const { colors: themed, scheme } = useTheme();
   const reduced = useReduceMotion();
   const progress = useSharedValue(0);
 
@@ -89,13 +90,37 @@ export function ToastHost() {
     current.type === 'success' || current.type === 'error'
       ? '#fff'
       : themed.text;
+  // A toast is the most transient thing the app draws and it was the softest:
+  // a flat bubble with no edge and no depth, floating over whatever page it
+  // interrupted. On a busy screen — the map, a result card — an info toast
+  // tinted `cardAlt` was very nearly camouflage.
+  //
+  // The stroke is judged against the BUBBLE'S OWN FILL, which is the whole
+  // point of doing it per surface: the three toast types are a red, a green and
+  // a neutral card tint, and a stroke picked off the scheme would be the wrong
+  // one for at least one of them in at least one theme.
   return (
     <Animated.View pointerEvents="none" style={[styles.host, animated]}>
-      <View style={[styles.bubble, { backgroundColor: bg }]}>
-        <Text style={[styles.text, { color: fg }]} numberOfLines={3}>
-          {current.message}
-        </Text>
-      </View>
+      {/* HardShadow: a toast is the one piece of chrome guaranteed to appear
+          over arbitrary content, so the drop is what lifts it off whatever is
+          behind it, and it has to exist on Android for the same reason. */}
+      {/* The width cap rides the WRAPPER. `maxWidth: '100%'` on the bubble used
+          to resolve against the host, which is pinned left and right and so has
+          a definite width; under a wrapper that sizes itself to its own child
+          the percentage has nothing to resolve against, and a long message
+          would run off both screen edges. */}
+      <HardShadow offset={NB.offset} radius={radius.md} on={bg} style={styles.bubbleBox}>
+        <View
+          style={[
+            styles.bubble,
+            { backgroundColor: bg, borderWidth: NB.stroke, borderColor: nbInk(scheme, bg) },
+          ]}
+        >
+          <Text style={[styles.text, { color: fg }]} numberOfLines={3}>
+            {current.message}
+          </Text>
+        </View>
+      </HardShadow>
     </Animated.View>
   );
 }
@@ -108,12 +133,12 @@ const styles = StyleSheet.create({
     right: space.lg,
     alignItems: 'center',
   },
+  bubbleBox: { maxWidth: '100%' },
   bubble: {
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
     borderRadius: radius.md,
     minWidth: 180,
-    maxWidth: '100%',
   },
   text: { ...type.bodySm, textAlign: 'center' },
 });

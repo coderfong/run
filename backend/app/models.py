@@ -65,6 +65,18 @@ class User(Base):
     # empty for a new real player. Lets notify() and social surfaces skip it.
     is_bot = Column(Boolean, nullable=False, default=False, server_default="false")
 
+    # PASER PRO entitlement. Mapped here, unlike the other progression columns
+    # (xp, coins) which are read with raw SQL where they're needed, because
+    # this one is checked on ordinary gated requests that have already loaded
+    # the user row — see app/entitlements.py, which is the only thing that
+    # should ever WRITE either of them.
+    #
+    # `premium_pass` is the retired lifetime unlock, honoured forever.
+    # `pro_expires_at` is the live subscription's furthest expiry (NULL for
+    # anyone who has never subscribed).
+    premium_pass = Column(Boolean, nullable=False, default=False, server_default="false")
+    pro_expires_at = Column(DateTime, nullable=True)
+
     runs = relationship("Run", back_populates="user")
     territories = relationship("Territory", back_populates="user")
 

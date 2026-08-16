@@ -15,7 +15,6 @@ import {
   Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -27,8 +26,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../auth/AuthContext';
 import ForgotPassword from '../auth/ForgotPassword';
-import { brand, radius, space, type, useTheme } from '../theme';
-import { Screen, Button, Card } from '../components/ui';
+import { brand, nbField, radius, space, type, useTheme } from '../theme';
+import { Screen, Button, Card, Input } from '../components/ui';
 import { framePose, frameVariant } from '../ui/frameRegistry';
 import { Reveal, useReduceMotion } from '../ui/motion';
 import SocialAuthButtons from '../components/SocialAuthButtons';
@@ -145,9 +144,9 @@ function Welcome({ onSignIn, onCreate }) {
 
 function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
   const { signIn, signUp } = useAuth();
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const insets = useSafeAreaInsets();
-  const s = formStyles(colors);
+  const s = formStyles(colors, scheme);
 
   // Which side of the form you land on is decided by the button you pressed on
   // the way in. It used to always be 'signin', so Create account walked you to
@@ -203,7 +202,7 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
         >
         <Reveal delay={90}>
           <Text style={s.label}>Username</Text>
-          <TextInput
+          <Input
             style={[s.input, uErr && s.inputError]}
             placeholder="runner_42"
             placeholderTextColor={colors.textDim}
@@ -220,7 +219,7 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
 
         <Reveal delay={170}>
           <Text style={s.label}>Password</Text>
-          <TextInput
+          <Input
             style={[s.input, pErr && s.inputError]}
             placeholder={isSignup ? 'At least 8 characters, letter + digit' : 'Your password'}
             placeholderTextColor={colors.textDim}
@@ -255,7 +254,7 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
         {isSignup ? (
           <Reveal delay={210}>
             <Text style={s.label}>Email</Text>
-            <TextInput
+            <Input
               style={[s.input, eErr && s.inputError]}
               placeholder="you@example.com"
               placeholderTextColor={colors.textDim}
@@ -395,7 +394,7 @@ const styles = StyleSheet.create({
 });
 
 // Form chrome is themed (light/dark ready) — built from the active palette.
-const formStyles = (colors) =>
+const formStyles = (colors, scheme) =>
   StyleSheet.create({
     back: {
       position: 'absolute',
@@ -409,13 +408,14 @@ const formStyles = (colors) =>
       ...type.body,
       color: colors.text,
       backgroundColor: colors.card,
-      borderColor: colors.border,
-      borderWidth: 1,
-      borderRadius: radius.md,
       paddingHorizontal: space.md,
       paddingVertical: 14,
+      ...nbField(scheme, { on: colors.card }),
     },
-    inputError: { borderColor: colors.danger },
+    // Spread AFTER `input` at every call site, so this replaces the ink rather
+    // than sitting beside it. Same width, so nothing shifts when a field goes
+    // invalid — only the colour of the edge changes.
+    inputError: nbField(scheme, { on: colors.card, error: colors.danger }),
     fieldError: { ...type.caption, color: colors.danger, marginTop: 6 },
     fieldHint: { ...type.caption, color: colors.textDim, marginTop: 6 },
     apiErrorBox: { backgroundColor: colors.dangerSoft, borderRadius: radius.sm, padding: space.md, marginTop: space.lg },

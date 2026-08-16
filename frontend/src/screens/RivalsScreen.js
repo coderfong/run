@@ -126,6 +126,7 @@ export default function RivalsScreen({ navigation }) {
                 rival={r}
                 myAvatar={equipped}
                 style={{ marginTop: space.md }}
+                onPress={() => navigation.navigate('RivalDetail', { userId: r.user_id })}
                 onTakeBack={() => navigation.navigate('Record')}
                 onViewLand={
                   r.last_event?.lat != null

@@ -1,8 +1,9 @@
-// PASER PRO — the first-run upsell. Deliberately honest copy: the premium
-// pass is a ONE-TIME purchase (see components/BuyPassSheet.js), so this screen
-// never promises a free trial. If a subscription product with an intro offer
-// is ever registered, swap the headline for the trial framing AND wire the
-// real receipt check first (backend/app/routes/progression.py).
+// PASER PRO — the first-run upsell. Deliberately honest copy: this screen
+// never promises a free trial, because no intro offer is registered on either
+// store. PRO is a SUBSCRIPTION (see components/BuyProSheet.js, which carries
+// the price, the period and the renewal disclosure review requires); if a
+// trial is ever added to the subscription group, the headline can take the
+// trial framing then and not before.
 
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -11,7 +12,7 @@ import { Check } from 'lucide-react-native';
 
 import { space } from '../../theme';
 import { OutlinedText, ToonButton, ToonGhostButton } from '../../components/ui';
-import BuyPassSheet from '../../components/BuyPassSheet';
+import BuyProSheet from '../../components/BuyProSheet';
 import CharacterRig from '../../components/character/CharacterRig';
 import { useAvatar } from '../../state/avatar';
 import { art } from '../../config/onboardingArt';
@@ -84,7 +85,7 @@ export default function ProStep({ onContinue }) {
         </View>
       </ScrollView>
 
-      <BuyPassSheet visible={sheet} onClose={() => setSheet(false)} onPurchased={onContinue} />
+      <BuyProSheet visible={sheet} onClose={() => setSheet(false)} onPurchased={onContinue} />
     </View>
   );
 }

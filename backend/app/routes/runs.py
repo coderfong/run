@@ -31,6 +31,7 @@ from .. import economy
 from .. import energy as energy_mod
 from .. import paserby
 from .. import ranks
+from .. import territory_history
 from .. import fitness, models, schemas
 from ..anticheat import is_verified, validate_run
 from ..notifications import notify
@@ -1837,6 +1838,9 @@ def _claim_territory(
                 SELECT ST_Area(ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))::geography),
                        u.username,
                        t.strength,
+                       ST_AsText(ST_CollectionExtract(ST_MakeValid(
+                           ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))
+                       ), 3)) AS contested,
                        """
                 + _club_support_sql(
                     "t", "ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))"
@@ -1851,7 +1855,12 @@ def _claim_territory(
         if not steal or not steal[0]:
             continue
 
-        defense = effective_defence(steal[2], club_support_falloff(steal[3]))
+        # `contested` is the ground the two claims actually share — the only
+        # geometry the history log should ever attribute to this pair. The
+        # whole claim polygon would credit a rival with land they never
+        # touched.
+        contested = steal[3]
+        defense = effective_defence(steal[2], club_support_falloff(steal[4]))
         if strength <= defense:
             # The land holds — but not for free. The claim is carved around it
             # and the defence is chipped, so the same wall cannot be leaned on
@@ -1859,6 +1868,10 @@ def _claim_territory(
             defended_ids.append(rid)
             _chip_defence(db, rid, strength)
             events.append({"victim_id": _ruid, "area_m2": float(steal[0]), "defended": True})
+            territory_history.record(
+                db, kind=territory_history.DEFEND, actor_id=user_id, victim_id=_ruid,
+                run_id=run_id, area_m2=float(steal[0]), ground_wkt=contested,
+            )
             continue
 
         stolen_total += float(steal[0])
@@ -1866,6 +1879,13 @@ def _claim_territory(
             best_steal = float(steal[0])
             stolen_from = steal[1]
         events.append({"victim_id": _ruid, "area_m2": float(steal[0]), "defended": False})
+        # Recorded BEFORE the difference below removes it from the victim's
+        # row: after that statement the geometry this event describes no
+        # longer exists anywhere to be read back.
+        territory_history.record(
+            db, kind=territory_history.STEAL, actor_id=user_id, victim_id=_ruid,
+            run_id=run_id, area_m2=float(steal[0]), ground_wkt=contested,
+        )
 
         # Subtract the new polygon from the rival's territory. ALL surviving
         # fragments are kept as one MultiPolygon — only sub-1m² slivers are
@@ -2052,6 +2072,19 @@ def _claim_territory(
                 "life_secs": lifetime_for(0) * 86400,
             },
         ).fetchone()
+
+    # The actor's own beat, covering all the ground they ended up holding from
+    # this claim — `new_geom_wkt` is post-carve, so land that successfully
+    # defended is already out of it. `reinforce` when it grew onto their own
+    # existing land, `claim` when it did not.
+    territory_history.record(
+        db,
+        kind=territory_history.REINFORCE if same_user_union else territory_history.CLAIM,
+        actor_id=user_id,
+        run_id=run_id,
+        area_m2=float(new_row[1] or 0),
+        ground_wkt=new_geom_wkt,
+    )
 
     return _territory_out(db, new_row[0]), stolen_total, stolen_from, events
 

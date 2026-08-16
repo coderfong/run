@@ -240,6 +240,9 @@ const AFTER_RUN = [
   // A finished run is exactly when crossed paths appear — Home's badge and the
   // Crossroads list are both wrong the moment /end-run returns.
   'me:paserby',
+  // Every board's "you are 84th of 1,203" line. A run that moved somebody up
+  // and then showed them their old position is worse than showing nothing.
+  'standing:',
 ];
 const AFTER_CLAIM = [
   ...AFTER_RUN,
@@ -248,16 +251,31 @@ const AFTER_CLAIM = [
   'me:clan',
   'clan:',
   'season:',
+  // A claim is the only thing that moves a rivalry, and the head-to-head
+  // screen is keyed per opponent — hence the prefix rather than one key.
+  'rival:',
 ];
 const AFTER_LAND_LOSS = [
   'feed',
   'me:stats',
   'me:rivals',
+  'rival:',
   'leaderboard:',
+  'standing:',
   'me:clan',
   'clan:',
   'season:',
 ];
+
+// PASER PRO started or ended. Nothing about the WORLD changed, but several
+// responses carry an entitlement-shaped half that the server filled in (or
+// left null) at fetch time — a subscriber who just paid must not have to
+// restart the app to see the thing they paid for.
+const AFTER_ENTITLEMENT = ['pro', 'insights:', 'rival:', 'season:', 'standing:'];
+
+export function invalidateAfterEntitlementChange() {
+  AFTER_ENTITLEMENT.forEach((prefix) => invalidate(prefix));
+}
 
 export function invalidateAfterRun() {
   AFTER_RUN.forEach((prefix) => invalidate(prefix));

@@ -73,6 +73,32 @@ def effective_points(points: int, last_earned_at: datetime | None,
     return int(round(points * ((1 - DECAY_PER_WEEK) ** weeks)))
 
 
+# The same decay, as a SQL expression over `u.rank_points` / `u.rank_points_at`.
+#
+# WHY A SECOND COPY EXISTS. `effective_points` is applied per row in Python,
+# which is fine when the caller has already fetched the rows — the rank board
+# over-fetches and re-sorts afterwards for exactly that reason. It does not
+# work for "what position is this ONE runner in", which has to rank them
+# against every other player without pulling the whole users table into memory.
+#
+# It is a DUPLICATE and has to stay in step. `test_rank_decay_sql.py` runs both
+# over the same inputs and fails the moment they disagree, which is the only
+# thing that makes having two of them acceptable.
+DECAY_SQL = f"""
+    CASE
+        WHEN COALESCE(u.rank_points, 0) <= 0 THEN 0
+        WHEN u.rank_points_at IS NULL THEN u.rank_points
+        WHEN EXTRACT(EPOCH FROM (timezone('utc', now()) - u.rank_points_at))
+             <= {DECAY_GRACE_DAYS} * 86400
+            THEN u.rank_points
+        ELSE ROUND(u.rank_points * POWER(
+            {1 - DECAY_PER_WEEK}::numeric,
+            FLOOR((EXTRACT(EPOCH FROM (timezone('utc', now()) - u.rank_points_at))
+                   - {DECAY_GRACE_DAYS} * 86400) / {_WEEK}) + 1))
+    END
+"""
+
+
 def rank_for_points(points: int) -> dict:
     """Current tier plus progress toward the next one."""
     pts = max(0, int(points or 0))
@@ -122,9 +148,15 @@ def award(db, user_id, delta: int, reason: str) -> None:
     if not delta:
         return
     from sqlalchemy import text
+    # UTC, not `now()`. `rank_points_at` is a naive TIMESTAMP that
+    # `effective_points` compares against `datetime.utcnow()`, so writing the
+    # server's LOCAL time here skews the decay grace period by the server's UTC
+    # offset — invisible on Render, which runs in UTC, and hours wrong on any
+    # deploy or dev box that does not. `timezone('utc', now())` stores the same
+    # convention Python reads.
     db.execute(
         text("UPDATE users SET rank_points = GREATEST(0, COALESCE(rank_points,0) + :d), "
-             "rank_points_at = now() WHERE id = :u"),
+             "rank_points_at = timezone('utc', now()) WHERE id = :u"),
         {"d": int(delta), "u": user_id},
     )
     db.execute(

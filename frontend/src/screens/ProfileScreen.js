@@ -2,7 +2,7 @@
 // Trophy shelf (PRs + badges) and tap-through run detail arrive in Phase 6.
 
 import React, { useEffect, useState } from 'react';
-import { Linking, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useIsFocused } from '@react-navigation/native';
 
@@ -26,15 +26,15 @@ import HealthSyncSettings from '../components/HealthSyncSettings';
 import RecoveryEmail from '../components/RecoveryEmail';
 import RivalCard from '../components/RivalCard';
 import { Arrival, Bar, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
-import { brand, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { brand, nbField, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { levelBandColor } from '../config/progression';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { COPY as PASERBY_COPY } from '../config/paserby';
-import { Screen, Card, Row, Button, StatValue, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
+import { Screen, Card, Row, Button, Input, StatValue, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
-import BuyPassSheet from '../components/BuyPassSheet';
+import BuyProSheet from '../components/BuyProSheet';
 import { art } from '../config/onboardingArt';
 import GameAnimation from '../components/GameAnimation';
 import { toast } from '../ui/toast';
@@ -408,7 +408,7 @@ export default function ProfileScreen({ navigation }) {
             style={styles.proCard}
             onPress={() => { haptic.light(); setPassOpen(true); }}
             accessibilityRole="button"
-            accessibilityLabel="Paser Pro. Twice the rewards, one payment. Tap to unlock"
+            accessibilityLabel="Paser Pro. Twice the rewards, plus planning, history and analytics. Tap to see the plans"
           >
             {/* Explicit 100%/100% rather than absoluteFill: that registered
                 style carries no width or height, and an Image handed one has
@@ -575,7 +575,7 @@ export default function ProfileScreen({ navigation }) {
         <Text style={type.labelSm}>Username</Text>
         {editing ? (
           <>
-            <TextInput
+            <Input
               value={draft}
               onChangeText={setDraft}
               autoCapitalize="none"
@@ -719,7 +719,7 @@ export default function ProfileScreen({ navigation }) {
             This permanently removes your runs and territories. It cannot be undone. Type{' '}
             <Text style={[type.bodySmBold]}>{user?.username}</Text> to confirm.
           </Text>
-          <TextInput
+          <Input
             value={deleteDraft}
             onChangeText={setDeleteDraft}
             autoCapitalize="none"
@@ -753,7 +753,7 @@ export default function ProfileScreen({ navigation }) {
       {IAP_ENABLED ? (
         <>
           <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
-          <BuyPassSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={reloadProgression} />
+          <BuyProSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={reloadProgression} />
         </>
       ) : null}
     </Screen>
@@ -769,7 +769,7 @@ const TROPHY_MEDAL = 32;
 // point beside the label rather than as an icon.
 const ACTION_ICON = 22;
 
-const makeStyles = (colors, _scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
   nameRow: { alignItems: 'center', justifyContent: 'center', marginTop: space.md },
   // The header now ends at the scene's bottom edge rather than at the name, so
   // its old `xl` bottom margin read as a hole between the art and the runner
@@ -854,12 +854,10 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
   input: {
     ...type.body,
     backgroundColor: colors.bgElevated,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.sm,
     paddingHorizontal: space.md,
     paddingVertical: 12,
     marginVertical: space.sm,
+    ...nbField(scheme, { on: colors.bgElevated }),
   },
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm },
   // `space-between` on a single row worked for the original six, but ten

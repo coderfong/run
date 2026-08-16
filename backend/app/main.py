@@ -16,8 +16,8 @@ from .config import settings
 from .database import SessionLocal
 from .ratelimit import limiter
 from .routes import (
-    auth, clans, dev, feed, leaderboard, paserby, pasers, profile, progression, rivals, runs,
-    shop, social, territories, users,
+    auth, clans, dev, feed, insights, leaderboard, paserby, pasers, pro, profile, progression,
+    rivals, runs, shop, social, territories, users,
 )
 
 # ---------------------------------------------------------------------------
@@ -138,6 +138,8 @@ app.include_router(pasers.router)
 app.include_router(paserby.router)
 app.include_router(rivals.router)
 app.include_router(shop.router)
+app.include_router(pro.router, tags=["pro"])
+app.include_router(insights.router)
 
 
 @app.get("/health")

@@ -79,6 +79,21 @@ export const nbAccents = {
 // brand CTA already puts on most screens.
 export const NB_DROP_DARK = nbAccents.teal;
 
+// FOCUS ALWAYS VISIBLE — a usage rule on the reference system sheet, printed
+// twice on it, and the one rule of the five that this app had no answer to at
+// all: a focused field looked exactly like an unfocused one.
+//
+// Yellow because the sheet already spends it that way. It is the ring on the
+// secondary buttons and the fill on a toggle that is ON, which makes it the
+// system's "this one is live" colour rather than a sixth accent chosen here.
+// It also survives both schemes without a branch, which matters for a state
+// that has to be unmistakable: there is nothing in either palette it can be
+// confused with.
+//
+// Chrome only, and no exception to the clan-colour rule: focus is transient and
+// belongs to the control, never to a run, a territory or a stat.
+export const NB_FOCUS = nbAccents.yellow;
+
 // ---------------------------------------------------------------------------
 // Radii. The reference system sheet says 0 / 12 / 24 and nothing between, and
 // the "limited radii" rule is doing real work: a scale with six steps in it
@@ -111,6 +126,34 @@ export function nbInk(scheme, on) {
   const prefer = scheme === 'dark' ? NB.inkLight : NB.ink;
   if (!on) return prefer;
   return readableInk(on, { prefer, dark: NB.ink, light: NB.inkLight });
+}
+
+/**
+ * The box style for a TEXT FIELD.
+ *
+ * Inputs are the one surface that was left reading as a web form: a 1pt
+ * `colors.border` hairline round a `card` fill, repeated by hand in nine
+ * different screens because there has never been an Input component. Beside a
+ * button carrying a 3pt stroke and a hard drop, that hairline read as disabled.
+ *
+ * A field takes the STROKE AND NOT THE DROP, which is the one place this style
+ * distinguishes between two kinds of box. A button is a block sitting on top of
+ * the page and the drop is what says you can push it down. A field is a hole
+ * you type into: it belongs flush with the page, and an offset block behind it
+ * would say the opposite of what it is.
+ *
+ * `on`     the field's own fill, so the stroke is judged against what it is
+ *          actually drawn on rather than off the scheme.
+ * `error`  the invalid state's colour, which replaces the ink outright — a
+ *          field that failed validation is the one time the edge should stop
+ *          being neutral chrome and start being the message.
+ */
+export function nbField(scheme, { on, error, stroke = NB.stroke } = {}) {
+  return {
+    borderWidth: stroke,
+    borderColor: error || nbInk(scheme, on),
+    borderRadius: nbRadius.sm,
+  };
 }
 
 /**

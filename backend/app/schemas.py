@@ -466,6 +466,85 @@ class LeaderboardEntry(BaseModel):
     rank_label: Optional[str] = None
 
 
+class RunInsightsPro(BaseModel):
+    """The rabbit hole under a finished run. PASER PRO only.
+
+    Every field is a READ of runs, territories and the rivalry ledger. None of
+    it changes what the runner can do next; it tells them what they just did
+    and how it compares to what they usually do.
+    """
+
+    # Land of yours that is about to decay, and when the first of it goes.
+    # The one genuinely actionable thing here, and deliberately not framed as
+    # "under attack" — expiry is a fact, threat would be a guess.
+    at_risk_m2: float = 0
+    at_risk_count: int = 0
+    soonest_expiry_at: Optional[datetime] = None
+
+    # What the run was WORTH per kilometre, against the runner's own recent
+    # form. The comparison is what makes the number mean anything.
+    m2_per_km: Optional[float] = None
+    m2_per_km_30d: Optional[float] = None
+
+    # Recent output, for the same reason.
+    claims_30d: int = 0
+    stolen_m2_30d: float = 0
+    distance_m_30d: float = 0
+
+    # The biggest territory this runner has ever produced from one claim, and
+    # whether this run beat it.
+    best_territory_m2: Optional[float] = None
+    is_personal_best: bool = False
+
+
+class RunInsights(BaseModel):
+    """What a run actually achieved, shown the moment it lands.
+
+    The FREE half is the accomplishment: what was taken, from whom, how much.
+    A runner never has to pay to find out what they just did, or where they
+    stand — `standing_rank` comes from the same never-gated source as
+    /leaderboard/standing. `pro` is the analysis of it, and is None otherwise.
+    """
+
+    run_id: str
+    distance_m: float = 0
+    duration_s: float = 0
+
+    # This claim, exactly. `land_gained_m2` is measured from the territory
+    # event log, so it is NULL for runs claimed before that log existed — an
+    # honest gap rather than a number quietly meaning something else.
+    territory_m2: float = 0
+    land_gained_m2: Optional[float] = None
+    stolen_m2: float = 0
+    rivals_taken: int = 0
+    rivals_held: int = 0
+    biggest_capture_m2: float = 0
+
+    # Where the runner stands on the land board right now. Never gated.
+    standing_rank: Optional[int] = None
+    standing_field: int = 0
+
+    pro: Optional[RunInsightsPro] = None
+
+
+class LeaderboardStanding(BaseModel):
+    """Where one runner stands on one board. Never gated — see routes/leaderboard.py.
+
+    `rank` is None when the runner has not scored on this board at all, which
+    is a real answer rather than a missing one: nothing done yet, and here is
+    how big the field is if they start.
+    """
+
+    user_id: str
+    username: str
+    category: str
+    window: str
+    filter: str
+    rank: Optional[int] = None
+    field_size: int = 0
+    value: float = 0
+
+
 class SeasonLeaderboardEntry(BaseModel):
     """One row on a season board.
 
@@ -921,9 +1000,47 @@ class RivalsOut(BaseModel):
     rivals: List[RivalCard]
 
 
+class RivalAnalytics(BaseModel):
+    """The PASER PRO half of a rivalry: the same beats, read properly.
+
+    Every number here is a READ of the rivalry ledger and the runs table.
+    Nothing in it changes what either runner can do, and it is deliberately
+    symmetrical — a subscriber learns nothing about their rival that the rival
+    could not learn about them by subscribing too. Knowledge, not advantage.
+    """
+
+    # The whole history, both directions.
+    total_beats: int = 0
+    first_met: Optional[datetime] = None
+
+    # Attacks that came to nothing, as a share of attacks faced. The honest
+    # measure of a wall: a raw "held 4 times" flatters whoever is attacked most.
+    your_defence_rate: Optional[float] = None
+    their_defence_rate: Optional[float] = None
+
+    # Consecutive takes in one runner's favour, counted back from the most
+    # recent. Positive is your way, negative is theirs.
+    streak: int = 0
+
+    # Rolling 30 days, so the comparison is current form rather than career.
+    your_distance_m_30d: float = 0
+    their_distance_m_30d: float = 0
+    your_beats_30d: int = 0
+    their_beats_30d: int = 0
+
+    # Where the rivalry actually happens: the centre of the contested ground,
+    # and how many beats have landed near it.
+    battleground_lat: Optional[float] = None
+    battleground_lon: Optional[float] = None
+    battleground_beats: int = 0
+
+
 class RivalDetail(BaseModel):
     rival: RivalCard
     events: List[RivalEvent]
+    # PRO only, None for everyone else — who still get the entire rivalry
+    # above. The rivalry is the game; this is the analysis of it.
+    analytics: Optional[RivalAnalytics] = None
 
 
 class PaserRequestIn(BaseModel):

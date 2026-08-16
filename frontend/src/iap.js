@@ -1,4 +1,4 @@
-// iap.js — the real store client behind BuyPassSheet and BuyEnergySheet.
+// iap.js — the real store client behind BuyProSheet and BuyEnergySheet.
 //
 // expo-iap, not react-native-iap: this is an Expo managed-workflow project
 // (EAS builds, Expo Dev Client), and react-native-iap v14+ explicitly does
@@ -22,6 +22,7 @@ import {
   ErrorCode,
   finishTransaction,
   fetchProducts,
+  getActiveSubscriptions,
   getAvailablePurchases,
   initConnection,
   purchaseErrorListener,
@@ -50,16 +51,20 @@ function receiptFrom(purchase) {
 }
 
 /**
- * Buy one product (a one-time IAP, not a subscription — nothing in PASER's
- * shop is recurring). Resolves once the STORE confirms the purchase; the
- * caller still owns sending the receipt to the backend and then calling
+ * Buy one product. Resolves once the STORE confirms the purchase; the caller
+ * still owns sending the receipt to the backend and then calling
  * `finishPurchase` — never the other way round, see there.
+ *
+ * `type` is 'in-app' for the one-time products (energy, coins, the retired
+ * pass) and 'subs' for PASER PRO. It is not cosmetic: the stores treat a
+ * subscription as a different kind of transaction, and asking for one with
+ * the wrong type fails at the store rather than here.
  *
  * Rejects with a plain Error. `error.cancelled` is true when the person
  * backed out of the system sheet, which callers should treat as silent
  * rather than as a failure worth a toast.
  */
-export function purchaseProduct(productId) {
+export function purchaseProduct(productId, { type = 'in-app', subscriptionOffers } = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const cleanup = () => {
@@ -90,10 +95,16 @@ export function purchaseProduct(productId) {
 
     ensureConnection()
       .then(() => requestPurchase({
-        type: 'in-app',
+        type,
         request: {
           apple: { sku: productId },
-          google: { skus: [productId] },
+          google: {
+            skus: [productId],
+            // Play REQUIRES the offer token for a subscription — a base plan
+            // can carry several offers (intro price, free trial) and the store
+            // will not pick one for us. iOS ignores this entirely.
+            ...(subscriptionOffers ? { subscriptionOffers } : {}),
+          },
         },
       }))
       // requestPurchase's own result is not the outcome (see the listeners
@@ -113,16 +124,16 @@ export function purchaseProduct(productId) {
  * purchase (or reported it as already-redeemed) — finishing it first and
  * having the backend call fail afterward loses the transaction for good:
  * the store no longer has it queued to retry, and the player paid for
- * nothing. `isConsumable` is false for the permanent pass (and any
- * non-consumable), true for energy/coin packs, which have to be finished as
- * consumed so the same SKU can be bought again.
+ * nothing. `isConsumable` is false for a subscription and for the retired
+ * pass (and any non-consumable), true for energy/coin packs, which have to be
+ * finished as consumed so the same SKU can be bought again.
  */
 export async function finishPurchase(purchase, { isConsumable }) {
   await finishTransaction({ purchase, isConsumable });
 }
 
 /**
- * The shape BuyPassSheet / BuyEnergySheet actually want: buy the product,
+ * The shape BuyEnergySheet actually wants: buy the product,
  * hand back what the backend's `/*\/purchase` endpoints take. The purchase
  * itself rides along too, since the caller needs it again for
  * `finishPurchase` once the backend confirms.
@@ -140,20 +151,70 @@ export async function storePurchase(productId) {
  * device is signed into. Callers should fall back to a static price on
  * failure (offline, store unreachable) rather than blocking the sheet from
  * opening at all.
+ *
+ * Pass `{ subscription: true }` for PRO. Subscriptions live in a separate
+ * catalogue on both stores, so asking for them as 'in-app' returns nothing
+ * at all rather than erroring — which looks exactly like "offline" and would
+ * silently leave the paywall showing its fallback price forever.
  */
-export async function fetchProductPrices(skus) {
+export async function fetchProductPrices(skus, { subscription = false } = {}) {
   if (!skus?.length) return {};
   await ensureConnection();
-  const products = await fetchProducts({ skus, type: 'in-app' });
+  const products = await fetchProducts({ skus, type: subscription ? 'subs' : 'in-app' });
   const out = {};
   for (const p of products || []) out[p.id] = p.displayPrice;
   return out;
 }
 
 /**
+ * Start a PASER PRO subscription. Same contract as `storePurchase`: resolves
+ * with what `/me/pro/subscribe` takes, plus the purchase for `finishPurchase`.
+ *
+ * On Android the offer token has to be fetched first (see `purchaseProduct`),
+ * which is why this is its own function rather than a flag on that one.
+ */
+export async function storeSubscribe(productId) {
+  let subscriptionOffers;
+  if (Platform.OS === 'android') {
+    await ensureConnection();
+    const products = await fetchProducts({ skus: [productId], type: 'subs' });
+    const offers = products?.find((p) => p.id === productId)?.subscriptionOffers || [];
+    // Last offer is Play's own convention for the base plan with no
+    // promotion attached; anything earlier can be an intro price the person
+    // may not be eligible for.
+    const offer = offers[offers.length - 1];
+    if (offer?.offerToken) subscriptionOffers = [{ sku: productId, offerToken: offer.offerToken }];
+  }
+  const purchase = await purchaseProduct(productId, { type: 'subs', subscriptionOffers });
+  const receipt = receiptFrom(purchase);
+  if (!receipt) throw new Error('The store did not return a purchase token');
+  return { receipt, platform: Platform.OS, purchase };
+}
+
+/**
+ * What the store says this device currently has a live subscription to, in
+ * the shape `/me/pro/sync` takes. Empty when nothing is active — including
+ * when the store is unreachable, so a caller must treat an empty list as "no
+ * news" and never as "cancel their PRO". Entitlement is the server's to
+ * decide; this only ever feeds it fresher receipts.
+ */
+export async function activeSubscriptions(productIds) {
+  await ensureConnection();
+  const subs = await getActiveSubscriptions(productIds);
+  return (subs || [])
+    .filter((s) => s.isActive !== false && s.purchaseToken)
+    .map((s) => ({
+      product_id: s.productId,
+      receipt: s.purchaseToken,
+      platform: Platform.OS,
+    }));
+}
+
+/**
  * Apple requires a way to restore a non-consumable purchase without paying
- * again (App Store review guideline 3.1.2) — this is what BuyPassSheet's
- * "Restore purchases" link calls. Play purchases don't need this the same
+ * again (App Store review guideline 3.1.2) — this is what BuyProSheet's
+ * "Restore purchases" link calls, for a live subscription and for the retired
+ * lifetime pass alike. Play purchases don't need this the same
  * way (Play already knows what an account owns), but it is harmless to call
  * on both, so callers don't need a platform branch.
  */

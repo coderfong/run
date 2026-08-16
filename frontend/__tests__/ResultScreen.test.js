@@ -101,14 +101,55 @@ jest.mock('../src/api/client', () => ({
   ApiError: class ApiError extends Error {},
   API_BASE: 'http://test',
 }));
-jest.mock('../src/api/cache', () => ({
-  invalidateAfterClaim: jest.fn(),
-  invalidate: jest.fn(),
-  subscribeCached: jest.fn(() => jest.fn()),
-  // Pending like every other request on the first frame — the XP bar has to
-  // render its empty track before the ladder totals land.
-  fetchAndCache: jest.fn(() => new Promise(() => {})),
-}));
+// An empty cache, so the screen renders its first-visit state. A Proxy for the
+// same reason as `api` above: this screen mounts children (TerritoryInsights,
+// and whatever comes next) whose hooks read through useQuery, so the set of
+// cache functions reached from here is not the set ResultScreen imports and
+// grows without warning. A hand-listed factory fails that growth as
+// `TypeError: getCached is not a function` thrown from inside a component,
+// which reads like a bug in the cache rather than a gap in this mock.
+//
+// Unlike `api`, the exports here do not all have one shape, so the default —
+// an inert fn returning undefined, which is correct for every write and
+// invalidate — is overridden where a return value is load-bearing.
+jest.mock('../src/api/cache', () => {
+  const pending = () => new Promise(() => {});
+  // Only the contracts a caller actually consumes. `getCached` is deliberately
+  // absent: undefined IS "nothing cached", which is the state under test.
+  const contracts = {
+    // Arithmetic, not a flag — useQuery does `Date.now() - touchedAt(key)`.
+    // undefined would make that NaN and quietly invert the staleness check.
+    touchedAt: () => 0,
+    // Used as a useEffect cleanup, so it has to hand back an unsubscribe.
+    subscribeCached: () => () => {},
+    // Every request stays in flight, which is the first-frame state this whole
+    // file exists to render.
+    fetchAndCache: pending,
+    dedupe: pending,
+    hydrateCache: () => Promise.resolve(),
+  };
+  // Memoized per name so identities are stable across accesses: hooks put
+  // these in dependency arrays, and a fresh fn each read would also make any
+  // future `expect(cache.x).toHaveBeenCalled()` silently unable to see the call.
+  const fns = new Map();
+  return new Proxy(
+    // A real own property, so Babel's interop treats this as a module namespace
+    // and reads members straight off it instead of copying own enumerable keys
+    // (a Proxy over a bare target has none, and the copy would come out empty).
+    { __esModule: true },
+    {
+      get(target, prop) {
+        if (prop in target) return target[prop];
+        // A module that answers `then` with a function is a thenable, and the
+        // module registry would try to await it. Symbols reach here from
+        // inspection and stringification, and must not become fns either.
+        if (typeof prop === 'symbol' || prop === 'then') return undefined;
+        if (!fns.has(prop)) fns.set(prop, jest.fn(contracts[prop]));
+        return fns.get(prop);
+      },
+    }
+  );
+});
 
 jest.mock('../src/auth/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', username: 'runner' } }),

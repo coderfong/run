@@ -15,7 +15,6 @@ import {
   Share,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -24,7 +23,7 @@ import { MessageCircle, Search, Share2 } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { radius, space, toonRadius, toonSurface, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { NB_FOCUS, radius, space, toonRadius, toonSurface, useTheme, useThemedType, useThemedStyles } from '../theme';
 import {
   Screen,
   Card,
@@ -34,6 +33,7 @@ import {
   SectionHeader,
   Skeleton,
   EmptyState,
+  Input,
   ToonHeader,
   ToonRow,
   ToonRowGroup,
@@ -158,6 +158,8 @@ export default function PasersScreen({ navigation }) {
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [pulling, setPulling] = useState(false);
+  // Lifted out of the field and onto the box around it — see the search row.
+  const [focused, setFocused] = useState(false);
 
   // Portraits warm up behind rows that are already on screen.
   useEffect(() => {
@@ -226,10 +228,16 @@ export default function PasersScreen({ navigation }) {
   const incoming = data?.incoming || [];
 
   const search = useMemo(() => (
-    <View style={styles.search}>
+    <View style={[styles.search, focused && { borderColor: NB_FOCUS }]}>
       <Search size={18} color={colors.textMuted} />
-      <TextInput
+      {/* The ring goes on the WRAPPER, not on this field: the search box's
+          stroke belongs to `styles.search` (the pill with the magnifier in it),
+          and the input inside it has no edge of its own to recolour. */}
+      <Input
         style={[type.body, { flex: 1, color: colors.text, padding: 0 }]}
+        focusable={false}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         value={q}
         onChangeText={runSearch}
         placeholder="Find a runner by username"
@@ -255,7 +263,7 @@ export default function PasersScreen({ navigation }) {
         <AppIcon name="invite" size={24} />
       </TouchableOpacity>
     </View>
-  ), [q, searching, colors, type, styles, user?.username]);
+  ), [q, searching, focused, colors, type, styles, user?.username]);
 
   const header = (
     <ToonHeader
