@@ -7,6 +7,20 @@ services:
     runtime: docker
     dockerfilePath: ./Dockerfile
     dockerContext: .
+    # NOT WHAT IS RUNNING, as of 2026-08-18. Measured against the live API:
+    # the first request after an idle gap takes ~43 SECONDS, and a request
+    # touching no database at all (/version) takes ~350ms of server time once
+    # warm. Both are the signature of the FREE instance type — free spins the
+    # container down when nothing is calling it and boots it again on the next
+    # request, and gives the process a fraction of a CPU while it runs.
+    # Starter does neither, which is why it is what this file asks for.
+    #
+    # So this blueprint has either never been applied to the web service or
+    # was applied before the instance type was set by hand. Nothing in the
+    # application code can fix it: the client-side work done alongside this
+    # note (a 60s ceiling on the run-flow calls, and a warm-up ping when the
+    # run screen opens) only moves the wait somewhere it does less damage.
+    # Sync the blueprint, or set the instance type to Starter in the dashboard.
     plan: starter
     region: singapore
     healthCheckPath: /health

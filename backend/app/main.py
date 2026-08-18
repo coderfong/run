@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from jose import jwt as jose_jwt
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -121,6 +122,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Compress anything big enough to be worth it.
+#
+# This API's payloads are the shape gzip is best at: the map, the leaderboards,
+# the feed and the claim options are long lists of repetitive JSON, and the
+# geometry ones are page after page of coordinate digits. Ten to one is normal
+# on that shape of body.
+#
+# It is a LATENCY fix, not a bandwidth one, which is why it belongs in a pass
+# about the server feeling slow. The clients are phones on mobile data, where
+# the round trip is fine and the throughput is not — a few hundred KB of
+# territory is most of a second of transfer on its own, and every bit of that
+# is time the runner spends looking at a spinner.
+#
+# 1000 bytes because below roughly that the compressed body plus its header
+# costs more than it saves, and small responses are the ones already fast.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(auth.router)
 app.include_router(auth.me_router)
