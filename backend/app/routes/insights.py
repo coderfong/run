@@ -89,22 +89,32 @@ def _pro_block(db: Session, user: models.User, run) -> schemas.RunInsightsPro:
         {"u": user.id},
     ).scalar()
 
-    # The biggest territory this runner has produced from a single claim, and
-    # the land they have produced in the last 30 days. Both read the stored
-    # claim result, because the territories themselves get merged and cut — the
-    # row a claim created is long gone.
+    # The biggest single claim this runner has produced, and the land they have
+    # produced in the last 30 days. Both read the stored claim result, because
+    # the territories themselves get merged and cut — the row a claim created
+    # is long gone.
+    #
+    # GAINED, not the merged territory. These are "how much land did that run
+    # win", and the merged total answers a different question: a short run
+    # placed on top of a big holding would post a personal best every time and
+    # drag the per-kilometre baseline somewhere no real week could reach. The
+    # fallback keeps runs claimed before `gained_m2` existed in the picture at
+    # the only figure they ever recorded.
     #
     # THIS RUN IS EXCLUDED from the record. It is already in the table by the
     # time these insights are fetched, so comparing against a maximum that
     # includes it would make every run either a tie or a "personal best",
     # depending on which way the comparison rounded.
+    won = (
+        "COALESCE((r.claim_result ->> 'gained_m2')::float, "
+        "(r.claim_result -> 'territory' ->> 'area_m2')::float)"
+    )
     history = db.execute(
         text(
-            """
+            f"""
             SELECT
-                MAX((r.claim_result -> 'territory' ->> 'area_m2')::float)
-                    FILTER (WHERE r.id <> :run_id),
-                COALESCE(SUM((r.claim_result -> 'territory' ->> 'area_m2')::float)
+                MAX({won}) FILTER (WHERE r.id <> :run_id),
+                COALESCE(SUM({won})
                     FILTER (WHERE r.started_at > timezone('utc', now()) - interval '30 days'), 0)
             FROM runs r
             WHERE r.user_id = :u AND r.claim_result IS NOT NULL
@@ -113,9 +123,14 @@ def _pro_block(db: Session, user: models.User, run) -> schemas.RunInsightsPro:
         {"u": user.id, "run_id": run.id},
     ).fetchone()
 
+    result = run.claim_result or {}
     best = history[0]
     land_30d = float(history[1] or 0)
-    territory_m2 = float(((run.claim_result or {}).get("territory") or {}).get("area_m2") or 0)
+    territory_m2 = float(
+        result.get("gained_m2")
+        if result.get("gained_m2") is not None
+        else ((result.get("territory") or {}).get("area_m2") or 0)
+    )
     distance_km = (run.distance_m or 0) / 1000.0
     distance_30d = float(recent[1] or 0)
 
@@ -159,16 +174,25 @@ def run_insights(
     taken = [v for v in victims if not v.get("defended")]
     held = [v for v in victims if v.get("defended")]
 
-    # Land actually gained, from the event log (migration 0038). NULL for runs
-    # claimed before that log existed: the claim's own footprint was never
-    # recorded then, and the merged territory's area is a different number.
-    gained = db.execute(
-        text(
-            "SELECT SUM(area_m2) FROM territory_events "
-            "WHERE run_id = :r AND kind IN ('claim', 'reinforce')"
-        ),
-        {"r": run.id},
-    ).scalar()
+    # Land actually gained. Straight off the claim now (`gained_m2` is measured
+    # in the claim engine, in the last moment the new ground is still separable
+    # from the land it merged into); the event log answers for runs claimed
+    # before that field existed. `kind = 'claim'` and not the reinforce rows
+    # with it: reinforcement moves no border, and counting it here is the exact
+    # inflation this number exists to avoid.
+    #
+    # NULL — not zero — for runs older than the log: the claim's own footprint
+    # was never recorded then, and the merged territory's area is a different
+    # number. The client hides the line rather than showing a wrong one.
+    gained = (run.claim_result or {}).get("gained_m2")
+    if gained is None:
+        gained = db.execute(
+            text(
+                "SELECT SUM(area_m2) FROM territory_events "
+                "WHERE run_id = :r AND kind = 'claim'"
+            ),
+            {"r": run.id},
+        ).scalar()
 
     # The land board position — the same never-gated answer /leaderboard/standing
     # gives, so the two can never tell the runner different things.
@@ -198,7 +222,13 @@ def run_insights(
         run_id=str(run.id),
         distance_m=float(run.distance_m or 0),
         duration_s=float(run.duration_s or 0),
-        territory_m2=float((result.get("territory") or {}).get("area_m2") or 0),
+        # The claim's own footprint. `territory.area_m2` is the merged holding
+        # it landed in, which is a different question and a much bigger number.
+        territory_m2=float(
+            result.get("claimed_m2")
+            if result.get("claimed_m2") is not None
+            else ((result.get("territory") or {}).get("area_m2") or 0)
+        ),
         land_gained_m2=float(gained) if gained is not None else None,
         stolen_m2=float(result.get("stolen_m2") or 0),
         rivals_taken=len(taken),

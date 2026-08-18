@@ -239,7 +239,12 @@ def me_runs(
         text(
             """
             SELECT r.id::text, r.distance_m, r.duration_s, r.ended_at,
-                   COALESCE(t.area_m2, 0), (t.id IS NOT NULL),
+                   -- The ground this run WON. `t` is the merged holding, which
+                   -- for a claim landing on the runner's own land is mostly
+                   -- land they already had; see ClaimOut.gained_m2. The join
+                   -- answers for runs claimed before it was measured.
+                   COALESCE((r.claim_result ->> 'gained_m2')::float, t.area_m2, 0),
+                   (t.id IS NOT NULL),
                    r.caption, COALESCE(r.post_media, '[]'::jsonb)
             FROM runs r
             LEFT JOIN territories t ON t.run_id = r.id

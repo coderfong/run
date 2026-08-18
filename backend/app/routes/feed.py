@@ -36,6 +36,25 @@ def _rings_from_wkt(wkt):
         return []
 
 
+def _claim_rings(stored):
+    """The claim shape a run recorded for itself, if it recorded one.
+
+    Stored as JSON on the claim result rather than read back off `territories`,
+    because the territory row is the runner's MERGED holding — the claim stops
+    being separable from it the moment the two are unioned.
+    """
+    if not stored:
+        return []
+    try:
+        return [
+            [(float(x), float(y)) for x, y in ring]
+            for ring in stored
+            if len(ring) >= 3
+        ]
+    except (TypeError, ValueError):
+        return []
+
+
 def _path_from_wkt(wkt):
     if not wkt:
         return []
@@ -57,7 +76,14 @@ def feed(
             """
             SELECT r.id::text, r.user_id::text, u.username,
                    r.distance_m, r.duration_s, r.ended_at,
-                   COALESCE(t.area_m2, 0) AS area_m2,
+                   -- What the RUN won, not what its owner ended up holding.
+                   -- `t` is the merged territory row, so a claim placed on
+                   -- the runner's own land would post their whole holding —
+                   -- weeks of ground — as this morning's take. `gained_m2`
+                   -- (see ClaimOut) is the part of the claim that was nobody
+                   -- else's and not already theirs; the join is the fallback
+                   -- for runs claimed before that was measured.
+                   COALESCE((r.claim_result ->> 'gained_m2')::float, t.area_m2, 0) AS area_m2,
                    (t.id IS NOT NULL) AS closed_loop,
                    c.tag, c.color_key,
                    (SELECT COUNT(*) FROM run_kudos k WHERE k.run_id = r.id) AS kudos_count,
@@ -72,7 +98,14 @@ def feed(
                    -- a page can carry fifty runs from fifty different runners.
                    COALESCE(r.visibility, 'public'),
                    u.route_trim_m, u.privacy_zones, u.route_publish_delay_h, u.birthday,
-                   r.caption, COALESCE(r.post_media, '[]'::jsonb), r.post_media_etag
+                   r.caption, COALESCE(r.post_media, '[]'::jsonb), r.post_media_etag,
+                   -- This run's own claim shape, for the same reason as the
+                   -- area above: `t.polygon` is the merged holding, so a card
+                   -- about one run would be illustrated with a map of
+                   -- everything its owner holds around there. Appended, not
+                   -- slotted next to `poly_wkt` where it belongs — every row
+                   -- below is read positionally.
+                   r.claim_result -> 'claim_rings' AS claim_rings
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -162,7 +195,7 @@ def feed(
             comment_count=int(r[12] or 0),
             avatar=r[13],
             rank_key=ranks.key_for(r[16], r[17]),
-            rings=_rings_from_wkt(r[14]),
+            rings=_claim_rings(r[26]) or _rings_from_wkt(r[14]),
             # The trace, but only as much of it as this viewer may see. The
             # feed used to ship a simplified path for every run on the page to
             # everyone — simplification hides a corner, not an address.

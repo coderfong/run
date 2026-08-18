@@ -121,6 +121,32 @@ small_area = float(small[3])
 check("a small reinforce inside big land measures the SMALL ground",
       small_area < first_area / 2, f"{small_area:.0f} m2 vs merged ~{first_area:.0f}")
 
+print("\n== a claim that lands half on your own ground is BOTH beats ==")
+# The case the log used to get wrong: any touch of the actor's own land typed
+# the whole footprint `reinforce`, so a claim that took a field and clipped its
+# own border read back as having won nothing at all. Somewhere clear of every
+# other shape in this file.
+MLAT, MLON = LAT + 0.02, LON + 0.02
+claim(a, MLAT, MLON, 120.0)
+n_claim = len(events(actor=a, kind="claim"))
+n_reinf = len(events(actor=a, kind="reinforce"))
+# ~135 m east — over half a diameter, so the new stamp keeps a good half of
+# itself on ground `a` already holds and puts the other half on open field.
+claim(a, MLAT, MLON + 0.0021, 120.0)
+won = events(actor=a, kind="claim")[n_claim:]
+held = events(actor=a, kind="reinforce")[n_reinf:]
+check("the new half is recorded as a claim", len(won) == 1, str(won))
+check("the overlapping half as a reinforce", len(held) == 1, str(held))
+if len(won) == 1 and len(held) == 1:
+    won_area, held_area = float(won[0][3]), float(held[0][3])
+    total = won_area + held_area
+    check("neither half is the whole move",
+          won_area < total * 0.95 and held_area < total * 0.95,
+          f"claim {won_area:.0f} / reinforce {held_area:.0f}")
+    check("and together they are the claim's own footprint, not the merged land",
+          abs(total - first_area) < first_area * 0.05,
+          f"{total:.0f} vs footprint ~{first_area:.0f}")
+
 print("\n== a steal attributes only the contested overlap ==")
 # Offset so the circles overlap partially. Strength beats a defence of 3 claims.
 claim(b, LAT, LON + 0.0015, 120.0, strength=50.0)

@@ -163,7 +163,7 @@ def rival_takes_mine(
 
     rival = _dev_rival(db, user)
     polygon = shapely_wkt.loads(mine[1])
-    territory, _stolen, _from, events = _claim_territory(
+    territory, _stolen, _from, events, _ground = _claim_territory(
         db=db,
         user_id=str(rival.id),
         run_id=None,

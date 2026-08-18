@@ -42,10 +42,20 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         text(
             """
             SELECT r.id::text, r.user_id::text, u.username, r.distance_m, r.duration_s, r.ended_at,
-                   r.verified, COALESCE(t.area_m2, 0), (t.id IS NOT NULL),
+                   r.verified,
+                   -- The ground this run WON, not the merged holding it joined
+                   -- (see ClaimOut.gained_m2); the join is the fallback for
+                   -- runs claimed before that was measured.
+                   COALESCE((r.claim_result ->> 'gained_m2')::float, t.area_m2, 0),
+                   (t.id IS NOT NULL),
                    ST_AsText(r.path), ST_AsText(t.polygon), c.tag, c.color_key,
                    COALESCE(r.visibility, 'public'), r.caption,
-                   COALESCE(r.post_media, '[]'::jsonb), r.post_media_etag
+                   COALESCE(r.post_media, '[]'::jsonb), r.post_media_etag,
+                   -- This run's own claim shape, for the same reason as the
+                   -- area above: `t.polygon` is the merged holding, so a
+                   -- reinforcing run would be illustrated with a map of
+                   -- everything its owner holds nearby.
+                   r.claim_result -> 'claim_rings'
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -84,7 +94,14 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         visibility=r[13],
         ended_at=r[5],
     )
-    rings = geometry_to_rings(shapely_wkt.loads(r[10])) if r[10] else []
+    # The claim itself where it was recorded, the merged territory otherwise.
+    rings = [
+        [(float(x), float(y)) for x, y in ring]
+        for ring in (r[17] or [])
+        if len(ring) >= 3
+    ]
+    if not rings and r[10]:
+        rings = geometry_to_rings(shapely_wkt.loads(r[10]))
 
     splits = db.execute(
         text("SELECT km, seconds FROM run_splits WHERE run_id = :rid ORDER BY km"), {"rid": run_id}

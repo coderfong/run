@@ -426,7 +426,24 @@ class ClaimVictim(BaseModel):
 
 
 class ClaimOut(BaseModel):
+    # `territory` is what the runner HOLDS after this claim — the merged row,
+    # which where a claim lands on their own land includes ground they have
+    # been sitting on for weeks. That is the right thing to draw as their
+    # territory and the wrong thing to celebrate as this run's take, so the
+    # five fields under it say what this claim itself did.
     territory: TerritoryOut
+    # The ground the claim covers once defended land is carved out of it.
+    claimed_m2: float = 0.0
+    # Of that, the part that was NOT already theirs: the borders that actually
+    # moved. This is the number the result screen leads with.
+    gained_m2: float = 0.0
+    # And the part that was. Re-running your own block reinforces it — it
+    # stacks strength and buys lifetime — but it wins no new ground.
+    reinforced_m2: float = 0.0
+    # Rings of the claim and of the gained part, so the reveal can animate the
+    # ground that changed hands instead of the whole merged holding.
+    claim_rings: List[List[Tuple[float, float]]] = []
+    gained_rings: List[List[Tuple[float, float]]] = []
     stolen_m2: float = 0.0
     stolen_from: Optional[str] = None
     # Everyone this claim touched, biggest loss first. `stolen_from` is just
@@ -510,10 +527,13 @@ class RunInsights(BaseModel):
     distance_m: float = 0
     duration_s: float = 0
 
-    # This claim, exactly. `land_gained_m2` is measured from the territory
-    # event log, so it is NULL for runs claimed before that log existed — an
-    # honest gap rather than a number quietly meaning something else.
+    # This claim, exactly — the ground the claim COVERS, not the merged
+    # territory it joined, which for a claim placed on the runner's own land
+    # includes weeks of ground this run had nothing to do with.
     territory_m2: float = 0
+    # And how much of that cover was NEW: the borders that actually moved.
+    # NULL for runs claimed before this was measured — an honest gap rather
+    # than a number quietly meaning something else.
     land_gained_m2: Optional[float] = None
     stolen_m2: float = 0
     rivals_taken: int = 0

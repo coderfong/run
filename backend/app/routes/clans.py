@@ -568,7 +568,11 @@ def clan_feed(clan_id: str, limit: int = Query(20, ge=1, le=50),
         text(
             """
             SELECT r.id::text, r.user_id::text, u.username, r.distance_m, r.duration_s, r.ended_at,
-                   COALESCE(t.area_m2, 0), (t.id IS NOT NULL)
+                   -- Ground WON by the run, not the merged holding it joined
+                   -- (see ClaimOut.gained_m2); the join answers for runs
+                   -- claimed before that was measured.
+                   COALESCE((r.claim_result ->> 'gained_m2')::float, t.area_m2, 0),
+                   (t.id IS NOT NULL)
             FROM runs r
             JOIN users u ON u.id = r.user_id
             JOIN clan_members cm ON cm.user_id = r.user_id AND cm.clan_id = :cid

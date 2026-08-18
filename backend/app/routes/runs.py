@@ -1099,10 +1099,16 @@ def claim_options(
     # though those poses were still the useful answers the runner wanted to
     # inspect (and would become available after a refill). Keep them visible;
     # only the automatic default prefers a move that can be claimed now.
-    most_land = best(lambda p: p.new_m2 + p.enemy_m2)
-    available_most_land = best(
-        lambda p: (p.new_m2 + p.enemy_m2) if p.available else 0.0
-    )
+    # MOST LAND means the most UNCLAIMED land — ground nobody holds. It used to
+    # add rival ground to that, which made it a second attack recommendation
+    # sitting next to the actual one, and (worse) let it point at a pose that
+    # takes a rival's border while a quieter pose beside it wins more open
+    # ground. Rival ground is what ATTACK is for; this is expansion.
+    #
+    # Own land is not in it either, and never was: running back over your own
+    # block reinforces it, but no border moves and nothing is gained.
+    most_land = best(lambda p: p.new_m2)
+    available_most_land = best(lambda p: p.new_m2 if p.available else 0.0)
     # The shape itself, at rest and unturned, plus the pivot it turns about and
     # the route it slides along. This is what makes the control continuous: the
     # client transforms these three locally at gesture speed and only asks the
@@ -1129,8 +1135,9 @@ def claim_options(
         placement_count=n_place,
         rotation_count=n_rot,
         placements=out,
-        # Land grabbed is the sane default — the recommendations are there to
-        # be chosen, not to be defaulted into a fight nobody asked for.
+        # Open ground is the sane default — the recommendations are there to
+        # be chosen, not to be defaulted into a fight nobody asked for, and not
+        # into re-covering land the runner already holds either.
         default_index=available_most_land if available_most_land is not None else plain,
         most_land_index=most_land,
         biggest_steal_index=best(
@@ -1387,7 +1394,7 @@ def claim_territory(
             raise HTTPException(422, "run has no usable route to claim from")
         claim_poly = circle_polygon_wgs(lat, lon, claim_radius_m(run.distance_m))
 
-    territory_out, stolen_m2, stolen_from, steal_events = _claim_territory(
+    territory_out, stolen_m2, stolen_from, steal_events, ground = _claim_territory(
         db=db,
         user_id=run.user_id,
         run_id=run.id,
@@ -1520,6 +1527,11 @@ def claim_territory(
     est = energy_mod.status_for_user(db, user)
     out = schemas.ClaimOut(
         territory=territory_out,
+        claimed_m2=ground["claimed_m2"],
+        gained_m2=ground["gained_m2"],
+        reinforced_m2=ground["reinforced_m2"],
+        claim_rings=_rings_of(ground["claim_wkt"]),
+        gained_rings=_rings_of(ground["gained_wkt"]),
         stolen_m2=stolen_m2,
         stolen_from=stolen_from,
         victims=_claim_victims(db, user.id, steal_events),
@@ -1724,6 +1736,88 @@ def claim_lifetime_days(distance_m: float, duration_s: float | None, reinforceme
     return min(settings.territory_life_days_max, days)
 
 
+def _rings_of(wkt: str | None) -> list:
+    """Exterior rings of a stored WKT, largest first — or nothing at all.
+
+    Empty is a real answer here and not a failure: a claim placed entirely on
+    the runner's own land gains no ground, and the honest shape for that is no
+    shape.
+    """
+    if not wkt:
+        return []
+    try:
+        geom = shapely_wkt.loads(wkt)
+    except Exception:  # noqa: BLE001 — a shape we can't read is one we don't send
+        return []
+    if geom.is_empty:
+        return []
+    return [
+        [(round(x, 6), round(y, 6)) for x, y in ring]
+        for ring in geometry_to_rings(geom)
+        if len(ring) >= 3
+    ]
+
+
+def _claim_ground(db: Session, claim_wkt: str, own_wkt: str | None) -> dict:
+    """Split a landed claim into the ground it GAINED and the ground it only
+    reinforced.
+
+    This is the difference between "your territory is now 2.4 km²" and "this
+    run took 0.06 km²", and it is the whole reason it is measured here: a
+    minute later the two polygons are one merged row and the question has no
+    answer. Running the same block twice moves no borders, and a result screen
+    that celebrates the merged total for it is congratulating a runner for land
+    they already owned.
+
+    `claim_wkt` is the claim AFTER any defended ground has been carved out of
+    it, so this is what actually landed, not what was aimed. `own_wkt` is the
+    union of the runner's existing land under it, or None if there was none.
+
+    Areas come from PostGIS on a geography cast, like every other area in the
+    claim path, so they agree with the numbers the chooser previewed.
+    """
+    row = db.execute(
+        text(
+            """
+            WITH c AS (SELECT ST_GeomFromText(:claim_wkt, 4326) AS g),
+                 o AS (
+                    SELECT CASE
+                        WHEN CAST(:own_wkt AS text) IS NULL THEN NULL
+                        ELSE ST_GeomFromText(:own_wkt, 4326)
+                    END AS g
+                 ),
+                 parts AS (
+                    SELECT
+                        c.g AS claim,
+                        CASE WHEN o.g IS NULL THEN c.g ELSE ST_CollectionExtract(
+                            ST_MakeValid(ST_Difference(c.g, o.g)), 3) END AS gained,
+                        CASE WHEN o.g IS NULL THEN NULL ELSE ST_CollectionExtract(
+                            ST_MakeValid(ST_Intersection(c.g, o.g)), 3) END AS reinforced
+                    FROM c CROSS JOIN o
+                 )
+            SELECT ST_Area(claim::geography),
+                   ST_AsText(gained), COALESCE(ST_Area(gained::geography), 0),
+                   ST_AsText(reinforced), COALESCE(ST_Area(reinforced::geography), 0)
+            FROM parts
+            """
+        ),
+        {"claim_wkt": claim_wkt, "own_wkt": own_wkt},
+    ).fetchone()
+    if row is None:
+        return {
+            "claimed_m2": 0.0, "gained_m2": 0.0, "reinforced_m2": 0.0,
+            "claim_wkt": claim_wkt, "gained_wkt": claim_wkt, "reinforced_wkt": None,
+        }
+    return {
+        "claimed_m2": float(row[0] or 0.0),
+        "gained_wkt": row[1],
+        "gained_m2": float(row[2] or 0.0),
+        "reinforced_wkt": row[3],
+        "reinforced_m2": float(row[4] or 0.0),
+        "claim_wkt": claim_wkt,
+    }
+
+
 def _claim_territory(
     db: Session,
     user_id: str,
@@ -1735,7 +1829,7 @@ def _claim_territory(
     clan_id: str | None = None,
     lifetime_days: float | None = None,
     lifetime_for=None,
-):  # -> (TerritoryOut | None, stolen_m2, stolen_from, events)
+):  # -> (TerritoryOut | None, stolen_m2, stolen_from, events, ground)
     """Insert the new polygon, resolving overlaps with existing territories.
 
     Rules (strength model):
@@ -1759,6 +1853,11 @@ def _claim_territory(
     transactional and to use the GIST index on territories.polygon.
     The returned area is recomputed via ST_Area on a geography cast,
     which handles WGS84 properly.
+
+    The fifth return value, `ground`, is what THIS claim did, as opposed to
+    what the runner now holds — see `_claim_ground`. The territory row cannot
+    answer that: once the union above has run, the merged polygon has no memory
+    of which parts of it arrived today.
     """
     new_geom_wkt = polygon_wgs.wkt  # WGS84
 
@@ -1801,7 +1900,11 @@ def _claim_territory(
                 "life_secs": lifetime_for(0) * 86400,
             },
         ).fetchone()
-        return _territory_out(db, new_row[0]), 0.0, None, []
+        # A flagged claim never merges with anything, so all of it is new.
+        return (
+            _territory_out(db, new_row[0]), 0.0, None, [],
+            _claim_ground(db, new_geom_wkt, None),
+        )
 
     # Pull rivals that intersect: other users OUTSIDE the claimer's club.
     rivals = db.execute(
@@ -1998,6 +2101,11 @@ def _claim_territory(
     # Coming back to the same ground is what buys life, so it is counted.
     merged_reinforcements = int(same_user[2] or 0) + 1 if same_user else 0
 
+    # Measured HERE, in the last moment it is still measurable: the union below
+    # replaces both polygons with one and the claim stops being separable from
+    # the land it joined.
+    ground = _claim_ground(db, new_geom_wkt, same_user_union)
+
     if same_user_union is not None:
         # Replace existing same-user overlapping rows with a single merged row.
         db.execute(
@@ -2073,20 +2181,26 @@ def _claim_territory(
             },
         ).fetchone()
 
-    # The actor's own beat, covering all the ground they ended up holding from
-    # this claim — `new_geom_wkt` is post-carve, so land that successfully
-    # defended is already out of it. `reinforce` when it grew onto their own
-    # existing land, `claim` when it did not.
+    # The actor's own beat — as TWO rows where the claim did two things.
+    #
+    # It used to be one row for the whole footprint, typed `reinforce` the
+    # moment any part of it touched the runner's own land. A claim that took a
+    # hectare of open ground and happened to clip its own border was therefore
+    # filed entirely as reinforcement, and "new ground" read back as the whole
+    # footprint including the half already held. Split, each row means what the
+    # migration says it means: `claim` is ground that was not the actor's,
+    # `reinforce` is ground that already was. Either can be absent, and both
+    # are dropped below the log's sliver floor by `record` itself.
     territory_history.record(
-        db,
-        kind=territory_history.REINFORCE if same_user_union else territory_history.CLAIM,
-        actor_id=user_id,
-        run_id=run_id,
-        area_m2=float(new_row[1] or 0),
-        ground_wkt=new_geom_wkt,
+        db, kind=territory_history.CLAIM, actor_id=user_id, run_id=run_id,
+        area_m2=ground["gained_m2"], ground_wkt=ground["gained_wkt"],
+    )
+    territory_history.record(
+        db, kind=territory_history.REINFORCE, actor_id=user_id, run_id=run_id,
+        area_m2=ground["reinforced_m2"], ground_wkt=ground["reinforced_wkt"],
     )
 
-    return _territory_out(db, new_row[0]), stolen_total, stolen_from, events
+    return _territory_out(db, new_row[0]), stolen_total, stolen_from, events, ground
 
 
 def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:

@@ -383,7 +383,11 @@ def runner_profile(
         text(
             """
             SELECT r.id::text, r.distance_m, r.duration_s,
-                   COALESCE(t.area_m2, 0), (t.id IS NOT NULL), r.ended_at
+                   -- Ground WON by the run, not the merged holding it joined
+                   -- (see ClaimOut.gained_m2); the join answers for runs
+                   -- claimed before that was measured.
+                   COALESCE((r.claim_result ->> 'gained_m2')::float, t.area_m2, 0),
+                   (t.id IS NOT NULL), r.ended_at
             FROM runs r
             LEFT JOIN territories t ON t.run_id = r.id
             WHERE r.user_id = :uid AND r.ended_at IS NOT NULL AND r.verified

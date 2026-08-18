@@ -127,7 +127,7 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
         lat, lon = home_lat + dlat, home_lon + dlon
 
     poly = circle_polygon_wgs(lat, lon, claim_radius_m(distance_m))
-    territory_out, _stolen_m2, _stolen_from, steal_events = _claim_territory(
+    territory_out, _stolen_m2, _stolen_from, steal_events, _ground = _claim_territory(
         db=db,
         user_id=user_id,
         run_id=None,
