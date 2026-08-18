@@ -40,7 +40,7 @@
 // its documentation stay live either way, so it cannot rot in the meantime.
 export const TRAIL_DECORATIONS_ENABLED = false;
 
-export const IAP_ENABLED = false;
+export const IAP_ENABLED = true;
 
 // Whether PASER PRO EXISTS in the app, as distinct from whether it can be sold.
 //
