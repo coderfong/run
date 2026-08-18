@@ -17,7 +17,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { LocateFixed, MapPin, ShieldCheck, Timer } from 'lucide-react-native';
+import { MapPin, ShieldCheck, Timer } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -65,7 +66,10 @@ function Radar({ color = brand.purple }) {
       <Animated.View style={ring(r1)} />
       <View style={[styles.radarCore, { backgroundColor: withAlpha(color, 0.25) }]}>
         <View style={[styles.radarDot, { backgroundColor: color }]}>
-          <LocateFixed size={22} color="#fff" strokeWidth={2} />
+          {/* The reassurance list below stays lucide on purpose: only one of
+              its three rows has a sticker, and one painted icon among two
+              line ones reads as a mistake rather than as a style. */}
+          <AppIcon name="locate" size={26} />
         </View>
       </View>
       <GameAnimation name="locationPulse" size={168} loop style={styles.locationFx} />

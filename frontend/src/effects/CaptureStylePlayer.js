@@ -41,6 +41,7 @@ import {
 import { resolveCaptureStyle } from './captureStyles';
 import {
   CAMERA_ACTION,
+  EFFECT_SLOT,
   ROLE,
   expandCast,
   isExitAction,
@@ -53,7 +54,52 @@ import { CAPTURE_LAYER } from './layers';
 import ReactionEffect from './ReactionEffect';
 import { getReactionEffect } from './reactionRegistry';
 
-export const MAX_CAPTURE_EFFECTS = 3;
+// Two named slots, and that is the ceiling: one hero sprite and one thing it
+// caused. It used to be three, evicted oldest-first, so which art survived
+// depended on how many steps had recently fired and a sprite could disappear
+// mid-play for a reason no viewer could infer. See EFFECT_SLOT.
+export const MAX_CAPTURE_EFFECTS = 2;
+
+// How far a sprite's playback rate may be pushed to make it fit its window.
+//
+// A sheet is drawn at a pace; doubling it reads as a fast-forward and halving
+// it reads as a stall. Outside this band the art is simply cut at the end of
+// its window instead — a beat that ends cleanly is always better than one that
+// bleeds, and the window is the authored intent.
+const MIN_SPRITE_SPEED = 0.7;
+const MAX_SPRITE_SPEED = 2.4;
+
+/**
+ * How long this sheet takes to play once at its own natural pace.
+ *
+ * Deliberately computed here rather than imported from EffectPlayer: this is
+ * plain arithmetic on a registry entry, the player needs it during scheduling
+ * (before anything is rendered), and EffectPlayer is a component module that
+ * tests legitimately mock — importing a pure helper across that boundary made
+ * the whole player crash under a mock that only stubbed the default export.
+ */
+function naturalSpriteMs(spec) {
+  if (spec?.frameCount > 0 && spec?.fps > 0) return (spec.frameCount / spec.fps) * 1000;
+  if (spec?.duration > 0) return spec.duration;
+  return 800;
+}
+
+/**
+ * The playback rate that makes this sheet play through exactly once inside the
+ * window the style gave it.
+ *
+ * This is the mechanical half of the "one beat, one effect" rule. The authored
+ * `speed` numbers it replaces were guesses made without reference to frame
+ * counts, and they were wrong by multiples: several styles asked for `speed`
+ * below 1 on sheets that were already 2-3 seconds long, producing single
+ * effects that ran for five seconds and covered every beat that followed.
+ */
+export function spriteSpeedForWindow(spec, hold) {
+  if (!spec || !(hold > 0)) return 1;
+  const natural = naturalSpriteMs(spec);
+  if (!(natural > 0)) return 1;
+  return Math.min(MAX_SPRITE_SPEED, Math.max(MIN_SPRITE_SPEED, natural / hold));
+}
 
 export function effectIdForCaptureStep(step) {
   if (step.effect) return step.effect;
@@ -241,6 +287,15 @@ function CaptureStylePlayer({
   seed = '',
   tint,
   ink,
+  // Dev only, 1 everywhere else. Stretches the whole schedule so a 2.6s scene
+  // can be watched at a quarter speed and each beat named as it happens — see
+  // components/claim/DevSequenceControls.js. It multiplies DELAYS rather than
+  // durations on purpose: the art and the rigs still animate at their authored
+  // pace, so what you are inspecting is the ORDER and the overlap, which is
+  // what this rework is about. A true pause is deliberately not offered; the
+  // Reanimated bodies would keep moving under a frozen scheduler and the tool
+  // would be lying about what it had stopped.
+  timeScale = 1,
   onTerritoryReveal,
   onCharacterAction,
   onContact,
@@ -368,6 +423,7 @@ function CaptureStylePlayer({
   useEffect(() => {
     const run = generation.current + 1;
     generation.current = run;
+    const scale = Number.isFinite(timeScale) && timeScale > 0 ? timeScale : 1;
     const timers = new Set();
     setActive([]);
     setWorld([]);
@@ -409,8 +465,12 @@ function CaptureStylePlayer({
           const to = anchorPoint(step.to, `${key}:to`);
           const size = step.size || 150;
           setActive((items) => [
-            ...items.slice(-(MAX_CAPTURE_EFFECTS - 1)),
-            { ...step, effectId, spec, key, run, travelling: true, from, to, size },
+            ...items,
+            // Its own slot, so a projectile in flight never evicts the hero
+            // sprite and is never evicted by one. Its life is bounded below by
+            // the flight itself, which is the honest window for a thing that is
+            // gone the moment it arrives.
+            { ...step, effectId, spec, key, run, travelling: true, from, to, size, slot: `flight:${key}` },
           ]);
           // A projectile is gone the moment it has finished arriving — it must
           // not linger on the impact it caused. A bounce extends that life,
@@ -430,18 +490,30 @@ function CaptureStylePlayer({
           Math.abs(spec.visualOffsetX || 0), Math.abs(spec.visualOffsetY || 0)
         );
         const fitted = fitEffectInBounds(rawAnchor, step.size || 200, bounds, safeInsets, visualExtent);
+        const slot = step.slot || EFFECT_SLOT.HERO;
+        // The window the style gave this art, and the rate that makes the sheet
+        // fit inside it. Both are required — see spriteSpeedForWindow.
+        const hold = Math.max(120, step.hold || 420);
+        const speed = spriteSpeedForWindow(spec, hold);
         setActive((items) => [
-          ...items.slice(-(MAX_CAPTURE_EFFECTS - 1)),
-          { ...step, effectId, spec, key, anchor: fitted.anchor, size: fitted.size, run },
+          // Replacing by SLOT rather than dropping the oldest: a new hero
+          // effect always takes over from the previous hero and never from the
+          // debris the last one threw, so what is on screen is always "the one
+          // thing happening" plus at most "the thing it caused".
+          ...items.filter((item) => item.slot !== slot),
+          { ...step, effectId, spec, key, anchor: fitted.anchor, size: fitted.size, slot, speed, run },
         ]);
-        if (step.duration) {
-          const cleanup = setTimeout(() => {
-            timers.delete(cleanup);
-            remove(key, run);
-          }, step.duration);
-          timers.add(cleanup);
-        }
-      }, Math.max(0, step.start));
+        // Unconditional. This used to be `if (step.duration)`, and almost no
+        // step set one, so a sprite lived for however long its sheet happened
+        // to be — which for the pack's larger sheets is two to three seconds,
+        // i.e. straight through the impact, the reveal and the exit that came
+        // after it. A beat now ends when the style says it ends.
+        const cleanup = setTimeout(() => {
+          timers.delete(cleanup);
+          remove(key, run);
+        }, hold);
+        timers.add(cleanup);
+      }, Math.max(0, step.start) * scale);
       timers.add(id);
     });
 
@@ -455,7 +527,7 @@ function CaptureStylePlayer({
       // character mid-lunge.
       stage?.runCamera({ name: CAMERA_ACTION.RELEASE, duration: 260 });
       callbacks.current.onComplete?.();
-    }, plan.duration);
+    }, plan.duration * scale);
     timers.add(done);
 
     return () => {
@@ -463,76 +535,113 @@ function CaptureStylePlayer({
       timers.clear();
       stage?.reset();
     };
-  }, [anchorContext, plan.duration, playToken, remove, removeWorld, runAction, timeline]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [anchorContext, plan.duration, playToken, remove, removeWorld, runAction, timeScale, timeline]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // THREE SIBLINGS, NOT ONE WRAPPER.
+  //
+  // This used to be a single absolutely-filled View carrying FOREGROUND_FX (40)
+  // with all three layers inside it. A parent zIndex opens a stacking context,
+  // so everything in that subtree painted at 40 whatever its own zIndex said —
+  // including the ground environment, nominally 22 and documented as being
+  // UNDER the cast. In practice a shadow cast onto the dirt somebody is
+  // standing in was drawn over their face, and so were cracks, glow seams, the
+  // scanline and the rise. Returning siblings puts each layer in the same
+  // stacking context as CaptureCast (30), so the zIndex contract in layers.js
+  // is compared for real.
   return (
-    <View
-      pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={[StyleSheet.absoluteFill, styles.stage, stageStyle]}
-    >
+    <>
       {/* Ground-level world: shadows cast onto the dirt, fissures, slabs. Under
           the cast, because people stand on top of them. */}
-      <EnvironmentLayer items={world} bounds={bounds} tint={tint} ink={ink} playToken={playToken} />
+      <EnvironmentLayer
+        items={world}
+        bounds={bounds}
+        tint={tint}
+        ink={ink}
+        playToken={playToken}
+        containerStyle={stageStyle}
+      />
 
-      {active.map((item) => {
-        if (item.travelling) {
+      <View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[StyleSheet.absoluteFill, styles.stage, stageStyle]}
+      >
+        {active.map((item) => {
+          if (item.travelling) {
+            return (
+              <TravellingEffect
+                key={item.key}
+                step={item}
+                from={item.from}
+                to={item.to}
+                size={item.size}
+                playToken={playToken}
+                onDone={() => remove(item.key, item.run)}
+              />
+            );
+          }
+          if (item.reaction) {
+            return (
+              <ReactionEffect
+                key={item.key}
+                reaction={item.reaction}
+                point={item.anchor}
+                centered
+                size={item.size}
+                playToken={playToken}
+                onComplete={() => remove(item.key, item.run)}
+              />
+            );
+          }
           return (
-            <TravellingEffect
+            <View
               key={item.key}
-              step={item}
-              from={item.from}
-              to={item.to}
-              size={item.size}
-              playToken={playToken}
-              onDone={() => remove(item.key, item.run)}
-            />
+              // Named so the bounded-lifetime rule is testable: "is this sprite
+              // still on screen after its window closed" is the regression that
+              // produced most of the visual noise, and it needs a handle.
+              testID={`capture-sprite:${item.slot}`}
+              style={{
+                position: 'absolute',
+                left: item.anchor.x - item.size / 2,
+                top: item.anchor.y - item.size / 2,
+                width: item.size,
+                height: item.size,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <EffectPlayer
+                effect={item.spec}
+                size={item.size}
+                // Derived from the step's window, not authored: see
+                // spriteSpeedForWindow.
+                speed={item.speed}
+                // Never looped. A looping capture sprite is a sprite with no
+                // end, which is the same bug as an unbounded hold wearing a
+                // different hat.
+                loop={false}
+                opacity={item.opacity}
+                playToken={playToken}
+                reducedMotion={false}
+                onComplete={() => remove(item.key, item.run)}
+              />
+            </View>
           );
-        }
-        if (item.reaction) {
-          return (
-            <ReactionEffect
-              key={item.key}
-              reaction={item.reaction}
-              point={item.anchor}
-              centered
-              size={item.size}
-              playToken={playToken}
-              onComplete={() => remove(item.key, item.run)}
-            />
-          );
-        }
-        return (
-          <View
-            key={item.key}
-            style={{
-              position: 'absolute',
-              left: item.anchor.x - item.size / 2,
-              top: item.anchor.y - item.size / 2,
-              width: item.size,
-              height: item.size,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <EffectPlayer
-              effect={item.spec}
-              size={item.size}
-              speed={item.speed}
-              loop={item.loop}
-              opacity={item.opacity}
-              playToken={playToken}
-              reducedMotion={false}
-              onComplete={() => remove(item.key, item.run)}
-            />
-          </View>
-        );
-      })}
+        })}
+      </View>
 
       {/* Air-level world: the flash, the dust, the wind. Over everything. */}
-      <EnvironmentLayer items={world} bounds={bounds} tint={tint} ink={ink} playToken={playToken} air />
-    </View>
+      <EnvironmentLayer
+        items={world}
+        bounds={bounds}
+        tint={tint}
+        ink={ink}
+        playToken={playToken}
+        containerStyle={stageStyle}
+        air
+      />
+    </>
   );
 }
 

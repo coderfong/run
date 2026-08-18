@@ -76,13 +76,19 @@ const SLAM_EASING = Easing.out(Easing.poly(5));
 
 /**
  * Which headline this claim earned. Empty ground is never "stolen" — there was
- * nobody to steal it from.
+ * nobody to steal it from, and ground the runner already held is not NEW: a
+ * claim placed on their own land moves no border, and calling that new
+ * territory is the same overstatement the payoff used to make with the merged
+ * holding's area.
  */
 export function victoryLabel(claim) {
   const victims = claim?.victims || [];
   const taken = victims.filter((v) => !v.defended);
   if (taken.length > 0) return 'TERRITORY STOLEN';
   if (victims.length > 0) return 'TERRITORY CAPTURED';
+  // Under a square metre is a rounding artefact, not a border. The `?? 1`
+  // keeps an older backend that sends no figure on the old headline.
+  if ((claim?.gained_m2 ?? 1) < 1) return 'TERRITORY REINFORCED';
   return 'NEW TERRITORY';
 }
 

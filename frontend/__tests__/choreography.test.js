@@ -260,9 +260,21 @@ describe('every capture style is its own animation', () => {
     expect(withWorld.length).toBeGreaterThanOrEqual(Math.floor(CAPTURE_STYLES.length * 0.75));
   });
 
-  test('some styles hand the ground over before the impact and some after', () => {
-    const order = CAPTURE_STYLES.map((s) => choreographyProfile(s).revealsBeforeImpact);
-    expect(new Set(order)).toEqual(new Set([true, false]));
+  // INVERTED DELIBERATELY. This used to REQUIRE variety — some styles handing
+  // the ground over before the impact and some after — on the reasoning that
+  // "the land arrives and is then struck" and "the strike is what put it there"
+  // are two different celebrations.
+  //
+  // They are, and one of them is unreadable. If the territory has already
+  // changed hands by the time the hit lands, the hit cannot be what caused it,
+  // and the viewer is left with two unrelated events in a row: some colour,
+  // then a bang. The takeover is the consequence of the impact in every style
+  // now, and it starts from the point the impact landed on. What separates two
+  // scenes is what the event WAS, not whether it happened in order.
+  test('the ground never changes hands before the thing that took it', () => {
+    CAPTURE_STYLES.forEach((style) => {
+      expect(choreographyProfile(style).revealsBeforeImpact).toBe(false);
+    });
   });
 
   test('something travels in at least a third of them', () => {

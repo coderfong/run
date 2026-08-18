@@ -11,7 +11,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { Image } from '../../ui/image';
 
-import { NB, darkColors, nbInk, radius, space, useTheme, useThemedType } from '../../theme';
+import { NB, darkColors, nbAccentFor, nbInk, radius, space, useTheme, useThemedType } from '../../theme';
 import { frameVariant } from '../../ui/frameRegistry';
 import Button from './Button';
 import Framed from './Framed';
@@ -25,6 +25,17 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
   // overlay, the run screen), so its box has to take the dark card fill rather
   // than the scheme's — same contract the copy above follows.
   const iconFill = dark ? darkColors.card : colors.card;
+  // The block the mascot stands on. It was a flat white squircle in every empty
+  // state in the app, which is the one thing an empty screen cannot afford —
+  // there is nothing else on the page to carry it. A colour dealt off the title
+  // means the quiet feed, the empty club and the unclaimed map are three
+  // different colours rather than three identical white pills.
+  //
+  // Safe to saturate because of what these illustrations ARE: black line art on
+  // transparent. The outline is what has to survive, and it survives on any
+  // mid-tone. `artFill` still feeds the frame's `on` below, so the drawn edge is
+  // re-checked against whatever colour came up.
+  const artFill = nbAccentFor(title || 'empty');
   return (
     <View style={[{ alignItems: 'center', justifyContent: 'center', padding: space.xl }, style]}>
       {art ? (
@@ -38,16 +49,15 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
         // and a page that says "nothing here yet" reads better alive.
         <Framed
           frame="card"
-          // Drawn ON the white squircle, so the ink has to read against WHITE
+          // Drawn ON the mascot's block, so the ink has to read against THAT
           // rather than against the page. That is why this does not follow
           // `colors.text` the way the rest of the empty state does: in dark
           // mode that is near white, and the frame would vanish into the very
           // thing it is drawn around.
           //
-          // Said to the frame now instead of hoped for: `on` makes it check,
-          // so a pale clan accent gets swapped for an ink that shows rather
-          // than drawing white on white.
-          on="#ffffff"
+          // Said to the frame instead of hoped for: `on` makes it check, so a
+          // pale clan accent gets swapped for an ink that shows.
+          on={artFill}
           tint={accent}
           boil
           inset={false}
@@ -58,7 +68,7 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
               width: 176,
               height: 176,
               borderRadius: 40,
-              backgroundColor: '#ffffff',
+              backgroundColor: artFill,
               alignItems: 'center',
               justifyContent: 'center',
             }}

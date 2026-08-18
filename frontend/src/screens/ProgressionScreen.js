@@ -22,7 +22,7 @@ import PortraitBorder from '../components/PortraitBorder';
 import GameAnimation from '../components/GameAnimation';
 import RewardArt, { RARITY_COLOR } from '../components/RewardArt';
 import RewardReveal from '../components/RewardReveal';
-import BuyProSheet from '../components/BuyProSheet';
+import { useProEntitlement } from '../pro/ProProvider';
 import { GOLD } from '../config/pro';
 import { art } from '../config/onboardingArt';
 import { MAX_LEVEL } from '../config/progression';
@@ -303,7 +303,7 @@ export default function ProgressionScreen() {
   // request at all and the ladder is drawn on the first frame.
   const { data, loading, error, refresh: load } = useQuery('me:progression', api.progression);
   const [opening, setOpening] = useState(false);
-  const [passOpen, setPassOpen] = useState(false);
+  const { openPaywall } = useProEntitlement();
   const [infoOpen, setInfoOpen] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
   const [claimingAll, setClaimingAll] = useState(false);
@@ -644,7 +644,7 @@ export default function ProgressionScreen() {
             title="Unlock PASER PRO"
             variant="gold"
             size="sm"
-            onPress={() => setPassOpen(true)}
+            onPress={() => openPaywall('progression')}
             style={{ marginTop: space.md }}
           />
         </Card>
@@ -720,7 +720,7 @@ export default function ProgressionScreen() {
                   claimed={claimed.has(`${row.level}:premium`)}
                   gated={!premium_active}
                   busy={busyKey === `${row.level}:premium`}
-                  onPress={() => (premium_active ? claim(row.level, 'premium') : setPassOpen(true))}
+                  onPress={() => (premium_active ? claim(row.level, 'premium') : openPaywall('progression'))}
                   equipped={equipped}
                   isPro
                 />
@@ -730,9 +730,9 @@ export default function ProgressionScreen() {
         );
       })}
 
-      {IAP_ENABLED ? (
-        <BuyProSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={load} />
-      ) : null}
+      {/* The paywall used to be mounted here. It lives at the app root now
+          (src/pro/ProProvider.js) and is opened with `openPaywall`, so the
+          IAP_ENABLED check moved there too. */}
       <ProgressionInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
       <RewardReveal
         visible={!!reveal}

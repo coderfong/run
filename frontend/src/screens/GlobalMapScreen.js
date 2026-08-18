@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Polyline } from 'react-native-svg';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -17,8 +18,24 @@ import { ScreenIn, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { territoryRings } from '../components/claim/geometry';
-import GameMap, { ContestedOutline, MAP_READY, TerritoryLayer, UserMarker } from '../components/GameMap';
+import GameMap, {
+  ContestedOutline,
+  MapPoint,
+  MAP_READY,
+  TerritoryLayer,
+  Trail,
+  UserMarker,
+} from '../components/GameMap';
+import { GOLD } from '../config/pro';
 import MapProfileSheet from '../components/MapProfileSheet';
+import MapLayersSheet from '../components/map/MapLayersSheet';
+import TerritoryPlanner from '../components/map/TerritoryPlanner';
+import { EVENTS, track } from '../analytics';
+import { layerByKey, layerFeatureCollection } from '../map/intelligence';
+import { analyseRoute } from '../map/planner';
+import { isDrag, shouldSample, strokeToRoute } from '../map/freehand';
+import { useProEntitlement } from '../pro/ProProvider';
+import { shortDate } from '../utils/time';
 
 // Area-weighted centroid (shoelace) of a territory's largest ring — where the
 // owner portrait sits. Vertex-averaging drifts off-centre once a claim is
@@ -146,6 +163,18 @@ export default function GlobalMapScreen({ route, navigation }) {
   // entrance (see the ScreenIn below); the other half is the land itself.
   const [mapLoaded, setMapLoaded] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);
+  // Which intelligence overlay is drawn on top of the board. 'all' is the
+  // board exactly as it has always been.
+  const [layerKey, setLayerKey] = useState('all');
+
+  // --- Territory Planner -------------------------------------------------
+  const { isPro, openPaywall, plannerPreviewsLeft, spendPlannerPreview } = useProEntitlement();
+  const [planning, setPlanning] = useState(false);
+  const [planPoints, setPlanPoints] = useState([]);
+  // Null until a preview has actually been RUN. Drawing points costs nothing;
+  // this is the thing the free allowance pays for.
+  const [planAnalysis, setPlanAnalysis] = useState(null);
   const [pulse, setPulse] = useState(0.85);
   const [myLoc, setMyLoc] = useState(null);
   // 'pending' | 'ok' | 'fail' — territory auto-fit only runs as a fallback.
@@ -348,14 +377,209 @@ export default function GlobalMapScreen({ route, navigation }) {
   // changed onPress — and re-stringify the whole board's GeoJSON — on every
   // GlobalMapScreen render that isn't actually about a new tap.
   const onTerritoryPress = useCallback((e) => {
+    // While planning, a tap ON a polygon has to drop a point like any other
+    // tap. Mapbox gives the ShapeSource's own onPress precedence over the
+    // map's, so without this the planner went dead over exactly the ground it
+    // exists to plan around — you could draw across open land and nowhere
+    // else, which reads as the feature being broken.
+    if (planning) {
+      const coords = e?.coordinates
+        ? [e.coordinates.longitude, e.coordinates.latitude]
+        : e?.features?.[0]?.geometry?.coordinates;
+      if (Array.isArray(coords) && coords.length >= 2 && Number.isFinite(coords[0])) {
+        setPlanPoints((prev) => [...prev, { latitude: coords[1], longitude: coords[0] }]);
+        setPlanAnalysis(null);
+      }
+      return;
+    }
     const id = e?.features?.[0]?.properties?.territoryId;
     const t = rows.find((x) => x.id === id);
     if (t) setSelected(t);
-  }, [rows]);
+  }, [rows, planning]);
 
   // Same reasoning: GameMap's onPress prop must stay referentially stable.
-  const clearSelected = useCallback(() => setSelected(null), []);
+  // In planning mode a tap DROPS A POINT instead of dismissing the card —
+  // dismissing was the only meaning it had, and the planner needs the whole
+  // map surface to draw on.
+  const onMapPress = useCallback((e) => {
+    if (!planning) {
+      setSelected(null);
+      return;
+    }
+    const coords = e?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return;
+    setPlanPoints((prev) => [...prev, { latitude: coords[1], longitude: coords[0] }]);
+    // The reading is stale the moment the route changes. Clearing it is
+    // honest; leaving last route's numbers under a new line is not.
+    setPlanAnalysis(null);
+  }, [planning]);
+
   const onMapReady = useCallback(() => setMapLoaded(true), []);
+
+  // --- planner -----------------------------------------------------------
+
+  // --- free drawing -------------------------------------------------------
+  //
+  // Tap mode drops one point per tap and is what the planner has always done.
+  // Draw mode traces the route under your finger, which is the gesture the
+  // feature actually wants: a loop round a park is a stroke, not fourteen taps.
+  //
+  // The live stroke is kept in a REF and mirrored into state only for the
+  // overlay that draws it. A gesture handler that setStates on every touch
+  // move re-renders the whole map screen ~60 times a second, and this screen
+  // carries a Mapbox tree that is expensive to reconcile — the ref is what the
+  // gesture reads and writes, the state is only ever what gets painted.
+  const [drawMode, setDrawMode] = useState(false);
+  const strokeRef = useRef([]);
+  const [stroke, setStroke] = useState([]);
+  const [converting, setConverting] = useState(false);
+
+  // Screen pixels become coordinates ONCE, on release — see
+  // `unprojectPoints` on the map ref for why this cannot be done per sample.
+  const commitStroke = useCallback(async (raw) => {
+    const route = strokeToRoute(raw);
+    if (route.length < 2) return;
+    setConverting(true);
+    try {
+      const points = await mapRef.current?.unprojectPoints?.(route);
+      if (points?.length >= 2) {
+        // Replaces rather than appends. A second stroke is a redrawn route,
+        // not a continuation of the first — appending would join the end of
+        // the old line to the start of the new one across the whole map.
+        setPlanPoints(points);
+        setPlanAnalysis(null);
+      }
+    } catch {
+      // The map went away mid-gesture. The old route is still on screen and
+      // still correct; losing a stroke is recoverable, a crash is not.
+    } finally {
+      setConverting(false);
+      strokeRef.current = [];
+      setStroke([]);
+    }
+  }, []);
+
+  // Rebuilt only when the mode or the commit function changes — a PanResponder
+  // recreated every render loses the gesture that is currently in flight.
+  const drawResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => drawMode,
+        onMoveShouldSetPanResponder: () => drawMode,
+        // Claim the gesture outright: the native map is underneath and would
+        // otherwise pan the camera while the finger is drawing on it.
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (event) => {
+          const { locationX: x, locationY: y } = event.nativeEvent;
+          strokeRef.current = [{ x, y }];
+          setStroke(strokeRef.current);
+        },
+        onPanResponderMove: (event) => {
+          const { locationX: x, locationY: y } = event.nativeEvent;
+          const last = strokeRef.current[strokeRef.current.length - 1];
+          if (!shouldSample({ x, y }, last)) return;
+          strokeRef.current = [...strokeRef.current, { x, y }];
+          setStroke(strokeRef.current);
+        },
+        onPanResponderRelease: async () => {
+          const raw = strokeRef.current;
+          // A tap in draw mode still drops a single point, because a route of
+          // two deliberate ends is a legitimate thing to want and scribbling a
+          // straight line to get one would be absurd.
+          if (!isDrag(raw)) {
+            const [point] = raw;
+            strokeRef.current = [];
+            setStroke([]);
+            if (point) {
+              const converted = await mapRef.current?.unprojectPoints?.([point]);
+              if (converted?.[0]) {
+                setPlanPoints((prev) => [...prev, converted[0]]);
+                setPlanAnalysis(null);
+              }
+            }
+            return;
+          }
+          commitStroke(raw);
+        },
+        onPanResponderTerminate: () => {
+          strokeRef.current = [];
+          setStroke([]);
+        },
+      }),
+    [drawMode, commitStroke]
+  );
+
+  const openPlanner = useCallback(() => {
+    setPlanning(true);
+    setSelected(null);
+    track(EVENTS.FEATURE_PREVIEW, {
+      source: 'map_planner',
+      feature: 'territory_planner',
+      previews_left: Number.isFinite(plannerPreviewsLeft) ? plannerPreviewsLeft : -1,
+    });
+  }, [plannerPreviewsLeft]);
+
+  const closePlanner = useCallback(() => {
+    setPlanning(false);
+    setPlanPoints([]);
+    setPlanAnalysis(null);
+    setDrawMode(false);
+    strokeRef.current = [];
+    setStroke([]);
+  }, []);
+
+  const runPreview = useCallback(() => {
+    if (planPoints.length < 2) return;
+    // The gate is checked HERE, at the moment a preview would actually be
+    // spent, rather than when the planner opens. Opening it, drawing and
+    // changing your mind must always be free.
+    if (!isPro && plannerPreviewsLeft <= 0) {
+      track(EVENTS.FEATURE_BLOCKED, {
+        source: 'map_planner',
+        feature: 'territory_planner',
+        reason: 'allowance_spent',
+      });
+      openPaywall('territory_planner');
+      return;
+    }
+    // Synchronous: the analysis is local geometry over polygons already in
+    // hand, so there is nothing to await and no spinner to justify.
+    const result = analyseRoute({
+      points: planPoints,
+      territories: rows,
+      userId: user.id,
+    });
+    setPlanAnalysis(result);
+    spendPlannerPreview();
+  }, [planPoints, rows, user.id, isPro, plannerPreviewsLeft, openPaywall, spendPlannerPreview]);
+
+  const undoPoint = useCallback(() => {
+    setPlanPoints((prev) => prev.slice(0, -1));
+    setPlanAnalysis(null);
+  }, []);
+
+  const clearPoints = useCallback(() => {
+    setPlanPoints([]);
+    setPlanAnalysis(null);
+  }, []);
+
+  // --- intelligence layers ----------------------------------------------
+
+  const activeLayer = layerByKey(layerKey);
+  // Only built for a layer that actually draws something. 'all' is the base
+  // board, which TerritoryLayer already renders.
+  const layerFC = useMemo(() => {
+    if (!activeLayer || activeLayer.key === 'all') return null;
+    return layerFeatureCollection(activeLayer, rows, { userId: user.id }, territoryRings);
+  }, [activeLayer, rows, user.id]);
+
+  const selectLayer = useCallback((key) => {
+    setLayerKey(key);
+    const layer = layerByKey(key);
+    if (layer.pro) {
+      track(EVENTS.FEATURE_PREVIEW, { source: 'map_intelligence', feature: `layer_${key}` });
+    }
+  }, []);
 
   if (!MAP_READY) {
     return (
@@ -386,13 +610,40 @@ export default function GlobalMapScreen({ route, navigation }) {
           guard, armed on focus, shows the screen anyway if either is slow —
           a stalled fetch can never leave the map blank. */}
       <ScreenIn ready={focused && mapLoaded && loaded} armed={focused} style={styles.fill}>
-        <GameMap ref={mapRef} onIdle={onIdle} onPress={clearSelected} onReady={onMapReady}>
+        <GameMap
+          ref={mapRef}
+          onIdle={onIdle}
+          onPress={onMapPress}
+          onReady={onMapReady}
+          // A stroke must not also pan the camera. `locked` is the same freeze
+          // the claim reveal uses, and it has to be the MAP that stops rather
+          // than the overlay merely swallowing touches: Mapbox handles pan
+          // natively, so a JS responder above it does not reliably prevent the
+          // camera moving under the line being drawn.
+          locked={planning && drawMode}
+        >
           {/* The glow line was built in but never switched on, which is a lot
               of why the board read pastel — the plain 2px stroke alone. Dark
               mode is where a blurred neon outline actually reads as vivid
               rather than muddy against a light basemap. */}
           <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} dark={scheme === 'dark'} />
           {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
+          {/* The intelligence overlay, drawn ON TOP of the unchanged board.
+              Every claim stays exactly as visible as it was — a layer adds a
+              reading, it never takes the map away. */}
+          {layerFC ? (
+            <ContestedOutline id={`layer-${activeLayer.key}`} featureCollection={layerFC} opacity={0.95} />
+          ) : null}
+          {/* The planned route. Drawn in the PRO gold rather than the player
+              accent so it can never be mistaken for a recorded run. */}
+          {planning && planPoints.length >= 2 ? (
+            <Trail id="plan" points={planPoints} color={GOLD} width={5} glow glowColor={GOLD} />
+          ) : null}
+          {planning
+            ? planPoints.map((p, i) => (
+                <MapPoint key={`plan-${i}`} id={`plan-pt-${i}`} point={p} color={GOLD} radius={6} />
+              ))
+            : null}
           {/* owner portrait in the middle of every territory in view */}
           {landPortraits.map((m) => (
             <UserMarker key={m.id} point={m.at} onPress={() => setProfileUserId(m.userId)}>
@@ -427,12 +678,27 @@ export default function GlobalMapScreen({ route, navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.controlButton}
-            onPress={() => setLegendOpen(true)}
+            onPress={() => setLayersOpen(true)}
             accessibilityRole="button"
-            accessibilityLabel="Show clubs in view"
+            accessibilityLabel="Map layers"
             hitSlop={8}
           >
             <AppIcon name="layers" size={30} />
+            {/* A dot rather than a badge: the rail is 48pt of icon and a
+                number on it would be unreadable. It only says "this is not
+                showing the plain board", which is the thing worth knowing. */}
+            {layerKey !== 'all' ? (
+              <View style={[styles.layerDot, { backgroundColor: activeLayer.tint || colors.text }]} />
+            ) : null}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.controlButton, planning && { backgroundColor: GOLD }]}
+            onPress={() => (planning ? closePlanner() : openPlanner())}
+            accessibilityRole="button"
+            accessibilityLabel={planning ? 'Close territory planner' : 'Plan a run'}
+            hitSlop={8}
+          >
+            <AppIcon name="route" size={30} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.controlButton}
@@ -446,6 +712,39 @@ export default function GlobalMapScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* THE DRAWING SURFACE. Absolutely filled over the map, mounted only
+            while draw mode is on, so nothing intercepts a tap on a territory
+            the rest of the time.
+
+            The live line is drawn HERE in screen space rather than as a map
+            Trail, because the points are still pixels — they do not become
+            coordinates until the finger lifts. It is also why the line keeps
+            up with the finger: nothing crosses the bridge until release. */}
+        {planning && drawMode ? (
+          <View
+            style={StyleSheet.absoluteFill}
+            {...drawResponder.panHandlers}
+            accessibilityRole="none"
+            // The gesture is a drawing surface with no discrete action to
+            // announce; the planner panel below carries the instructions and
+            // the buttons that do the same job without a drag.
+            importantForAccessibility="no-hide-descendants"
+          >
+            {stroke.length >= 2 ? (
+              <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Polyline
+                  points={stroke.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill="none"
+                  stroke={GOLD}
+                  strokeWidth={5}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            ) : null}
+          </View>
+        ) : null}
+
         {showEmpty && (
           <View style={[styles.noticePill, { top: insets.top + space.md }]}>
             <Text style={type.heading}>Unclaimed. Be first.</Text>
@@ -454,8 +753,28 @@ export default function GlobalMapScreen({ route, navigation }) {
         )}
       </ScreenIn>
 
+      {/* The planner owns the bottom of the screen while it is open, so the
+          tapped-territory card is suppressed underneath it rather than the two
+          fighting for the same 200pt. */}
+      {planning ? (
+        <TerritoryPlanner
+          points={planPoints}
+          analysis={planAnalysis}
+          previewsLeft={plannerPreviewsLeft}
+          isPro={isPro}
+          busy={converting}
+          drawMode={drawMode}
+          onToggleDrawMode={() => setDrawMode((on) => !on)}
+          onPreview={runPreview}
+          onUndo={undoPoint}
+          onClear={clearPoints}
+          onClose={closePlanner}
+          onUnlock={() => openPaywall('territory_planner')}
+        />
+      ) : null}
+
       {/* tapped-territory card */}
-      {selected && selectedColor && (
+      {!planning && selected && selectedColor && (
         <Card style={styles.card}>
           <View style={styles.cardRow}>
             <Pill label={selected.clan_tag || 'Solo'} color={selectedColor.stroke} dot />
@@ -471,7 +790,7 @@ export default function GlobalMapScreen({ route, navigation }) {
             {(selected.area_m2 / 1e6).toFixed(selected.area_m2 >= 1e5 ? 2 : 3)} km² ·{' '}
             strength ×{(selected.strength || 1).toFixed(1)} ·{' '}
             {selected.defenders > 1 ? `${selected.defenders} defenders · ` : ''}
-            held since {new Date(selected.created_at).toLocaleDateString()}
+            held since {shortDate(selected.created_at)}
             {selected.contested ? ' · contested' : ''}
           </Text>
           <View style={styles.cardActions}>
@@ -503,6 +822,28 @@ export default function GlobalMapScreen({ route, navigation }) {
         userId={profileUserId}
         onClose={() => setProfileUserId(null)}
         navigation={navigation}
+      />
+
+      <MapLayersSheet
+        visible={layersOpen}
+        onClose={() => setLayersOpen(false)}
+        active={layerKey}
+        onSelect={selectLayer}
+        territories={rows}
+        userId={user.id}
+        isPro={isPro}
+        onPreviewLayer={(layer, count) =>
+          track(EVENTS.FEATURE_PREVIEW, {
+            source: 'map_intelligence',
+            feature: `layer_${layer.key}`,
+            // The real count the runner was just shown, so the funnel can tell
+            // "nobody wanted it" apart from "it was empty when they looked".
+            in_view: count,
+            available: layer.available,
+          })
+        }
+        onUnlock={() => openPaywall('territory_intelligence')}
+        onShowClubs={() => setLegendOpen(true)}
       />
 
       {/* legend: top clubs in view */}
@@ -561,6 +902,14 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
 
   locationDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, borderColor: colors.card },
+  layerDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
 
   card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

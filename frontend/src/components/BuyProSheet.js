@@ -5,6 +5,14 @@
 // it keeps it forever and this sheet says so instead of trying to sell them
 // something they already have.
 //
+// ONE SHEET, MANY ARGUMENTS. `context` (a key from config/proContexts.js)
+// swaps the title, the subtitle, the perk list and the button, so the runner
+// who just tapped "Vulnerable territories" is answered about THAT rather than
+// being handed a generic feature list. What it never swaps is the price block
+// and everything below it. Screens do not render this directly any more —
+// src/pro/ProProvider.js mounts the only instance and opens it via
+// `openPaywall(context)`.
+//
 // THE DISCLOSURE BLOCK IS NOT DECORATION. App Store review guideline 3.1.2
 // requires a subscription paywall to state, in the binary and before the
 // purchase, what the subscription is, how long a period lasts, what it costs,
@@ -19,9 +27,12 @@ import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'rea
 
 import { api } from '../api/client';
 import { invalidateAfterEntitlementChange } from '../api/cache';
-import { PLANS, PRO_MONTHLY, PRO_PERKS, PRO_PRODUCTS } from '../config/pro';
+import { EVENTS, track } from '../analytics';
+import { PLANS, PRO_MONTHLY, PRO_PRODUCTS } from '../config/pro';
+import { proContext } from '../config/proContexts';
 import { useAccent } from '../hooks/useAccent';
 import usePro from '../hooks/usePro';
+import { useStoreAvailable } from '../pro/storeAvailable';
 import { finishPurchase, fetchProductPrices, restorePurchases, storeSubscribe } from '../iap';
 import { brand, radius, space, useTheme, useThemedType } from '../theme';
 import { toast } from '../ui/toast';
@@ -40,17 +51,36 @@ const APPLE_EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev
  * `status` is optional. Left off, the sheet asks for entitlement itself, so a
  * caller can never open a paywall that is out of step with what the account
  * actually holds — which is how somebody who already pays gets sold to twice.
+ *
+ * `context` picks the pitch (config/proContexts.js) and tags the funnel.
+ * `automatic` only ever reaches analytics: it says whether PASER opened this
+ * or the runner did, which is the difference between a prompt and an answer.
  */
-export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
+export default function BuyProSheet({
+  visible,
+  onClose,
+  onPurchased,
+  status,
+  context,
+  automatic = false,
+}) {
   const { colors } = useTheme();
   const type = useThemedType();
   const accent = useAccent();
   const { pro } = usePro();
   const entitlement = status || pro;
+  const pitch = proContext(context);
   const [plan, setPlan] = useState(PRO_MONTHLY);
   const [prices, setPrices] = useState({});
   const [busy, setBusy] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  // Whether a transaction could actually complete. The sheet OPENS whenever
+  // PRO is present in the build (see ProProvider.openPaywall) so the pitch can
+  // always be read; this is only about whether the button at the bottom of it
+  // is a real button. With the store not yet live it says so, plainly, instead
+  // of looking live and then failing — which is both the honest thing to show
+  // a store reviewer and the difference between "not yet" and "broken".
+  const canSell = useStoreAvailable();
 
   // Only once the sheet actually opens — RN's <Modal> (what Sheet wraps)
   // keeps children mounted while closed, so a fetch on mount would touch the
@@ -67,9 +97,21 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
   const priceFor = (p) => prices[p.id] || p.fallbackPrice;
   const selected = PLANS.find((p) => p.id === plan) || PLANS[0];
 
+  // Every funnel event carries the same three properties, so the analytics
+  // side of this component is one object rather than a repeated literal that
+  // eventually disagrees with itself.
+  const funnel = (extra) => ({
+    source: pitch.source,
+    context: pitch.key,
+    trigger: automatic ? 'automatic' : 'user',
+    plan,
+    ...extra,
+  });
+
   const subscribe = async () => {
     if (busy) return;
     setBusy(true);
+    track(EVENTS.PURCHASE_START, funnel());
     try {
       const { receipt, platform, purchase } = await storeSubscribe(plan);
       // The backend must credit it BEFORE the transaction is finished. An
@@ -79,10 +121,18 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
       await api.subscribePro(plan, receipt, platform);
       await finishPurchase(purchase, { isConsumable: false });
       invalidateAfterEntitlementChange();
+      track(EVENTS.PURCHASE_SUCCESS, funnel());
       toast.success('PASER PRO is active!');
       onPurchased?.();
       onClose?.();
     } catch (e) {
+      // Cancelled is NOT a failure and must not be counted as one: a purchase
+      // failure rate that silently includes everybody who changed their mind
+      // reads as a broken store.
+      track(
+        e?.cancelled ? EVENTS.PAYWALL_DISMISS : EVENTS.PURCHASE_FAILURE,
+        funnel(e?.cancelled ? { at: 'store_sheet' } : { reason: String(e?.status || 'error') })
+      );
       if (e?.cancelled) return; // backed out of the system sheet: not a failure
       if (e?.status === 409) {
         toast.error('That subscription is already active on another account.');
@@ -111,6 +161,7 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
           await api.purchasePass(legacy.purchaseToken, Platform.OS);
           await finishPurchase(legacy, { isConsumable: false });
           invalidateAfterEntitlementChange();
+          track(EVENTS.RESTORE_SUCCESS, funnel({ plan: 'premium_pass' }));
           toast.success('Your lifetime pass is back.');
           onPurchased?.();
           onClose?.();
@@ -124,6 +175,7 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
       })));
       for (const p of owned) await finishPurchase(p, { isConsumable: false });
       invalidateAfterEntitlementChange();
+      track(EVENTS.RESTORE_SUCCESS, funnel());
       toast.success('PASER PRO restored!');
       onPurchased?.();
       onClose?.();
@@ -142,7 +194,7 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
         <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
           Your original pass covers everything PRO does, for as long as you play. There is nothing to renew and nothing to pay.
         </Text>
-        {PRO_PERKS.map(([icon, label]) => (
+        {pitch.perks.map(([icon, label]) => (
           <Perk key={icon} icon={icon} label={label} colors={colors} type={type} />
         ))}
       </Sheet>
@@ -151,10 +203,21 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
 
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <Text style={[type.heading, { marginBottom: 4 }]}>PASER PRO</Text>
+      {/* The context's own headline. A runner who tapped a padlocked map layer
+          gets answered about the map; one who walked in through the Profile
+          hub gets the general pitch. Both are this component. */}
+      <Text style={[type.heading, { marginBottom: 4 }]}>{pitch.title}</Text>
       <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
-        Plan your ground, read your history, know your rivals. Every claim, every metre of land and every place on the board stays exactly as free as it is today.
+        {pitch.subtitle}
       </Text>
+      {/* The promise that makes the rest of it acceptable, and it is never
+          contextual: whatever brought them here, nothing they can do today
+          gets taken away. */}
+      {pitch.key !== 'default' ? (
+        <Text style={[type.caption, { color: colors.textDim, marginBottom: space.md }]}>
+          Running, claiming and your place on the board stay free.
+        </Text>
+      ) : null}
 
       {entitlement?.in_grace ? (
         <View style={[styles.notice, { backgroundColor: colors.card, borderColor: brand.pink }]}>
@@ -164,7 +227,7 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
         </View>
       ) : null}
 
-      {PRO_PERKS.map(([icon, label]) => (
+      {pitch.perks.map(([icon, label]) => (
         <Perk key={icon} icon={icon} label={label} colors={colors} type={type} />
       ))}
 
@@ -195,12 +258,31 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
         })}
       </Row>
 
+      {/* The context may rename the action ("Unlock Territory Planner") but it
+          can never drop the price off it. Guideline 3.1.2 wants the cost in
+          front of the runner before the purchase, and a button that says only
+          "Unlock" on a subscription is the exact pattern review rejects. */}
       <ToonButton
-        title={busy ? 'Activating…' : `Subscribe · ${priceFor(selected)} per ${selected.period}`}
+        title={
+          !canSell
+            ? 'Coming soon'
+            : busy
+              ? 'Activating…'
+              : `${pitch.cta || 'Subscribe'} · ${priceFor(selected)} per ${selected.period}`
+        }
         onPress={subscribe}
-        disabled={busy || restoring}
+        disabled={!canSell || busy || restoring}
         style={{ marginTop: space.md }}
       />
+
+      {!canSell ? (
+        <Text
+          style={[type.caption, { color: colors.textMuted, textAlign: 'center', marginTop: space.sm }]}
+        >
+          Subscriptions are not open yet. Everything above is what PASER PRO
+          will include.
+        </Text>
+      ) : null}
 
       <Disclosure
         colors={colors}
@@ -212,7 +294,7 @@ export default function BuyProSheet({ visible, onClose, onPurchased, status }) {
       <View style={{ alignItems: 'center', marginTop: space.sm }}>
         <TouchableOpacity
           onPress={restore}
-          disabled={restoring || busy}
+          disabled={!canSell || restoring || busy}
           style={{ padding: 4 }}
           accessibilityRole="button"
           accessibilityLabel="Restore purchases"

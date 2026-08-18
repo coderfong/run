@@ -6,7 +6,7 @@ but their owner. Phase 5 enriches this with clan-scoped filtering and
 territory/clan/goal events; Phase 6 adds kudos counts.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -64,6 +64,26 @@ def _path_from_wkt(wkt):
         return []
 
 
+def _naive_utc(value: Optional[datetime]) -> Optional[datetime]:
+    """Drop a cursor's timezone after converting it to UTC.
+
+    `ended_at` and `created_at` are `timestamp WITHOUT time zone` columns
+    holding UTC, so an AWARE datetime must never reach the comparison: Postgres
+    would coerce it using the session's TimeZone and silently shift the page
+    boundary by the offset.
+
+    This matters now because responses serialize timestamps as `...Z` (see
+    `UtcDatetime` in schemas.py), so the cursor the app echoes back is parsed
+    as aware where it used to be naive. Both forms are accepted and both end up
+    as the same naive UTC value.
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 @router.get("/feed", response_model=schemas.FeedOut)
 def feed(
     cursor: Optional[datetime] = Query(None, description="return items older than this"),
@@ -71,6 +91,7 @@ def feed(
     user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
+    cursor = _naive_utc(cursor)
     rows = db.execute(
         text(
             """

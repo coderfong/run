@@ -5,7 +5,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from '../ui/image';
-import { ArrowRight, Camera, MessageCircle, Trophy, UserPlus, Users } from 'lucide-react-native';
+import { ArrowRight, Camera, Users } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
@@ -32,7 +33,11 @@ function ClubIntroOverlay({ step, onNext, accent }) {
   const styles = useThemedStyles(makeStyles);
   if (step == null) return null;
   const ranking = step === 1;
-  const Icon = ranking ? Trophy : Users;
+  // Ranking rows get the sticker trophy; the members row keeps the lucide
+  // glyph, since there is no sticker for a group of people.
+  // Ranking rows get the sticker trophy; the members row keeps the lucide
+  // glyph, since there is no sticker for a group of people.
+  const Icon = Users;
   return (
     <View style={styles.introOverlay} accessibilityViewIsModal>
       <View style={styles.introScrim} />
@@ -46,7 +51,9 @@ function ClubIntroOverlay({ step, onNext, accent }) {
         contentStyle={styles.introInner}
       >
         <View style={[styles.introIcon, { backgroundColor: accent }]}>
-          <Icon size={42} color="#FFFFFF" strokeWidth={2.4} />
+          {ranking
+            ? <AppIcon name="trophy" size={46} />
+            : <Icon size={42} color="#FFFFFF" strokeWidth={2.4} />}
         </View>
         <View style={styles.introDots}>
           {[0, 1].map((i) => <View key={i} style={[styles.introDot, i === step && { backgroundColor: accent, width: 20 }]} />)}
@@ -109,7 +116,7 @@ function Directory({ navigation }) {
         Solo land is grey. Club land claims.
       </Text>
 
-      <Button title="Create a club" variant="gradient" icon={<UserPlus size={18} color="#fff" />} onPress={() => navigation.navigate('ClubCreate')} />
+      <Button title="Create a club" variant="gradient" icon={<AppIcon name="invite" size={20} />} onPress={() => navigation.navigate('ClubCreate')} />
 
       {/* the Join button matches the input height and centres with it */}
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md, alignItems: 'center' }}>
@@ -342,7 +349,7 @@ function MemberHub({ clanId, navigation }) {
       <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
         {tabs}
         <View style={styles.rankHero}>
-          <Trophy size={30} color="#F5B32C" />
+          <AppIcon name="trophy" size={34} />
           <View style={{ flex: 1 }}>
             <Text style={type.title}>Season standings</Text>
             <Text style={type.caption}>How every club’s claimed ground stacks up.</Text>
@@ -431,7 +438,10 @@ function MemberHub({ clanId, navigation }) {
         <Row gap={8} style={{ marginTop: space.sm }}>
           {clan.league ? <Pill label={LEAGUE_LABEL[clan.league]} color={accent} /> : null}
           <Pill label={clan.season_rank ? `Season #${clan.season_rank}` : 'Unranked'} color={accent} variant="outline" />
-          <Pill label={`${clan.member_count} members`} color={colors.textMuted} />
+          {/* No colour: a metadata chip deals its own from the deck. Seeded on
+              what it MEANS rather than on its label, so the chip does not
+              change colour when a member joins. */}
+          <Pill label={`${clan.member_count} members`} seed="club:members" />
         </Row>
       </View>
 
@@ -483,7 +493,7 @@ function MemberHub({ clanId, navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Open club chat"
           >
-            <MessageCircle size={15} color={accent} />
+            <AppIcon name="comment" size={18} />
             <Text style={[type.captionMedium, { color: accent }]}>Chat</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -492,7 +502,7 @@ function MemberHub({ clanId, navigation }) {
             accessibilityRole="button"
             accessibilityLabel="Invite a member"
           >
-            <UserPlus size={15} color={colors.textMuted} />
+            <AppIcon name="invite" size={18} />
             <Text style={[type.captionMedium, { color: colors.textMuted }]}>Invite</Text>
           </TouchableOpacity>
         </Row>

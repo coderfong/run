@@ -542,7 +542,9 @@ const OVERLAY_KINDS = new Set([ENVIRONMENT.FLASH, ENVIRONMENT.DARKEN]);
  * screen point, so this component never touches the anchor vocabulary and
  * cannot disagree with the effect or the character that shares its beat.
  */
-export default function EnvironmentLayer({ items = [], bounds, tint, ink, playToken = 0, air = false }) {
+export default function EnvironmentLayer({
+  items = [], bounds, tint, ink, playToken = 0, air = false, containerStyle,
+}) {
   const shown = items.filter((item) => isAirEnvironment(item.kind) === air);
   if (!shown.length) return null;
 
@@ -557,6 +559,12 @@ export default function EnvironmentLayer({ items = [], bounds, tint, ink, playTo
       style={[
         StyleSheet.absoluteFill,
         { zIndex: air ? CAPTURE_LAYER.ENVIRONMENT_AIR : CAPTURE_LAYER.ENVIRONMENT_GROUND },
+        // The capture stage's own transform (a style's zoom, whip or shake).
+        // Passed in because this component is now mounted as a SIBLING of the
+        // sprite layer rather than inside it — the ground track has to move
+        // with the scene it is drawn on, and it no longer inherits that from a
+        // shared wrapper. See the note on the player's return value.
+        containerStyle,
       ]}
     >
       {vectors.length ? (

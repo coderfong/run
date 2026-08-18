@@ -38,10 +38,11 @@ import { ROLE } from './choreography';
 import { CAPTURE_LAYER } from './layers';
 import { faceForAction } from '../components/claim/expressions';
 
-// RETUNED 2026-08-14 alongside ACTOR_SIZE, twice — see the note there. Kept
-// smaller than the attacker so the runner still reads as the one the scene is
-// about.
-export const DEFENDER_SIZE = 72;
+// RETUNED alongside ACTOR_SIZE — see the note there. Kept smaller than the
+// attacker so the runner still reads as the one the scene is about, and the
+// same ratio (roughly 0.75) is maintained through each bump so a claim against
+// three rivals does not become a crowd of equals.
+export const DEFENDER_SIZE = 88;
 
 const CaptureCast = React.forwardRef(function CaptureCast(
   {
@@ -95,10 +96,16 @@ const CaptureCast = React.forwardRef(function CaptureCast(
 
   useImperativeHandle(ref, () => ({ play, reset, size: defenders.length }), [defenders.length, play, reset]);
 
+  // NO CLAN RING. Defenders used to be drawn with a 2px circle in their clan
+  // colour, on the reasoning that it told you whose ground you were taking.
+  // What it actually did was put a portrait border around every rival in the
+  // scene while the runner's own body had none, so a claim against two or three
+  // people read as a row of avatar chips being animated rather than characters
+  // standing on the map. Who lost the ground is said in the payoff; the cutscene
+  // just needs bodies.
   const rigs = useMemo(() => defenders.map((defender, index) => ({
     key: defender?.id || defender?.user_id || `defender-${index}`,
     equipped: defender?.avatar || {},
-    ring: defender?.clan_color?.stroke,
     // Feet on the ground the layout picked. The rect is the whole body box, so
     // its centre is where the rig is drawn.
     anchor: defenderRects[index]
@@ -124,7 +131,6 @@ const CaptureCast = React.forwardRef(function CaptureCast(
             key={rig.key}
             ref={defenderRefs.current[index]}
             equipped={rig.equipped}
-            ring={rig.ring}
             face={faces[`d${index}`]}
             anchor={rig.anchor}
             bounds={bounds}

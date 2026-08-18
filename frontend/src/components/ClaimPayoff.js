@@ -11,14 +11,15 @@
 import React, { useEffect, useRef } from 'react';
 import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ShieldOff, Trophy } from 'lucide-react-native';
+import { ShieldOff } from 'lucide-react-native';
 
 import { brand, space, toon, toonType, useTheme, useThemedType } from '../theme';
 import { Confetti, haptic } from '../ui/motion';
-import { Framed, OutlinedText, ProgressTrack, ToonButton, ToonGhostButton } from './ui';
+import { Framed, OutlinedText, ProgressTrack, ToonButton } from './ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import CharacterRig, { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
+import AppIcon from './AppIcon';
 import TerritoryStealBanner from './TerritoryStealBanner';
 import GameAnimation, { AnimationStack } from './GameAnimation';
 import { fmtArea } from './RivalCard';
@@ -28,7 +29,21 @@ function headline(claim) {
   if (victims.some((v) => v.reclaimed && !v.defended)) return 'YOU TOOK IT BACK';
   if (victims.some((v) => !v.defended)) return 'LAND TAKEN';
   if (victims.length) return 'GROUND HELD AGAINST YOU';
+  // A claim dropped entirely on land the runner already held took nothing.
+  // Saying "TERRITORY CLAIMED" over a +0.000 is the moment the whole screen
+  // stops being believed. Under a square metre is a rounding artefact rather
+  // than a border that moved.
+  if (gained(claim) < 1) return 'TERRITORY REINFORCED';
   return 'TERRITORY CLAIMED';
+}
+
+// What this claim WON. `territory.area_m2` is the merged holding it joined —
+// for a claim landing on the runner's own land that is mostly ground they have
+// held for weeks, and celebrating it here credits one run with all of it. The
+// fallback is only for a backend too old to send `gained_m2`.
+function gained(claim) {
+  if (claim?.gained_m2 != null) return claim.gained_m2;
+  return claim?.territory?.area_m2 || 0;
 }
 
 export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewLeaderboard }) {
@@ -49,7 +64,8 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
   const victims = claim.victims || [];
   const taken = victims.filter((v) => !v.defended);
   const held = victims.filter((v) => v.defended);
-  const area = claim.territory?.area_m2 || 0;
+  const area = gained(claim);
+  const reinforced = claim.reinforced_m2 || 0;
   const stolenArea = taken.reduce((sum, v) => sum + (v.area_m2 || 0), 0);
   const xpPct = claim.next_level_xp ? Math.min(1, (claim.xp || 0) / claim.next_level_xp) : 0;
 
@@ -101,6 +117,15 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
             >
               {`+${fmtArea(area)}`}
             </OutlinedText>
+            {/* Ground the claim landed on that was already theirs. It wins no
+                border, so it is never inside the + above — but it stacks that
+                land's strength and buys it time, which is worth naming rather
+                than leaving the runner to wonder where the rest went. */}
+            {reinforced >= 1 && (
+              <Text style={[type.caption, styles.areaSub, { color: colors.textDim }]}>
+                {`${fmtArea(reinforced)} of your own land reinforced`}
+              </Text>
+            )}
           </Framed>
 
           {/* the steal itself, played out: bomb, blast, their heads thrown
@@ -238,14 +263,18 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
           )}
         </ScrollView>
 
+        {/* One way on, and it goes forward. A Done ghost button used to sit
+            under this, which made the payoff a fork between two ways off the
+            same screen — and the standings behind it, the part that says what
+            the claim was worth against everybody else, was the one people
+            skipped. The standings carry their own Done. */}
         <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
           <ToonButton
             title="See the leaderboard"
             variant="teal"
-            icon={<Trophy size={18} color="#fff" />}
+            icon={<AppIcon name="trophy" size={22} />}
             onPress={onViewLeaderboard}
           />
-          <ToonGhostButton title="Done" onPress={onClose} color={colors.textMuted} />
         </View>
       </View>
     </Modal>
@@ -255,7 +284,7 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
 const styles = StyleSheet.create({
   root: { flex: 1 },
   // The whole point of this pass was fitting the payoff on one screen instead
-  // of one that needs a scroll to reach "Done" — every margin below is
+  // of one that needs a scroll to reach the button — every margin below is
   // trimmed from what it was, not just the ones called out inline.
   scroll: { paddingHorizontal: space.gutter, alignItems: 'stretch' },
   headlineFrame: { minHeight: 80 },
@@ -274,6 +303,8 @@ const styles = StyleSheet.create({
   // frame all but hugged the digits top and bottom, which is the "too small"
   // of it. Horizontal padding did not have that problem, so only this moved.
   areaInner: { alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md },
+  // A footnote under the hero number, not a second number.
+  areaSub: { marginTop: 4, textAlign: 'center' },
   // The banner throws heads outside its own bounds, so it never clips.
   stealBanner: { marginTop: space.md, overflow: 'visible' },
   block: { marginTop: space.lg },

@@ -43,8 +43,88 @@
 
 import { HAPTIC_STYLES } from '../theme/haptics';
 import { CLAIM_TIMING, DRAMA_SCALE } from '../components/claim/timing';
+import { EFFECT_ANCHOR } from './effectTypes';
 
 export { DRAMA_SCALE };
+
+// ---------------------------------------------------------------------------
+// The five beats
+// ---------------------------------------------------------------------------
+//
+// Every step belongs to exactly one of these, and the whole point of naming
+// them is that the question "what is this effect FOR" now has a required
+// answer. A step that cannot be placed in a beat does not belong in the scene.
+//
+//     SETUP      the runner commits, the world warns, the rivals notice
+//     ACTION     the attack is released and travels. ONE thing to follow.
+//     IMPACT     one moment. The loudest thing in the scene, and alone in it.
+//     TERRITORY  the ground turns over, caused by the impact, from its point
+//     REACTION   the rivals are displaced and leave
+//     CLEANUP    the aftermath clears and the runner takes the ground
+//
+// Ordering is enforced, not just documented: `validateChoreography` fails a
+// style whose beats interleave out of sequence.
+export const BEAT = Object.freeze({
+  SETUP: 'setup',
+  ACTION: 'action',
+  IMPACT: 'impact',
+  TERRITORY: 'territory',
+  REACTION: 'reaction',
+  CLEANUP: 'cleanup',
+});
+
+export const BEAT_ORDER = Object.freeze([
+  BEAT.SETUP, BEAT.ACTION, BEAT.IMPACT, BEAT.TERRITORY, BEAT.REACTION, BEAT.CLEANUP,
+]);
+
+/**
+ * Where a sprite is allowed to live.
+ *
+ * The old player kept up to three sprites alive and evicted the OLDEST when a
+ * fourth arrived — so which art you saw depended on how many steps happened to
+ * have fired recently, and a sprite could vanish mid-play for no reason a
+ * viewer could infer. Two named slots instead:
+ *
+ *   HERO     the one thing the scene is about right now. A new hero replaces
+ *            the previous hero immediately: there is only ever one.
+ *   SUPPORT  something caused BY the hero, at a different point (debris from a
+ *            crater, a splash where a drop landed). Also exactly one.
+ *
+ * A projectile is neither; it owns its flight and is removed on arrival.
+ */
+export const EFFECT_SLOT = Object.freeze({
+  HERO: 'hero',
+  SUPPORT: 'support',
+});
+
+/**
+ * Anchors an effect may be placed on.
+ *
+ * `randomTerritoryPoint` is deliberately absent. It was used by eighteen of the
+ * thirty-eight styles, almost always for a decorative sprite fired AFTER the
+ * impact, and it is the single clearest example of the thing this rework
+ * exists to remove: art that appears at a place chosen by a hash, caused by
+ * nothing, moving nowhere, on top of the beat the viewer is trying to read.
+ * Every effect must be able to answer "what put you there", and a random
+ * interior point of a polygon cannot.
+ */
+export const CAUSAL_EFFECT_ANCHORS = Object.freeze(new Set([
+  EFFECT_ANCHOR.TERRITORY_CENTER,
+  EFFECT_ANCHOR.TERRITORY_VISUAL_CENTER,
+  EFFECT_ANCHOR.TERRITORY_TOP,
+  EFFECT_ANCHOR.TERRITORY_BOTTOM,
+  EFFECT_ANCHOR.CHARACTER_HEAD,
+  EFFECT_ANCHOR.CHARACTER_FEET,
+  EFFECT_ANCHOR.CHARACTER_CENTER,
+  EFFECT_ANCHOR.DEFENDER_GROUP_CENTER,
+  EFFECT_ANCHOR.NEAREST_DEFENDER,
+  EFFECT_ANCHOR.FURTHEST_DEFENDER,
+  EFFECT_ANCHOR.SCREEN_TOP,
+  EFFECT_ANCHOR.SCREEN_BOTTOM,
+]));
+
+export const isCausalAnchor = (name) =>
+  CAUSAL_EFFECT_ANCHORS.has(name) || /^defender\[\d+\]\.(head|center|feet)$/.test(String(name || ''));
 
 // ---------------------------------------------------------------------------
 // Who is on stage
@@ -466,11 +546,33 @@ export const defenders = (start, action, options = {}) =>
 export const scatter = (start, actions, options = {}) =>
   actor({ role: ROLE.DEFENDER, target: TARGET.EACH, start, actions, stagger: 70, ...options });
 
-/** A sprite plays in one place. */
+/**
+ * A sprite plays in one place, for a KNOWN length of time.
+ *
+ * `hold` is the window the art is allowed to occupy, and it is required. It is
+ * the fix for the single biggest source of visual noise in the old pack: a step
+ * authored as a quick flourish rendered whatever the sheet happened to be, and
+ * the sheets are long. `magic_spell_01` is 81 frames at 30fps — 2.7 seconds —
+ * so a "flourish" at 560ms was still playing over the impact, the reveal and
+ * the defender exit. `freezing_bloom_01` at the speed one style asked for ran
+ * for over five seconds, i.e. the entire rest of the scene.
+ *
+ * The player now derives playback speed from `hold` so the art plays through
+ * exactly once inside its window, and removes it at the end of that window
+ * whether the sheet has finished or not. A beat cannot leak into the next one.
+ */
 export const effect = (start, id, options = {}) => ({
   track: 'effect', effect: id, start,
-  anchor: REVEAL_ORIGIN.TERRITORY_CENTER, size: 220, ...options,
+  anchor: REVEAL_ORIGIN.TERRITORY_CENTER,
+  size: 220,
+  slot: EFFECT_SLOT.HERO,
+  hold: 420,
+  ...options,
 });
+
+/** Something the hero effect caused, somewhere else. Never the main read. */
+export const support = (start, id, options = {}) =>
+  effect(start, id, { slot: EFFECT_SLOT.SUPPORT, size: 150, hold: 340, ...options });
 
 /**
  * A sprite TRAVELS from one anchor to another.
@@ -581,9 +683,10 @@ function scaleStep(step) {
   if (Number.isFinite(step.start)) scaled.start = scaleMs(step.start);
   if (Number.isFinite(step.duration)) scaled.duration = scaleMs(step.duration);
   if (Number.isFinite(step.stagger)) scaled.stagger = scaleMs(step.stagger);
-  if (step.track === 'effect' && Number.isFinite(step.speed)) {
-    scaled.speed = step.speed / DRAMA_SCALE;
-  }
+  // A sprite's window scales with everything else. Its playback rate is then
+  // DERIVED from that window by the player, rather than being an authored
+  // number that had to be divided by the same factor and got it wrong.
+  if (Number.isFinite(step.hold)) scaled.hold = scaleMs(step.hold);
   return scaled;
 }
 
@@ -756,6 +859,10 @@ const KNOWN_ACTIONS = new Set([
 // invalidate thirty styles.
 export const POST_REVEAL_BUDGET = CLAIM_TIMING.reveal + CLAIM_TIMING.handoff;
 
+// How far apart the ingredients of a single hit may be and still read as one
+// hit. Anything outside this is two events, whatever it was meant to be.
+export const IMPACT_WINDOW = 60;
+
 // The counts every style is validated against. Three is the practical ceiling
 // on a claim's victim list on screen at once; zero has to work because empty
 // ground is a real claim and the same authored style has to cover it.
@@ -866,6 +973,105 @@ export function validateChoreography(style) {
     return s.exit || pool.every((name) => isExitAction(name));
   });
   if (!exits.length) errors.push('defenders never leave: the style needs an exit beat');
+
+  // --- the impact ---------------------------------------------------------
+  //
+  // There must be exactly one moment a viewer can point at and say "that was
+  // the hit", and everything that sells it has to be ON it. The old pack put
+  // the sprite, the flash, the shake and the punch-in within ~20ms of each
+  // other, which was right, and then also had two-second sprites from earlier
+  // beats still playing over the top of it, which meant the loudest frame in
+  // the scene was competing with leftovers. `IMPACT_WINDOW` is what the player
+  // clears the stage for.
+  const impacts = steps.filter((s) => s.action === 'haptic');
+  const impactAt = impacts[0]?.start ?? null;
+  if (impactAt != null) {
+    const late = steps.filter((s) => (
+      (s.action === 'screenShake' || (s.action === 'environment' && s.kind === ENVIRONMENT.FLASH))
+      && Math.abs(s.start - impactAt) > IMPACT_WINDOW
+    ));
+    late.forEach((s) => {
+      errors.push(
+        `${s.action === 'screenShake' ? 'a shake' : 'a flash'} at ${s.start}ms is `
+        + `${Math.abs(s.start - impactAt)}ms from the impact at ${impactAt}ms: `
+        + 'the ingredients of a hit must land on the same frame or they read as separate events'
+      );
+    });
+  }
+
+  // --- the art ------------------------------------------------------------
+  //
+  // Two rules, and between them they are most of this rework.
+  const sprites = steps.filter((s) => s.track === 'effect' && s.action !== 'projectile');
+  sprites.forEach((step, i) => {
+    if (!Number.isFinite(step.hold) || step.hold <= 0) {
+      errors.push(`effect ${step.effect} has no hold: a sprite with no window outlives its beat`);
+    }
+    if (!isCausalAnchor(step.anchor)) {
+      errors.push(
+        `effect ${step.effect} is anchored to "${step.anchor}", which is not a causal anchor: `
+        + 'every piece of art must be placed by something that happened'
+      );
+    }
+    if (step.slot && !Object.values(EFFECT_SLOT).includes(step.slot)) {
+      errors.push(`effect ${step.effect} has unknown slot ${step.slot}`);
+    }
+    // One sprite per slot at a time. Overlap inside a slot is what produced
+    // "explosion + stars + smoke + magic circle" all at once; the player would
+    // resolve it by replacing, so the authored beat simply would not play.
+    for (let j = i + 1; j < sprites.length; j += 1) {
+      const other = sprites[j];
+      if ((other.slot || EFFECT_SLOT.HERO) !== (step.slot || EFFECT_SLOT.HERO)) continue;
+      if (other.start < step.start + (step.hold || 0) - 1) {
+        errors.push(
+          `${step.effect} and ${other.effect} overlap in the ${step.slot || EFFECT_SLOT.HERO} slot `
+          + `(${step.start}-${step.start + (step.hold || 0)} vs ${other.start}): `
+          + 'two unrelated sprites on screen at once is the thing that reads as random particles'
+        );
+      }
+    }
+  });
+
+  // Nothing decorative after the ground has finished changing hands. The
+  // aftermath belongs to the environment track (dust clearing, seams cooling),
+  // which is drawn from primitives and reads as consequence; a fresh sprite
+  // fired over a completed reveal is a new event with no cause, arriving at
+  // exactly the moment the viewer is trying to read the outcome.
+  if (reveals[0]) {
+    const revealEnds = reveals[0].start + (reveals[0].duration || 0);
+    sprites
+      .filter((s) => s.start >= revealEnds)
+      .forEach((s) => errors.push(
+        `${s.effect} starts at ${s.start}ms, after the ground has finished turning over at `
+        + `${revealEnds}ms: the takeover is the payoff and nothing may be fired over it`
+      ));
+  }
+
+  // --- beat order ---------------------------------------------------------
+  //
+  // A step declares which of the five beats it serves, and the beats have to
+  // happen in order. Without this a style can satisfy every rule above and
+  // still be incoherent — a "cleanup" sprite in the middle of the setup passes
+  // slot and anchor checks and is still an effect nobody can explain.
+  let highest = -1;
+  let highestName = null;
+  steps.forEach((step) => {
+    if (!step.beat) return;
+    const rank = BEAT_ORDER.indexOf(step.beat);
+    if (rank < 0) {
+      errors.push(`unknown beat ${step.beat}`);
+      return;
+    }
+    if (rank < highest) {
+      errors.push(
+        `a ${step.beat} step at ${step.start}ms comes after a ${highestName} step: `
+        + 'the five beats must read in order'
+      );
+    } else {
+      highest = rank;
+      highestName = step.beat;
+    }
+  });
 
   // --- per-step sanity ----------------------------------------------------
   steps.forEach((step, index) => {

@@ -118,12 +118,19 @@ describe('PASER release effect registry', () => {
 });
 
 describe('all capture styles and territory scenarios', () => {
-  test('playable capture openings never enlarge thumbnail-sized artwork', () => {
+  // Widened from "the opening" to EVERY sprite in every scene. A capture
+  // renders art at 150-330 points; a 32px sheet is a blur at any of those, and
+  // it was only the opening being checked because the pool was small enough
+  // that nothing else was reachable.
+  test('capture styles never enlarge thumbnail-sized artwork', () => {
     PLAYABLE_CAPTURE_STYLES.forEach((style) => {
-      const opening = style.sequence.find((step) => !step.action && !step.optional);
-      const spec = getEffect(effectIdForCaptureStep(opening));
-      expect(Math.max(spec.frameWidth, spec.frameHeight)).toBeGreaterThanOrEqual(64);
-      expect(spec.densityScales).toEqual([1, 2, 3]);
+      style.sequence
+        .filter((step) => step.track === 'effect' && !step.optional)
+        .forEach((step) => {
+          const spec = getEffect(effectIdForCaptureStep(step));
+          expect(Math.max(spec.frameWidth, spec.frameHeight)).toBeGreaterThanOrEqual(64);
+          expect(spec.densityScales).toEqual([1, 2, 3]);
+        });
     });
   });
 
@@ -132,13 +139,14 @@ describe('all capture styles and territory scenarios', () => {
     CAPTURE_STYLES.forEach((style) => {
       expect(getCaptureStyle(style.id)).toBe(style);
       expect(validateCaptureStyle(style)).toEqual([]);
-      // A complete cutscene is longer than the old sprite stack was: it has to
-      // fit setup, anticipation, reaction, impact, consequence, takeover,
-      // exit and victory. The ceiling is what the controller will keep it
-      // mounted for, checked against the reveal cue in validateChoreography.
-      // Both bounds carry DRAMA_SCALE, same as every style's own timing.
-      expect(style.duration).toBeGreaterThanOrEqual(Math.round(2400 * DRAMA_SCALE));
-      expect(style.duration).toBeLessThanOrEqual(Math.round(4500 * DRAMA_SCALE));
+      // A capture is a short directed cutscene, and "short" is a requirement
+      // rather than a nice-to-have: setup, action, impact, takeover, reaction
+      // and cleanup all fit inside about two and a half seconds. The ceiling is
+      // also what the controller will keep the style mounted for, checked
+      // against the reveal cue in validateChoreography. Both bounds carry
+      // DRAMA_SCALE, same as every style's own timing.
+      expect(style.duration).toBeGreaterThanOrEqual(Math.round(2000 * DRAMA_SCALE));
+      expect(style.duration).toBeLessThanOrEqual(Math.round(3000 * DRAMA_SCALE));
       expect(style.sequence.filter((step) => step.action === 'territoryReveal')).toHaveLength(1);
       expect(style.sequence.filter((step) => step.action === 'haptic')).toHaveLength(1);
       expect(style.sequence.filter((step) => step.action === 'victory')).toHaveLength(1);
@@ -247,28 +255,40 @@ describe('which capture animation a claim gets', () => {
     expect(seen.size).toBe(PLAYABLE_CAPTURE_STYLES.length);
   });
 
-  test('only release-approved, sprite-only styles are ever picked', () => {
+  test('only release-approved styles are ever picked', () => {
     const approved = new Set(PLAYABLE_CAPTURE_STYLES.map((style) => style.id));
-    expect(approved.size).toBeLessThan(CAPTURE_STYLES.length);
     expect(approved.size).toBeGreaterThan(0);
     for (let i = 0; i < 200; i += 1) {
       expect(approved.has(pickCaptureStyle(`seed-${i}`))).toBe(true);
     }
   });
 
-  // The pool is art, not shapes: a scene that draws any part of the world with
-  // vector primitives is held out until those beats are real sprites.
-  test('no playable style draws the world with vector primitives', () => {
-    PLAYABLE_CAPTURE_STYLES.forEach((style) => {
-      expect(style.usesVectorEnvironment).toBe(false);
-    });
-    expect(getCaptureStyle(DEFAULT_CAPTURE_STYLE_ID).usesVectorEnvironment).toBe(false);
+  // THE REGRESSION THIS REPLACES, worth stating plainly because the test that
+  // used to live here was asserting the bug.
+  //
+  // `PLAYABLE_CAPTURE_STYLES` also filtered on `usesVectorEnvironment`, holding
+  // back every scene that used a shadow, a crack, a rise, a sweep, a scanline,
+  // wind, a pull field or dust — on the reasoning that a capture should be
+  // drawn art or not ship. Thirty of the thirty-eight styles were excluded by
+  // that rule, and the eight that survived were exactly the ones with no
+  // environmental storytelling: pure sprite stacks. Every claim in the app
+  // therefore played one of eight animations that could only express themselves
+  // by layering more sprites, which is why captures read as "particles,
+  // characters moving, more particles, a flash, an explosion".
+  //
+  // The primitives are the causal language of the whole system: a shadow is how
+  // a scene says something is above you, cracks are how it says the ground
+  // broke, dust is how it says there was an aftermath. They cost no art, carry
+  // no licence and cannot fail to load. The whole pack ships.
+  test('the whole pack is playable, primitives included', () => {
+    expect(PLAYABLE_CAPTURE_STYLES.length).toBe(CAPTURE_STYLES.length);
+    expect(CAPTURE_STYLES.some((style) => style.usesVectorEnvironment)).toBe(true);
   });
 
-  test('a held-out style resolves to a playable one instead of replaying vectors', () => {
-    const held = CAPTURE_STYLES.find((style) => style.usesVectorEnvironment);
-    expect(held).toBeTruthy();
-    expect(resolveCaptureStyle(held.id).usesVectorEnvironment).toBe(false);
+  test('an unknown or legacy id still resolves to a real style', () => {
+    expect(resolveCaptureStyle('no-such-style').id).toBe(DEFAULT_CAPTURE_STYLE_ID);
+    expect(resolveCaptureStyle('thunderstrike').id).toBe('lightning_conquest');
+    expect(getCaptureStyle(DEFAULT_CAPTURE_STYLE_ID)).toBeTruthy();
   });
 
   test('no seed means variety, for a dev replay with no claim behind it', () => {

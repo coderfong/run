@@ -40,13 +40,20 @@ import { CAPTURE_LAYER } from './layers';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { withFace } from '../components/claim/expressions';
 
-// RETUNED 2026-08-14, twice. First 60→78 for more presence now the capture
-// choreography runs slower and more deliberately (DRAMA_SCALE) — a rig that
-// size read as a prop next to the art it was standing next to. Bumped again,
-// 78→98, on further feedback that it still wasn't big enough. `layoutDefenders`
-// in anchors.js already scales its own spacing/clamping off whatever size it is
-// handed, so this is safe to retune here alone.
-export const ACTOR_SIZE = 98;
+// The runner, and the subject of the whole scene.
+//
+// RETUNED 2026-08-14 (60→78→98) and again 2026-08-17 (98→118), the last time
+// alongside the framing push in captureStyles.js — `FRAME_SCALE`, a 1.14x hold
+// on the overlay stage for the length of the performance. The two together are
+// what stop a capture reading as small figures in the middle of an empty map
+// card: at 118 with the stage in, the runner, the rival and the one hero effect
+// fill the middle half to two thirds of the usable viewport, which is the
+// composition these scenes are directed for.
+//
+// `layoutDefenders` in anchors.js derives its spacing and clamping from whatever
+// `size` it is handed, so growing the rigs self-adjusts the layout rather than
+// overlapping them. Safe to retune here alone.
+export const ACTOR_SIZE = 118;
 
 // Where the actor sits relative to the point it is anchored on. The character
 // stands ON the ground it is claiming, so the rig's feet want to be at the
@@ -1202,9 +1209,6 @@ const ClaimActor = React.forwardRef(function ClaimActor(
   {
     equipped, anchor, bounds, size = ACTOR_SIZE, reducedMotion = false,
     visible = true, fadeIn = 0,
-    // A rival wears their clan's outline, which is how you can tell at a
-    // glance whose ground is being taken.
-    ring,
     // An expression is one swapped cosmetic slot, so a character can be
     // startled without their hat moving. The cast decides it from the action.
     face,
@@ -1339,7 +1343,10 @@ const ClaimActor = React.forwardRef(function ClaimActor(
       importantForAccessibility="no-hide-descendants"
       style={[styles.actor, { left, top, width: size, height: size }, style]}
     >
-      <CharacterBust equipped={worn} size={size} ring={ring} bg="transparent" />
+      {/* No `ring` and no `bg`: an actor in the scene is a body, not a framed
+          portrait. Every cast member is drawn the same way, which is why the
+          runner and the rivals read as being in the same scene. */}
+      <CharacterBust equipped={worn} size={size} bg="transparent" />
     </Animated.View>
   );
 });

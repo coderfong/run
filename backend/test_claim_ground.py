@@ -57,6 +57,34 @@ def mkuser(name):
     ).scalar()
 
 
+def plant(uid, lat, lon, radius, strength=0.05):
+    """Drop a territory straight into the table, overlapping whatever is
+    already there.
+
+    Not a shortcut around the engine: this is a board the engine cannot build
+    for itself but the live game reaches constantly. Two runners hold the same
+    square whenever a clubmate’s coexisting land outlives the club, and the
+    seeded world plants bots on top of ground that is already claimed.
+    """
+    wkt = circle_polygon_wgs(lat, lon, radius).wkt
+    db.execute(
+        text(
+            """
+            INSERT INTO territories
+                (id, user_id, run_id, polygon, area_m2, created_at, verified,
+                 clan_id, strength, reinforcements, expires_at)
+            VALUES
+                (gen_random_uuid(), :u, NULL,
+                 ST_Multi(ST_GeomFromText(:wkt, 4326)),
+                 ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
+                 now(), true, NULL, :s, 0, now() + interval '30 days')
+            """
+        ),
+        {"u": uid, "wkt": wkt, "s": strength},
+    )
+    db.commit()
+
+
 def claim(uid, lat, lon, radius, strength=1.0):
     """Place a claim and hand back (territory, ground) — held, then won."""
     territory, _stolen, _from, _events, ground = _claim_territory(
@@ -127,6 +155,36 @@ terr, g = claim(a, RLAT, RLON + 0.0014, 150.0, strength=50.0)
 check("taking someone else's land is a gain, not a reinforcement",
       g["reinforced_m2"] == 0 and close(g["gained_m2"], g["claimed_m2"]),
       f"won {g['gained_m2']:.0f} of {g['claimed_m2']:.0f}, reinforced {g['reinforced_m2']:.0f}")
+
+print("\n== a takeback on ground you also hold: won, not reinforced ==")
+# THE REGRESSION. Ground that is BOTH yours and a rival’s, taken off them.
+# It used to land entirely in `reinforced_m2` — the result screen said
+# "+0.000 km² · 0.63 km² of your own land reinforced" under the headline
+# YOU TOOK IT BACK, next to a steal banner for the same 0.63.
+TLAT, TLON = LAT + 0.06, LON + 0.06
+claim(a, TLAT, TLON, 150.0)
+plant(b, TLAT, TLON, 150.0)
+terr, g = claim(a, TLAT, TLON, 150.0, strength=50.0)
+check("what changed hands is what was won",
+      close(g["gained_m2"], g["claimed_m2"]),
+      f"won {g['gained_m2']:.0f} of {g['claimed_m2']:.0f}")
+check("and none of it is filed as reinforcement", g["reinforced_m2"] < 1.0,
+      f"{g['reinforced_m2']:.0f} m2")
+check("the reveal has the takeback to show", len(_rings_of(g["gained_wkt"])) >= 1,
+      str(len(_rings_of(g["gained_wkt"]))))
+
+print("\n== half of your own land contested: the halves still add up ==")
+# The rival sits over the eastern half of ground `a` already holds, so this
+# claim wins that half back and merely reinforces the rest.
+HLAT, HLON = LAT + 0.09, LON + 0.09
+claim(a, HLAT, HLON, 150.0)
+plant(b, HLAT, HLON + 0.0028, 150.0)
+terr, g = claim(a, HLAT, HLON, 150.0, strength=50.0)
+check("the contested half was won", g["gained_m2"] > 1000, f"{g['gained_m2']:.0f} m2")
+check("the quiet half was reinforced", g["reinforced_m2"] > 1000, f"{g['reinforced_m2']:.0f} m2")
+check("and the two are exactly the claim, with nothing invented or lost",
+      close(g["gained_m2"] + g["reinforced_m2"], g["claimed_m2"]),
+      f"{g['gained_m2']:.0f} + {g['reinforced_m2']:.0f} vs {g['claimed_m2']:.0f}")
 
 # cleanup
 db.rollback()

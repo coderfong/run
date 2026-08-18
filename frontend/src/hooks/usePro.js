@@ -30,8 +30,13 @@ export const PRO_CACHE_KEY = 'pro';
  * way round: a gated surface that flashes open and then closes is worse than
  * one that opens a beat late.
  */
-export function usePro() {
+export function usePro({ enabled = true } = {}) {
   const { data, loading, refresh } = useQuery(PRO_CACHE_KEY, api.proStatus, {
+    // False while signed out. There is no account to be entitled yet, and the
+    // call would spend a request to be told 401 on the auth screen — which
+    // matters because ProProvider mounts above the whole app, including the
+    // signed-out half of it.
+    enabled,
     // Entitlement changes on the scale of a billing period, not a tab swipe.
     staleMs: 5 * 60 * 1000,
     // A failed fetch settles as "not PRO" rather than hanging on a skeleton.

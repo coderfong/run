@@ -1,7 +1,35 @@
-from datetime import datetime
-from typing import List, Literal, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Annotated, List, Literal, Optional, Tuple
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, field_validator
+
+
+# Every datetime column in models.py is a NAIVE `DateTime` holding
+# `datetime.utcnow()`, so without this the API emits `2026-08-18T02:00:00` —
+# an ISO string with no zone at all. That is not merely untidy: the JavaScript
+# date parser reads a zoneless date-time as LOCAL time, so the app rendered
+# every timestamp shifted by the phone's UTC offset and a run that had just
+# finished appeared on the feed as "8h ago" in Singapore and correct in London.
+#
+# The fix belongs here rather than only in the client, because the wire format
+# was genuinely wrong: a bare naive string does not say what instant it means,
+# and every consumer has to guess. Naive values are declared UTC (which is what
+# they have always been) and aware ones are converted, so both come out as a
+# single unambiguous `...Z`.
+#
+# JSON ONLY (`when_used="json"`). `model_dump()` with no mode keeps real
+# datetime objects, which is what the internal callers that pass models around
+# expect.
+def _as_utc_iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+# Use this, not bare `datetime`, for every field that goes OUT to the app.
+UtcDatetime = Annotated[
+    datetime, PlainSerializer(_as_utc_iso, return_type=str, when_used="json")
+]
 
 
 class ClanColor(BaseModel):
@@ -18,7 +46,7 @@ class GpsPoint(BaseModel):
 
     lat: float = Field(..., ge=-90.0, le=90.0)
     lon: float = Field(..., ge=-180.0, le=180.0)
-    t: datetime = Field(..., alias="timestamp")
+    t: UtcDatetime = Field(..., alias="timestamp")
     # Sensor metadata for anti-cheat — all optional so old clients still work.
     accuracy_m: Optional[float] = None
     mocked: Optional[bool] = None       # Android mock-provider flag; iOS false
@@ -34,12 +62,12 @@ class GpsPoint(BaseModel):
 
 
 class StartRunIn(BaseModel):
-    started_at: Optional[datetime] = None
+    started_at: Optional[UtcDatetime] = None
 
 
 class StartRunOut(BaseModel):
     run_id: str
-    started_at: datetime
+    started_at: UtcDatetime
 
 
 class EndRunIn(BaseModel):
@@ -65,7 +93,7 @@ class TerritoryOut(BaseModel):
     user_id: str
     username: str
     area_m2: float
-    created_at: datetime
+    created_at: UtcDatetime
     # LEGACY field — the exterior ring of the LARGEST piece, kept populated
     # so pre-MultiPolygon clients keep working. New clients should read
     # `rings` instead.
@@ -496,7 +524,7 @@ class RunInsightsPro(BaseModel):
     # "under attack" — expiry is a fact, threat would be a guess.
     at_risk_m2: float = 0
     at_risk_count: int = 0
-    soonest_expiry_at: Optional[datetime] = None
+    soonest_expiry_at: Optional[UtcDatetime] = None
 
     # What the run was WORTH per kilometre, against the runner's own recent
     # form. The comparison is what makes the number mean anything.
@@ -619,7 +647,7 @@ class FeedItem(BaseModel):
     duration_s: float
     area_m2: float = 0.0
     closed_loop: bool = False
-    created_at: datetime
+    created_at: UtcDatetime
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
     kudos_count: int = 0
@@ -651,7 +679,7 @@ class FeedItem(BaseModel):
 
 class FeedOut(BaseModel):
     items: List[FeedItem]
-    next_cursor: Optional[datetime] = None
+    next_cursor: Optional[UtcDatetime] = None
 
 
 class MeStats(BaseModel):
@@ -683,7 +711,7 @@ class NotificationItem(BaseModel):
     title: str
     body: str
     read: bool
-    created_at: datetime
+    created_at: UtcDatetime
     # Whoever caused this — their portrait is what the row leads with. Null on
     # system notices (season, weekly recap) that nobody sent.
     actor_id: Optional[str] = None
@@ -708,7 +736,7 @@ class RunSummary(BaseModel):
     duration_s: float
     area_m2: float
     closed_loop: bool
-    created_at: datetime
+    created_at: UtcDatetime
     caption: Optional[str] = None
     media: List[str] = []
 
@@ -727,7 +755,7 @@ class RunDetail(BaseModel):
     duration_s: float
     area_m2: float
     closed_loop: bool
-    created_at: datetime
+    created_at: UtcDatetime
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
     path: List[Tuple[float, float]] = []      # [lon, lat]
@@ -813,7 +841,7 @@ class RunCommentOut(BaseModel):
     username: str
     is_you: bool = False
     body: str
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class ClanMessageIn(BaseModel):
@@ -826,7 +854,7 @@ class ClanMessageOut(BaseModel):
     username: str
     is_you: bool = False
     body: str
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class PushTokenIn(BaseModel):
@@ -983,7 +1011,7 @@ class RivalEvent(BaseModel):
     area_m2: float
     lat: Optional[float] = None
     lon: Optional[float] = None
-    at: datetime
+    at: UtcDatetime
 
 
 class RivalCard(BaseModel):
@@ -1031,7 +1059,7 @@ class RivalAnalytics(BaseModel):
 
     # The whole history, both directions.
     total_beats: int = 0
-    first_met: Optional[datetime] = None
+    first_met: Optional[UtcDatetime] = None
 
     # Attacks that came to nothing, as a share of attacks faced. The honest
     # measure of a wall: a raw "held 4 times" flatters whoever is attacked most.
@@ -1161,7 +1189,7 @@ class ClanMemberOut(BaseModel):
     user_id: str
     username: str
     role: str
-    joined_at: datetime
+    joined_at: UtcDatetime
     week_distance_m: float = 0.0
     week_claims: int = 0
 
@@ -1190,7 +1218,7 @@ class ClanOut(BaseModel):
     member_cap: int
     member_count: int
     created_by: Optional[str] = None
-    created_at: datetime
+    created_at: UtcDatetime
     my_role: Optional[str] = None          # role of the requesting user, if a member
     league: Optional[str] = None
     season_area_m2: float = 0.0
@@ -1216,7 +1244,7 @@ class ClanSummary(BaseModel):
 
 class ClanInviteOut(BaseModel):
     code: str
-    expires_at: Optional[datetime] = None
+    expires_at: Optional[UtcDatetime] = None
     max_uses: int
     uses: int
     url: str

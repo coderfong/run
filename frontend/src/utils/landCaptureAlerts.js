@@ -1,3 +1,5 @@
+import { serverTime } from './time';
+
 function finiteNumber(value) {
   if (value == null || value === '' || typeof value === 'boolean') return null;
   const n = Number(value);
@@ -75,6 +77,6 @@ export function landCaptureAlertKey(alert) {
 export function isRecentNotification(item, sinceMs, nowMs = Date.now()) {
   const value = item?.created_at || item?.createdAt;
   if (!value) return false;
-  const stamp = new Date(value).getTime();
+  const stamp = serverTime(value);
   return Number.isFinite(stamp) && stamp >= sinceMs && stamp <= nowMs + 60_000;
 }

@@ -368,7 +368,22 @@ export default function ChooseAttack({
     cell: options?.placements?.[options?.[r.key]],
   }));
 
-  const gained = (p?.new_m2 || 0) + (p?.enemy_m2 || 0);
+  // What this pose would WIN: everything under it that is not already yours.
+  //
+  // Mirrors the claim's own `gained_m2` — the footprint minus the runner's own
+  // land — so the number promised here is the number celebrated afterwards.
+  // Defended ground is not in it: that gets carved back out of the claim.
+  // Clubmates' land IS, because it coexists with yours rather than blocking
+  // it, so covering it really does extend your border.
+  // ENEMY counts even where the same square is also YOURS: a rival
+  // standing on ground you hold is a takeback, and the claim scores that
+  // as won rather than as reinforcement.
+  //
+  // Summed rather than `held_m2 - mine_m2`, which said the same thing
+  // until `held_m2` was capped at the footprint: the four parts overlap
+  // each other, so the cap would eat exactly the contested ground this
+  // number exists to promise.
+  const gained = (p?.new_m2 || 0) + (p?.enemy_m2 || 0) + (p?.ally_m2 || 0);
   const rivals = p?.rivals || [];
   const takeable = rivals.filter((r) => !r.defended);
   const held = rivals.filter((r) => r.defended);

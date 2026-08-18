@@ -11,6 +11,7 @@ import AppIcon, { STEAL_ICON_SIZE } from '../components/AppIcon';
 import PortraitBorder from '../components/PortraitBorder';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { PressableScale, shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
+import { timeAgo } from '../utils/time';
 
 // category → generated sticker icon (assets/icons/*).
 const CATEGORY_ICON = {
@@ -52,14 +53,6 @@ function Actor({ item, styles }) {
       </View>
     </View>
   );
-}
-
-function timeAgo(iso) {
-  const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
 }
 
 export default function NotificationsScreen({ navigation }) {

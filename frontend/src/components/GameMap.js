@@ -158,6 +158,36 @@ const GameMap = forwardRef(function GameMap(
       if (!point) return null;
       return { x: point[0], y: point[1] };
     },
+    // The inverse: screen → geographic. What free drawing needs, because a
+    // finger dragged over the map produces pixels and a route is made of
+    // coordinates.
+    //
+    // Points are converted in a BATCH rather than one per touch event. A drag
+    // fires these faster than the bridge can answer, and awaiting each sample
+    // in turn would both drop points and let them arrive out of order — so the
+    // gesture collects pixels synchronously and hands the whole stroke here
+    // once, on release. `Promise.all` keeps the returned order regardless of
+    // which call settles first, which is the property the route depends on.
+    async unprojectPoints(points) {
+      if (!points?.length || !mapRef.current) return [];
+      const converted = await Promise.all(
+        points.map(async ({ x, y }) => {
+          try {
+            const lngLat = await mapRef.current?.getCoordinateFromView([x, y]);
+            if (!lngLat) return null;
+            const [longitude, latitude] = lngLat;
+            return Number.isFinite(latitude) && Number.isFinite(longitude)
+              ? { latitude, longitude }
+              : null;
+          } catch {
+            // One unconvertible sample (off the globe, or the view went away
+            // mid-gesture) drops that sample, never the stroke.
+            return null;
+          }
+        })
+      );
+      return converted.filter(Boolean);
+    },
   }));
 
   // Expo Go / no native module — show a graceful placeholder instead of the

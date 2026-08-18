@@ -15,17 +15,16 @@
 // zeroes after a run that was never going to claim anything is noise, and the
 // screen above it already says why there was no claim.
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { GOLD } from '../config/pro';
-import { IAP_ENABLED } from '../config/releaseFeatures';
-import usePro from '../hooks/usePro';
 import { useQuery } from '../hooks/useQuery';
+import { useProEntitlement } from '../pro/ProProvider';
+import { notableRun } from '../pro/notableRun';
 import { radius, space, useTheme, useThemedType } from '../theme';
-import BuyProSheet from './BuyProSheet';
-import { ToonButton } from './ui';
+import ProTeaser from './ProTeaser';
 
 const km2 = (m2) => {
   const v = Math.max(0, Number(m2) || 0) / 1e6;
@@ -47,11 +46,19 @@ function Line({ label, value, colors, type, tint }) {
   );
 }
 
-export default function TerritoryInsights({ runId, style }) {
+/**
+ * `allowAutoPrompt` is OFF by default and only ResultScreen turns it on.
+ *
+ * This panel is also shown on RunDetailScreen, where the run may be weeks old.
+ * A paywall that opens itself because somebody scrolled back through their
+ * history to look at a good run from last month is an ambush — the trigger is
+ * meant to be "you just did something notable", and browsing is not that.
+ */
+export default function TerritoryInsights({ runId, style, allowAutoPrompt = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
-  const { isPro } = usePro();
-  const [payOpen, setPayOpen] = useState(false);
+  const { openPaywall } = useProEntitlement();
+  const promptedFor = useRef(null);
 
   const { data } = useQuery(runId ? `insights:${runId}` : null, () => api.runInsights(runId), {
     // A finished run's insights do not change; the only reason to refetch is
@@ -60,11 +67,39 @@ export default function TerritoryInsights({ runId, style }) {
     fallback: null,
   });
 
+  const pro = data?.pro;
+  // A run that took no ground gets no panel at all (see the early return
+  // below), so it must not get a prompt either — otherwise a runner whose
+  // standing happens to be high is sold to after a run that achieved nothing.
+  const claimedAny = (data?.territory_m2 || 0) > 0 || (data?.stolen_m2 || 0) > 0;
+  const notable = claimedAny ? notableRun(data) : { notable: false, headline: null };
+
+  // The one automatic prompt in the app. Everything else waits to be tapped.
+  //
+  // Four things all have to be true before this opens anything: the run was
+  // notable on its own numbers (notableRun), the account is not already PRO
+  // (openPaywall refuses otherwise), and the exposure rules agree — which
+  // means at least three runs finished, none shown this session, and none in
+  // the last twenty hours. Realistically that is once, after a run that
+  // actually meant something.
+  //
+  // It runs in an effect, keyed on the run, so it fires once per result and
+  // never re-fires when the panel re-renders behind the sheet.
+  //
+  // It deliberately does NOT interrupt the claim choreography: this component
+  // is mounted well down the scrolled result body, long after the victory beat
+  // and the leaderboard transition have finished.
+  useEffect(() => {
+    if (!allowAutoPrompt || !data || !notable.notable) return;
+    if (promptedFor.current === data.run_id) return;
+    promptedFor.current = data.run_id;
+    openPaywall('run_insights', { automatic: true });
+  }, [allowAutoPrompt, data, notable.notable, openPaywall]);
+
   if (!data) return null;
   const claimed = (data.territory_m2 || 0) > 0 || (data.stolen_m2 || 0) > 0;
   if (!claimed) return null;
 
-  const pro = data.pro;
   // The comparison is what makes a rate mean anything, so the rate is only
   // shown when there is something to compare it against.
   const better =
@@ -75,7 +110,7 @@ export default function TerritoryInsights({ runId, style }) {
   return (
     <View style={[styles.panel, { backgroundColor: colors.card }, style]}>
       <Text style={[type.captionMedium, { color: colors.textMuted, marginBottom: space.xs }]}>
-        TERRITORY
+        TERRITORY REPORT
       </Text>
 
       <Line label="Land claimed" value={km2(data.territory_m2)} colors={colors} type={type} />
@@ -149,23 +184,33 @@ export default function TerritoryInsights({ runId, style }) {
             />
           ) : null}
         </>
-      ) : IAP_ENABLED && !isPro ? (
-        <View style={[styles.teaser, { borderColor: GOLD }]}>
-          <Text style={[type.bodySmBold]}>See how this run compares</Text>
-          <Text style={[type.caption, { color: colors.textMuted, marginTop: 2 }]}>
-            Your form over the last 30 days, whether this was your best claim yet, and which of your land is about to decay.
-          </Text>
-          <ToonButton
-            title="See the plans"
-            variant="gold"
-            size="sm"
-            onPress={() => setPayOpen(true)}
-            style={{ marginTop: space.sm }}
-          />
-        </View>
-      ) : null}
-
-      <BuyProSheet visible={payOpen} onClose={() => setPayOpen(false)} />
+      ) : (
+        // The locked half. Every row is NAMED and none carries a number,
+        // because the free response genuinely does not contain one to show:
+        // `pro` is null server-side for a free account (see
+        // backend/app/routes/insights.py). Inventing a plausible "Top 18%"
+        // here would be a lie the runner discovers the moment they pay, so
+        // these stay as titles until the endpoint offers a real teaser
+        // subset. The exact contract for that is in docs/PRO_BACKEND.md.
+        <ProTeaser
+          context="run_insights"
+          // On a notable run the teaser leads with what actually happened,
+          // in the runner's own numbers, rather than with the offer. The
+          // headline is built from the same real fields the panel above is
+          // already showing them.
+          title={notable.headline || 'See what this run means'}
+          blurb="How it compares to your last 30 days, whether it was your biggest claim yet, and which of your land is about to decay."
+          rows={[
+            { label: 'Territory efficiency' },
+            { label: 'Personal best check' },
+            { label: 'Your 30 day form' },
+            { label: 'Land about to expire' },
+          ]}
+          cta="View full territory analysis"
+          feature="run_insights"
+          style={{ marginTop: space.md }}
+        />
+      )}
     </View>
   );
 }
@@ -178,11 +223,5 @@ const styles = StyleSheet.create({
     paddingVertical: space.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: space.sm,
-  },
-  teaser: {
-    marginTop: space.md,
-    borderWidth: 2,
-    borderRadius: radius.card,
-    padding: space.md,
   },
 });

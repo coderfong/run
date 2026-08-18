@@ -17,6 +17,7 @@ import { ToonButton, ToonCard, ToonGhostButton, OutlinedText } from './ui';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import { useAvatar } from '../state/avatar';
+import { sinceServer } from '../utils/time';
 
 // Territory uses one unit throughout the app. Small claims receive a third
 // decimal instead of switching the player into a different unit.
@@ -27,8 +28,7 @@ export function fmtArea(m2) {
 
 export function ago(iso) {
   if (!iso) return '';
-  const then = new Date(iso.endsWith('Z') ? iso : `${iso}Z`);
-  const mins = Math.max(0, Math.round((Date.now() - then.getTime()) / 60000));
+  const mins = Math.max(0, Math.round(sinceServer(iso) / 60000));
   if (mins < 2) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60);

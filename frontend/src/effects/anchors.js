@@ -1,18 +1,55 @@
+import { Dimensions } from 'react-native';
+
 import { EFFECT_ANCHOR, parseDefenderAnchor } from './effectTypes';
 
 export const DEFAULT_EFFECT_SAFE_INSETS = Object.freeze({ top: 16, right: 16, bottom: 16, left: 16 });
+
+// THE TOP-LEFT BUG.
+//
+// Every anchor in this file ends up going through `clampPoint(point, rect)`,
+// where `rect` came from `safeRect(bounds)`. That is correct and necessary —
+// it is what keeps a rig or a sprite from being drawn off the edge of the map
+// card. It has one catastrophic degenerate case: when `bounds` is missing or
+// zero, the safe rect is `{left: 0, right: 0, top: 0, bottom: 0}`, and
+// clamping into a rect of zero area sends EVERY point to (0, 0). The whole
+// cutscene — the cast, the impacts, the reveal origin — then plays in the
+// top-left corner of the screen instead of over the claim.
+//
+// And `bounds` genuinely is missing sometimes. ResultScreen measures its map
+// with `onLayout` into state that starts as `null`, so there is a real window
+// on first mount, and after any remount (a replay, a fast navigation back)
+// where the sequence can begin resolving anchors before a layout pass has
+// happened. The symptom is the one thing a clamp should never do: silently
+// relocate everything to a corner rather than leaving it where it was.
+//
+// So a degenerate box falls back to the WINDOW, which is the right order of
+// magnitude for a full-bleed capture stage and is always available
+// synchronously. The clamp still runs, still does its job, and can no longer
+// collapse. Read at call time, not at module load, so a rotation is picked up.
+const MIN_STAGE = 1;
+
+function stageBounds(bounds) {
+  const width = Math.max(0, bounds?.width || 0);
+  const height = Math.max(0, bounds?.height || 0);
+  if (width > MIN_STAGE && height > MIN_STAGE) return { width, height };
+  const window = Dimensions.get('window');
+  return {
+    width: width > MIN_STAGE ? width : Math.max(MIN_STAGE, window?.width || 0),
+    height: height > MIN_STAGE ? height : Math.max(MIN_STAGE, window?.height || 0),
+  };
+}
 
 function finitePoint(point) {
   return point && Number.isFinite(point.x) && Number.isFinite(point.y);
 }
 
 function center(bounds) {
-  return { x: (bounds?.width || 0) / 2, y: (bounds?.height || 0) / 2 };
+  const stage = stageBounds(bounds);
+  return { x: stage.width / 2, y: stage.height / 2 };
 }
 
 function safeRect(bounds, insets = DEFAULT_EFFECT_SAFE_INSETS) {
-  const width = Math.max(0, bounds?.width || 0);
-  const height = Math.max(0, bounds?.height || 0);
+  const { width, height } = stageBounds(bounds);
   const left = Math.min(width / 2, Math.max(0, insets.left || 0));
   const right = Math.max(left, width - Math.max(0, insets.right || 0));
   const top = Math.min(height / 2, Math.max(0, insets.top || 0));

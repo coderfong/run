@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../theme';
 import { ITEMS } from '../config/cosmetics';
-import { IAP_ENABLED } from '../config/releaseFeatures';
+import { useProVisible } from '../pro/storeAvailable';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useReduceMotion } from '../ui/motion';
@@ -101,6 +101,10 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
   const [gender, setGender] = useState(profile.gender || '');
   const [finishing, setFinishing] = useState(false);
 
+  // Whether there is a subscription to mention at all. Same answer as every
+  // other PRO surface in the app — see src/pro/storeAvailable.js.
+  const canShowPro = useProVisible();
+
   const steps = useMemo(() => {
     // A slot with nothing in it but "None" has no choice to offer, and a step
     // headed "let's put on some pants" with an empty grid under it reads as a
@@ -115,10 +119,10 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
       { key: 'birthday', kind: 'birthday' },
       { key: 'gender', kind: 'gender' },
       ...character,
-      ...(IAP_ENABLED ? [{ key: 'pro', kind: 'pro', optional: true }] : []),
+      ...(canShowPro ? [{ key: 'pro', kind: 'pro', optional: true }] : []),
       { key: 'ready', kind: 'ready' },
     ];
-  }, [mode]);
+  }, [mode, canShowPro]);
 
   const current = steps[step];
   const last = step === steps.length - 1;

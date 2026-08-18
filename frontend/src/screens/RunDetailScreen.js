@@ -19,7 +19,9 @@ import GameLottie from '../components/GameLottie';
 import ReactionBar, { ReactionTrigger } from '../components/ReactionBar';
 import { useRunReactions } from '../hooks/useRunReactions';
 import AppIcon from '../components/AppIcon';
+import TerritoryInsights from '../components/TerritoryInsights';
 import { openSafetyActions } from '../utils/safety';
+import { longDateTime, sinceServer } from '../utils/time';
 
 const km = (m) => (m / 1000).toFixed(2);
 
@@ -40,8 +42,12 @@ function fmtDuration(s) {
   return h > 0 ? `${h}:${p(m)}:${p(sec)}` : `${p(m)}:${p(sec)}`;
 }
 
+// The compact form — a comment row shows "6m", not "6m ago". Ages come from
+// the shared UTC parser; only the wording is local to this screen.
 function timeAgo(iso) {
-  const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
+  const ms = sinceServer(iso);
+  if (!Number.isFinite(ms)) return '·';
+  const s = ms / 1000;
   if (s < 60) return 'just now';
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
@@ -189,7 +195,7 @@ export default function RunDetailScreen({ navigation, route }) {
       <Row between style={{ marginTop: space.lg }}>
         <View>
           <Text style={type.title}>{d.clan_tag ? `[${d.clan_tag}] ` : ''}{d.username}{d.is_you ? ' · you' : ''}</Text>
-          <Text style={type.caption}>{new Date(d.created_at).toLocaleString()}</Text>
+          <Text style={type.caption}>{longDateTime(d.created_at)}</Text>
         </View>
         <View style={styles.kudosSlot}>
           {/* Cleared on finish — left up, it is an invisible last frame sitting
@@ -280,6 +286,17 @@ export default function RunDetailScreen({ navigation, route }) {
           ))}
         </Card>
       )}
+
+      {/* What this run did for the ground you hold — the same free/PRO split
+          the result screen shows, so a run read back a week later says exactly
+          what it said on the day.
+
+          OWN RUNS ONLY, and that is not a preference: /runs/{id}/insights
+          answers 404 for anybody else's run (see the note on guessable ids in
+          backend/app/routes/insights.py). Rendering it on a stranger's run
+          would show a permanently empty panel, and on a PRO account it would
+          look like the analytics had broken. */}
+      {d.is_you ? <TerritoryInsights runId={d.id} style={{ marginTop: space.xl }} /> : null}
 
       {/* comments */}
       <Card

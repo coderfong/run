@@ -13,7 +13,8 @@ import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
-import { Lock, Pause, Play } from 'lucide-react-native';
+import { Lock } from 'lucide-react-native';
+import AppIcon from '../components/AppIcon';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -23,7 +24,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { api } from '../api/client';
+import { api, warmUp } from '../api/client';
 import { invalidateAfterLandLoss, invalidateAfterRun } from '../api/cache';
 import { useAuth } from '../auth/AuthContext';
 import { claimGateReason, entitledAreaM2, RUN_TIER, runTier } from '../config/economy';
@@ -320,6 +321,13 @@ export default function RunningScreen({ navigation }) {
   const isRunningRef = useRef(false);
 
   useEffect(() => {
+    // Wake the API while the runner is still getting ready. The instance is
+    // spun down between sessions and takes the better part of a minute to
+    // come back, and left alone that wait lands squarely on /start-run — the
+    // one moment somebody is standing outside waiting to move. Nothing here
+    // depends on it; the permission prompt and the GPS lock below are what
+    // fill the time either way. See warmUp in api/client.
+    warmUp();
     (async () => {
       const granted = await prepareLocation();
       if (granted) await checkOrphanedRun();
@@ -1202,7 +1210,10 @@ export default function RunningScreen({ navigation }) {
               accessibilityRole="button"
               accessibilityLabel={paused ? 'Resume run' : 'Pause run'}
             >
-              {paused ? <Play size={22} color="#fff" fill="#fff" /> : <Pause size={22} color={D.text} fill={D.text} />}
+              {/* Sticker art, like every other action in the app. The lock
+                  beside it stays lucide: there is no padlock sticker, and a
+                  half-converted row would look worse than a consistent one. */}
+              <AppIcon name={paused ? 'play' : 'pause'} size={26} />
             </PressableScale>
 
             <View style={{ flex: 1 }}>

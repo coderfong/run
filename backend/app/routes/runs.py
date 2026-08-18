@@ -1051,7 +1051,14 @@ def claim_options(
                 # What the claim covers (identical everywhere — the run earns
                 # one amount of land) versus what survives the carve.
                 area_m2=b["area_m2"],
-                held_m2=b["new_m2"] + b["enemy_m2"] + b["mine_m2"] + b["ally_m2"],
+                # Capped at the footprint: two runners can hold the same square
+                # (a clubmate's land coexists with yours, and rivals can be
+                # standing on ground you also hold), so the four parts overlap
+                # and their sum can exceed the land the run actually earned.
+                held_m2=min(
+                    b["area_m2"],
+                    b["new_m2"] + b["enemy_m2"] + b["mine_m2"] + b["ally_m2"],
+                ),
                 new_m2=b["new_m2"],
                 enemy_m2=b["enemy_m2"],
                 defended_m2=b["defended_m2"],
@@ -1212,7 +1219,14 @@ def claim_preview(
         rotation_deg=round(deg, 2),
         ring=[(round(x, 6), round(y, 6)) for x, y in polygon_to_lonlat_ring(poly)],
         area_m2=b["area_m2"],
-        held_m2=b["new_m2"] + b["enemy_m2"] + b["mine_m2"] + b["ally_m2"],
+        # Capped at the footprint: two runners can hold the same square
+        # (a clubmate's land coexists with yours, and rivals can be
+        # standing on ground you also hold), so the four parts overlap
+        # and their sum can exceed the land the run actually earned.
+        held_m2=min(
+            b["area_m2"],
+            b["new_m2"] + b["enemy_m2"] + b["mine_m2"] + b["ally_m2"],
+        ),
         new_m2=b["new_m2"],
         enemy_m2=b["enemy_m2"],
         defended_m2=b["defended_m2"],
@@ -1758,7 +1772,12 @@ def _rings_of(wkt: str | None) -> list:
     ]
 
 
-def _claim_ground(db: Session, claim_wkt: str, own_wkt: str | None) -> dict:
+def _claim_ground(
+    db: Session,
+    claim_wkt: str,
+    own_wkt: str | None,
+    taken_wkts: list[str] | None = None,
+) -> dict:
     """Split a landed claim into the ground it GAINED and the ground it only
     reinforced.
 
@@ -1773,6 +1792,18 @@ def _claim_ground(db: Session, claim_wkt: str, own_wkt: str | None) -> dict:
     it, so this is what actually landed, not what was aimed. `own_wkt` is the
     union of the runner's existing land under it, or None if there was none.
 
+    `taken_wkts` is the ground just taken off beaten rivals, and it is removed
+    from `own_wkt` before the split. Two runners can hold the same spot — a
+    clubmate's land coexists with yours and becomes rival land the day they
+    leave the club, and the seeded world plants rivals on ground that is
+    already held — so a takeback lands on a square that is BOTH theirs and
+    yours. Measured against `own_wkt` alone that square is reinforcement, and
+    the screen reads "+0.000 km² / 0.63 km² reinforced" under a headline
+    that says you took land off somebody. Ground that changed hands is ground
+    this claim won, whether or not the runner also stood on it: the chooser
+    counts it in GAIN before the run, and the two numbers have to be the same
+    number.
+
     Areas come from PostGIS on a geography cast, like every other area in the
     claim path, so they agree with the numbers the chooser previewed.
     """
@@ -1780,19 +1811,31 @@ def _claim_ground(db: Session, claim_wkt: str, own_wkt: str | None) -> dict:
         text(
             """
             WITH c AS (SELECT ST_GeomFromText(:claim_wkt, 4326) AS g),
+                 taken AS (
+                    SELECT ST_UnaryUnion(ST_Collect(ST_GeomFromText(w, 4326))) AS g
+                    FROM unnest(CAST(:taken_wkts AS text[])) AS t(w)
+                 ),
+                 -- The runner's own land MINUS what just changed hands: land
+                 -- they held and a rival also held is not reinforcement, it
+                 -- is the takeback. Empty when the whole overlap was won.
                  o AS (
                     SELECT CASE
                         WHEN CAST(:own_wkt AS text) IS NULL THEN NULL
-                        ELSE ST_GeomFromText(:own_wkt, 4326)
+                        WHEN taken.g IS NULL THEN ST_GeomFromText(:own_wkt, 4326)
+                        ELSE ST_CollectionExtract(ST_MakeValid(
+                            ST_Difference(ST_GeomFromText(:own_wkt, 4326), taken.g)), 3)
                     END AS g
+                    FROM taken
                  ),
                  parts AS (
                     SELECT
                         c.g AS claim,
-                        CASE WHEN o.g IS NULL THEN c.g ELSE ST_CollectionExtract(
-                            ST_MakeValid(ST_Difference(c.g, o.g)), 3) END AS gained,
-                        CASE WHEN o.g IS NULL THEN NULL ELSE ST_CollectionExtract(
-                            ST_MakeValid(ST_Intersection(c.g, o.g)), 3) END AS reinforced
+                        CASE WHEN o.g IS NULL OR ST_IsEmpty(o.g) THEN c.g
+                             ELSE ST_CollectionExtract(
+                                ST_MakeValid(ST_Difference(c.g, o.g)), 3) END AS gained,
+                        CASE WHEN o.g IS NULL OR ST_IsEmpty(o.g) THEN NULL
+                             ELSE ST_CollectionExtract(
+                                ST_MakeValid(ST_Intersection(c.g, o.g)), 3) END AS reinforced
                     FROM c CROSS JOIN o
                  )
             SELECT ST_Area(claim::geography),
@@ -1801,7 +1844,7 @@ def _claim_ground(db: Session, claim_wkt: str, own_wkt: str | None) -> dict:
             FROM parts
             """
         ),
-        {"claim_wkt": claim_wkt, "own_wkt": own_wkt},
+        {"claim_wkt": claim_wkt, "own_wkt": own_wkt, "taken_wkts": list(taken_wkts or [])},
     ).fetchone()
     if row is None:
         return {
@@ -1933,6 +1976,9 @@ def _claim_territory(
     stolen_from = None
     defended_ids = []
     events = []
+    # Ground won off rivals, in claim coordinates. Fed to `_claim_ground` so a
+    # takeback on a square the runner also held reads as won, not reinforced.
+    taken_wkts = []
 
     for rid, _ruid in rivals:
         steal = db.execute(
@@ -1978,6 +2024,10 @@ def _claim_territory(
             continue
 
         stolen_total += float(steal[0])
+        # The geometry that changed hands, kept for the gained/reinforced
+        # split at the end: this is the only place it exists as its own shape.
+        if contested:
+            taken_wkts.append(contested)
         if float(steal[0]) > best_steal:
             best_steal = float(steal[0])
             stolen_from = steal[1]
@@ -2104,7 +2154,7 @@ def _claim_territory(
     # Measured HERE, in the last moment it is still measurable: the union below
     # replaces both polygons with one and the claim stops being separable from
     # the land it joined.
-    ground = _claim_ground(db, new_geom_wkt, same_user_union)
+    ground = _claim_ground(db, new_geom_wkt, same_user_union, taken_wkts)
 
     if same_user_union is not None:
         # Replace existing same-user overlapping rows with a single merged row.

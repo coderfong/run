@@ -31,8 +31,15 @@ const IMPORTS = /import\s*\{([^}]*)\}\s*from\s*'lucide-react-native'/g;
 
 // The scan is textual, so comments have to go first — RunShareSheet.js quotes
 // the broken import in the comment explaining it, and that quote is not code.
+// LINE COMMENTS FIRST, then block comments — the order is load-bearing.
+//
+// Done the other way round, a `//` comment that happens to contain `/*` opens
+// a block comment as far as this scan is concerned, and everything up to the
+// next `*/` in the file disappears. That is not hypothetical: the onboarding
+// screen's header says `assets/art/*`, which swallowed its own import line and
+// quietly excluded the file from the scan.
 const withoutComments = (source) =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  source.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
 
 function importedIcons() {
   const found = [];

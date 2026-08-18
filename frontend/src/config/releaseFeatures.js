@@ -41,4 +41,34 @@
 export const TRAIL_DECORATIONS_ENABLED = false;
 
 export const IAP_ENABLED = false;
+
+// Whether PASER PRO EXISTS in the app, as distinct from whether it can be sold.
+//
+// These were one switch, and conflating them turned out to be a real bug
+// rather than a tidiness point. `IAP_ENABLED` is false until a sandbox
+// purchase has been taken end to end, which is correct — but every PRO
+// surface asked that same question before rendering, so with the store off the
+// subscription was not merely unbuyable, it was INVISIBLE. No card on Home, no
+// poster on You, no padlocks on the gated features, no sheet. The app looked
+// like one that had never had a subscription, which made the whole feature
+// impossible to look at, review, or judge, and made "I don't see PASER PRO
+// anywhere" the accurate description of a build where all of it was written
+// and wired.
+//
+// Split, each switch answers only its own question:
+//
+//   PRO_SURFACES_ENABLED  the marketing, the padlocks and the pitch are shown,
+//                         and gated features actually behave as gated.
+//   IAP_ENABLED           the subscribe button can complete a transaction.
+//
+// With surfaces on and the store off, the paywall opens and makes its case,
+// and its primary button says so plainly instead of failing when pressed (see
+// BuyProSheet). That is honest, and it is what a store reviewer should see if
+// they reach it before the products are live.
+//
+// This does NOT weaken the release rule it came from. The rule is that a
+// release must not advertise a button that cannot complete a real App Store
+// transaction, and no such button exists in this state.
+export const PRO_SURFACES_ENABLED = true;
+
 export const HEALTH_SYNC_ENABLED = true;

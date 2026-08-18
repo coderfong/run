@@ -20,6 +20,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -33,16 +34,19 @@ import RunShareCard, {
   ACCENTS,
   CARD_INK,
   DEFAULT_STATS,
-  SHARE_FORMATS,
+  SHARE_FORMAT,
   availableStats,
 } from './RunShareCard';
 import { TRAIL_DECORATIONS, TRAIL_NONE } from './trailDecorations';
+import { EVENTS, track } from '../../analytics';
+import { GOLD } from '../../config/pro';
+import { shareStyleByKey, stylesForRun } from '../../config/shareStyles';
+import { useProEntitlement } from '../../pro/ProProvider';
 import RunPostEditor from '../RunPostEditor';
-import { Segmented } from '../ui';
 import { radius, space, useTheme, useThemedStyles } from '../../theme';
 import { PressableScale, haptic } from '../../ui/motion';
 import { toast } from '../../ui/toast';
-import { SHARE_DEBUG_FLAGS, shareCrumb } from '../../utils/shareDebugFlags';
+import { afterHandoff } from '../../utils/appActive';
 import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 
 // Instagram's own gradient, so the destination is recognisable at a glance.
@@ -178,14 +182,12 @@ function InstagramGlyph({ size, color }) {
   );
 }
 
-// A lucide icon, or a plain dot in its place when `icons` is off — one more
-// suspect isolated from the crash-on-open without losing the destination
-// button's layout.
+// A lucide icon, or a plain dot in its place when the glyph is missing.
 function DestIcon({ Icon, size, color }) {
   // A missing `Icon` is not hypothetical here — see InstagramGlyph above. The
   // dot costs the runner one glyph; rendering `<undefined />` costs them the
   // screen, so an icon that went away upstream degrades instead of crashing.
-  if (!SHARE_DEBUG_FLAGS.icons || !Icon) {
+  if (!Icon) {
     return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
   }
   return <Icon size={size} color={color} strokeWidth={2} />;
@@ -196,7 +198,7 @@ function DestIcon({ Icon, size, color }) {
 function Destination({ label, busyLabel, busy, disabled, onPress, gradient, children }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const useGradient = !!gradient && SHARE_DEBUG_FLAGS.gradient;
+  const useGradient = !!gradient;
   const Body = useGradient ? LinearGradient : View;
   const bodyProps = useGradient
     ? { colors: gradient, start: { x: 0, y: 1 }, end: { x: 1, y: 0 } }
@@ -233,28 +235,66 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   const { width: screenW, height: screenH } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const cardRef = useRef(null);
-  const [format, setFormat] = useState('story');
   const [busy, setBusy] = useState(null); // 'story' | 'save' | 'copy' | 'more'
   const [editorReady, setEditorReady] = useState(false);
+  // A close that is waiting for the app to come back from Instagram. Held so
+  // it can be cancelled: if this sheet goes away first (Done, the back
+  // gesture, the result screen leaving by another route) the pending
+  // navigation must not fire into a tree that is no longer there.
+  const pendingClose = useRef(null);
+  useEffect(() => () => pendingClose.current?.(), []);
 
   // Everything the runner can change about the card. Defaults are the clan
   // colour and the run's own headline stats, so the card is already right
   // before anyone touches a control.
   const clanColor = cardProps.team?.glow;
   const [accent, setAccent] = useState(clanColor);
-  const [align, setAlign] = useState('left');
+  // Centred by default — see the `align` prop on RunShareCard for why.
+  const [align, setAlign] = useState('center');
   const [showRoute, setShowRoute] = useState(true);
   const [trail, setTrail] = useState(TRAIL_NONE);
-  // The simplified card is the route, four numbers and the wordmark, so the
-  // figure starts OFF. The control stays: it is one tap to put the runner back
-  // on, and it is the only part of the card that is theirs rather than the
-  // run's.
-  const [showCharacter, setShowCharacter] = useState(false);
+  // ON. The mascot standing at the end of the route is the part of the card
+  // that is THEIRS rather than the run's — their face, their hair, their kit —
+  // and it is the one thing on a sticker of numbers that nobody else's card
+  // has. It spent a while starting off, which in practice meant almost nobody
+  // ever saw it. The chip stays, so it is still one tap to take it away.
+  const [showCharacter, setShowCharacter] = useState(true);
   const [flip, setFlip] = useState(false);
   const offered = useMemo(() => availableStats(cardProps.run), [cardProps.run]);
   const [statKeys, setStatKeys] = useState(() =>
     DEFAULT_STATS.filter((k) => offered.some((s) => s.key === k))
   );
+
+  // --- share styles ------------------------------------------------------
+  // A style is a PRESET over the controls above (see config/shareStyles.js).
+  // Selecting one is always free and always applies to the real card; only
+  // EXPORTING a PRO style is gated, which is the whole design: you see it on
+  // your own run first.
+  const { isPro, canShowPro, openPaywall } = useProEntitlement();
+  const [styleKey, setStyleKey] = useState('classic');
+  const styleOptions = useMemo(() => stylesForRun(cardProps.run), [cardProps.run]);
+  const activeStyle = shareStyleByKey(styleKey);
+  // The one thing that actually blocks: a PRO style, on a free account, with
+  // the store live. Everything else exports exactly as it always did.
+  const styleLocked = activeStyle.pro && !isPro && canShowPro;
+
+  const applyStyle = (style) => {
+    setStyleKey(style.key);
+    const preset = style.preset || {};
+    if (preset.accent !== undefined) setAccent(preset.accent);
+    if (preset.align !== undefined) setAlign(preset.align);
+    if (preset.showRoute !== undefined) setShowRoute(preset.showRoute);
+    if (preset.showCharacter !== undefined) setShowCharacter(preset.showCharacter);
+    if (preset.statKeys) {
+      // Filtered against what this run can actually show, so a preset can
+      // never ask the card for a stat that would render as a blank tile.
+      const usable = preset.statKeys.filter((k) => offered.some((o) => o.key === k));
+      if (usable.length) setStatKeys(usable);
+    }
+    if (style.pro) {
+      track(EVENTS.FEATURE_PREVIEW, { source: 'share', feature: `style_${style.key}` });
+    }
+  };
 
   // The clan's own colour leads the swatches; it is the one most runners want
   // and the one the rest of the app already uses for them.
@@ -281,15 +321,11 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       setEditorReady(false);
       return undefined;
     }
-    shareCrumb('RunShareSheet opened', { ...SHARE_DEBUG_FLAGS });
     let alive = true;
     let timer;
     const task = InteractionManager.runAfterInteractions(() => {
       timer = setTimeout(() => {
-        if (alive) {
-          shareCrumb('editorReady -> true');
-          setEditorReady(true);
-        }
+        if (alive) setEditorReady(true);
       }, 80);
     });
     return () => {
@@ -299,7 +335,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
     };
   }, [visible]);
 
-  const spec = SHARE_FORMATS[format];
+  const spec = SHARE_FORMAT;
   // The preview is the real card, just smaller: fit it to whichever axis runs
   // out first. The controls scroll under it, so the preview is deliberately
   // kept to about half the screen rather than filling it.
@@ -331,7 +367,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       format: 'png',
       quality: 1,
       result,
-      fileName: `paser-run-${format}`,
+      fileName: 'paser-run-story',
       ...spec.export,
     });
   };
@@ -340,6 +376,19 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   // report whatever came back. Only the middle step differs.
   const perform = async (key, fn) => {
     if (busy) return;
+    // The gate, in ONE place, on the way out. Every destination (story, save,
+    // copy, system sheet) funnels through here, so there is no export path
+    // that can quietly skip it — and equally, none that can be broken by
+    // forgetting to add the check to a new one.
+    if (styleLocked) {
+      track(EVENTS.FEATURE_BLOCKED, {
+        source: 'share',
+        feature: `style_${activeStyle.key}`,
+        reason: 'pro_style',
+      });
+      openPaywall('share');
+      return;
+    }
     setBusy(key);
     try {
       haptic.light();
@@ -359,7 +408,12 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       // runner's own story rather than becoming the story.
       const res = await shareToInstagramStories(uri, { background: CARD_INK, asSticker: true });
       if (res.ok) {
-        if (!res.cancelled) onClose?.();
+        // NOT NOW. This promise resolves when iOS accepts the handoff, not
+        // when the runner comes back — so we are standing in the middle of
+        // the app leaving the foreground, and closing here starts a
+        // fullScreenModal dismissal that iOS then abandons half way. That is
+        // the black screen people came back to. See utils/appActive.
+        if (!res.cancelled) pendingClose.current = afterHandoff(() => onClose?.());
         return;
       }
       // Instagram refused (no app, old binary, story API knocked back). The
@@ -393,25 +447,20 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
       if (!res.ok) toast.error(res.reason);
     });
 
-  // `nativeShareProbe` gates the instant this runs `require('expo-media-library')`
-  // / `require('expo-clipboard')` (see socialShare.js's `lazy()`, which
-  // breadcrumbs each require) — the moment editorReady flips, before any
-  // button press. Suspect #1 for a crash that fires the instant the sheet
-  // becomes ready with everything else disabled.
-  const shareCapabilities =
-    editorReady && SHARE_DEBUG_FLAGS.nativeShareProbe ? socialShare() : null;
+  // Probing for the native modules runs `require('expo-media-library')` /
+  // `require('expo-clipboard')` (see socialShare.js's `lazy()`), so it waits
+  // for editorReady rather than happening while the sheet is still arriving.
+  const shareCapabilities = editorReady ? socialShare() : null;
   const canSave = !!shareCapabilities?.canSaveToPhotos?.();
   const canCopy = !!shareCapabilities?.canCopyImage?.();
 
   if (!visible) return null;
 
-  // `sheetBody` is the widest cut available without a rebuild: off, nothing
-  // below the head bar (title + Close) mounts at all — format switch,
-  // ScrollView, every control row, the destinations row. If the crash
-  // survives THIS off, it isn't in RunShareSheet's body; it's either in the
-  // head bar itself or upstream (ResultScreen's own stage-change effects,
-  // React Navigation). See `mountSheet` in ResultScreen.js for the next cut.
-  const bodyOn = editorReady && SHARE_DEBUG_FLAGS.sheetBody;
+  // Everything below the head bar (title + Close) waits for the sheet to
+  // finish arriving: the body is a ScrollView, every control row, the card
+  // preview and the destinations row, and mounting it mid-transition made the
+  // sheet stutter on the way in.
+  const bodyOn = editorReady;
 
   return (
     <View style={[styles.screen, styles.fullScreen, { paddingTop: insets.top + space.sm }]}>
@@ -427,16 +476,10 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           </PressableScale>
         </View>
 
-        {bodyOn ? <Segmented
-          style={styles.formats}
-          value={format}
-          onChange={setFormat}
-          labelSuffix="format"
-          options={[
-            { key: 'story', label: 'Story  9:16' },
-            { key: 'square', label: 'Post  1:1' },
-          ]}
-        /> : null}
+        {/* No format switch. The card is a STORY, 9:16, and that is the only
+            shape it comes in — the 1:1 "Post" that used to sit here made a
+            second layout out of the same numbers and sent it to the same
+            place. Whatever the runner picks below, the export is the story. */}
 
         {bodyOn ? <ScrollView
           style={styles.scroller}
@@ -447,18 +490,18 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           {/* The exact pixels that get posted, on a checkerboard so the empty
               parts read as empty rather than as dark grey. */}
           <View style={styles.previewShadow}>
-            {SHARE_DEBUG_FLAGS.checkerboard && <Checkerboard
+            <Checkerboard
               width={previewW}
               height={previewW * spec.ratio}
               style={StyleSheet.absoluteFill}
-            />}
+            />
             {/* Boundaried. The card composites a runner's whole avatar over a
                 projected route, and it is the LAST thing between a finished run
                 and the way home — a throw in here used to take the result
                 screen down with it, losing the recap the runner was looking at.
                 Now the card is the only thing lost, and everything else on the
                 sheet still works. */}
-            {SHARE_DEBUG_FLAGS.card && <ShareBoundary
+            <ShareBoundary
               width={previewW}
               height={previewW * spec.ratio}
               styles={styles}
@@ -466,7 +509,6 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               <RunShareCard
                 {...cardProps}
                 cardRef={cardRef}
-                format={format}
                 width={previewW}
                 accent={accent}
                 align={align}
@@ -476,7 +518,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 showCharacter={showCharacter}
                 flip={flip}
               />
-            </ShareBoundary>}
+            </ShareBoundary>
             <View style={styles.transparentBadge} pointerEvents="none">
               <Text style={styles.transparentText}>TRANSPARENT</Text>
             </View>
@@ -507,6 +549,46 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               </View>
             </ScrollView>
           </Row>
+
+          {/* Named looks. First control in the list because it is the one that
+              moves everything else, and a runner who picks a style is usually
+              done. The PRO ones are selectable and previewable by anybody —
+              the padlock is about EXPORTING, and the line under the row says
+              so rather than leaving somebody to discover it at the last step.
+              A paywall sprung at the moment of posting would be the worst
+              possible place for one. */}
+          <Row label="Style">
+            <View style={styles.chipWrap}>
+              {styleOptions.map((option) => {
+                const locked = option.pro && !isPro && canShowPro;
+                return (
+                  <Chip
+                    key={option.key}
+                    label={locked ? `${option.label} · PRO` : option.label}
+                    on={styleKey === option.key}
+                    onPress={() => applyStyle(option)}
+                  />
+                );
+              })}
+            </View>
+          </Row>
+          {styleLocked ? (
+            <TouchableOpacity
+              onPress={() => {
+                track(EVENTS.TEASER_TAP, {
+                  source: 'share',
+                  feature: `style_${activeStyle.key}`,
+                });
+                openPaywall('share');
+              }}
+              accessibilityRole="button"
+              style={{ marginTop: space.xs }}
+            >
+              <Text style={[styles.rowLabel, { color: GOLD }]}>
+                {`${activeStyle.label} is a PASER PRO card. Look at it as long as you like · unlock to post it.`}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Text is WHITE and only white now — the dark option is gone. See
               the tone note in RunShareCard: black type on a card with no
@@ -574,13 +656,13 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </View>
           </Row>
 
-          {SHARE_DEBUG_FLAGS.postEditor && <Row label="Home post">
+          <Row label="Home post">
             <RunPostEditor
               runId={cardProps.run?.runId}
               initialCaption={cardProps.run?.caption}
               initialMedia={cardProps.run?.media}
             />
-          </Row>}
+          </Row>
         </ScrollView> : (
           <View style={styles.preparing}>
             {editorReady ? (
@@ -658,7 +740,6 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   title: { ...type.title, color: colors.text },
   close: { ...type.bodySmBold, color: colors.textMuted },
-  formats: { marginBottom: space.md },
   scroller: { flex: 1, minHeight: 0 },
   preparing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
   preparingText: { ...type.bodySm, color: colors.textMuted },

@@ -100,6 +100,28 @@ export function resolveDefenders(claim) {
     }));
 }
 
+// The ground the reveal turns over.
+//
+// NOT `claim.territory`, which is the runner's merged holding: a claim that
+// lands on land they already own is unioned into it, so revealing the
+// territory means flying out to frame every block they have ever taken around
+// there and lighting the lot up as though this run had just won it.
+//
+// `gained_rings` is the part of the claim that was not already theirs — the
+// ground that genuinely changed hands, and the only ground worth a cutscene.
+// `claim_rings` (the whole footprint) is the fallback for a claim that gained
+// nothing at all: a pure reinforcement still has to show WHERE it landed, and
+// an empty reveal would read as a failed claim. The territory is the last
+// resort, for a backend that sends neither.
+export function revealGround(claim) {
+  const rings = claim?.gained_rings?.length
+    ? claim.gained_rings
+    : claim?.claim_rings?.length
+      ? claim.claim_rings
+      : null;
+  return rings ? { rings } : claim?.territory;
+}
+
 export default function useClaimSequence({ mapRef, userId }) {
   const revealApi = useClaimReveal(mapRef);
   const systemReduced = revealApi.reduced;
@@ -141,9 +163,17 @@ export default function useClaimSequence({ mapRef, userId }) {
   // The last claim played, kept so dev replay can re-run it without spending
   // another claim (or another API call).
   const lastRun = useRef({ claim: null, center: null, options: {} });
-  const [options, setOptions] = useState({ variant: 'grin-knock', reducedOverride: null });
+  const [options, setOptions] = useState({
+    variant: 'grin-knock', reducedOverride: null, timeScale: 1, tintOverride: null,
+  });
 
   const reducedMotion = options.reducedOverride == null ? systemReduced : options.reducedOverride;
+  // Dev only, 1 in every real claim. Slows the whole post-claim schedule — this
+  // hook's waits AND the capture player's step scheduling — so a beat can be
+  // named while it is on screen. See components/claim/DevSequenceControls.js.
+  const timeScale = Number.isFinite(options.timeScale) && options.timeScale > 0
+    ? options.timeScale
+    : 1;
 
   const runToken = useRef(0);
   const timers = useRef(new Set());
@@ -155,7 +185,7 @@ export default function useClaimSequence({ mapRef, userId }) {
     active.forEach((timer) => timer.cancel());
   }, []);
 
-  const wait = useCallback((ms) => {
+  const waitRaw = useCallback((ms) => {
     if (!ms || ms <= 0) return Promise.resolve();
     return new Promise((resolve) => {
       let settled = false;
@@ -172,6 +202,12 @@ export default function useClaimSequence({ mapRef, userId }) {
       timers.current.add(timer);
     });
   }, []);
+
+  // Every beat in the sequence goes through here, so slow motion is one
+  // multiplication rather than a flag threaded into a dozen awaits.
+  const scaleRef = useRef(1);
+  scaleRef.current = timeScale;
+  const wait = useCallback((ms) => waitRaw(ms * scaleRef.current), [waitRaw]);
 
   // Nothing awaits contact any more.
   //
@@ -328,7 +364,7 @@ export default function useClaimSequence({ mapRef, userId }) {
 
       setPhase(CLAIM_PHASE.FOCUS);
 
-      const proj = await revealApi.focus(claim?.territory, center);
+      const proj = await revealApi.focus(revealGround(claim), center);
       if (!alive()) return;
       setProjection(proj);
 
@@ -367,6 +403,7 @@ export default function useClaimSequence({ mapRef, userId }) {
       if (defenders.length > 0) {
         cue = await waitForRevealCue(
           revealCueDeadline(captureStyle, reduced, reduced ? 80 : 700)
+          * scaleRef.current
         );
         if (!alive()) return;
       } else {
@@ -536,6 +573,7 @@ export default function useClaimSequence({ mapRef, userId }) {
     leaderboard,
     playToken,
     reducedMotion,
+    timeScale,
     options,
     setOptions,
 

@@ -31,6 +31,7 @@ import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import SideRail from '../components/SideRail';
+import ProHomeCard from '../components/ProHomeCard';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
 import {
@@ -38,7 +39,11 @@ import {
   preloadScreenImagesAfterInteractions,
 } from '../config/screenAssets';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
+import { EVENTS, track } from '../analytics';
+import { GOLD } from '../config/pro';
+import { HOME_AUTO_PROMPT_DELAY_MS } from '../config/proExposure';
 import { IAP_ENABLED } from '../config/releaseFeatures';
+import { useProEntitlement } from '../pro/ProProvider';
 
 // Season window (matches the seeded Season 1; Phase-next: read from the API).
 const SEASON_NO = '01';
@@ -116,18 +121,43 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
   );
 }
 
-// Swipeable hero: Season → Clubs → Solo, each deep-linking into the standings.
+// Swipeable hero: Season → Clubs → Solo → PRO, each deep-linking somewhere.
+//
+// THE PRO SLIDE IS LAST, AND IT IS A SLIDE. Home's other PRO surface (the card
+// partway down the feed) only appears after three finished runs, which left a
+// new account with no route to the paywall from the app's main screen at all.
+// This one is always there for anybody who could subscribe — but it is the
+// fourth card in a carousel that opens on the season, so it costs nothing to
+// anybody who does not swipe to it and covers nothing on the way past.
+//
+// A subscriber never sees it: `canShowPro && !isPro`, the same pair every other
+// marketing surface asks (src/pro/storeAvailable.js).
 function HeroCarousel({ navigation }) {
   const styles = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
   const cardW = width - space.gutter * 2;
   const [page, setPage] = useState(0);
   const warmSeason = () => preloadScreenImages('Season');
+  const { isPro, canShowPro, openPaywall } = useProEntitlement();
+  const showPro = canShowPro && !isPro;
+  const pages = showPro ? 4 : 3;
+  const proPage = 3;
+  const proSeen = useRef(false);
 
   const onEnd = (e) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / cardW);
     if (i !== page) setPage(i);
   };
+
+  // Counted when it is SWIPED TO, not when it mounts. Every one of these cards
+  // is mounted from the first frame; firing on mount would report an
+  // impression for a card three screens off to the right that nobody ever saw,
+  // and the conversion rate underneath it would be nonsense.
+  useEffect(() => {
+    if (!showPro || page !== proPage || proSeen.current) return;
+    proSeen.current = true;
+    track(EVENTS.TEASER_IMPRESSION, { source: 'home', context: 'home', feature: 'home_hero' });
+  }, [page, showPro]);
 
   return (
     <View>
@@ -172,9 +202,24 @@ function HeroCarousel({ navigation }) {
           onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season', { mode: 'solo' })}
         />
+        {showPro ? (
+          <HeroCard
+            width={cardW}
+            bg={GOLD}
+            art={require('../../assets/art/onboarding/pro-hero.png')}
+            eyebrow="PASER PRO"
+            title="GO PRO"
+            sub="Strategy · Insights · Exclusive styles"
+            cta="See the plans"
+            onPress={() => {
+              track(EVENTS.TEASER_TAP, { source: 'home', context: 'home', feature: 'home_hero' });
+              openPaywall('home');
+            }}
+          />
+        ) : null}
       </ScrollView>
       <View style={styles.dots}>
-        {[0, 1, 2].map((i) => (
+        {Array.from({ length: pages }, (_, i) => (
           <View key={i} style={[styles.dot, i === page ? styles.dotOn : styles.dotOff]} />
         ))}
       </View>
@@ -286,6 +331,16 @@ function FeedList({ navigation, header }) {
               />
             </Animated.View>
           )}
+          {/* PASER PRO, partway down the feed rather than above it. Renders
+              nothing at all for a subscriber, for anybody under three finished
+              runs, or while the store is off — see ProHomeCard's own header
+              for why each of those is a rule. Placed AFTER the third card so
+              it is below real content on any screen size.
+              `min(2, last)` rather than a flat 2: a feed with one or two cards
+              in it never reached index 2, so the card silently did not exist
+              on exactly the accounts a quiet feed describes. It still lands
+              after real content, just after less of it. */}
+          {index === Math.min(2, rows.length - 1) && !loading ? <ProHomeCard /> : null}
         </View>
       )}
     />
@@ -308,6 +363,11 @@ export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const { refreshRank } = useAvatar();
   const [shopOpen, setShopOpen] = useState(false);
+  const { openPaywall, runCount } = useProEntitlement();
+  // Once per app launch. Home stays mounted behind the other tabs, so this ref
+  // outlives every tab switch — which is what makes it a launch guard rather
+  // than a screen one.
+  const promptedRef = useRef(false);
 
   // Both of these used to arrive a round trip after the header drew, so the
   // energy meter and the bell's unread dot popped in a beat late on every
@@ -343,6 +403,39 @@ export default function HomeScreen({ navigation }) {
       // sat here; the card moved to the Rivals page, the refresh must not.)
       refreshRank?.();
     }, [refreshRank])
+  );
+
+  // PASER's one prompt that nobody asked for.
+  //
+  // Home is where a returning runner lands, and it is the only place in the
+  // app where PRO can be raised outside a run's own aftermath. Everything that
+  // decides whether it is ALLOWED lives in the exposure rules, not here:
+  // `automatic: true` sends this through `canShowAuto`, which refuses for
+  // anybody under three finished runs, for the second time in a session, for
+  // twenty hours after the last one, and for good once it has been dismissed
+  // twice. A refusal is recorded in the funnel with its reason, so a quiet
+  // prompt can be explained rather than guessed at.
+  //
+  // The ref makes it once per app launch even if the rules would allow more,
+  // and it is deliberately NOT set until the timer actually runs: leaving Home
+  // in the first couple of seconds cancels the prompt rather than spending it.
+  //
+  // WAITING FOR `runCount` IS THE POINT OF THE GUARD, not a nicety. The rules
+  // treat an unknown run count as not eligible, so on a cold start where
+  // /me/stats has not landed yet this would fire, be refused as `runs_unknown`
+  // and burn its one shot for the launch — a prompt that only ever appeared on
+  // a warm start, for no reason anybody would ever find. Not scheduling until
+  // the number exists means the timer starts when the answer can be real; the
+  // effect re-runs on its own when it arrives.
+  useFocusEffect(
+    useCallback(() => {
+      if (promptedRef.current || runCount == null) return undefined;
+      const timer = setTimeout(() => {
+        promptedRef.current = true;
+        openPaywall('home', { automatic: true });
+      }, HOME_AUTO_PROMPT_DELAY_MS);
+      return () => clearTimeout(timer);
+    }, [openPaywall, runCount])
   );
 
   const feedHeader = (

@@ -32,6 +32,10 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
+import { EVENTS, track } from '../analytics';
+import { GOLD } from '../config/pro';
+import { IAP_ENABLED } from '../config/releaseFeatures';
+import { useProEntitlement } from '../pro/ProProvider';
 
 import { radius, space, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
 import { Button, Framed, Screen } from '../components/ui';
@@ -46,6 +50,7 @@ import CharacterRig, { BODY_RATIO, PartThumb } from '../components/character/Cha
 import {
   ITEMS,
   SLOTS,
+  isProItem,
   itemPreviewSources,
   itemVariantSources,
   unlockLabel,
@@ -168,7 +173,13 @@ const GridCell = React.memo(function GridCell({ item, slot, equipped, isUnlocked
       <PressableScale
         onPress={() => onEquip(item, unlocked)}
         accessibilityRole="button"
-        accessibilityLabel={unlocked ? `Equip ${item.label}` : `${item.label}, locked: ${unlockLabel(item)}`}
+        accessibilityLabel={
+          unlocked
+            ? `Equip ${item.label}`
+            : isProItem(item)
+              ? `${item.label}, Paser Pro. Tap to try it on`
+              : `${item.label}, locked: ${unlockLabel(item)}`
+        }
         accessibilityState={{ selected }}
       >
         <Framed
@@ -190,9 +201,12 @@ const GridCell = React.memo(function GridCell({ item, slot, equipped, isUnlocked
                 agrees with the character standing above it. */}
             <PartThumb slot={slot.key} item={item} size={56} clanColor={clanColor} equipped={equipped} />
           </View>
+          {/* A PRO exclusive gets the GOLD padlock, so the one kind of lock
+              that can be opened with money is distinguishable at a glance
+              from the kind that is opened by running. */}
           {!unlocked && (
             <View style={styles.lockWrap}>
-              <Lock size={14} color={colors.textMuted} />
+              <Lock size={14} color={isProItem(item) ? GOLD : colors.textMuted} />
             </View>
           )}
         </Framed>
@@ -206,6 +220,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const { equipped, setPart, randomize, save, isUnlocked } = useAvatar();
+  const { openPaywall } = useProEntitlement();
   const { color } = useClan();
   // The scene has to sit BEHIND the whole runner, not as a band under their
   // feet, so the stage asks for a box at least as tall as the rig draws:
@@ -221,6 +236,20 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
   const slot = useMemo(() => SLOTS.find((s) => s.key === slotKey), [slotKey]);
   const items = useMemo(() => ITEMS[slotKey] || [], [slotKey]);
   const gridKeyExtractor = useCallback((item) => item.id, []);
+
+  // A PASER PRO item being TRIED ON. Local to this screen and never persisted
+  // — see the note in `equip`. Cleared whenever the slot changes so a runner
+  // cannot wander off leaving a piece on the character that is not theirs.
+  const [preview, setPreview] = useState(null);
+  useEffect(() => { setPreview(null); }, [slotKey]);
+
+  // What the character and the grid should DRAW. The saved loadout with the
+  // previewed piece layered on top, so the rig shows the hat and the tile
+  // shows as selected — without either of them being true on the server.
+  const shown = useMemo(
+    () => (preview ? { ...equipped, [preview.slotKey]: preview.item.id } : equipped),
+    [equipped, preview]
+  );
 
   // Only the recolourable items carry `art` (ten pre-rendered variants). Most
   // of the catalogue is authored multicolour art that a swatch cannot touch,
@@ -248,10 +277,29 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
   const equip = useCallback((item, unlocked) => {
     if (!unlocked) {
       haptic.light();
+      // A PASER PRO exclusive gets TRIED ON rather than refused. Everything
+      // else keeps the toast, because "finish 5 runs" is an instruction the
+      // runner can act on and a preview would just be a tease.
+      //
+      // The point of this branch: nobody buys a hat they have not seen on
+      // their own character. The preview is deliberately free, deliberately
+      // not persisted (it never touches setPart, so it cannot be saved, and
+      // it is dropped the moment the slot changes), and the CTA underneath it
+      // is what turns looking into buying.
+      if (isProItem(item) && IAP_ENABLED) {
+        setPreview({ slotKey: slot.key, item });
+        track(EVENTS.FEATURE_PREVIEW, {
+          source: 'avatar',
+          feature: 'pro_cosmetic',
+          slot: slot.key,
+        });
+        return;
+      }
       toast.error(unlockLabel(item) || 'Locked');
       return;
     }
     haptic.light();
+    setPreview(null);
     setPart({ [slot.key]: item.id });
     // No rig.play() here. The runner reacts when the new art LANDS
     // (`animateSwaps`, see CharacterRig), which for anything not already in the
@@ -264,7 +312,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
     <GridCell
       item={item}
       slot={slot}
-      equipped={equipped}
+      equipped={shown}
       isUnlocked={isUnlocked}
       onEquip={equip}
       clanColor={color?.stroke}
@@ -315,7 +363,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
         {/* The runner is the subject, so they stand in the CENTRE of the scene.
             The dice used to sit in the same flex row, which pushed the
             character off-centre by half the button — on a scene composed around
-            a middle it read as a mistake. It floats in the top-right corner now,
+            a middle it read as a mistake. It floats in the top-left corner now,
             clear of the character entirely, and takes no part in the layout. */}
         <View style={styles.runnerRow}>
           <Reveal>
@@ -324,7 +372,9 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
               accessibilityRole="button"
               accessibilityLabel="Your character, tap to wave"
             >
-              <CharacterRig ref={rigRef} equipped={equipped} size={RIG_SIZE} animate animateSwaps clanColor={color?.stroke} />
+              {/* `shown`, not `equipped`: a PRO piece being tried on has to
+                  appear on the actual character, which is the entire point. */}
+              <CharacterRig ref={rigRef} equipped={shown} size={RIG_SIZE} animate animateSwaps clanColor={color?.stroke} />
             </PressableScale>
           </Reveal>
         </View>
@@ -338,6 +388,39 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
         </PressableScale>
       </View>
 
+
+      {/* The try-on bar. Only up while a PRO piece is being worn as a preview,
+          and it is the only thing on the screen that says the character is
+          currently showing something that is not saved. Dismissing takes the
+          piece straight back off, so nobody is left wondering whether they
+          accidentally kept it. */}
+      {preview ? (
+        <View style={[styles.proBar, { borderColor: GOLD, backgroundColor: colors.card }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[type.captionMedium, { color: GOLD }]}>PASER PRO</Text>
+            <Text style={type.bodySmBold} numberOfLines={1}>
+              {preview.item.label}
+            </Text>
+            <Text style={[type.caption, { color: colors.textMuted }]} numberOfLines={1}>
+              Trying it on. It will not be saved.
+            </Text>
+          </View>
+          <Button
+            title="Unlock"
+            size="sm"
+            variant="gradient"
+            onPress={() => openPaywall('cosmetics')}
+          />
+          <PressableScale
+            onPress={() => setPreview(null)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Take it off"
+          >
+            <Text style={[type.captionMedium, { color: colors.textMuted }]}>Take off</Text>
+          </PressableScale>
+        </View>
+      ) : null}
 
       {/* slot chips */}
       <SlotChips active={slotKey} onChange={setSlotKey} onWarm={warmSlot} />
@@ -387,7 +470,21 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
   );
 }
 
+// The try-on bar. Sits between the stage and the slot chips so it reads as a
+// note about the character above it rather than about the grid below.
+const PRO_BAR = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: space.md,
+  marginHorizontal: space.gutter,
+  marginTop: space.md,
+  padding: space.md,
+  borderWidth: 2,
+  borderRadius: radius.card,
+};
+
 const makeStyles = (colors) => StyleSheet.create({
+  proBar: PRO_BAR,
   // flex-end so the rig's feet land on the road at the bottom of the scene
   // instead of floating in the sky above it.
   stage: { alignItems: 'center', justifyContent: 'flex-end', paddingVertical: space.md },
@@ -396,12 +493,21 @@ const makeStyles = (colors) => StyleSheet.create({
   runnerRow: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'flex-end' },
   // Floated, so adding or removing it can never shift the character again.
   // Top corner rather than bottom: the runner stands at the FOOT of the
-  // scene, so bottom-right sat it right next to their shoulder on a narrow
-  // phone. The sky above their head has the room the ground doesn't.
+  // scene, so anything low sat either beside their shoulder or, once the
+  // stage is taller than the art it draws, underneath the slot chips,
+  // which paint after it and swallowed it whole.
+  //
+  // LEFT rather than right: the right edge is where floating overlays
+  // dock, and the sky over the runner's left shoulder is the one part of
+  // this screen nothing else ever wants. `zIndex`/`elevation` keep it
+  // above every later sibling on both platforms, so it cannot be hidden
+  // again by something drawn beneath the stage.
   diceBtn: {
     position: 'absolute',
-    right: space.sm,
-    top: space.md,
+    left: space.sm,
+    top: space.sm,
+    zIndex: 5,
+    elevation: 5,
     width: 52,
     height: 52,
     borderRadius: radius.pill,

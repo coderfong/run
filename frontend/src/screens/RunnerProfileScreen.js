@@ -18,6 +18,7 @@ import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
 import { openSafetyActions } from '../utils/safety';
+import { shortDate } from '../utils/time';
 
 const km = (m) => (m / 1000).toFixed(1);
 const km2 = (m2) => (m2 / 1e6).toFixed(2);
@@ -154,8 +155,10 @@ export default function RunnerProfileScreen({ navigation, route }) {
         <Text style={[type.title, { marginTop: space.md }]}>{p.username}</Text>
         <Row gap={8} style={{ marginTop: space.sm }}>
           <Pill label={p.clan_tag ? `[${p.clan_tag}]` : 'Solo'} color={accent} dot />
-          <Pill label={`Level ${p.level}`} color={colors.textMuted} />
-          <Pill label={`${p.paser_count} paser${p.paser_count === 1 ? '' : 's'}`} color={colors.textMuted} />
+          {/* Seeded on the FIELD, not the value, so a chip keeps its colour as
+              the number behind it climbs. */}
+          <Pill label={`Level ${p.level}`} seed="profile:level" />
+          <Pill label={`${p.paser_count} paser${p.paser_count === 1 ? '' : 's'}`} seed="profile:pasers" />
         </Row>
         {paserAction()}
         {p.state !== 'self' ? (
@@ -195,7 +198,7 @@ export default function RunnerProfileScreen({ navigation, route }) {
                 <View>
                   <Text style={type.bodyBold}>{km(r.distance_m)} km · {mins(r.duration_s)}</Text>
                   <Text style={type.caption}>
-                    {new Date(r.created_at).toLocaleDateString()}
+                    {shortDate(r.created_at)}
                     {r.closed_loop ? ` · ${km2(r.area_m2)} km² claimed` : ''}
                   </Text>
                 </View>

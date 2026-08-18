@@ -19,9 +19,8 @@ import AppIcon from '../components/AppIcon';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import useCoarsePosition from '../hooks/useCoarsePosition';
-import usePro from '../hooks/usePro';
+import { useProEntitlement } from '../pro/ProProvider';
 import { useAuth } from '../auth/AuthContext';
-import BuyProSheet from '../components/BuyProSheet';
 import StandingBar from '../components/StandingBar';
 import { radius, space, toon, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { NEUTRAL } from '../state/clan';
@@ -138,8 +137,9 @@ export default function SeasonScreen({ navigation, route }) {
   // touches these chips has exactly the screen they had before.
   const [window_, setWindow] = useState('season');
   const [field, setField] = useState('all');
-  const [payOpen, setPayOpen] = useState(false);
-  const { isPro } = usePro();
+  // The app's one paywall, opened with the context that explains WHY a
+  // board filter is locked. No sheet of its own any more.
+  const { isPro, openPaywall } = useProEntitlement();
   // Only fetched for the one filter that needs it, and only when it is chosen
   // — asking for a position to draw a board nobody has asked for would be a
   // location prompt out of nowhere.
@@ -159,7 +159,7 @@ export default function SeasonScreen({ navigation, route }) {
   const selectFilter = (axis, key) => {
     // A free runner gets the paywall, not a silent no-op and not a 402 toast.
     if (!isPro && key !== (axis === 'window' ? 'season' : 'all')) {
-      setPayOpen(true);
+      openPaywall('leaderboard_history');
       return;
     }
     (axis === 'window' ? setWindow : setField)(key);
@@ -400,7 +400,6 @@ export default function SeasonScreen({ navigation, route }) {
           </Arrival>
         )}
       />
-      <BuyProSheet visible={payOpen} onClose={() => setPayOpen(false)} />
     </Screen>
   );
 }

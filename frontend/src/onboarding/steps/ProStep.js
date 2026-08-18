@@ -1,36 +1,63 @@
-// PASER PRO — the first-run upsell. Deliberately honest copy: this screen
-// never promises a free trial, because no intro offer is registered on either
-// store. PRO is a SUBSCRIPTION (see components/BuyProSheet.js, which carries
-// the price, the period and the renewal disclosure review requires); if a
-// trial is ever added to the subscription group, the headline can take the
-// trial framing then and not before.
+// PASER PRO — the first mention, and deliberately the weakest one.
+//
+// WHAT WAS WRONG WITH THIS SCREEN BEFORE, because it is worth recording:
+//
+//   1. It said "One payment. No subscription." PRO has been an auto renewing
+//      subscription since 2026-08-16. Telling somebody there is no
+//      subscription immediately before selling them one is not a stale string,
+//      it is the kind of thing that gets a build rejected and a refund
+//      requested, in that order.
+//
+//   2. Its three perks were "Double rewards, every level", "Rarer lootboxes"
+//      and "More energy to claim with". Energy is the claim limiter
+//      (backend/app/energy.py). Advertising more of it is advertising more
+//      claims for money — pay to win, on the first-run screen, contradicting
+//      the promise config/pro.js and entitlements.py both make in their
+//      headers. The copy is fixed here; the REWARD LADDER still grants the
+//      energy, and that is a live economy change which is not this branch's
+//      to make. See docs/PRO_BACKEND.md, "Pay to win: open question".
+//
+// WHAT IT IS NOW. A soft introduction. The runner has not run yet, has no
+// territory, has no rivals and no history — every single thing PRO sells is
+// therefore meaningless to them today. The honest job of this screen is to
+// name PRO so it is not a surprise later, and then get out of the way. The
+// real pitch happens in the game, next to the feature, weeks from now.
+//
+// NO DARK PATTERNS. Both buttons are the same size and shape. Neither is
+// dimmed, buried, or worded to make the other look like the only choice.
+// Nothing auto-enrols, nothing starts a trial (there is no intro offer
+// registered on either store, so a trial cannot be honestly promised), and
+// "Continue" is not phrased as a loss.
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Check } from 'lucide-react-native';
 
 import { space } from '../../theme';
 import { OutlinedText, ToonButton, ToonGhostButton } from '../../components/ui';
-import BuyProSheet from '../../components/BuyProSheet';
+import { useProEntitlement } from '../../pro/ProProvider';
 import CharacterRig from '../../components/character/CharacterRig';
 import { useAvatar } from '../../state/avatar';
 import { art } from '../../config/onboardingArt';
 import { ComicPanel } from '../ui';
 import { toon, toonType } from '../toon';
 
-// Three words each, near enough. The art is the pitch on this step; the detail
-// (what exactly lands on which tier) lives on the pass itself and in the buy
-// sheet, and repeating it here just buried the picture under a wall of text.
+// Three things, all of them depth. Kept short because the art is the pitch on
+// this step and because none of it means anything to somebody who has not run
+// yet — see the header.
 const PERKS = [
-  'Double rewards, every level',
-  'Rarer lootboxes',
-  'More energy to claim with',
+  'Plan territory runs',
+  'Advanced insights',
+  'Exclusive customisation',
 ];
 
 export default function ProStep({ onContinue }) {
   const { equipped } = useAvatar();
-  const [sheet, setSheet] = useState(false);
+  const { isPro, canShowPro, openPaywall } = useProEntitlement();
+  // Somebody who subscribed from this very step (or who already had PRO on a
+  // reinstall) must not still be looking at a button offering to sell it.
+  const canBuy = canShowPro && !isPro;
 
   return (
     <View style={styles.fill}>
@@ -49,7 +76,7 @@ export default function ProStep({ onContinue }) {
           PASER PRO
         </OutlinedText>
         <Text style={[toonType.body, styles.kicker]}>
-          One payment. No subscription.
+          Take PASER further, whenever you want to.
         </Text>
 
         <ComicPanel
@@ -77,15 +104,27 @@ export default function ProStep({ onContinue }) {
           ))}
         </View>
 
+        {/* The line that makes the skip a real choice rather than a dare. */}
+        <Text style={[toonType.body, styles.reassure]}>
+          Running, claiming land and your place on the board are free, and stay free.
+        </Text>
+
         {/* Both actions sit under the perks they answer, not pinned to the
-            bottom edge of the screen. */}
+            bottom edge of the screen. Equal weight, on purpose. */}
         <View style={styles.actions}>
-          <ToonButton title="Unlock PASER PRO" variant="gold" onPress={() => setSheet(true)} />
-          <ToonGhostButton title="Maybe later" onPress={onContinue} />
+          {canBuy ? (
+            <ToonButton
+              title="Try PASER PRO"
+              variant="gold"
+              onPress={() => openPaywall('onboarding')}
+            />
+          ) : null}
+          <ToonGhostButton
+            title={isPro ? 'Continue' : 'Continue with PASER'}
+            onPress={onContinue}
+          />
         </View>
       </ScrollView>
-
-      <BuyProSheet visible={sheet} onClose={() => setSheet(false)} onPurchased={onContinue} />
     </View>
   );
 }
@@ -102,7 +141,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.gutter,
     paddingVertical: space.lg,
   },
-  actions: { marginTop: space.xl },
+  actions: { marginTop: space.xl, gap: space.sm },
   wordmark: { color: '#F5C451' },
   kicker: { color: 'rgba(255,255,255,0.72)', marginTop: space.sm },
   panel: { marginTop: space.lg },
@@ -121,5 +160,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   perkText: { color: '#fff', flex: 1, textAlign: 'left' },
-
+  reassure: {
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: space.lg,
+    fontSize: 14,
+    lineHeight: 20,
+  },
 });

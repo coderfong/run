@@ -14,8 +14,12 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
 import RunShareSheet from '../src/components/share/RunShareSheet';
-import RunShareCard, { DEFAULT_STATS, availableStats } from '../src/components/share/RunShareCard';
-import LogoRunner from '../src/components/character/LogoRunner';
+import RunShareCard, {
+  DEFAULT_STATS,
+  SHARE_FORMAT,
+  availableStats,
+} from '../src/components/share/RunShareCard';
+import LogoRunner, { MARK_FOOT } from '../src/components/character/LogoRunner';
 import TrailDecorations, {
   TRAIL_DECORATIONS,
   trailMarks,
@@ -67,7 +71,6 @@ describe('the run share card', () => {
     expect(() =>
       mount(
         <RunShareCard
-          format="story"
           width={300}
           team={TEAM}
           run={RUN}
@@ -79,12 +82,16 @@ describe('the run share card', () => {
     ).not.toThrow();
   });
 
-  test('puts the runner avatar on the end of the route', () => {
+  // Not "somewhere near it" — ON it. The mark is a running pose whose planted
+  // foot sits about two thirds of the way across its own square, so anchoring
+  // the figure by the middle of its box stood it a stride clear of wherever the
+  // run ended. The box therefore has to land LEFT of the end point by that
+  // fraction, which is what MARK_FOOT says and what this checks.
+  test('stands the runner avatar on the end of the route', () => {
     let tree;
     act(() => {
       tree = renderer.create(
         <RunShareCard
-          format="story"
           width={300}
           team={TEAM}
           run={RUN}
@@ -94,7 +101,25 @@ describe('the run share card', () => {
         />
       );
     });
-    expect(tree.root.findByType(LogoRunner).props.equipped).toBe(EQUIPPED);
+    const runner = tree.root.findByType(LogoRunner);
+    expect(runner.props.equipped).toBe(EQUIPPED);
+
+    // The end dot the figure is meant to be standing on, straight off the card.
+    const size = runner.props.size;
+    const box = tree.root
+      .findAll((n) => typeof n.props?.style?.left === 'number' && n.props?.style?.position === 'absolute')
+      .map((n) => n.props.style)
+      .find((s) => typeof s.top === 'number' && s.left !== undefined && s.width === undefined);
+    // The end dot is the one wearing the clan colour; the start dot is white,
+    // and the avatar's own rig draws circles of its own.
+    const dot = tree.root
+      .findAll((n) => typeof n.props?.cx === 'number' && n.props?.fill === TEAM.glow)
+      .map((n) => n.props)[0];
+
+    const footX = box.left + size * MARK_FOOT;
+    expect(Math.abs(footX - dot.cx)).toBeLessThan(1);
+    // The box centre is NOT the anchor — if it were, this would be ~0 too.
+    expect(Math.abs(box.left + size / 2 - dot.cx)).toBeGreaterThan(size * 0.1);
     act(() => tree.unmount());
   });
 
@@ -102,7 +127,7 @@ describe('the run share card', () => {
     // The claim can be declined, and a run can end with nothing to draw. The
     // card still has numbers to show, so it still has to come up.
     expect(() =>
-      mount(<RunShareCard format="story" width={300} run={{ distanceM: 0, durationS: 0 }} />)
+      mount(<RunShareCard width={300} run={{ distanceM: 0, durationS: 0 }} />)
     ).not.toThrow();
   });
 
@@ -113,7 +138,6 @@ describe('the run share card', () => {
     expect(() =>
       mount(
         <RunShareCard
-          format="square"
           width={300}
           run={RUN}
           path={[PATH[0]]}
@@ -128,7 +152,6 @@ describe('the run share card', () => {
     expect(() =>
       mount(
         <RunShareCard
-          format="story"
           width={300}
           run={{ distanceM: '10310', durationS: '3550', avgSpeedKmh: '10.5' }}
           path={[PATH[0], null, { latitude: undefined, longitude: 103 }, PATH[1]]}
@@ -157,7 +180,7 @@ describe('the run share card', () => {
     let tree;
     act(() => {
       tree = renderer.create(
-        <RunShareCard format="story" width={360} team={TEAM} run={RUN} path={PATH} rings={RINGS} />
+        <RunShareCard width={360} team={TEAM} run={RUN} path={PATH} rings={RINGS} />
       );
     });
     const text = tree.root
@@ -180,7 +203,7 @@ describe('the run share card', () => {
     let tree;
     act(() => {
       tree = renderer.create(
-        <RunShareCard format="story" width={360} team={TEAM} run={RUN} path={PATH} rings={RINGS} />
+        <RunShareCard width={360} team={TEAM} run={RUN} path={PATH} rings={RINGS} />
       );
     });
     const height = 360 * (16 / 9);
@@ -299,6 +322,66 @@ describe('the share sheet', () => {
       jest.useRealTimers();
     }
   });
+
+  // ONE SHAPE. The card is a story sticker and the 1:1 "Post" is gone, so there
+  // is no format switch on the sheet and nothing that can hand the card a
+  // second aspect ratio.
+  test('offers the story shape only, with no format switch', () => {
+    expect(SHARE_FORMAT.ratio).toBe(16 / 9);
+    expect(SHARE_FORMAT.export).toEqual({ width: 1080, height: 1920 });
+
+    jest.useFakeTimers();
+    let tree;
+    try {
+      act(() => {
+        tree = renderer.create(
+          <RunShareSheet visible onClose={() => {}} team={TEAM} path={PATH} rings={RINGS} run={RUN} />
+        );
+      });
+      act(() => jest.runOnlyPendingTimers());
+      act(() => jest.runOnlyPendingTimers());
+
+      const text = tree.root
+        .findAll((n) => typeof n.props?.children === 'string')
+        .map((n) => n.props.children);
+      // The switch labelled its two shapes by ratio, so the ratios are what
+      // proves it is gone. ("Home post" is the caption row and stays.)
+      expect(text.some((t) => /1:1|9:16|Square/i.test(t))).toBe(false);
+      act(() => tree.unmount());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The mascot is ON when the sheet opens. It started off, which in practice
+  // meant the part of the card that is actually the runner never left the app.
+  test('opens with the runner already standing on the route', () => {
+    jest.useFakeTimers();
+    let tree;
+    try {
+      act(() => {
+        tree = renderer.create(
+          <RunShareSheet
+            visible
+            onClose={() => {}}
+            team={TEAM}
+            path={PATH}
+            rings={RINGS}
+            run={RUN}
+            equipped={EQUIPPED}
+          />
+        );
+      });
+      act(() => jest.runOnlyPendingTimers());
+      act(() => jest.runOnlyPendingTimers());
+
+      expect(tree.root.findByType(RunShareCard).props.showCharacter).toBe(true);
+      expect(tree.root.findAllByType(LogoRunner).length).toBe(1);
+      act(() => tree.unmount());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 describe('the trail decorations', () => {
@@ -370,7 +453,6 @@ describe('the trail decorations', () => {
     act(() => {
       tree = renderer.create(
         <RunShareCard
-          format="story"
           width={300}
           team={TEAM}
           run={RUN}

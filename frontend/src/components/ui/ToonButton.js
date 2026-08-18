@@ -11,6 +11,7 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { NB, shadow } from '../../theme';
 import { ctaFills, toon, toonType } from '../../onboarding/toon';
 import { haptic, PressableScale } from '../../ui/motion';
 import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
@@ -28,6 +29,12 @@ export default function ToonButton({
   style,
   containerStyle,
   labelColor = '#FFFFFF',
+  // Defaults to the title, which is right for almost every button here — the
+  // label IS the affordance. Overridable for the few whose visible word is
+  // shorter than what it does: "Continue" at the end of the result screen is
+  // continuing TO SHARING, and a screen reader landing on it deserves to be
+  // told which of the several Continues in this flow it found.
+  accessibilityLabel,
   // Escape hatch for buttons that have to wear a colour the app decides at
   // runtime rather than one of the four brand variants — the claim CTA is
   // painted in the runner's clan colour. Shape: { colors: [a, b, c], border }.
@@ -57,7 +64,7 @@ export default function ToonButton({
       disabled={off}
       scaleTo={0.96}
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={accessibilityLabel || title}
       accessibilityState={{ disabled: off }}
       containerStyle={containerStyle}
       style={[styles.shadow, { opacity: disabled ? 0.55 : 1 }, style]}
@@ -113,13 +120,14 @@ export function ToonGhostButton({ title, onPress, color = 'rgba(255,255,255,0.72
 }
 
 const styles = StyleSheet.create({
-  shadow: {
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 0,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
-  },
+  // Was shadowOpacity 0.35 at offset {0,3} with elevation 4 — a half-hard
+  // shadow: no blur, but translucent, straight down, and paired with an Android
+  // elevation that blurred it anyway. The drop is now the real thing, offset on
+  // both axes at full opacity. It stays here as a style rather than moving to
+  // HardShadow because this button is FRAMED, so its silhouette is a wobbly
+  // drawn box and a hard rectangle behind it would show at every corner where
+  // the ink wanders in.
+  shadow: shadow.hard(NB.ink, NB.offsetSm),
   fill: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   // maxWidth is what makes the label shrinkable at all: without it the row
   // sizes to its content and simply overflows the pill it sits in.

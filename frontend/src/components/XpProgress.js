@@ -16,9 +16,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import GameAnimation from './GameAnimation';
 import { MAX_LEVEL, levelBandColor, levelFromXp, xpForLevel } from '../config/progression';
-import { radius, space, toonRadius, useTheme, useThemedStyles, withAlpha } from '../theme';
-import { CountUpText, Reveal, SteppedBar, haptic } from '../ui/motion';
+import {
+  NB,
+  nbInk,
+  nbTextOn,
+  radius,
+  space,
+  toonRadius,
+  useTheme,
+  useThemedStyles,
+  withAlpha,
+} from '../theme';
+import { CountUpText, Pop, Reveal, SteppedBar, haptic } from '../ui/motion';
 
 // How long the whole move takes, shared out between the level boundaries it
 // crosses in proportion to how much of each one it covers. A run that crosses
@@ -88,7 +99,7 @@ const fmtGain = (n) => {
 };
 
 export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay = 420, style }) {
-  const { colors: D } = useTheme();
+  const { colors: D, scheme } = useTheme();
   const styles = useThemedStyles(makeStyles);
   // The window this bar is animating across. Held in state and only moved when
   // the total actually moves: the result screen re-renders constantly (options
@@ -122,21 +133,52 @@ export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay =
     if (i > 0) haptic.success();
   };
 
+  const band = step ? levelBandColor(step.level) : D.cardAlt;
+  // The chip carries a real stroke now rather than floating as a bare fill.
+  // Judged against the BAND it is drawn on, not against the page: the bands
+  // run from bronze up through the top of the ladder, and one stroke colour
+  // picked off the scheme disappears on some of them.
+  const chipInk = nbInk(scheme, band);
+
   return (
     <View style={[styles.root, style]}>
       <View style={styles.head}>
         {step ? (
           <Reveal key={step.level} from="none" duration={220} style={styles.levelWrap}>
-            <View style={[styles.levelChip, { backgroundColor: levelBandColor(step.level) }]}>
-              <Text style={styles.levelChipText}>{`LEVEL ${step.level}`}</Text>
-            </View>
+            {/* THE ROLLOVER, as something that actually happens.
+                The chip used to cross-fade from one number to the next, which
+                is the same motion the bar underneath makes while it is merely
+                filling — so the rarest moment on this screen looked exactly
+                like the ordinary one. It POPS now, and only on a real level
+                change: `trigger` is the level itself, so the first level a
+                runner sees pops once as it arrives and every later one pops as
+                it rolls over. */}
+            <Pop trigger={step.level}>
+              <View style={[styles.levelChip, { backgroundColor: band, borderColor: chipInk }]}>
+                <Text style={[styles.levelChipText, { color: nbTextOn(band) }]}>
+                  {`LEVEL ${step.level}`}
+                </Text>
+              </View>
+            </Pop>
             {leveledUp && (
-              <Text style={[styles.levelUp, { color: accent }]}>LEVEL UP</Text>
+              <>
+                {/* Behind the words, not beside them: the burst is the
+                    celebration and the words are what it is for. Sized to the
+                    row rather than to the screen — the full-screen confetti
+                    already firing on this page is the big gesture, and a
+                    second one that size would be two celebrations arguing. */}
+                <View style={styles.levelUpBurst} pointerEvents="none">
+                  <GameAnimation name="levelUpBronze" size={64} trigger={step.level} />
+                </View>
+                <Pop trigger={step.level} delay={90}>
+                  <Text style={[styles.levelUp, { color: accent }]}>LEVEL UP</Text>
+                </Pop>
+              </>
             )}
           </Reveal>
         ) : (
           <View style={styles.levelWrap}>
-            <View style={[styles.levelChip, { backgroundColor: D.cardAlt }]}>
+            <View style={[styles.levelChip, { backgroundColor: D.cardAlt, borderColor: chipInk }]}>
               <Text style={[styles.levelChipText, { color: D.textDim }]}>LEVEL ·</Text>
             </View>
           </View>
@@ -210,18 +252,35 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   levelWrap: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   levelChip: {
     borderRadius: radius.pill,
-    paddingHorizontal: space.sm,
-    paddingVertical: 3,
+    borderWidth: NB.strokeThin,
+    paddingHorizontal: space.md,
+    paddingVertical: 4,
   },
-  levelChipText: { ...type.labelSm, color: '#fff', letterSpacing: 0.8 },
+  // Colour is passed at the call site — it is judged against the level band
+  // behind it, which changes as the ladder is climbed.
+  levelChipText: { ...type.labelSm, letterSpacing: 0.8 },
   levelUp: { ...type.labelSm, letterSpacing: 1.2 },
+  // Centred on the LEVEL UP words and sitting behind them. Absolute so it
+  // takes no space in the row: the burst appearing must not shove the chip
+  // sideways at the exact moment the chip is being looked at.
+  levelUpBurst: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: -20,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   gain: { ...type.bodySmBold },
+  // A 1pt hairline round the ladder read as disabled next to anything else on
+  // this page. The bar is the thing the level-up is measured on, so it gets a
+  // real edge and the height to carry it.
   track: {
-    height: 14,
+    height: 18,
     borderRadius: toonRadius.pill,
     backgroundColor: colors.cardAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.cardAlt),
     overflow: 'hidden',
   },
   fill: { height: '100%' },

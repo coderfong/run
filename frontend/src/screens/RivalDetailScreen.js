@@ -9,20 +9,19 @@
 // see that they are. What they cannot see is the analysis, and analysis has
 // never won anybody a metre of ground.
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { api } from '../api/client';
-import BuyProSheet from '../components/BuyProSheet';
+import ProTeaser from '../components/ProTeaser';
 import RivalCard, { ago, fmtArea } from '../components/RivalCard';
 import { Screen, Skeleton, ToonButton } from '../components/ui';
 import { GOLD } from '../config/pro';
-import { IAP_ENABLED } from '../config/releaseFeatures';
-import usePro from '../hooks/usePro';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
 import { radius, space, useTheme, useThemedType } from '../theme';
 import { Reveal, staggerDelay } from '../ui/motion';
+import { parseServerDate } from '../utils/time';
 
 const DASH = '·'; // the app's empty-value placeholder
 
@@ -42,7 +41,7 @@ function fmtStreak(n, theirName) {
 
 function fmtSince(iso) {
   if (!iso) return DASH;
-  const d = new Date(iso.endsWith('Z') ? iso : `${iso}Z`);
+  const d = parseServerDate(iso);
   return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
 }
 
@@ -66,8 +65,6 @@ export default function RivalDetailScreen({ route, navigation }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const { equipped } = useAvatar();
-  const { isPro } = usePro();
-  const [payOpen, setPayOpen] = useState(false);
 
   const { data, loading } = useQuery(
     userId ? `rival:${userId}` : null,
@@ -76,6 +73,9 @@ export default function RivalDetailScreen({ route, navigation }) {
 
   const rival = data?.rival;
   const analytics = data?.analytics;
+  // Every beat that has passed between the two runners. Free, listed in full
+  // below, and therefore safe to summarise in the teaser.
+  const beats = (data?.events || []).length;
 
   React.useEffect(() => {
     if (rival?.username) navigation.setOptions({ title: rival.username });
@@ -192,24 +192,35 @@ export default function RivalDetailScreen({ route, navigation }) {
               ) : null}
             </View>
           </Reveal>
-        ) : IAP_ENABLED && !isPro ? (
+        ) : (
           <Reveal delay={80}>
-            <View style={[styles.panel, { backgroundColor: colors.card, borderColor: GOLD, borderWidth: 2 }]}>
-              <Text style={[type.captionMedium, { color: GOLD }]}>PASER PRO</Text>
-              <Text style={[type.bodySmBold, { marginTop: 2 }]}>See the full head to head</Text>
-              <Text style={[type.caption, { color: colors.textMuted, marginTop: 4 }]}>
-                Streaks, defence rates, how far you have each run this month, and the ground you keep meeting on. Everything above stays free.
-              </Text>
-              <ToonButton
-                title="See the plans"
-                variant="gold"
-                size="sm"
-                onPress={() => setPayOpen(true)}
-                style={{ marginTop: space.sm }}
-              />
-            </View>
+            {/* The one real number in this teaser is the beat count, and it is
+                real because the whole event list is FREE and already rendered
+                further down this very screen. Saying "you have traded ground
+                18 times" is therefore not a withheld statistic being dangled —
+                it is a summary of something they can scroll to and count. The
+                four locked rows below it carry no numbers, because the free
+                response genuinely has none to show. */}
+            <ProTeaser
+              context="rival_insights"
+              title="Rival Intelligence"
+              blurb={
+                beats
+                  ? `You have traded ground ${beats} ${beats === 1 ? 'time' : 'times'}. PRO reads what that adds up to.`
+                  : 'Streaks, defence rates, how far you have each run this month, and the ground you keep meeting on.'
+              }
+              rows={[
+                { label: 'Most contested area' },
+                { label: 'Battle history' },
+                { label: 'Momentum' },
+                { label: 'Defence rate, both sides' },
+              ]}
+              cta="View full rivalry"
+              feature="rival_insights"
+              style={{ marginTop: space.md }}
+            />
           </Reveal>
-        ) : null}
+        )}
 
         <Text style={[type.captionMedium, { color: colors.textMuted, marginTop: space.lg }]}>
           EVERY BEAT
@@ -225,8 +236,6 @@ export default function RivalDetailScreen({ route, navigation }) {
           </Reveal>
         ))}
       </ScrollView>
-
-      <BuyProSheet visible={payOpen} onClose={() => setPayOpen(false)} />
     </Screen>
   );
 }

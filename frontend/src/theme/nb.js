@@ -21,7 +21,7 @@
 // teal or magenta offset four points down-right reads as intentional, keeps
 // the hard-edged geometry, and is the one place the palette gets to shout.
 
-import { readableInk, shadow } from './tokens';
+import { contrastRatio, readableInk, shadow } from './tokens';
 
 // ---------------------------------------------------------------------------
 // The three constants everything else is derived from.
@@ -67,12 +67,78 @@ export const NB = {
 // ---------------------------------------------------------------------------
 
 export const nbAccents = {
-  teal: '#2dd4bf',
   magenta: '#ec4899',
   purple: '#8b5cf6',
+  teal: '#2dd4bf',
   yellow: '#ffd54a',
+  blue: '#4d96ff',
   coral: '#ff6b4a',
+  green: '#3ddc84',
+  lilac: '#c4b5fd',
 };
+
+// THE DECK — the six colours that get dealt out to repeated elements.
+//
+// Neo-brutalism is not one accent used consistently; the reference boards run
+// six or seven flat colours at once and let adjacency do the work. A row of
+// chips in a single hue reads as a form, the same row in six reads as the
+// style. Ordered so neighbours contrast: pink then purple then teal, rather
+// than the three warm ones together.
+//
+// Six, not eight. `green` is reserved for success and `lilac` is the muted
+// step for disabled or inactive states, and dealing either one out at random
+// would make a chip look like a status.
+export const NB_DECK = [
+  nbAccents.magenta,
+  nbAccents.purple,
+  nbAccents.teal,
+  nbAccents.yellow,
+  nbAccents.blue,
+  nbAccents.coral,
+];
+
+// Same hash as `seedHash` in ui/frameRegistry, and deliberately the same idiom:
+// this app already deals every repeated element a frame and a pose off a seed
+// string, and colour is the third thing dealt from the same hat. Kept local
+// rather than imported so the theme layer does not depend on the frame layer.
+function seedHash(seed) {
+  const key = String(seed ?? '');
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  return Math.abs(hash);
+}
+
+/**
+ * Deal a colour from the deck, the same way every time for the same `seed`.
+ *
+ * Deterministic for exactly the reason `frameVariant` is: a list that re-rolled
+ * its colours on every render would strobe as it re-renders, and one that
+ * re-rolled on scroll would do it while you watch. Seed it with whatever
+ * identifies the element — an id, a label, a route name.
+ *
+ * `shift` deals a different colour for the same seed, so two things belonging to
+ * one row (a chip and the icon bubble beside it) can differ without inventing a
+ * second seed.
+ */
+export function nbAccentFor(seed, shift = 0) {
+  return NB_DECK[(seedHash(seed) + shift) % NB_DECK.length];
+}
+
+/**
+ * A text colour that is actually READABLE on `fill`.
+ *
+ * Not `nbInk`, and the difference matters as colour spreads: `nbInk` picks a
+ * LINE colour and holds it to 2.4:1, which is the right bar for a stroke and
+ * far too low for type. Every colour in the deck is mid-to-light, so ink wins
+ * on almost all of them — but coral and magenta are close enough to the line
+ * that guessing gets it wrong, and a label is the thing you cannot afford to
+ * lose.
+ */
+export function nbTextOn(fill) {
+  const onInk = contrastRatio(NB.ink, fill);
+  if (onInk == null) return NB.ink;
+  return onInk >= 4.5 ? NB.ink : '#ffffff';
+}
 
 // The default shadow colour on dark, when a caller has not chosen one. Teal
 // because it is the coolest of the five and so argues least with the pink the

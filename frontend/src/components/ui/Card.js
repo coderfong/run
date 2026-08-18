@@ -36,6 +36,19 @@ export default function Card({
   dark = false,
   padded = true,
   onPress,
+  // The card's dealt colour, when it has one.
+  //
+  // On DARK it is the drop's colour, which is what `nbDrop` already does with
+  // an accent — a solid block of it offset down-right, because black on a
+  // near-black page is nothing.
+  //
+  // On LIGHT the reference recipe is a black shadow and that stays the
+  // default, because a page of cards each dropping their own hue is the
+  // failure mode the deck exists to avoid. `accentDrop` opts a surface in
+  // where the colour is the point: a feed of run cards is a long identical
+  // list, and it is exactly the kind of list the reference boards colour.
+  accent,
+  accentDrop = false,
   frame,
   frameTint,
   // Points of line, not a multiplier on whichever drawing turned up — see
@@ -61,7 +74,7 @@ export default function Card({
   // stacking the two gives a hand-drawn box with a machine-drawn box printed
   // just inside it. Frames and neo-brutalist strokes are alternatives, which is
   // the same rule this file already applies to the fill and the radius.
-  const nb = toonSurface(colors, scheme, { on: fill });
+  const nb = toonSurface(colors, scheme, { on: fill, accent });
   const drawScale = frame ? frameScale * weightScale(frame, frameWeight) : frameScale;
 
   const surface = spec ? {
@@ -151,6 +164,10 @@ export default function Card({
       offset={nb.offset}
       radius={radius.card}
       on={fill}
+      accent={accent}
+      // Only when the caller asked for it — see `accentDrop` above. Left off,
+      // `color` is undefined and HardShadow falls back to the scheme's rule.
+      color={accentDrop && accent && scheme !== 'dark' ? accent : undefined}
       style={outer}
     >
       <Box

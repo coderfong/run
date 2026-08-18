@@ -84,8 +84,9 @@ const TIMING = {
   faceLoopStart: 2050,
 };
 
-// Where each head is thrown. Six paths = the cap on heads shown; extra
-// victims are counted in the label instead of being flung.
+// Where each head is thrown. One path per head shown; the paths beyond the cap
+// are kept because the cap is a display decision that has moved once already
+// and may move again, and they cost nothing sitting here.
 const PARTICLE_PATHS = [
   { x: -118, peak: 48, rotation: -22, delay: 0, scale: 0.92 },
   { x: 110, peak: 38, rotation: 20, delay: 55, scale: 1.0 },
@@ -95,15 +96,28 @@ const PARTICLE_PATHS = [
   { x: 148, peak: 50, rotation: 26, delay: 275, scale: 0.74 },
 ];
 
-export const MAX_STEAL_HEADS = PARTICLE_PATHS.length;
+/**
+ * How many victims get a FACE. Everybody else is a count.
+ *
+ * WAS SIX — one per particle path — and six was chosen from what the animation
+ * could throw rather than from what the banner could hold. A claim against
+ * four or five people filled the bar with a row of shrinking busts, and past
+ * two of them the row stopped reading as "these runners lost ground" and
+ * started reading as a stack of avatar chips wedged in beside the label. The
+ * heads had to shrink to 25px to fit, which is well under the size a
+ * composited PASER character is legible at, so the cost of the extra four was
+ * paid by the two that actually mattered.
+ *
+ * Two is also the number the layout never has to fight: two heads at full
+ * 31px, the label centred, and `+3` where the rest were. The names are all in
+ * the accessibility label either way, and who exactly lost the ground is said
+ * properly in the payoff.
+ */
+export const MAX_STEAL_HEADS = 2;
 
-// A head reads at 31px; past three of them the row would run under the
-// centred label, so they step down instead of overlapping it.
-function headSize(count) {
-  if (count <= 3) return 31;
-  if (count === 4) return 28;
-  return 25;
-}
+// Both heads always draw at full size now — the cap is what guarantees the row
+// fits, so there is nothing left for a step-down to rescue.
+const HEAD_SIZE = 31;
 
 // ---------------------------------------------------------------------------
 // The bomb (drawn, so it needs no asset)
@@ -355,7 +369,7 @@ export default function TerritoryStealBanner({
   useEffect(() => { setPlayToken(autoPlay ? 1 : 0); }, [trigger, autoPlay]);
 
   const heads = useMemo(() => (victims || []).slice(0, MAX_STEAL_HEADS), [victims]);
-  const size = headSize(heads.length);
+  const size = HEAD_SIZE;
 
   const finish = () => done.current?.();
 
@@ -492,7 +506,7 @@ export default function TerritoryStealBanner({
 
         {/* Centred, unless a long row of heads would run underneath it. */}
         <Animated.View
-          style={[heads.length >= 5 ? styles.labelRight : styles.label, labelStyle]}
+          style={[styles.label, labelStyle]}
           pointerEvents="none"
         >
           <OutlinedText style={[toonType.label, styles.labelText]} outline={toon.ink} width={1.5}>
@@ -589,17 +603,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   stackedHead: { position: 'absolute', left: 0, top: 0 },
-  extra: { fontSize: 12, marginLeft: 2 },
+  // Reads beside two full-size heads rather than after six shrunken ones,
+  // so it carries the whole remainder and is sized to be noticed.
+  extra: { fontSize: 13, marginLeft: 4, fontWeight: '800' },
 
   label: {
     position: 'absolute',
     alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  labelRight: {
-    position: 'absolute',
-    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
   },

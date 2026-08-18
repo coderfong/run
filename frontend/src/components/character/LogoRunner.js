@@ -48,6 +48,16 @@ const HEAD_DROP = 0.01;
 const FEET_IN_MARK = 0.971;
 export const MARK_FEET = 1;
 
+// ...and where ACROSS the square that foot lands. The mark is a running pose,
+// so the foot on the ground is nowhere near the middle of the picture: the ink
+// along the bottom edge of `paser-mark-body.png` is centred at 0.67 of its
+// width (measured off the asset's own alpha, stable across the bottom 1% to 5%
+// of it). Anything standing the figure ON a point needs this rather than half
+// the box — the box centre put the runner a whole foot clear of wherever the
+// route actually ended, which reads as a mascot floating beside the line.
+const FOOT_IN_MARK = 0.67;
+export const MARK_FOOT = (1 - BODY_SCALE) / 2 + FOOT_IN_MARK * BODY_SCALE;
+
 /**
  * @param {object}  props.equipped  avatar, as CharacterRig takes it
  * @param {number}  props.size      width of the mark (it is square)

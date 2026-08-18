@@ -21,19 +21,36 @@
 // `settle` is NOT a visual beat and must not be scaled with the rest: it is
 // how long the camera is given to stop before its coordinates are projected.
 //
-// RETUNED 2026-08-14: the choreographies read as busy rather than momentous —
-// the anticipation before an impact was as short as the impact itself, so
-// nothing had room to feel earned. `DRAMA_SCALE` stretches every beat in a
-// capture style (effects/captureStyles.js) and the actor timing table
-// (effects/choreography.js) by the same factor. That is safe despite the
-// one-body-per-action rule those files enforce: multiplying every timestamp
-// AND every duration by the same K preserves every "clears before the next
-// beat" relationship the original authoring computed, because
-// K*end = K*start + K*duration for any K > 0. `reveal` and `handoff` below
-// carry the same factor, because `POST_REVEAL_BUDGET` in choreography.js is
-// derived from them and a style that now runs longer needs a bigger budget to
-// still fit inside it.
-export const DRAMA_SCALE = 1.4;
+// `DRAMA_SCALE` stretches every beat in a capture style
+// (effects/captureStyles.js) and the actor timing table
+// (effects/choreography.js) by one factor. That is safe despite the
+// one-body-per-action rule those files enforce: multiplying every timestamp AND
+// every duration by the same K preserves every "clears before the next beat"
+// relationship the authoring computed, because K*end = K*start + K*duration for
+// any K > 0. `reveal` and `handoff` below carry the same factor, because
+// `POST_REVEAL_BUDGET` in choreography.js is derived from them.
+//
+// RETUNED 2026-08-17, back to 1.0. It was 1.4, stretching every scene to five
+// and six seconds on the theory that anticipation makes an impact feel earned.
+// What it actually produced was several seconds of effects moving with nothing
+// happening — and worse, it divided every sprite's playback `speed` by the same
+// factor, so sheets that were already 2 to 3 seconds long at speed 1
+// (magic_spell_01 is 81 frames at 30fps; freezing_bloom_01 is 100) stretched
+// past FIVE seconds and covered the three beats that came after them.
+//
+// The scenes are now authored directly against the target shape, so there is
+// nothing left to stretch:
+//
+//     0-300     setup: the runner commits, the world warns, the rivals notice
+//     300-800   the attack is released
+//     700-1200  it travels
+//     ~1150     IMPACT — one frame, everything at once, nothing else on screen
+//     1200-1750 the rivals are displaced and the ground turns over
+//     1750-2300 the effects settle and the rivals leave
+//     2300-2600 the runner takes the ground; payoff follows
+//
+// Keep this at 1.0 unless the whole pack is being retuned deliberately.
+export const DRAMA_SCALE = 1.0;
 
 export const CLAIM_TIMING = {
   // --- the run, replayed in 3D (claim/runFlyover.js) ---
@@ -63,11 +80,19 @@ export const CLAIM_TIMING = {
   // and victory over the top of the turnover. `POST_REVEAL_BUDGET` in
   // effects/choreography.js is reveal + handoff, and validation fails any
   // style that schedules a beat past it.
-  reveal: Math.round(2400 * DRAMA_SCALE),
-  handoff: Math.round(400 * DRAMA_SCALE),
+  //
+  // These are the "1.2-1.8 conversion / 1.8-2.4 settle" half of the shape in
+  // the DRAMA_SCALE note: the ground finishes turning over, the rivals leave
+  // over the top of it, and the style is unmounted with ~1.3s of room after its
+  // own reveal cue. Was 3360/560, which left a style playing for well over
+  // three seconds after the outcome was already visible.
+  reveal: Math.round(1000 * DRAMA_SCALE),
+  handoff: Math.round(350 * DRAMA_SCALE),
 
   // --- payoff and after ---
-  victoryBeat: Math.round(2400 * DRAMA_SCALE),
+  // The runner standing on the ground they took. Deliberately shorter than the
+  // capture that earned it: this is the payoff, not a second animation.
+  victoryBeat: Math.round(1500 * DRAMA_SCALE),
   payoffEntrance: 800,
   leaderboardWipe: 1200,
   rowStagger: 110,

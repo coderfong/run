@@ -695,6 +695,45 @@ export function Pulse({ children, active = true, min = 1, max = 1.07, durationMs
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }
 
+// ---------------------------------------------------------------------------
+// Pop — a one-shot spring scale, fired whenever `trigger` changes.
+//
+// The counterpart to `Pulse`, and the distinction is the whole point: Pulse
+// breathes forever and means "this is waiting for you"; Pop happens once and
+// means "this just changed". A level chip rolling over from 2 to 3, a coin
+// payout landing — both are events, and an event that arrives by fading in at
+// a constant speed does not read as an event.
+//
+// A spring rather than a timing curve, and deliberately under-damped: the
+// overshoot past 1 and the settle back IS the pop. A critically damped spring
+// to the same place is a fast fade with extra steps.
+//
+// Fires on mount as well as on change, because the first value of `trigger` is
+// itself the first event — a payout row that mounts is a payout arriving. Pass
+// a `trigger` that never changes to get exactly one pop and no more.
+// ---------------------------------------------------------------------------
+
+export function Pop({ trigger = 0, from = 0.72, delay = 0, children, style, ...rest }) {
+  const reduced = useReduceMotion();
+  const scale = useSharedValue(reduced ? 1 : from);
+
+  useEffect(() => {
+    if (reduced) {
+      scale.value = 1;
+      return;
+    }
+    scale.value = from;
+    scale.value = withDelay(delay, withSpring(1, { damping: 9, stiffness: 220, mass: 0.7 }));
+  }, [trigger, delay, from, reduced, scale]);
+
+  const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  return (
+    <Animated.View style={[style, animated]} {...rest}>
+      {children}
+    </Animated.View>
+  );
+}
+
 export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
   const reduced = useReduceMotion();
   // Read the LIVE palette. This used to take the static `colors` export, which

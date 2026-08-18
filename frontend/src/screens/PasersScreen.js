@@ -19,7 +19,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MessageCircle, Search, Share2 } from 'lucide-react-native';
+import { MessageCircle, Search } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
@@ -123,7 +123,7 @@ function InviteRows({ username }) {
   return (
     <ToonRowGroup style={{ marginTop: space.md }}>
       <ToonRow
-        icon={<Share2 size={20} color={colors.text} />}
+        icon={<AppIcon name="share" size={24} />}
         label="Share your username"
         onPress={() => Share.share({ message }).catch(() => {})}
       />
@@ -133,7 +133,7 @@ function InviteRows({ username }) {
         onPress={() => openOr(`whatsapp://send?text=${encodeURIComponent(message)}`, 'WhatsApp')}
       />
       <ToonRow
-        icon={<MessageCircle size={20} color={colors.text} />}
+        icon={<AppIcon name="comment" size={24} />}
         label="Messages"
         onPress={() => openOr(`sms:?&body=${encodeURIComponent(message)}`, 'Messages')}
       />

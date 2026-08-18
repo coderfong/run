@@ -23,9 +23,10 @@ import { Screen, Skeleton, EmptyState, Input } from '../components/ui';
 import { Arrival, PressableScale, haptic, useArrival } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { openSafetyActions } from '../utils/safety';
+import { parseServerDate } from '../utils/time';
 
 function timeStr(iso) {
-  const d = new Date(iso);
+  const d = parseServerDate(iso);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 

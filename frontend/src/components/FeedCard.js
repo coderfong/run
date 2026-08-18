@@ -11,7 +11,19 @@ import TerritoryStealBanner, { STEAL_HEADROOM } from './TerritoryStealBanner';
 
 import { api, apiPhotoSource } from '../api/client';
 import { updateCached } from '../api/cache';
-import { radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import {
+  NB,
+  nbAccentFor,
+  nbInk,
+  nbRadius,
+  nbTextOn,
+  radius,
+  space,
+  withAlpha,
+  useTheme,
+  useThemedType,
+  useThemedStyles,
+} from '../theme';
 import { NEUTRAL } from '../state/clan';
 import { useAvatar } from '../state/avatar';
 import { CharacterBust } from './character/CharacterRig';
@@ -19,11 +31,12 @@ import PortraitBorder from './PortraitBorder';
 import { PressableScale, haptic } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
-import { Card, Row, StatValue } from './ui';
+import { Card, OverflowMenu, Row, StatValue } from './ui';
 import { fmtArea } from './RivalCard';
 import GameLottie from './GameLottie';
 import ReactionBar, { POPOVER_HEIGHT, POPOVER_WIDTH, ReactionPopover, ReactionTrigger } from './ReactionBar';
 import { useRunReactions } from '../hooks/useRunReactions';
+import { timeAgo } from '../utils/time';
 import { RunPostEditorModal } from './RunPostEditor';
 
 // The runner's portrait on a feed row. At 34 the bust inside the frame was a
@@ -32,6 +45,24 @@ import { RunPostEditorModal } from './RunPostEditor';
 // no room to read at all.
 const PORTRAIT = 46;
 const POST_PHOTO_W = 272;
+
+// The narrowest the who-and-when block is allowed to get before the buttons
+// beside it are sent to their own line.
+//
+// This used to be the load-bearing fix for a real problem: five actions
+// (share, edit, react, comment, kudos) came to a little over 200pt of the
+// ~318pt a card has inside its padding, the header handed them that width
+// first, and the name was clipped to an ellipsis while "took ground · 8h ago"
+// was squeezed away entirely — so your OWN runs were the rows you could not
+// read. The floor stopped the crush by forcing a second line instead.
+//
+// The actions are three slots now (react, kudos, and a menu holding the rest —
+// see the header row), which is about 130pt and fits beside the name on every
+// phone this ships to. The floor stays as the guarantee rather than as the
+// mechanism: if a future action lands back on this row, the name still wins
+// and the row still wraps rather than clipping. It is the portrait, its gap,
+// and enough left over for the longer of the two lines — the timestamp one.
+const IDENTITY_MIN = PORTRAIT + 10 + 118;
 
 // What a stat shows when there is nothing to show. A dash is the usual glyph
 // for this and the usual glyph is exactly the problem — the app has no dashes
@@ -105,14 +136,6 @@ function PairedPhotoCard({ media, photoPage, onPage, color, itemId }) {
   );
 }
 
-function timeAgo(iso) {
-  const s = Math.max(1, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
-
 function pace(distanceM, durationS) {
   if (!distanceM || distanceM < 50 || !durationS) return NO_VALUE;
   const mpk = durationS / 60 / (distanceM / 1000);
@@ -127,7 +150,7 @@ function formatArea(m2) {
 }
 
 export default function FeedCard({ item, navigation, autoPlaySteal = false, screenFocused = true }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
   // when the file moved to themed styles, and since the only two uses of it
@@ -153,6 +176,10 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
   const hasPhotos = post.media.length > 0;
   const hasRoute = hasRouteData({ rings: item.rings, path: item.path });
   const victims = item.victims || [];
+  // Seeded off the run id so it is stable for the life of the run. Falls back
+  // to the username, so the seeded/bot rows in a fresh database still come out
+  // varied rather than all landing on the first colour in the deck.
+  const accent = nbAccentFor(item.id || item.username || 'run');
   // Seeded from the row the feed already handed us, so the chips are on the
   // card at first paint rather than a fetch later.
   const { reactions, mine, burst, react } = useRunReactions(item.id, item);
@@ -241,12 +268,27 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         setPickerAt(null);
         navigation?.navigate('RunDetail', { runId: item.id });
       }}
+      // Every run card gets a colour dealt off its own id, so the feed reads
+      // as a stack of coloured blocks rather than a column of identical white
+      // rectangles — which is the single biggest thing separating this from
+      // the reference boards. Dealt, not chosen: the same run is the same
+      // colour on every render and on every device, and nothing has to store
+      // a colour per row. See `nbAccentFor`.
+      //
+      // It lands on the DROP and the meta chip, never on the card's fill. The
+      // fill has to stay neutral because it is the ground a route map, a
+      // photo and a clan-coloured stat sit on, and a saturated card would put
+      // the accent in an argument with all three. The standing rule that clan
+      // colour wins over chrome is intact.
+      accent={accent}
+      accentDrop
       style={{ marginBottom: space.md }}
     >
-      <Row between>
-        {/* Shrinks, so the wider portrait is never paid for by the comment and
-            kudos buttons being pushed off the right edge on a long username. */}
-        <Row gap={10} style={{ flexShrink: 1 }}>
+      <Row between testID="feed-card-header" style={styles.header}>
+        {/* Grows into whatever the buttons leave, and never below IDENTITY_MIN
+            — at which point the header wraps and the buttons take the next
+            line instead of taking the name's width. */}
+        <Row gap={10} testID="feed-card-identity" style={styles.identity}>
           {/* character portrait — yours from local state, others' from the
               avatar the server returns; initials only when none exists yet.
               The BORDER follows the same rule: your own row reads the tier
@@ -268,50 +310,45 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
               </Text>
             </View>
           )}
-          <View style={{ flexShrink: 1 }}>
+          <View style={styles.identityText}>
             <Text style={type.bodyBold} numberOfLines={1}>
               {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}
               {item.is_you ? ' · you' : ''}
             </Text>
-            <Text style={type.caption}>
-              {item.closed_loop ? 'took ground' : 'ran a path'} · {timeAgo(item.created_at)}
-            </Text>
+            {/* WHAT HAPPENED AND WHEN, in a block of the card's own colour.
+                One line, like the name above it — left to wrap it would go to
+                two on the narrowest phones and push the portrait off centre.
+
+                A chip rather than grey caption text because this is the line
+                that says whether the run actually TOOK anything, and it was
+                previously the quietest thing on the card. `nbTextOn` picks the
+                label colour against the fill, since the deck runs from yellow
+                to purple and one fixed ink cannot survive both. */}
+            <View
+              style={[
+                styles.metaChip,
+                { backgroundColor: accent, borderColor: nbInk(scheme, accent) },
+              ]}
+            >
+              <Text
+                style={[type.captionMedium, { color: nbTextOn(accent) }]}
+                numberOfLines={1}
+              >
+                {item.closed_loop ? 'took ground' : 'ran a path'} · {timeAgo(item.created_at)}
+              </Text>
+            </View>
           </View>
         </Row>
-        <Row gap={2}>
-          {/* Your own runs only. The card that gets posted carries YOUR avatar
-              and says the ground was claimed, which is not a thing to hand
-              somebody about a run they did not do. */}
-          {item.is_you ? (
-            <PressableScale
-              onPress={share}
-              style={styles.action}
-              accessibilityRole="button"
-              accessibilityLabel="Share this run"
-            >
-              <AppIcon name="share" size={28} />
-            </PressableScale>
-          ) : null}
-          {/* One shot: once a caption or a photo has actually been saved, the
-              pencil goes away rather than staying up as a standing "edit me
-              again" invitation. */}
-          {item.is_you && !post.caption && post.media.length === 0 ? (
-            <PressableScale
-              onPress={() => { setPickerAt(null); setEditOpen(true); }}
-              style={styles.action}
-              accessibilityRole="button"
-              accessibilityLabel="Add a caption or photo"
-            >
-              <Pencil size={22} color={colors.text} strokeWidth={2.3} />
-            </PressableScale>
-          ) : null}
-          {/* Reactions sit LEFT of comment and kudos: those two are the actions
-              that have always been here, and the new one should not displace
-              the muscle memory for either. This wrapper is what the picker is
-              measured against — the strip itself is drawn in an overlay (see
-              `openPicker`), which is also what keeps it clear of the steal
-              banner's explosion rather than fighting it over a zIndex. */}
-          <View ref={anchorRef} collapsable={false} style={styles.reactionAnchor}>
+        <Row gap={2} testID="feed-card-actions" style={styles.actions}>
+          {/* THE ROW IS TWO BUTTONS AND A MENU.
+              React and kudos stay out here because they are the two things
+              people actually do to a run, they are one tap each, and both
+              carry state the row has to show (which emote you picked, whether
+              the heart is on). Share, edit and comment all navigate or open
+              something, so nothing is lost by costing a tap more — and moving
+              them is what gets the header back onto ONE line for every row
+              rather than only for other people's. See `styles.header`. */}
+          <View ref={anchorRef} testID="feed-card-reaction-anchor" collapsable={false} style={styles.reactionAnchor}>
             <ReactionTrigger
               mine={mine}
               active={pickerOpen}
@@ -319,23 +356,6 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
               onPress={openPicker}
             />
           </View>
-          <PressableScale
-            onPress={() => {
-              setPickerAt(null);
-              navigation?.navigate('RunDetail', { runId: item.id, focusComments: true });
-            }}
-            style={styles.action}
-            accessibilityRole="button"
-            accessibilityLabel="View comments"
-          >
-            {/* Full strength. At the shared 0.45 `faded` these two read as
-                greyed-out — disabled, not "tap me" — which is the wrong signal
-                for the only two things you can do to somebody else's run. */}
-            <AppIcon name="comment" size={28} />
-            {(item.comment_count || 0) > 0 ? (
-              <Text style={[type.captionMedium, { color: colors.textMuted }]}>{item.comment_count}</Text>
-            ) : null}
-          </PressableScale>
           <View style={styles.kudosSlot}>
             {/* Cleared when it finishes. It used to be left mounted on its last
                 frame forever, which is a burst you cannot see sitting over a
@@ -366,6 +386,44 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
               {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
             </PressableScale>
           </View>
+          {/* Everything else. The list is built per row rather than being a
+              fixed menu with disabled entries: a menu that offers "Share" on
+              somebody else's run and then refuses is worse than one that never
+              claimed to. `hidden` entries are dropped by the menu itself, and
+              it renders nothing at all if that leaves it empty. */}
+          <OverflowMenu
+            label="More actions for this run"
+            onOpen={() => setPickerAt(null)}
+            actions={[
+              {
+                key: 'comment',
+                label: 'Comments',
+                icon: 'comment',
+                count: item.comment_count || 0,
+                onPress: () => navigation?.navigate('RunDetail', { runId: item.id, focusComments: true }),
+              },
+              {
+                // Your own runs only. The card that gets posted carries YOUR
+                // avatar and says the ground was claimed, which is not a thing
+                // to hand somebody about a run they did not do.
+                key: 'share',
+                label: 'Share this run',
+                icon: 'share',
+                hidden: !item.is_you,
+                onPress: share,
+              },
+              {
+                // One shot: once a caption or a photo has actually been saved,
+                // the entry goes away rather than staying up as a standing
+                // "edit me again" invitation.
+                key: 'edit',
+                label: 'Add caption or photo',
+                icon: ({ color, size }) => <Pencil size={size} color={color} strokeWidth={2.3} />,
+                hidden: !item.is_you || !!post.caption || post.media.length > 0,
+                onPress: () => setEditOpen(true),
+              },
+            ]}
+          />
         </Row>
       </Row>
 
@@ -562,6 +620,34 @@ const makeStyles = (colors) =>
     // Only used for the one frame before its first onLayout — square, same
     // as the route's compact box, so the row doesn't jump once measured.
     pairedPhotoFallback: { aspectRatio: 1 },
+    // The header is ONE line when the name and the buttons both fit and TWO
+    // when they do not, rather than always one with the name paying for it.
+    // Every row carries the same three slots now — react, kudos, menu — so in
+    // practice it stays on one line and, more to the point, your own runs and
+    // everybody else's are the same height. The wrap is the safety net.
+    header: { flexWrap: 'wrap', rowGap: space.sm },
+    // No `flex: 1` here, deliberately. That sets flexBasis to 0, and the wrap
+    // decision is made on flex BASIS, not on what the content actually needs —
+    // a zero-basis identity always "fits", so the header would never break and
+    // the name would go straight back to being crushed.
+    identity: { flexGrow: 1, flexShrink: 1, minWidth: IDENTITY_MIN },
+    identityText: { flexGrow: 1, flexShrink: 1 },
+    // `flex-start` so the block is only as wide as its own text — stretched to
+    // the identity column's full width it would read as a banner across the
+    // card rather than as a chip under the name.
+    metaChip: {
+      alignSelf: 'flex-start',
+      marginTop: 3,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: nbRadius.sm,
+      borderWidth: NB.strokeThin,
+      maxWidth: '100%',
+    },
+    // Never shrinks: 40pt is already the minimum a thumb can hit. `marginLeft:
+    // auto` is what keeps the strip against the right edge on the wrapped
+    // line, where `between` has nothing to push it away from.
+    actions: { flexShrink: 0, marginLeft: 'auto' },
     kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
     kudosFx: { position: 'absolute', zIndex: 4 },
     action: {

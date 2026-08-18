@@ -30,7 +30,6 @@ import {
 import { Anton_400Regular } from '@expo-google-fonts/anton';
 import { Poppins_700Bold, Poppins_900Black } from '@expo-google-fonts/poppins';
 
-import { hydrateShareDebugFlags } from './src/utils/shareDebugFlags';
 import HomeScreen from './src/screens/HomeScreen';
 import RunningScreen from './src/screens/RunningScreen';
 import ResultScreen from './src/screens/ResultScreen';
@@ -74,6 +73,8 @@ import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
 import { useProSync } from './src/hooks/usePro';
+import ProProvider from './src/pro/ProProvider';
+import { hydrateProExposure } from './src/pro/exposure';
 import { hydrateCache } from './src/api/cache';
 import { preloadCriticalImages, preloadStartupImages } from './src/config/screenAssets';
 // No static `colors` here on purpose — App used to build the nav theme and the
@@ -93,10 +94,6 @@ const AnimationGalleryScreen = __DEV__
 const SENTRY_DSN =
   process.env.EXPO_PUBLIC_SENTRY_DSN || Constants?.expoConfig?.extra?.sentryDsn || '';
 if (SENTRY_DSN) Sentry.init({ dsn: SENTRY_DSN, tracesSampleRate: 0.1 });
-
-// Loads any on-device flags flipped from DevShareDebugPanel before the app
-// gets anywhere near the crashing share screen. See shareDebugFlags.js.
-hydrateShareDebugFlags();
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -700,6 +697,12 @@ function App() {
     let alive = true;
     const done = () => alive && setCacheReady(true);
     const guard = setTimeout(done, 400);
+    // The PRO exposure record rides along with the cache read: it is the same
+    // kind of thing (a small blob that has to be in memory before the first
+    // render can decide what to show) and it must not add a second gate to the
+    // launch path. It is deliberately NOT raced against `done` — a slow read
+    // costs at most one extra free planner preview, never a delayed launch.
+    hydrateProExposure();
     hydrateCache().finally(() => {
       clearTimeout(guard);
       done();
@@ -750,10 +753,17 @@ function App() {
                 <ProfileProvider>
                   <RecordingProvider>
                     <SettingsProvider>
-                      <ThemedStatusBar />
-                      <RootNavigator />
-                      <OfflineBanner />
-                      <ToastHost />
+                      {/* PASER PRO. Innermost on purpose: it reads auth, the
+                          clan accent and the theme, and it hosts the app's ONE
+                          paywall sheet above the navigator. Screens never
+                          mount a paywall of their own any more — they call
+                          openPaywall(context). See src/pro/ProProvider.js. */}
+                      <ProProvider>
+                        <ThemedStatusBar />
+                        <RootNavigator />
+                        <OfflineBanner />
+                        <ToastHost />
+                      </ProProvider>
                     </SettingsProvider>
                   </RecordingProvider>
                 </ProfileProvider>

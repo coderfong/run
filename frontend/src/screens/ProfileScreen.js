@@ -6,7 +6,7 @@ import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react
 import Constants from 'expo-constants';
 import { useIsFocused } from '@react-navigation/native';
 
-import { Award, ChevronRight, Flame, Medal, Trophy } from 'lucide-react-native';
+import { ChevronRight } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
 import { frameVariant } from '../ui/frameRegistry';
@@ -34,7 +34,8 @@ import { Screen, Card, Row, Button, Input, StatValue, SectionHeader, Skeleton, O
 import ThemeToggle from '../components/ThemeToggle';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
-import BuyProSheet from '../components/BuyProSheet';
+import { useProEntitlement } from '../pro/ProProvider';
+import DevProPanel from '../components/DevProPanel';
 import { art } from '../config/onboardingArt';
 import GameAnimation from '../components/GameAnimation';
 import { toast } from '../ui/toast';
@@ -42,13 +43,23 @@ import { itemPreviewSources } from '../config/cosmetics';
 import { preloadImages } from '../utils/imagePreload';
 import { preloadScreenImagesAfterInteractions } from '../config/screenAssets';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
+import { shortDate } from '../utils/time';
 
 // Trophy shelf — derived from live stats; earned trophies glow in the accent.
+// The shelf is PASER's own sticker art, not line icons. It used to be four
+// lucide glyphs drawn in the accent, which read as a settings list sitting in
+// the middle of a page made of painted characters and painted frames — and a
+// trophy shelf is the one place on the profile that should look like a prize.
+//
+// An unearned trophy is the same sticker at reduced opacity, because these are
+// full-colour PNGs and cannot be tinted (see AppIcon's own header). That is
+// the right treatment anyway: greying a trophy out says "not yet", where a
+// different colour would say "a different kind of trophy".
 const TROPHIES = [
-  { key: 'first_claim', label: 'First claim', icon: Flame, earned: (s) => (s.territory_count || 0) >= 1 },
-  { key: 'big_claim', label: '0.5 km² claim', icon: Trophy, earned: (s) => (s.biggest_claim_m2 || 0) >= 500000 },
-  { key: 'ten_zones', label: '10 zones', icon: Medal, earned: (s) => (s.territory_count || 0) >= 10 },
-  { key: 'streak7', label: 'Week streak', icon: Award, earned: (s) => (s.current_streak_days || 0) >= 7 },
+  { key: 'first_claim', label: 'First claim', icon: 'claim', earned: (s) => (s.territory_count || 0) >= 1 },
+  { key: 'big_claim', label: '0.5 km² claim', icon: 'trophy', earned: (s) => (s.biggest_claim_m2 || 0) >= 500000 },
+  { key: 'ten_zones', label: '10 zones', icon: 'award', earned: (s) => (s.territory_count || 0) >= 10 },
+  { key: 'streak7', label: 'Week streak', icon: 'streak', earned: (s) => (s.current_streak_days || 0) >= 7 },
 ];
 
 const NOTIF_ROWS = [
@@ -165,10 +176,11 @@ export default function ProfileScreen({ navigation }) {
   const { data: paserby, setData: setPaserby } = useQuery('me:paserby', api.paserby, {
     fallback: { enabled: true, unseen: 0, total: 0 },
   });
-  // Shares the pass screen's cache key: the PRO card is decided on the first
-  // render rather than popping in, and it goes away on both pages the moment
-  // the pass is bought on either of them.
-  const { data: progression, refresh: reloadProgression } = useQuery('me:progression', api.progression);
+  // The pass query that used to live here is gone. It existed for exactly two
+  // things: deciding whether to show the PRO poster, and reloading after a
+  // purchase made from it. Both now come from the entitlement itself, which
+  // this screen already has, so keeping it would be a request per visit to
+  // /me/progression for a number nothing on the page reads.
   const { data: rivals } = useQuery('me:rivals:3', () => api.rivals(3), {
     fallback: { rivals: [] },
     select: (d) => d.rivals || [],
@@ -181,7 +193,7 @@ export default function ProfileScreen({ navigation }) {
   const [deleteDraft, setDeleteDraft] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
-  const [passOpen, setPassOpen] = useState(false);
+  const { isPro, canShowPro, isLoading: proLoading, openPaywall } = useProEntitlement();
 
   useEffect(() => {
     // You is pre-mounted behind Home, making this idle time ideal for the
@@ -401,14 +413,22 @@ export default function ProfileScreen({ navigation }) {
           full of runners and its left half empty stage, so the copy sits in
           the dark on the left with nothing behind it. Everything about what
           PRO actually gives you is a tap away on the pass; a card on You that
-          listed it was three paragraphs nobody read. */}
-      {IAP_ENABLED && progression && !progression.premium_active ? (
+          listed it was three paragraphs nobody read.
+
+          THE GATE IS ENTITLEMENT ITSELF, not `progression.premium_active`.
+          Those two agree on the server (premium_active IS is_pro — see
+          routes/progression.py), but they arrive from different endpoints, so
+          reading the pass here meant the poster waited on a request it does
+          not otherwise need and ignored the dev entitlement override. Held
+          back only while entitlement is still loading, so a subscriber never
+          sees their own subscription advertised for a frame. */}
+      {canShowPro && !isPro && !proLoading ? (
         <Reveal delay={110}>
           <PressableScale
             style={styles.proCard}
-            onPress={() => { haptic.light(); setPassOpen(true); }}
+            onPress={() => { haptic.light(); openPaywall('profile'); }}
             accessibilityRole="button"
-            accessibilityLabel="Paser Pro. Twice the rewards, plus planning, history and analytics. Tap to see the plans"
+            accessibilityLabel="Paser Pro. Strategy, insights and style. Territory planner, territory intelligence, advanced analytics, rival intelligence and exclusive customisation. Tap to explore"
           >
             {/* Explicit 100%/100% rather than absoluteFill: that registered
                 style carries no width or height, and an Image handed one has
@@ -430,11 +450,16 @@ export default function ProfileScreen({ navigation }) {
               >
                 PASER PRO
               </OutlinedText>
+              {/* WAS "Twice the rewards." That is a promise about POWER, and
+                  PRO does not sell power — see the contract at the top of
+                  config/pro.js and entitlements.py. Three words for the three
+                  things it does sell; the full list lives on the paywall,
+                  which is where somebody who taps this is going anyway. */}
               <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.78)', marginTop: 2 }]}>
-                Twice the rewards.
+                Strategy. Insights. Style.
               </Text>
               <Row gap={2} style={styles.proCta}>
-                <Text style={[type.captionMedium, { color: GOLD }]}>Unlock</Text>
+                <Text style={[type.captionMedium, { color: GOLD }]}>Explore PRO</Text>
                 <ChevronRight size={14} color={GOLD} strokeWidth={3} />
               </Row>
             </View>
@@ -523,11 +548,11 @@ export default function ProfileScreen({ navigation }) {
         style={{ marginTop: space.xl, marginBottom: space.md }}
       />
       <View style={styles.trophyRow}>
-        {TROPHIES.map(({ key, label, icon: Icon, earned }) => {
+        {TROPHIES.map(({ key, label, icon, earned }) => {
           const got = stats ? earned(stats) : false;
           return (
             <View key={key} style={[styles.trophy, got && { backgroundColor: withAlpha(accent, 0.12) }]}>
-              <Icon size={24} color={got ? accent : colors.textDim} strokeWidth={2} />
+              <AppIcon name={icon} size={30} opacity={got ? 1 : 0.32} />
               <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? colors.text : colors.textDim }]}>
                 {label}
               </Text>
@@ -557,7 +582,7 @@ export default function ProfileScreen({ navigation }) {
               accessibilityLabel="Open run detail"
             >
               <View style={{ flex: 1 }}>
-                <Text style={type.bodyBold}>{new Date(r.created_at).toLocaleDateString()}</Text>
+                <Text style={type.bodyBold}>{shortDate(r.created_at)}</Text>
                 <Text style={type.caption}>
                   {km(r.distance_m)} km · {r.closed_loop ? `${km2(r.area_m2)} km² claimed` : 'not claimed'}
                 </Text>
@@ -748,12 +773,15 @@ export default function ProfileScreen({ navigation }) {
           allows commercial use and asks for a credit where one is practical;
           this is where every other pack in the app is credited, so it costs a
           line and removes a content rights question at review. */}
+      {/* Every PRO state, previewable from a desk. Invisible to real accounts
+          — see the gate in DevProPanel. */}
+      <DevProPanel style={{ marginTop: space.lg }} />
+
       <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
       {IAP_ENABLED ? (
         <>
           <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
-          <BuyProSheet visible={passOpen} onClose={() => setPassOpen(false)} onPurchased={reloadProgression} />
         </>
       ) : null}
     </Screen>

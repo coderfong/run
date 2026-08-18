@@ -57,6 +57,45 @@ export class ApiError extends Error {
 // Every call now has a ceiling; pass `timeoutMs` to tighten or widen it.
 const DEFAULT_TIMEOUT_MS = 20000;
 
+// The ceiling for calls that MUST NOT be given up on.
+//
+// Measured, not guessed: the API's first request after it has been left alone
+// takes about 43 seconds, because the host spins the instance down and has to
+// boot it again before anything is served. Twenty seconds sits well inside
+// that window, so every run-flow call left on the default was aborting a
+// server that was awake and on its way to answering — and the runner saw a
+// network error from a network that was fine.
+//
+// Scoped to the run flow on purpose, because those are the calls whose failure
+// costs something that cannot be had again: a run cannot be re-run to recover
+// its start, and a claim cannot be re-earned. Browsing calls keep the shorter
+// ceiling — a leaderboard that gives up after twenty seconds and offers a pull
+// to refresh is better than one holding a spinner for a minute.
+const COLD_START_TIMEOUT_MS = 60000;
+
+/**
+ * Wake the API without waiting for it.
+ *
+ * The cold start above is unavoidable from here, but WHERE it lands is not.
+ * Left alone it lands on whichever call the runner happens to make first,
+ * which on this app is `/start-run` — they press Start and watch a spinner for
+ * three quarters of a minute before their run begins. Pinging the cheapest
+ * endpoint there is as the run screen opens moves the boot into the time they
+ * spend getting their headphones in and finding the door.
+ *
+ * Deliberately unawaited and deliberately silent: nothing depends on the
+ * answer, a failure means only that the next real call pays what it would have
+ * paid anyway, and a warm-up that surfaced an error would be worse than no
+ * warm-up at all.
+ */
+export function warmUp() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), COLD_START_TIMEOUT_MS);
+  fetch(`${API_BASE}/health`, { signal: controller.signal })
+    .catch(() => {})
+    .finally(() => clearTimeout(timer));
+}
+
 async function request(path, opts = {}) {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...init } = opts;
   const headers = {
@@ -183,9 +222,14 @@ export const api = {
   // The Z is stripped deliberately. Run timestamps are naive UTC server-side
   // (the column carries no timezone, and durations are taken against utcnow),
   // so an offset-aware value would land in a column with nowhere to put it.
+  // The cold-start ceiling: this is the FIRST call of a session for most
+  // runners, so it is the one that finds the instance asleep. Aborting it
+  // means somebody stood in the street watching Start fail on a server that
+  // was two seconds from ready.
   startRun: (startedAtMs = null) =>
     request('/start-run', {
       method: 'POST',
+      timeoutMs: COLD_START_TIMEOUT_MS,
       body: JSON.stringify(
         startedAtMs
           ? { started_at: new Date(startedAtMs).toISOString().replace('Z', '') }
@@ -210,7 +254,8 @@ export const api = {
   // / `base_t` / `route` are what the client transforms locally to draw any
   // pose, and `placements` is a coarse sample of the space, there to seed the
   // first breakdown and back the one-tap recommendations.
-  claimOptions: (runId) => request(`/runs/${runId}/claim-options`),
+  claimOptions: (runId) =>
+    request(`/runs/${runId}/claim-options`, { timeoutMs: COLD_START_TIMEOUT_MS }),
   // What an arbitrary pose would take. Position and heading are continuous, so
   // there is no cell to read a breakdown out of once the claim has been
   // dragged between two samples — this prices the exact pose. Debounced by the
@@ -230,6 +275,9 @@ export const api = {
   claimTerritory: (runId, t = null, rotationDeg = null) =>
     request('/claim-territory', {
       method: 'POST',
+      // Unrepeatable, like /end-run: the ground is earned once and this is the
+      // call that banks it.
+      timeoutMs: COLD_START_TIMEOUT_MS,
       body: JSON.stringify({ run_id: runId, t, rotation_deg: rotationDeg }),
     }),
   // Allowlisted development scenarios. The server applies the same account

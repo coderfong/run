@@ -17,11 +17,11 @@
 // numbers, debounced.
 //
 // Sharing does NOT screenshot the recap card — a screen-shaped slab posts
-// badly. `RunShareSheet` renders a purpose-built 9:16 (or 1:1) card and hands
-// it to Instagram Stories or the system sheet.
+// badly. `RunShareSheet` renders a purpose-built 9:16 card and hands it to
+// Instagram Stories or the system sheet.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Dimensions, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -44,6 +44,7 @@ import { buildTerritoryAnchorModel, layoutDefenders, resolveRevealOrigin } from 
 import { CAPTURE_LAYER } from '../effects/layers';
 import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
 import CutsceneBackdrop from '../components/claim/CutsceneBackdrop';
+import { CLAIM_PHASE, atOrAfter } from '../components/claim/phases';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
 import LeaderboardTransition from '../components/claim/LeaderboardTransition';
 import TerritoryRevealCanvas from '../components/claim/TerritoryRevealCanvas';
@@ -51,9 +52,7 @@ import TerritoryVictoryBeat, { victoryLabel } from '../components/claim/Territor
 import useClaimSequence from '../components/claim/useClaimSequence';
 import PaserbyReveal from '../components/paserby/PaserbyReveal';
 import RunShareSheet from '../components/share/RunShareSheet';
-import DevShareDebugPanel from '../components/DevShareDebugPanel';
 import TerritoryInsights from '../components/TerritoryInsights';
-import { SHARE_DEBUG_FLAGS } from '../utils/shareDebugFlags';
 import XpProgress from '../components/XpProgress';
 import { Image } from '../ui/image';
 import { IAP_ENABLED } from '../config/releaseFeatures';
@@ -64,12 +63,12 @@ import { fetchAndCache, invalidate, invalidateAfterClaim } from '../api/cache';
 import { shouldReveal } from '../config/paserby';
 import { preloadScreenImages } from '../config/screenAssets';
 import { RUN_TIER } from '../config/economy';
-import { brand, radius, runTuning, shadow, space, toon, toonRadius, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
-import { Framed, OutlinedText, ToonButton } from '../components/ui';
+import { NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, runTuning, shadow, space, toon, toonRadius, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
+import { Framed, HardShadow, OutlinedText, ToonButton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { useClan } from '../state/clan';
 import { useSettings } from '../state/settings';
-import { Confetti, CountUpText, Reveal, haptic, PressableScale } from '../ui/motion';
+import { Confetti, CountUpText, Pop, Reveal, haptic, PressableScale } from '../ui/motion';
 import PaserMark from '../components/PaserMark';
 import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
@@ -121,10 +120,19 @@ function km2(n) {
   return v >= 0.1 ? v.toFixed(2) : v.toFixed(3);
 }
 
+// The number only. "coins" used to be part of the counting string, which meant
+// the word was redrawn on every tick of the count — and next to a spinning coin
+// it is the coin that says what the number is, so the word became a static
+// label beside it instead.
 function fmtCoins(n) {
   'worklet';
-  return `+${Math.round(n)} coins`;
+  return `+${Math.round(n)}`;
 }
+
+// When the payout lands, measured from the card arriving. After the XP bar has
+// finished travelling (XpProgress starts at 420 and runs for ~900), so the two
+// rewards are read one after the other rather than competing.
+const COINS_DELAY = 1180;
 
 // Total climb, from the altitude stored on each fix. GPS altitude is noisy by
 // several metres even standing still, so only rises past a threshold count —
@@ -315,11 +323,16 @@ export default function ResultScreen({ navigation, route }) {
 
   // Claim placement: the run earned a circle (circumference = distance);
   // it becomes territory only once the runner places it on their trail.
+  // `gained_m2` is null rather than 0 until a claim lands: nothing has been
+  // won yet, and 0 would read as "this run won nothing".
   const [claim, setClaim] = useState({
     territory: result.territory || null,
     stolen_m2: result.stolen_m2 || 0,
     stolen_from: result.stolen_from || null,
     xp_gained: 0,
+    gained_m2: null,
+    reinforced_m2: 0,
+    claim_rings: null,
   });
   // Where the run's earned land goes. The run decides how MUCH ground and what
   // SHAPE it takes; the move the runner still has to make is the POSE — where
@@ -376,6 +389,19 @@ export default function ResultScreen({ navigation, route }) {
   // ground taken, the victory beat, then the payoff and standings.
   const mapRef = useRef(null);
   const seq = useClaimSequence({ mapRef, userId: user.id });
+
+  // The palette the CAPTURE draws in: the reveal, the glow seams, every tinted
+  // primitive and the victory beat. Identical to `team` in every real claim —
+  // `tintOverride` is set only by the dev sequence panel, so a capture can be
+  // inspected against a colour that is not the signed-in player's own. Derived
+  // here rather than folded into `team` because `team` is declared well before
+  // this hook runs and cannot read from it.
+  const captureTeam = useMemo(() => {
+    const override = seq.options?.tintOverride;
+    return override
+      ? { fill: withAlpha(override, 0.2), stroke: override, glow: override }
+      : team;
+  }, [seq.options?.tintOverride, team]);
   const captureCharacterRect = useMemo(() => {
     const point = seq.projection?.claimPoint;
     return point ? { x: point.x - 30, y: point.y - 84, width: 60, height: 84 } : null;
@@ -395,12 +421,9 @@ export default function ResultScreen({ navigation, route }) {
   const captureStage = useCaptureStage(reducedMotion);
   const castRef = useRef(null);
 
-  // Whether any defender has started leaving. CutsceneBackdrop (the solid
-  // black stage behind the character performance) stays up until this fires,
-  // rather than clearing at the reveal phase transition — the ground
-  // changing colour and the rival fleeing it are meant to read as one payoff
-  // revealed together, not the black lifting early and the flee happening
-  // over an already-visible map.
+  // Whether any defender has started leaving. Nothing gates the map scrim on
+  // this any more — see the scrim's own note — but the flag is still how the
+  // screen knows the reaction beat has begun, and it is cheap to keep correct.
   const [defendersExiting, setDefendersExiting] = useState(false);
   useEffect(() => { setDefendersExiting(false); }, [seq.playToken]);
   const handleCharacterAction = useCallback((name, role) => {
@@ -408,7 +431,19 @@ export default function ResultScreen({ navigation, route }) {
   }, []);
   // The encounter and victory beats are laid out in the map's own pixel space,
   // so they need its box to keep characters inside the card.
-  const [mapBox, setMapBox] = useState(null);
+  //
+  // SEEDED FROM THE WINDOW rather than starting null. The claim stage is
+  // full-bleed, so the window is very close to the right answer and `onLayout`
+  // corrects it within the first frame either way. Starting at null meant the
+  // first resolve of every anchor ran against a box of zero size, and a zero
+  // box makes the safe rect zero, which used to send the entire cutscene to
+  // the top-left corner (see the note in effects/anchors.js). That resolver
+  // now defends itself, but handing it a real box is the other half: the
+  // fallback should be insurance, not the normal path.
+  const [mapBox, setMapBox] = useState(() => {
+    const { width, height } = Dimensions.get('window');
+    return width > 0 && height > 0 ? { width, height } : null;
+  });
 
   // Where the rivals are standing.
   //
@@ -682,29 +717,52 @@ export default function ResultScreen({ navigation, route }) {
     [requestPreview]
   );
 
+  // THIS RUN'S claim, which is not the same shape as the runner's territory:
+  // a claim landing on ground they already hold is merged into it, and
+  // `territory.rings` is then the whole merged holding — every block they have
+  // taken around there, going back weeks. Anything on this screen that is
+  // about the RUN outlines `claim_rings` instead, so what is drawn after the
+  // claim is the same shape that was drawn while it was still being placed.
   const rings = captured
-    ? (t.rings?.length ? t.rings : [t.polygon])
+    ? (claim.claim_rings?.length
+        ? claim.claim_rings
+        : (t.rings?.length ? t.rings : [t.polygon]))
     : [path.map((p) => [p.longitude, p.latitude])];
 
-  // The won ground as map points — the permanent Mapbox fill the reveal hands
+  // The runner's territory, on the other hand, IS the merged shape — that is
+  // what the permanent map fill under the reveal hands off to.
+  const heldRings = captured ? (t.rings?.length ? t.rings : [t.polygon]) : [];
+
+  // The held ground as map points — the permanent Mapbox fill the reveal hands
   // off to. Outer ring only; a claim shape never has holes.
   const claimedPoints = useMemo(
     () =>
-      captured && rings[0]?.length >= 3
-        ? rings[0].map(([lon, lat]) => ({ latitude: lat, longitude: lon }))
+      captured && heldRings[0]?.length >= 3
+        ? heldRings[0].map(([lon, lat]) => ({ latitude: lat, longitude: lon }))
         : null,
-    [captured, rings]
+    [captured, heldRings]
   );
 
-  // What the share card outlines: the ground actually held once the claim is
-  // in, the claim shape while it is still on offer. Never `rings`, which falls
-  // back to the route itself — that would draw the trail twice.
+  // What the share card outlines: the claim, before and after it lands. It is
+  // the same shape either way now — a card about one run should not silently
+  // become a picture of everything the runner owns the moment they press the
+  // button. Never `rings` alone, which falls back to the route itself — that
+  // would draw the trail twice.
   const shareRings = useMemo(() => {
     if (captured && rings[0]?.length >= 3) return rings;
     return claimRing ? [claimRing] : null;
   }, [captured, rings, claimRing]);
 
-  const heroAreaM2 = captured ? t.area_m2 : claimArea;
+  // What this run WON. Not `territory.area_m2`: that is the merged holding, so
+  // a lap around a block the runner already owns would report their whole
+  // estate as this morning's take. `gained_m2` is the part of the claim that
+  // was not already theirs — the borders that actually moved — and
+  // `reinforced_m2` is the rest, which is a real move (it stacks strength and
+  // buys lifetime) but wins no ground. The fallback is for a backend too old
+  // to send either.
+  const gainedM2 = claim.gained_m2 != null ? claim.gained_m2 : (captured ? t.area_m2 : 0);
+  const reinforcedM2 = claim.reinforced_m2 || 0;
+  const heroAreaM2 = captured ? gainedM2 : claimArea;
   const splits = useMemo(() => computeSplits(path), [path]);
   // RouteThumb (and `rings`) speak the feed's convention — [lon, lat] pairs.
   // The recorder's `path` is `{latitude, longitude}` objects instead, same
@@ -799,8 +857,15 @@ export default function ResultScreen({ navigation, route }) {
   // could be missing was a short run, so a 2.28 km run whose SHAPE the server
   // never sent was told to "run a little further" — which is both wrong and
   // unactionable. Each state now says the true thing.
+  //
+  // "new ground" and not "claimed" once a claim has landed, because the number
+  // above it is now what the run WON: a claim dropped on land the runner
+  // already held wins nothing, and calling that "claimed" was the whole
+  // misreading — it invited the merged holding to be the number.
+  // Under a square metre is a rounding artefact, not a border that moved.
+  const wonGround = gainedM2 >= 1;
   const heroCaption = captured
-    ? 'claimed'
+    ? (wonGround ? 'new ground' : 'no new ground, this one reinforced')
     : canPlace
     ? 'your ground is ready, take it above'
     : claimArea > 0
@@ -864,6 +929,11 @@ export default function ResultScreen({ navigation, route }) {
         stolen_m2: out.stolen_m2 || 0,
         stolen_from: out.stolen_from || null,
         xp_gained: out.xp_gained || 0,
+        // What the claim DID, as against what the runner now holds: the ground
+        // it won, the ground it only reinforced, and its own footprint.
+        gained_m2: out.gained_m2 ?? null,
+        reinforced_m2: out.reinforced_m2 || 0,
+        claim_rings: out.claim_rings?.length ? out.claim_rings : null,
       });
       if (out.energy_max) setEnergyStatus((s) => ({ ...(s || {}), energy: out.energy, energy_max: out.energy_max }));
       // Land changed hands: territory, energy, rivalries, club totals and every
@@ -1132,8 +1202,8 @@ export default function ResultScreen({ navigation, route }) {
               <TerritoryRevealCanvas
                 rings={seq.reveal.rings}
                 claimPoint={seq.reveal.claimPoint}
-                fillColor={team.stroke}
-                strokeColor={team.glow}
+                fillColor={captureTeam.stroke}
+                strokeColor={captureTeam.glow}
                 // The map's own box, so the reveal can blow the shape up to
                 // fill it and centre it — the same pixel space the capture
                 // encounter and the victory beat are laid out in.
@@ -1157,10 +1227,18 @@ export default function ResultScreen({ navigation, route }) {
                 style's exit beat fires before it goes false), so that alone
                 is the "on" condition. See CutsceneBackdrop's own header for
                 why this is a real sibling of CaptureCast rather than another
-                environment primitive inside CaptureStylePlayer. */}
+                environment primitive inside CaptureStylePlayer.
+
+                RETUNED: it is no longer a black stage and no longer gated on
+                the exit. It is a scrim UNDER the territory reveal that leaves
+                the contested map readable at about a third of its normal
+                presence, and it lifts at the HANDOFF — once the wipe has
+                finished and the permanent fill has taken over. The old version
+                was opaque and sat ABOVE the reveal, so the ground changing
+                hands happened behind a curtain that only rose afterwards. */}
             {seq.showCaptureStyle && (
               <CutsceneBackdrop
-                active={!defendersExiting}
+                active={!atOrAfter(seq.phase, CLAIM_PHASE.TERRITORY_HANDOFF)}
                 playToken={seq.playToken}
                 reducedMotion={reducedMotion}
               />
@@ -1202,10 +1280,11 @@ export default function ResultScreen({ navigation, route }) {
                 safeInsets={captureSafeInsets}
                 reducedMotion={seq.reducedMotion}
                 seed={seq.castSeed}
+                timeScale={seq.timeScale}
                 // The claim's own colours, so a crack glowing through the
                 // ground glows in the colour it is about to become.
-                tint={team.stroke}
-                ink={team.glow}
+                tint={captureTeam.stroke}
+                ink={captureTeam.glow}
                 onTerritoryReveal={seq.onCaptureRevealCue}
                 onCharacterAction={handleCharacterAction}
                 onContact={seq.onContact}
@@ -1224,7 +1303,7 @@ export default function ResultScreen({ navigation, route }) {
               claimScreenPoint={seq.projection?.claimPoint}
               bounds={mapBox}
               label={victoryLabel(payoff)}
-              strokeColor={team.glow}
+              strokeColor={captureTeam.glow}
               reducedMotion={reducedMotion}
               playToken={seq.playToken}
             />
@@ -1395,10 +1474,9 @@ export default function ResultScreen({ navigation, route }) {
 
         {/* the payoff: who you took it from, the XP, the level bar. Opens on
             the sequence's payoff phase — after the victory beat, not straight
-            off the territory handoff. The primary action carries on INTO the
-            standings (continueToLeaderboard); Done skips that beat entirely
-            and closes the celebration outright — the two buttons used to both
-            just be different ways off this screen, one of them via the map. */}
+            off the territory handoff. Its one action carries on INTO the
+            standings (continueToLeaderboard), which is where the celebration
+            ends; `onClose` is left for the Android back gesture. */}
         <ClaimPayoff
           visible={seq.showPayoff}
           claim={payoff}
@@ -1481,6 +1559,10 @@ export default function ResultScreen({ navigation, route }) {
 
       {/* the shareable card */}
       <Reveal delay={canPlace ? 140 : 0}>
+      {/* Accent on the clan's own colour, per the rule in theme/nb.js: on dark
+          the drop is the one place the palette shouts, and if a clan colour
+          and an accent ever meet, the clan wins. */}
+      <HardShadow radius={nbRadius.sm} accent={team.glow} style={styles.cardShadow}>
       <View style={styles.card}>
         {hasRouteData({ rings, path: routeLonLat }) && (
           <View style={styles.polyWrap}>
@@ -1492,7 +1574,18 @@ export default function ResultScreen({ navigation, route }) {
           <CountUpText value={heroAreaM2} format={km2} style={[styles.heroArea, { color: team.glow }]} />
           <Text style={styles.heroUnit}> km²</Text>
         </View>
-        <Text style={[styles.heroCaption, captured && styles.heroCaptionStrong]}>{heroCaption}</Text>
+        <Text style={[styles.heroCaption, captured && wonGround && styles.heroCaptionStrong]}>
+          {heroCaption}
+        </Text>
+        {/* The other half of the claim, said out loud rather than folded into
+            the number above it. Ground the runner already held does not move a
+            border, but it is not nothing either: it stacks the strength of
+            that land and buys it more time before it decays. */}
+        {captured && reinforcedM2 >= 1 && (
+          <Text style={styles.heroSub}>
+            plus {formatArea(reinforcedM2)} of your own land reinforced
+          </Text>
+        )}
 
         <View style={styles.quietRow}>
           <QuietStat label="Distance" value={(result.distance_m / 1000).toFixed(2)} unit="km" />
@@ -1533,14 +1626,29 @@ export default function ResultScreen({ navigation, route }) {
         {/* What the run paid, under the bar it just moved — coins used to sit
             above the whole card as a receipt with nothing to attach to. */}
         {result.coins_gained > 0 && (
-          <Reveal from="up" delay={520} style={styles.earnRow}>
-            <CountUpText
-              value={result.coins_gained}
-              from={0}
-              delay={520}
-              format={fmtCoins}
-              style={[styles.earnItem, { color: team.glow }]}
-            />
+          <Reveal from="up" delay={COINS_DELAY} style={styles.earnRow}>
+            {/* THE PAYOUT, as a coin arriving rather than a line of text.
+                This was a bare "+47 coins" that faded up with everything else
+                on the card, which is the wrong shape for the one number on
+                this screen that is spendable — a reward that reads exactly
+                like a statistic is not a reward. It is a struck block now: a
+                spinning coin, the number counting into it, and the whole thing
+                popping in on a spring once the XP bar has come to rest. */}
+            <Pop trigger={result.run_id} delay={COINS_DELAY}>
+              <HardShadow offset={NB.offsetSm} accent={nbAccents.yellow} radius={nbRadius.sm}>
+                <View style={styles.earnChip}>
+                  <GameAnimation name="coinSpin" size={26} trigger={result.run_id} />
+                  <CountUpText
+                    value={result.coins_gained}
+                    from={0}
+                    delay={COINS_DELAY}
+                    format={fmtCoins}
+                    style={styles.earnItem}
+                  />
+                  <Text style={styles.earnUnit}>coins</Text>
+                </View>
+              </HardShadow>
+            </Pop>
             {(result.coins_capped || result.energy_capped) && (
               <Text style={styles.earnCapped}>daily cap reached</Text>
             )}
@@ -1566,6 +1674,7 @@ export default function ResultScreen({ navigation, route }) {
           <Text style={styles.watermarkText}>PASER</Text>
         </View>
       </View>
+      </HardShadow>
       </Reveal>
 
       {/* PRs (Phase 6 fills achievements) */}
@@ -1577,14 +1686,27 @@ export default function ResultScreen({ navigation, route }) {
           </View>
           <View style={styles.prWrap}>
             {achievements.map((a) => (
-              <View key={a} style={[styles.prCard, { borderColor: withAlpha(team.glow, 0.55) }]}>
-                <LinearGradient
-                  colors={[withAlpha(team.glow, 0.22), 'transparent']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={StyleSheet.absoluteFill}
+              // FLAT. The diagonal wash that used to sit behind each record is
+              // the one device this style has no room for — "no gradient
+              // anywhere" is a third of what makes it the style — and it was
+              // also doing the work a stroke should: saying where the card
+              // ends. The tint is now one solid step of the clan colour, and
+              // the edge is a real line at full strength rather than a border
+              // faded to 55%.
+              <View key={a} style={[styles.prCard, { borderColor: nbInk(scheme, colors.cardAlt) }]}>
+                <View
+                  pointerEvents="none"
+                  style={[StyleSheet.absoluteFill, { backgroundColor: withAlpha(team.glow, 0.14) }]}
                 />
-                <View style={[styles.prIconWrap, { backgroundColor: withAlpha(team.glow, 0.16) }]}>
+                <View
+                  style={[
+                    styles.prIconWrap,
+                    {
+                      backgroundColor: withAlpha(team.glow, 0.3),
+                      borderColor: nbInk(scheme, colors.cardAlt),
+                    },
+                  ]}
+                >
                   <AppIcon name={recordIcon(a)} size={26} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -1603,7 +1725,14 @@ export default function ResultScreen({ navigation, route }) {
           board. Above the splits because it is about the GAME; the splits are
           about the run. Renders nothing when no ground was claimed. */}
       <Reveal delay={270}>
-        <TerritoryInsights runId={result.run_id} style={{ marginHorizontal: space.lg }} />
+        {/* The only place the automatic PRO prompt is armed. See the prop's
+            own note in TerritoryInsights — and it still has to get past the
+            notable-run test and the exposure rules before anything opens. */}
+        <TerritoryInsights
+          runId={result.run_id}
+          allowAutoPrompt
+          style={{ marginHorizontal: space.lg }}
+        />
       </Reveal>
 
       {/* splits */}
@@ -1615,35 +1744,27 @@ export default function ResultScreen({ navigation, route }) {
           half way down this page. The escape hatch is on the share screen
           itself, which goes straight Home — so nobody is trapped into
           posting, but everybody is offered it once. */}
+      {/* The same button the claim stage ends on, rather than a second CTA
+          shape. It was a pink GRADIENT pill with a soft glow behind it — a
+          gradient and a blur, which are the two devices this style has none
+          of, on the last thing the runner touches before their card goes out.
+          ToonButton is the flat fill, ink frame and hard drop everything else
+          on the page now wears. */}
       <Reveal delay={380} style={styles.actions}>
-        <PressableScale
-          style={shadow.glow(brand.pink)}
+        <ToonButton
+          title="Continue"
           onPress={goToShare}
           disabled={claiming}
-          accessibilityRole="button"
           accessibilityLabel="Continue to sharing"
-        >
-          <LinearGradient
-            colors={brand.gradient}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={styles.shareBtn}
-          >
-            <Text style={styles.shareBtnText}>Continue</Text>
-          </LinearGradient>
-        </PressableScale>
+        />
       </Reveal>
 
-      {/* Toggles reachable from HERE because the share-screen crash fires the
-          instant Continue is pressed — there is no chance to reach a control
-          on the crashing screen itself. Self-gates on dev_tools. */}
-      <DevShareDebugPanel style={{ marginHorizontal: space.lg }} />
     </ScrollView>
 
-    {/* STAGE 3 — the outward-facing card, story/post shaped and built for
-        Instagram rather than cropped out of this screen. The last thing
-        before Home: its Done goes back, sharing or not. */}
-    {SHARE_DEBUG_FLAGS.mountSheet && <RunShareSheet
+    {/* STAGE 3 — the outward-facing card, story shaped and built for Instagram
+        rather than cropped out of this screen. The last thing before Home: its
+        Done goes back, sharing or not. */}
+    <RunShareSheet
       // `&& !crossedOpen` for the same reason `leaveResult` drops the stage:
       // the plaza and the share card must never both be presented. The
       // condition is stated at BOTH ends because they are reached by different
@@ -1658,7 +1779,7 @@ export default function ResultScreen({ navigation, route }) {
       run={shareRun}
       // The runner's own avatar, to stand at the end of their route.
       equipped={equipped}
-    />}
+    />
 
     {/* CROSSED PATHS — the last beat, after the standings have been dismissed
         and only when this run turned somebody up. */}
@@ -1688,11 +1809,15 @@ export default function ResultScreen({ navigation, route }) {
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   scroll: { padding: space.lg, paddingBottom: space.xxl },
 
+  // A notice, not a card: the stroke goes all the way round at the thin
+  // weight, so it reads as a boxed aside rather than as another panel
+  // competing with the claim. The left rule alone was the web-form idiom this
+  // style replaces.
   gateCard: {
     backgroundColor: colors.cardAlt,
-    borderRadius: toonRadius.cell,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.textDim,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.cardAlt),
     padding: space.md,
     marginBottom: space.md,
   },
@@ -1702,8 +1827,35 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // Was a standalone row above the card; now sits inside it, under the XP
   // bar it's the other half of the payoff for — centred like the rest of the
   // card's content instead of left-aligned like a floating receipt.
-  earnRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.md },
-  earnItem: { ...type.bodySmBold },
+  earnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    marginTop: space.lg,
+  },
+  // A struck block of coin gold: flat fill, heavy stroke, hard drop. The one
+  // saturated non-clan colour on the card, and it is spending the deck's
+  // yellow the way theme/nb.js says chrome may — this is currency, not
+  // territory, so it does not have to be the runner's clan colour.
+  earnChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: nbAccents.yellow,
+    borderWidth: NB.stroke,
+    borderColor: NB.ink,
+    borderRadius: nbRadius.sm,
+    paddingLeft: space.sm,
+    paddingRight: space.md,
+    paddingVertical: 6,
+  },
+  earnItem: { ...type.statSm, color: nbTextOn(nbAccents.yellow) },
+  earnUnit: {
+    ...type.labelSm,
+    color: nbTextOn(nbAccents.yellow),
+    letterSpacing: 0.8,
+    opacity: 0.75,
+  },
   earnCapped: { ...type.caption, color: colors.textDim },
 
   // The claim card is the centrepiece of the whole post-run screen, so it wears
@@ -1781,25 +1933,43 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   takeName: { ...type.bodySm, color: colors.textMuted, flex: 1 },
   takeArea: { ...type.bodySmBold },
 
+  // THE CENTREPIECE, and now built like one. A 1pt hairline round a 24pt
+  // radius is the settings-panel recipe, and it was carrying the biggest
+  // number on the screen — beside a claim CTA with a 3pt stroke and a hard
+  // drop it read as the disabled version of a card. Heavy stroke, limited
+  // radius, flat fill: the three decisions in theme/nb.js, applied to the
+  // surface that most needed them. The drop is a real offset block behind it,
+  // painted by HardShadow at the call site so Android gets it too.
   card: {
     backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.stroke,
+    borderColor: nbInk(scheme, colors.card),
     padding: space.lg,
     alignItems: 'center',
   },
+  // Room for the block to fall into. The shadow is inset out of the wrapper by
+  // its own offset, so without this it lands under whatever is below it.
+  cardShadow: { marginBottom: NB.offset, marginRight: NB.offset },
   polyWrap: { alignSelf: 'stretch', marginBottom: space.sm },
   heroRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: space.sm },
   heroArea: { ...type.statHero },
   heroUnit: { ...type.statMd, color: colors.textMuted, marginBottom: 6 },
   heroCaption: { ...type.caption, color: colors.textDim, marginTop: 2, textAlign: 'center' },
-  // "claimed" specifically — the other captions are full sentences, where this
-  // weight would read as shouting.
+  // "new ground" specifically — the other captions are full sentences, where
+  // this weight would read as shouting.
   heroCaptionStrong: { ...type.bodySmBold, color: colors.text },
+  // The reinforcement line under it: a footnote to the headline, never a
+  // second headline.
+  heroSub: { ...type.caption, color: colors.textDim, marginTop: 3, textAlign: 'center' },
+  // The rule between the headline and the numbers is a real line now. A
+  // hairline inside a 3pt box is the one weight that reads as an accident.
   quietRow: {
     flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'space-between',
-    marginTop: space.lg, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.border,
+    marginTop: space.lg,
+    paddingTop: space.md,
+    borderTopWidth: NB.strokeThin,
+    borderTopColor: nbInk(scheme, colors.card),
   },
   // The second metric row hangs off the first, so the eight read as one block
   // rather than as two bordered sections.
@@ -1818,8 +1988,16 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   sectionTitle: { ...type.label, color: colors.textMuted, marginBottom: space.md },
   splitRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
   splitKm: { ...type.statSm, color: colors.text, width: 52 },
-  splitBarTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden' },
-  splitBar: { height: '100%', borderRadius: 4 },
+  splitBarTrack: {
+    flex: 1,
+    height: 12,
+    borderRadius: nbRadius.pill,
+    backgroundColor: colors.cardAlt,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.cardAlt),
+    overflow: 'hidden',
+  },
+  splitBar: { height: '100%' },
   splitPace: { ...type.statSm, color: colors.textMuted, width: 52, textAlign: 'right' },
 
   prWrap: { gap: space.sm },
@@ -1830,8 +2008,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    borderWidth: 1.5,
-    borderRadius: toonRadius.cell,
+    borderWidth: NB.strokeThin,
+    borderRadius: nbRadius.sm,
     backgroundColor: colors.cardAlt,
     paddingHorizontal: space.md,
     paddingVertical: space.md,
@@ -1841,13 +2019,14 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
+    borderWidth: NB.strokeThin,
     alignItems: 'center',
     justifyContent: 'center',
   },
   prKicker: { ...type.labelSm, fontSize: 10, color: colors.textDim, letterSpacing: 1.1, marginBottom: 1 },
   prText: { ...type.bodyBold },
 
+  // `shareBtn` / `shareBtnText` were here — the gradient pill's own padding
+  // and label colour. ToonButton brings both, so they went with it.
   actions: { marginTop: space.xl, gap: space.md },
-  shareBtn: { paddingVertical: 16, borderRadius: radius.pill, alignItems: 'center' },
-  shareBtnText: { ...type.button, color: '#fff' },
 });

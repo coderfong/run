@@ -81,6 +81,7 @@ jest.mock('../src/ui/motion', () => {
     Bar: Pass,
     SteppedBar: Pass,
     Pulse: Pass,
+    Pop: Pass,
     MascotLoader: () => null,
     Skeleton: Pass,
     CountUpText: ({ value }) => React2.createElement('CountUpTextStub', { value }),

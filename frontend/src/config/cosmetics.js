@@ -509,6 +509,24 @@ export function unlockLabel(item) {
   return item.unlock?.label || null;
 }
 
+/**
+ * Is this a PASER PRO exclusive?
+ *
+ * `unlock.premium` is the entitlement marker the catalogue already carried
+ * (see `premiumOnly` at the top of this file) and it stays the ONE source of
+ * truth — a second `isPro: true` field alongside it would be two flags that
+ * eventually disagree about the same hat, and the server half
+ * (PREMIUM_ITEMS in backend/app/progression.py) is keyed to this one.
+ *
+ * Used by the studio to decide which locked items are worth TRYING ON rather
+ * than refusing: a stat gate ("finish 5 runs") is an instruction, and a
+ * preview of it would just be a tease. A PRO exclusive is a purchase, and
+ * nobody buys a hat they have not seen on their own character.
+ */
+export function isProItem(item) {
+  return !!item?.unlock?.premium;
+}
+
 export const DEFAULT_EQUIPPED = {
   face: 'smiley',
   hair: 'curtains',

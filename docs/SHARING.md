@@ -9,8 +9,16 @@ the two things only you can finish.
 It opens **`RunShareSheet`** (`frontend/src/components/share/`), which is the
 Strava-shaped flow:
 
-1. **Pick a format** — Story (9:16, exported 1080×1920) or Post (1:1, exported
-   1080×1080).
+1. **One shape: the story** — 9:16, exported 1080×1920. There is no format
+   picker.
+
+   A 1:1 "Post" sat beside it until **2026-08-17**, and it went on the user's
+   call: this card exists to land in a story as a sticker. The square was never
+   the same picture at a different crop either — the safe areas, the route band
+   and the two-up stat grid are all measured against the story's height, so the
+   square quietly re-cut every one of them and shipped a second layout nobody
+   was tuning. `SHARE_FORMATS` is a single `SHARE_FORMAT` now, and every other
+   destination (Save, Copy, More) gets that same story-shaped PNG.
 2. **The background is always transparent.** There is no chooser. The card
    exports as a TRANSPARENT PNG and goes to Instagram as a *sticker*, so the
    runner's own selfie or photo — whatever they already put on the story — is
@@ -80,7 +88,8 @@ Strava-shaped flow:
    * **Runner** — the PASER mark wearing the player's head, feet on the end dot
      of their own route (the one point on the card that means something),
      clamped so a run that finished high or low doesn't put it through the
-     headline or the numbers. On/Off and Flip. See "The runner on the route".
+     headline or the numbers. **On by default** since 2026-08-17. On/Off and
+     Flip. See "The runner on the route".
    * **Stats** — chips for every metric the run actually has (Distance, Pace,
      Time, Elev gain, Best km, Avg speed, Territory), plus a Route toggle.
      Bounded at one minimum and six maximum: zero leaves a hole the runner
@@ -143,20 +152,19 @@ preview and the 1080-wide export.
   simple.
 * **The route stopped owning the card.** It used to take every pixel the fixed
   furniture did not; it now gets a band capped at `ROUTE_SHARE` (30% of the
-  card, both formats) and centred in the space between the safe area and the
-  numbers. Whatever is left over stays empty, which on a sticker is not waste —
+  card) and centred in the space between the safe area and the numbers.
+  Whatever is left over stays empty, which on a sticker is not waste —
   it is the runner's own story showing through.
 * **Each pair of numbers gets its own line.** `STAT_ROW_U` went 46 → 62: at 46
   the first row's digits ran into the second row's label and the four read as
   one block of text. The extra row height IS the gap, so the cells stay
   top-aligned and the space falls between the rows.
-* **The brand mark came off the signature**, leaving the wordmark alone. That
-  makes `SHARE_DEBUG_FLAGS.paserMark` dead; the key stays because those flags
-  persist on device.
+* **The brand mark came off the signature**, leaving the wordmark alone.
 * **Pace is off by default**, because four numbers is a 2×2 block and five is a
   block with a gap in it. It is still a chip.
-* **The runner figure starts off** (see "The runner on the route" — the code and
-  the control both stay).
+* **The runner figure started off**, and was **turned back on 2026-08-17**:
+  off by default meant the one part of the card that is the runner rather than
+  the run almost never left the app. See "The runner on the route".
 * The accent moved with the headline: it now colours the **Territory** value,
   the one number Strava does not have, so the swatches still drive something.
 
@@ -220,6 +228,30 @@ window the box it rotates in is the rig's full height.
 
 **The trade:** the player's cosmetics below the neck no longer show on the card.
 Their face, hair and headwear do.
+
+#### Standing it on the line
+
+Two numbers, both exported from `LogoRunner` and both properties of the ART, not
+of the layout:
+
+* `MARK_FEET` — how far DOWN the box the soles are. The component stands the
+  figure on the floor of its own square, so this is 1 and the card can treat the
+  box bottom as the soles.
+* `MARK_FOOT` — how far ACROSS the box the planted foot is. **This is not 0.5.**
+  The mark is a running pose: the ink along the bottom edge of
+  `paser-mark-body.png` is centred at 0.67 of its width, which becomes ~0.63 of
+  the `LogoRunner` box once `BODY_SCALE` is folded in.
+
+The card anchored the figure by the middle of its box until **2026-08-17**,
+which stood the runner a clear stride to the RIGHT of wherever the run actually
+ended — the complaint was that the mascot was not on the route, and it was not.
+It anchors on `MARK_FOOT` now, mirrored when **Flip** is on because flip mirrors
+the whole box.
+
+Both fractions were measured off the asset's own alpha channel (the contact
+patch centroid is stable from the bottom 1% to the bottom 5% of the image).
+**Re-measure them if the mark art ever changes** — they are the only thing
+holding the figure to the line.
 
 ### Export rules
 

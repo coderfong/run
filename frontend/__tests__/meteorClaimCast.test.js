@@ -133,17 +133,28 @@ describe.each(CAST_SIZES)('Meteor Claim against %i defenders', (count) => {
       }
     });
 
-    test('the reactions are not all identical', () => {
-      // At three, a seeded scatter should produce more than one response for
-      // at least some claims. Checked across seeds rather than on one, since
-      // any single claim may legitimately land on a repeat.
+    test('they do not all leave the same way', () => {
+      // MOVED FROM THE NOTICE BEAT TO THE EXIT BEAT, deliberately.
+      //
+      // This used to check the scatter that ran while the meteor was falling,
+      // where three rivals dodged left, braced and ducked from a seeded pool.
+      // That variety was in the wrong place: there is one right answer to a
+      // rock falling out of the sky, and everybody looking up at it together is
+      // a clearer read than one of them glancing sideways. The notice beat is
+      // uniform now.
+      //
+      // Where a seeded pool genuinely earns its keep is the exit — three people
+      // running off in three directions is a rout, three people running off in
+      // formation is a chorus line. Checked across seeds rather than on one,
+      // since any single claim may legitimately land on a repeat.
       if (count < 2) return;
-      // The scatter step is authored at 1080-1400ms; that window carries
-      // DRAMA_SCALE like every other timestamp in the expanded sequence.
+      const exitWindow = expandCast(METEOR.sequence, { defenderCount: count, seed: 'shape' })
+        .filter((s) => s.action === 'actor' && s.role === ROLE.DEFENDER && isExitStep(s));
+      expect(exitWindow.length).toBe(count);
+
       const distinct = Array.from({ length: 25 }, (_, i) => {
         const beats = expandCast(METEOR.sequence, { defenderCount: count, seed: `c${i}` })
-          .filter((s) => s.action === 'actor' && s.role === ROLE.DEFENDER
-            && s.start >= 1080 * DRAMA_SCALE && s.start < 1400 * DRAMA_SCALE);
+          .filter((s) => s.action === 'actor' && s.role === ROLE.DEFENDER && isExitStep(s));
         return new Set(beats.map((s) => s.name)).size;
       });
       expect(distinct.some((n) => n > 1)).toBe(true);
