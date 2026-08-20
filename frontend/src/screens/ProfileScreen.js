@@ -6,7 +6,7 @@ import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react
 import Constants from 'expo-constants';
 import { useIsFocused } from '@react-navigation/native';
 
-import { ChevronRight } from 'lucide-react-native';
+import { ChevronRight, Lock } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
 import { frameVariant } from '../ui/frameRegistry';
@@ -36,6 +36,7 @@ import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
+import DevCrossroadsSeed from '../components/DevCrossroadsSeed';
 import { art } from '../config/onboardingArt';
 import GameAnimation from '../components/GameAnimation';
 import { toast } from '../ui/toast';
@@ -629,15 +630,26 @@ export default function ProfileScreen({ navigation }) {
           Colours your trail, map outline and this page's frames. Club follows your club colour.
         </Text>
         <View style={styles.swatchRow}>
-          {TRAIL_GLOW_COLORS.map(({ key, label, value }) => {
+          {TRAIL_GLOW_COLORS.map(({ key, label, value, pro }) => {
             const swatch = value || accent;
             const selected = trailGlow === key;
+            // Locked only when PRO is actually sellable and this account is not
+            // on it. A build with the store off shows the whole palette; a
+            // subscriber wears any of it. A free runner who chose a PRO colour
+            // before it was gated keeps it — this only blocks NEW selections.
+            const locked = pro && canShowPro && !isPro;
             return (
               <PressableScale
                 key={key}
-                onPress={() => { haptic.light(); setTrailGlow(key); }}
+                onPress={() => {
+                  haptic.light();
+                  if (locked) { openPaywall('cosmetics'); return; }
+                  setTrailGlow(key);
+                }}
                 accessibilityRole="button"
-                accessibilityLabel={`Trail glow ${label}`}
+                accessibilityLabel={
+                  locked ? `Trail glow ${label}, PASER PRO, tap to unlock` : `Trail glow ${label}`
+                }
                 accessibilityState={{ selected }}
                 style={styles.swatchItem}
               >
@@ -647,8 +659,21 @@ export default function ProfileScreen({ navigation }) {
                     { backgroundColor: swatch, shadowColor: swatch },
                     selected && styles.swatchSelected,
                   ]}
-                />
-                <Text style={[type.caption, { color: selected ? colors.text : colors.textDim }]}>{label}</Text>
+                >
+                  {locked ? (
+                    <View style={styles.swatchLock}>
+                      <Lock size={13} color={GOLD} strokeWidth={2.5} />
+                    </View>
+                  ) : null}
+                </View>
+                <Text
+                  style={[
+                    type.caption,
+                    { color: locked ? GOLD : selected ? colors.text : colors.textDim },
+                  ]}
+                >
+                  {label}
+                </Text>
               </PressableScale>
             );
           })}
@@ -683,6 +708,11 @@ export default function ProfileScreen({ navigation }) {
             style={{ marginTop: space.md, alignSelf: 'flex-start' }}
           />
         ) : null}
+        {/* Dev only (see the gate inside): seeds real crossings against
+            throwaway bots and opens the plaza, so Crossroads can be looked at
+            without crossing anyone's path. Hidden in release for every account
+            the server has not named. */}
+        <DevCrossroadsSeed onOpen={() => navigation.navigate('Crossroads')} />
       </Card>
 
       {/* the way back in if the password goes. Sits above privacy rather than
@@ -902,6 +932,15 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
   },
   swatchSelected: { borderWidth: 3, borderColor: colors.text, transform: [{ scale: 1.12 }] },
+  // A gold padlock over a PASER PRO colour, on a scrim dark enough to read on
+  // any swatch. Rounds to match the 34px circle it sits on.
+  swatchLock: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
   btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm, marginTop: space.sm },
 
   link: { marginTop: space.xl, alignItems: 'center' },

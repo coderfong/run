@@ -37,7 +37,7 @@ export const COPY = {
   feature: 'PASERBY',
   screen: 'Crossroads',
   revealHeading: 'CROSSED PATHS',
-  empty: 'No crossed paths yet. Keep running and you may meet another PASER.',
+  empty: 'Keep running and you may meet another PASER.',
   emptyTitle: 'No crossed paths yet',
   disabled: "Crossed Paths is off. Turn it on to meet the runners you pass.",
   setting: 'Allow Crossed Paths',

@@ -8,16 +8,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const TRAIL_GLOW_KEY = 'tr.settings.trailGlow';
 
 // value: null means "use the clan accent" (the pre-setting behaviour).
+//
+// `pro: true` marks a colour as PASER PRO expression — a wider palette to run
+// in, and nothing more. Trail colour tints your trail and your own land's
+// outline; it wins no ground and changes no number, so gating some of it is
+// depth, not power (the line in config/pro.js). Everyone keeps the club colour
+// and a full handful of neons; the richer half is what a subscription adds.
+// A build that cannot sell PRO shows them all — see ProfileScreen's swatch row.
 export const TRAIL_GLOW_COLORS = [
   { key: 'clan', label: 'Club', value: null },
   { key: 'cyan', label: 'Cyan', value: '#22d3ee' },
   { key: 'azure', label: 'Azure', value: '#38bdf8' },
-  { key: 'violet', label: 'Violet', value: '#a78bfa' },
-  { key: 'magenta', label: 'Magenta', value: '#e879f9' },
   { key: 'rose', label: 'Rose', value: '#fb7185' },
-  { key: 'orange', label: 'Orange', value: '#fb923c' },
-  { key: 'amber', label: 'Amber', value: '#fbbf24' },
   { key: 'volt', label: 'Volt', value: '#a3e635' },
+  { key: 'violet', label: 'Violet', value: '#a78bfa', pro: true },
+  { key: 'magenta', label: 'Magenta', value: '#e879f9', pro: true },
+  { key: 'orange', label: 'Orange', value: '#fb923c', pro: true },
+  { key: 'amber', label: 'Amber', value: '#fbbf24', pro: true },
 ];
 
 

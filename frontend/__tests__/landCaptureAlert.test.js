@@ -75,7 +75,49 @@ describe('the land capture alert', () => {
 
     const text = ctx.toJSON();
     expect(text).not.toBeNull();
-    expect(JSON.stringify(text)).toContain('LAND UNDER ATTACK');
+    expect(JSON.stringify(text)).toContain('LAND CAPTURED');
+
+    act(() => { ctx.unmount(); });
+  });
+
+  test('boxes the real ring: mounts, plays and forwards the ring to onViewLand', () => {
+    const seen = [];
+    let ctx;
+    act(() => {
+      ctx = renderer.create(
+        <LandCaptureAlertHost onViewLand={(c) => seen.push(c)} onOpenNotifications={() => {}} />
+      );
+    });
+
+    const ring = [
+      [103.8198, 1.3521],
+      [103.8210, 1.3521],
+      [103.8210, 1.3533],
+      [103.8198, 1.3533],
+    ];
+
+    // The real capture path: projecting the ring into the stage and handing it
+    // to CaptureStylePlayer must not throw the way a prop mismatch would.
+    expect(() => {
+      act(() => {
+        landCaptureAlert.show({ ...STOLEN_PAYLOAD, data: { ...STOLEN_PAYLOAD.data, territory_ring: ring } });
+      });
+    }).not.toThrow();
+
+    const press = (title) => {
+      const btn = ctx.root.findAll(
+        (n) => n.props && n.props.title === title && typeof n.props.onPress === 'function'
+      )[0];
+      act(() => { btn.props.onPress(); });
+    };
+
+    // Alert → playback (boxes the area), then playback → the live map.
+    expect(() => press('VIEW AFFECTED LAND')).not.toThrow();
+    expect(() => press('ZOOM TO THE LAND')).not.toThrow();
+
+    // The exact ring reaches the map so it can fit to the real ground.
+    expect(seen).toHaveLength(1);
+    expect(seen[0].territoryRing).toEqual(ring);
 
     act(() => { ctx.unmount(); });
   });

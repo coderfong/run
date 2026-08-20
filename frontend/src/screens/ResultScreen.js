@@ -53,6 +53,8 @@ import useClaimSequence from '../components/claim/useClaimSequence';
 import PaserbyReveal from '../components/paserby/PaserbyReveal';
 import RunShareSheet from '../components/share/RunShareSheet';
 import TerritoryInsights from '../components/TerritoryInsights';
+import { ProLockedSection, ProInlineLock } from '../components/ProLock';
+import { useProEntitlement } from '../pro/ProProvider';
 import XpProgress from '../components/XpProgress';
 import { Image } from '../ui/image';
 import { IAP_ENABLED } from '../config/releaseFeatures';
@@ -302,6 +304,15 @@ export default function ResultScreen({ navigation, route }) {
   const { equipped } = useAvatar();
   const { user } = useAuth();
   const { trailGlowColor } = useSettings();
+  // PRO gate for the secondary stat row (best km, elevation, average speed).
+  // Read here without side effects — the impression fires from ProInlineLock,
+  // the one surface that actually renders when this is true. `canShowPro &&
+  // !isPro` is exactly "locked": a build that cannot sell PRO leaves the row
+  // free for everyone, and a subscriber sees their own numbers. These are a
+  // richer READ of the run, never a lever on it, so gating them stays inside
+  // the depth-not-power line in config/pro.js.
+  const { isPro: hasPro, canShowPro } = useProEntitlement();
+  const advancedStatsLocked = canShowPro && !hasPro;
   const team = trailGlowColor
     ? { fill: withAlpha(trailGlowColor, 0.2), stroke: trailGlowColor, glow: trailGlowColor }
     : color;
@@ -1371,9 +1382,9 @@ export default function ResultScreen({ navigation, route }) {
         </View>
 
         {/* the controls, in their own sheet under the map */}
-        {/* 0.56, not 0.46: the three recommendations are square now (see
-            ChooseAttack's `recFrame`), which is about 70pt taller than the row
-            of letterboxes they replaced. The map keeps the larger share. */}
+        {/* A cap, not a fixed height: the sheet wraps its content and only
+            starts to scroll past this. Generous enough for the recommendation
+            cards + rail + breakdown on a small phone; the map keeps the rest. */}
         <View style={[styles.claimSheet, { maxHeight: winHeight * 0.56 }]}>
           <ScrollView
             scrollEnabled={!claimControlActive}
@@ -1593,28 +1604,44 @@ export default function ResultScreen({ navigation, route }) {
           <QuietStat label="Duration" value={formatDuration(result.duration_s)} />
           <QuietStat label="Calories" value={String(caloriesKcal)} unit="kcal" />
         </View>
-        <View style={[styles.quietRow, styles.quietRowTight]}>
-          <QuietStat
-            label="Best km"
-            value={bestKmSeconds ? paceStr(bestKmSeconds) : '·'}
-            unit={bestKmSeconds ? '/km' : undefined}
+        {/* The DEEPER read of the run — best split, elevation, average speed.
+            The four headline numbers above (distance, pace, duration,
+            calories) stay free for everyone; this second row is PRO depth. It
+            is a richer view, not an advantage: knowing your elevation gain
+            wins you no ground, so it sits on the right side of the
+            depth-not-power line. Locked, it collapses to one PASER PRO strip
+            rather than four padlocks. */}
+        {advancedStatsLocked ? (
+          <ProInlineLock
+            context="run_insights"
+            feature="run_stats"
+            label="Best km · Elevation · Avg speed"
+            style={{ marginTop: space.sm }}
           />
-          <QuietStat
-            label="Elev gain"
-            value={elevationM == null ? '·' : String(Math.round(elevationM))}
-            unit={elevationM == null ? undefined : 'm'}
-          />
-          <QuietStat
-            label="Elev loss"
-            value={elevationLossM == null ? '·' : String(Math.round(elevationLossM))}
-            unit={elevationLossM == null ? undefined : 'm'}
-          />
-          <QuietStat
-            label="Avg speed"
-            value={avgSpeedKmh ? avgSpeedKmh.toFixed(1) : '·'}
-            unit={avgSpeedKmh ? 'km/h' : undefined}
-          />
-        </View>
+        ) : (
+          <View style={[styles.quietRow, styles.quietRowTight]}>
+            <QuietStat
+              label="Best km"
+              value={bestKmSeconds ? paceStr(bestKmSeconds) : '·'}
+              unit={bestKmSeconds ? '/km' : undefined}
+            />
+            <QuietStat
+              label="Elev gain"
+              value={elevationM == null ? '·' : String(Math.round(elevationM))}
+              unit={elevationM == null ? undefined : 'm'}
+            />
+            <QuietStat
+              label="Elev loss"
+              value={elevationLossM == null ? '·' : String(Math.round(elevationLossM))}
+              unit={elevationLossM == null ? undefined : 'm'}
+            />
+            <QuietStat
+              label="Avg speed"
+              value={avgSpeedKmh ? avgSpeedKmh.toFixed(1) : '·'}
+              unit={avgSpeedKmh ? 'km/h' : undefined}
+            />
+          </View>
+        )}
 
         {/* The XP as a POSITION, not a receipt: the ladder bar runs from where
             this runner stood before the run to where they stand now, and rolls
@@ -1731,14 +1758,27 @@ export default function ResultScreen({ navigation, route }) {
         <TerritoryInsights
           runId={result.run_id}
           allowAutoPrompt
+          hideClaimSummary
           style={{ marginHorizontal: space.lg }}
         />
       </Reveal>
 
-      {/* splits */}
-      <Reveal delay={300}>
-        <Splits splits={splits} accent={team.glow} />
-      </Reveal>
+      {/* splits — PRO depth, the same gate the run detail page uses so a run
+          reads the same on the day and a week later. A run with no splits to
+          show gets neither the table nor a lock. */}
+      {splits.length > 0 && (
+        <Reveal delay={300}>
+          <ProLockedSection
+            context="run_insights"
+            feature="run_splits"
+            title="Splits"
+            blurb="Your per kilometre pace, fastest to slowest."
+            style={{ marginTop: space.xl }}
+          >
+            <Splits splits={splits} accent={team.glow} />
+          </ProLockedSection>
+        </Reveal>
+      )}
 
       {/* One way on, because sharing is the NEXT STAGE rather than a button
           half way down this page. The escape hatch is on the share screen

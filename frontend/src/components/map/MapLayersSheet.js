@@ -112,8 +112,8 @@ export default function MapLayersSheet({
                       {layer.summarise ? layer.summarise(rows) : `${rows.length} in view`}
                     </Text>
                     <Text style={[type.caption, { color: colors.textMuted, marginTop: 4 }]}>
-                      PASER PRO draws these on the board and keeps them there while you move
-                      around. Everything you can already see stays free.
+                      PASER PRO draws these on the board as you move. What you can already
+                      see stays free.
                     </Text>
                     <ToonButton
                       title="See the plans"
@@ -133,8 +133,8 @@ export default function MapLayersSheet({
                   // buy here — selling a layer that cannot render would be the
                   // worst version of this whole feature.
                   <Text style={[type.caption, { color: colors.textMuted }]}>
-                    Not available yet. This one needs capture history the map does not carry,
-                    and it will arrive for everyone with PRO when it does.
+                    Not available yet. It needs capture history the map does not carry.
+                    It arrives for PRO when it does.
                   </Text>
                 )}
               </View>

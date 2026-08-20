@@ -38,7 +38,8 @@ import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
 import { useSettings } from '../state/settings';
 import { writeWorkout } from '../health';
-import { darkColors, radius, runTuning as T, space, type } from '../theme';
+import { NB, darkColors, nbInk, radius, runTuning as T, space, toon, type } from '../theme';
+import { ToonButton } from '../components/ui';
 import { haptic, PressableScale, Pulse } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { landCaptureAlert } from '../components/LandCaptureAlert';
@@ -1185,15 +1186,18 @@ export default function RunningScreen({ navigation }) {
 
         {!isRunning ? (
           <>
-            <PressableScale
-              style={[styles.primaryBtn, { backgroundColor: accent, opacity: starting ? 0.72 : 1 }]}
+            {/* The app's game CTA (framed, outlined label, hard drop), painted in
+                the run's accent — the same way the claim button wears the clan
+                colour. Replaces a flat pill so the screen you start a run from
+                reads as neo-brutalist like the rest of the game. */}
+            <ToonButton
+              title={starting ? 'Get ready…' : 'Start run'}
               onPress={startRun}
               disabled={starting}
-              accessibilityRole="button"
               accessibilityLabel="Start run"
-            >
-              <Text style={styles.primaryBtnText}>{starting ? 'Get ready…' : 'Start run'}</Text>
-            </PressableScale>
+              fill={{ color: accent, border: toon.ink }}
+              style={{ alignSelf: 'stretch' }}
+            />
             {/* Renders nothing unless the SERVER says this account may have
                 it (dev_tools on /me), or we're on a dev build. */}
             <DevRunSimulator
@@ -1283,8 +1287,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: 'rgba(21,24,29,0.82)',
-    borderWidth: 1,
-    borderColor: D.border,
+    // Heavier cream stroke — this HUD is always dark, so the NB edge is the
+    // cream ink, not the hairline D.border it used to carry.
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk('dark', 'rgba(21,24,29,1)'),
     borderRadius: radius.pill,
     paddingVertical: space.sm,
     paddingHorizontal: space.lg,
@@ -1324,8 +1330,11 @@ const styles = StyleSheet.create({
     backgroundColor: D.card,
     borderRadius: radius.lg,
     padding: space.lg,
-    borderWidth: 1,
-    borderColor: D.border,
+    // Heavy cream NB stroke instead of the old hairline. The soft drop stays:
+    // this panel floats over the map and a real separation from the board is
+    // worth keeping, but the edge that defines it is now the neo-brutalist one.
+    borderWidth: NB.stroke,
+    borderColor: nbInk('dark', D.card),
     shadowColor: '#000',
     shadowOpacity: 0.4,
     shadowRadius: 24,

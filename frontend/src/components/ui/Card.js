@@ -49,6 +49,12 @@ export default function Card({
   // list, and it is exactly the kind of list the reference boards colour.
   accent,
   accentDrop = false,
+  // Paints the card an accent colour instead of the neutral surface. The stroke
+  // and the hard drop are then judged against THIS, in both schemes, so a
+  // coloured card (a feed run card dealt its own hue) gets a stroke that reads
+  // on orange rather than the one picked for white paper. Off by default — the
+  // ordinary card stays the quiet neutral surface.
+  fill: fillOverride,
   frame,
   frameTint,
   // Points of line, not a multiplier on whichever drawing turned up — see
@@ -68,7 +74,7 @@ export default function Card({
   const { colors, scheme } = useTheme();
   const [size, setSize] = useState({ width: 0, height: 0 });
   const spec = frame ? getFrame(frame) : null;
-  const fill = dark ? darkColors.card : colors.card;
+  const fill = fillOverride || (dark ? darkColors.card : colors.card);
   // Only consulted on the unframed path. A framed card must NOT also get a
   // stroke and a drop: the frame is already the edge and already the depth, and
   // stacking the two gives a hand-drawn box with a machine-drawn box printed

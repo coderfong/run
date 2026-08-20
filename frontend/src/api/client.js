@@ -150,15 +150,25 @@ async function request(path, opts = {}) {
 
 export const api = {
   // ----- auth ----------------------------------------------------------
+  //
+  // Signing in carries the cold-start ceiling for the same reason the run flow
+  // does: it is a call whose failure costs everything behind it. A first-time
+  // install has no cached session to fall back on, so a sign-in that gives up
+  // at twenty seconds against a server still booting leaves the app with
+  // nothing to show but an error on the only screen there is. Warming up from
+  // the welcome screen usually means the wait is already spent by the time a
+  // password is typed; this is the ceiling for when it is not.
   signup: (username, password, email) =>
     request('/auth/signup', {
       method: 'POST',
       body: JSON.stringify({ username, password, email: email || null }),
+      timeoutMs: COLD_START_TIMEOUT_MS,
     }),
   login: (username, password) =>
     request('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+      timeoutMs: COLD_START_TIMEOUT_MS,
     }),
   refresh: () => request('/auth/refresh', { method: 'POST', body: '{}' }),
   // OAuth: send the provider's identity token; backend verifies it and returns
@@ -167,6 +177,7 @@ export const api = {
     request(`/auth/${provider}`, {
       method: 'POST',
       body: JSON.stringify({ id_token: idToken, ...extra }),
+      timeoutMs: COLD_START_TIMEOUT_MS,
     }),
   // ----- account recovery ------------------------------------------------
   // Three calls, and the client holds the mailed code only long enough to
@@ -286,6 +297,18 @@ export const api = {
     request(`/dev/runs/${runId}/seed-rival`, { method: 'POST', body: '{}' }),
   devRivalTakesMine: () =>
     request('/dev/rival-takes-mine', { method: 'POST', body: '{}' }),
+  // Crossed-paths analogue of the run simulator: seed the caller's Crossroads
+  // with synthetic crossings so the plaza can be looked at from a desk.
+  // `avatars` are real equipped loadouts the client generated
+  // (config/cosmetics.randomEquipped), so the seeded runners wear real
+  // cosmetics; `count` overrides how many to seed.
+  devSeedCrossroads: (avatars, count) =>
+    request('/dev/paserby/seed', {
+      method: 'POST',
+      body: JSON.stringify({ avatars: avatars || null, count: count || null }),
+    }),
+  devClearCrossroads: () =>
+    request('/dev/paserby/clear', { method: 'POST', body: '{}' }),
 
   // ----- feed + profile stats ------------------------------------------
   feed: (cursor) =>
@@ -501,7 +524,10 @@ export const api = {
     return request(`/leaderboard/standing?${q.toString()}`);
   },
 
-  mapPolygons: (bbox, zoom) => {
+  // `opts.rank` scopes the board to one rank tier (0=Wood … 9=Mythic). Only
+  // the ranked global map passes it; claim-placement callers omit it so they
+  // still see every nearby holder regardless of tier.
+  mapPolygons: (bbox, zoom, opts) => {
     const parts = [];
     if (bbox) {
       parts.push(
@@ -512,6 +538,7 @@ export const api = {
       );
     }
     if (zoom != null) parts.push(`zoom=${zoom.toFixed(1)}`);
+    if (opts?.rank != null) parts.push(`rank=${opts.rank}`);
     const qs = parts.length ? `?${parts.join('&')}` : '';
     return request(`/map-polygons${qs}`);
   },

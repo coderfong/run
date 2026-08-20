@@ -11,7 +11,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
-import { space, useTheme, useThemedType } from '../../theme';
+import { nbAccentFor, nbTextOn, space, useTheme, useThemedType } from '../../theme';
 import { framePose, frameVariant } from '../../ui/frameRegistry';
 import Framed from './Framed';
 
@@ -35,18 +35,25 @@ export default function SectionHeader({
   const { colors } = useTheme();
   const type = useThemedType();
   const frameName = frame || frameVariant('heading', title);
+  // A framed heading is a COLOURED drawn label now, not a hollow one: deal it a
+  // deck colour off its title (stable across renders) and paint the frame's
+  // paper with it, so section headers read as nice bright boxes rather than
+  // muted outlines. A caller that forces `frameTint` still gets the old hollow
+  // box in exactly the ink it asked for.
+  const accent = nbAccentFor(title);
   const heading = framed ? (
     // No `inset` override: the label's own measured line depth is the right
     // clearance, and the flat 8 that used to be here was less than the ink is
     // thick, so the box drew straight through the title.
     <Framed
       frame={frameName}
-      tint={frameTint || colors.textMuted}
-      opacity={0.8}
+      tint={frameTint || nbTextOn(accent)}
+      fill={frameTint ? undefined : accent}
+      opacity={frameTint ? 0.8 : 1}
       pose={framePose(title)}
       style={{ flexShrink: 1 }}
     >
-      <Text style={type.heading}>{title}</Text>
+      <Text style={[type.heading, frameTint ? null : { color: nbTextOn(accent) }]}>{title}</Text>
     </Framed>
   ) : (
     <Text style={type.heading}>{title}</Text>

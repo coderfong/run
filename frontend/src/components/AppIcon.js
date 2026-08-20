@@ -6,7 +6,6 @@
 // here and it's usable app-wide via <AppIcon name="..." />.
 
 import React from 'react';
-import {  } from 'react-native';
 import { Image } from '../ui/image';
 
 export const ICONS = {

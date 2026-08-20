@@ -1,0 +1,7 @@
+# Files EAS should not upload into the build archive.
+# None of these are needed to build; they were adding ~hundreds of MB to
+# every upload. See docs/APP_STORE.md housekeeping note.
+.history/
+dist/
+.expo-export-check/
+.expo-export-check*/

@@ -207,7 +207,7 @@ export default function RivalDetailScreen({ route, navigation }) {
               blurb={
                 beats
                   ? `You have traded ground ${beats} ${beats === 1 ? 'time' : 'times'}. PRO reads what that adds up to.`
-                  : 'Streaks, defence rates, how far you have each run this month, and the ground you keep meeting on.'
+                  : 'Streaks, defence rates and the ground you keep fighting over.'
               }
               rows={[
                 { label: 'Most contested area' },

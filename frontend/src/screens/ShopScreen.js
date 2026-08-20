@@ -32,7 +32,9 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
-import { brand, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { brand, nbTextOn, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
 import RewardReveal from '../components/RewardReveal';
 import { Card, Framed, Row, Screen, Skeleton, Button } from '../components/ui';
 import { PartThumb } from '../components/character/CharacterRig';
@@ -295,6 +297,7 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
 export default function ShopScreen() {
   const { colors } = useTheme();
   const type = useThemedType();
+  const insets = useSafeAreaInsets();
   const focused = useIsFocused();
   const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
   const { data, loading, error, refresh: load, setData } = useQuery('me:coins', api.shop);
@@ -444,7 +447,10 @@ export default function ShopScreen() {
       <ScrollView
         ref={scroller}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: space.xxl }}
+        // Clear the home indicator: this screen is a raw ScrollView with no
+        // Screen wrapper, so the restock clock (the LAST row) sat right on the
+        // bottom edge on a device with a home bar.
+        contentContainerStyle={{ paddingBottom: insets.bottom + space.huge }}
       >
         <View onLayout={(e) => setSceneH(e.nativeEvent.layout.height)}>{scene}</View>
 
@@ -509,11 +515,25 @@ export default function ShopScreen() {
                 const tint = RARITY_COLOR[section.rarity] || colors.border;
                 return (
                   <View key={section.rarity} style={styles.stockSection}>
-                    <Row gap={7} style={styles.sectionHead}>
-                      <View style={[styles.rarityDot, { backgroundColor: tint }]} />
-                      <Text style={[type.captionMedium, styles.sectionTitle, { color: tint }]}>
-                        {section.rarity.toUpperCase()}
-                      </Text>
+                    <Row gap={10} style={styles.sectionHead}>
+                      {/* Each rarity gets its OWN framed plate, filled in the
+                          rarity colour and set in a big, bold label — a header
+                          you read as a tier, not a hairline dot beside a word.
+                          Text colour flips to ink on the pale legendary gold so
+                          it stays legible. */}
+                      <Framed
+                        frame={frameVariant('box', `rarity:${section.rarity}`)}
+                        tint={toon.ink}
+                        fill={tint}
+                        weight={INK.base}
+                        pose={framePose(`rarity:${section.rarity}`)}
+                        inset={false}
+                        contentStyle={styles.rarityBadge}
+                      >
+                        <Text style={[toonType.label, styles.rarityBadgeText, { color: nbTextOn(tint) }]}>
+                          {section.rarity.toUpperCase()}
+                        </Text>
+                      </Framed>
                       <View style={[styles.sectionRule, { backgroundColor: withAlpha(tint, 0.35) }]} />
                       <Text style={[type.caption, { color: colors.textDim }]}>{section.items.length}</Text>
                     </Row>
@@ -578,7 +598,12 @@ const styles = StyleSheet.create({
   stock: { gap: space.md },
   stockSection: { gap: 6 },
   sectionHead: { alignItems: 'center' },
-  sectionTitle: { letterSpacing: 1.1 },
+  // The framed rarity plate: enough padding that the frame reads as a plate
+  // rather than shrink-wrap on the word.
+  rarityBadge: { paddingHorizontal: space.md, paddingVertical: 5, alignItems: 'center', justifyContent: 'center' },
+  // Bigger and bolder than the old caption. toonType.label brings the weight;
+  // this bumps the size and opens the tracking so it reads as a tier heading.
+  rarityBadgeText: { fontSize: 15, letterSpacing: 1.4 },
   sectionRule: { height: 1, flex: 1 },
   cellWrap: { width: '31.5%' },
   cellTouch: { width: '100%' },

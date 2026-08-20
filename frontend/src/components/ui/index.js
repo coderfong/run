@@ -21,6 +21,7 @@ export { default as Framed } from './Framed';
 // Neo-brutalist hard drop shadow (a real offset rectangle, so Android gets it
 // too). Tokens in src/theme/nb.js.
 export { default as HardShadow } from './HardShadow';
+export { default as BackButton } from './BackButton';
 export { default as OverflowMenu } from './OverflowMenu';
 // The brutalist sticker marks — burst, star, sparkle, daisy, blob, bolt, arrow,
 // cross, disc, squiggle. Inline SVG rather than art, so they cost no asset

@@ -106,7 +106,7 @@ export default function ProStep({ onContinue }) {
 
         {/* The line that makes the skip a real choice rather than a dare. */}
         <Text style={[toonType.body, styles.reassure]}>
-          Running, claiming land and your place on the board are free, and stay free.
+          Running, claiming and the board are free, and stay free.
         </Text>
 
         {/* Both actions sit under the perks they answer, not pinned to the

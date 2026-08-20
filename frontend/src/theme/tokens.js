@@ -13,6 +13,11 @@ import { darkColors as colors } from './dark';
 
 export const fonts = {
   hero: 'Poppins_900Black',
+  // Condensed athletic caps. Poppins Black is round and playful, which reads as
+  // kiddy on the share card people post to their story; Anton is the tall,
+  // narrow poster face Strava and race bibs use, so the exported card looks
+  // like sports kit rather than a toy. Used ONLY on the share card for now.
+  poster: 'Anton_400Regular',
   display: 'SpaceGrotesk_700Bold',
   displayMedium: 'SpaceGrotesk_500Medium',
   body: 'Inter_400Regular',

@@ -99,24 +99,24 @@ const PARTICLE_PATHS = [
 /**
  * How many victims get a FACE. Everybody else is a count.
  *
- * WAS SIX — one per particle path — and six was chosen from what the animation
- * could throw rather than from what the banner could hold. A claim against
- * four or five people filled the bar with a row of shrinking busts, and past
- * two of them the row stopped reading as "these runners lost ground" and
- * started reading as a stack of avatar chips wedged in beside the label. The
- * heads had to shrink to 25px to fit, which is well under the size a
- * composited PASER character is legible at, so the cost of the extra four was
- * paid by the two that actually mattered.
+ * FOUR. The old cap of two came from a centred label the heads had to stay
+ * clear of — past two, the row of busts ran under "STOLEN" in the middle of
+ * the bar. That constraint is gone: when a steal hits more than two runners
+ * the label moves to the RIGHT edge (see `styles.labelRight`) and the heads
+ * get the whole left half of the bar to themselves, so more of the people who
+ * actually lost ground are shown as themselves rather than folded into a
+ * `+N`. Anyone past the cap is still counted there, and every name is in the
+ * accessibility label regardless.
  *
- * Two is also the number the layout never has to fight: two heads at full
- * 31px, the label centred, and `+3` where the rest were. The names are all in
- * the accessibility label either way, and who exactly lost the ground is said
- * properly in the payoff.
+ * Four and not more because four full-size faces already fill that left half;
+ * a fifth would have to shrink, and a shrunken PASER bust stops being legible
+ * as a specific character — which is the whole reason to show a face at all.
  */
-export const MAX_STEAL_HEADS = 2;
+export const MAX_STEAL_HEADS = 4;
 
-// Both heads always draw at full size now — the cap is what guarantees the row
-// fits, so there is nothing left for a step-down to rescue.
+// The heads always draw at full size — the layout (heads left, label right
+// once there are more than two) is what guarantees the row fits, so there is
+// nothing left for a step-down to rescue.
 const HEAD_SIZE = 31;
 
 // ---------------------------------------------------------------------------
@@ -315,10 +315,12 @@ function SettledHead({ victim, clock, index, size, reduced, trigger, playToken }
     <Animated.View style={[{ width: size, height: size, marginRight: 4 }, entryStyle]}>
       <Animated.View style={[{ width: size, height: size }, reactionStyle]}>
         <Animated.View style={defaultStyle}>
+          {/* No ring: on the bar the heads read as a row of faces, and a clan
+              stroke around each one turned that into a row of bordered chips.
+              The face alone is the thing that says who lost the ground. */}
           <CharacterBust
             equipped={victim.avatar || {}}
             size={size}
-            ring={victim.clan_color?.stroke}
             bg="transparent"
           />
         </Animated.View>
@@ -326,7 +328,6 @@ function SettledHead({ victim, clock, index, size, reduced, trigger, playToken }
           <CharacterBust
             equipped={sadAvatar}
             size={size}
-            ring={victim.clan_color?.stroke}
             bg="transparent"
           />
         </Animated.View>
@@ -504,9 +505,10 @@ export default function TerritoryStealBanner({
           ) : null}
         </View>
 
-        {/* Centred, unless a long row of heads would run underneath it. */}
+        {/* Centred for one or two heads; shoved to the right edge once there
+            are more, so the row of faces on the left never runs under it. */}
         <Animated.View
-          style={[styles.label, labelStyle]}
+          style={[heads.length > 2 ? styles.labelRight : styles.label, labelStyle]}
           pointerEvents="none"
         >
           <OutlinedText style={[toonType.label, styles.labelText]} outline={toon.ink} width={1.5}>
@@ -610,6 +612,17 @@ const styles = StyleSheet.create({
   label: {
     position: 'absolute',
     alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  // More than two heads: the label leaves the centre and anchors to the right
+  // edge, handing the busts the left half of the bar. Vertically centred with
+  // top/bottom rather than the static position the centred variant relies on.
+  labelRight: {
+    position: 'absolute',
+    right: 14,
+    top: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
   },

@@ -12,7 +12,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { brand, radius, space, toonSurface, useTheme, useThemedType } from '../../theme';
+import { brand, nbAccentFor, nbTextOn, radius, space, toonSurface, useTheme, useThemedType } from '../../theme';
 import { haptic, PressableScale, PressableShift } from '../../ui/motion';
 import { INK, framePose as poseFor, frameVariant } from '../../ui/frameRegistry';
 import Framed from './Framed';
@@ -85,10 +85,19 @@ export default function Button({
     : frame;
   const pose = framePose ?? poseFor(title);
 
-  let bg = acc;
-  // Primary fills with `acc` (the neutral ink by default) — so its text must
-  // be the contrasting ink, not white-on-white.
-  let fg = acc === colors.primary ? colors.primaryInk : '#ffffff';
+  // Primary with no explicit accent is DEALT a nice colour from the deck,
+  // seeded off its label so it stays put across renders — the same "deal a
+  // colour off a seed" idiom the frames and the feed cards use, rather than the
+  // neutral brand ink it used to fill with. A caller that passes `accent` (a
+  // clan colour, a danger red) still gets exactly that.
+  const dealt = variant === 'primary' && accent == null ? nbAccentFor(title) : null;
+
+  let bg = dealt || acc;
+  // Text is the readable ink on whatever the fill turned out to be: the deck's
+  // dealt colour, an explicit accent (white), or the neutral primary.
+  let fg = dealt
+    ? nbTextOn(dealt)
+    : acc === colors.primary ? colors.primaryInk : '#ffffff';
   let border = null;
   if (variant === 'secondary') {
     bg = colors.cardAlt;

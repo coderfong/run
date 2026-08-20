@@ -436,7 +436,7 @@ const makeStyles = () => StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: space.xs,
+    gap: space.sm,
     marginTop: space.md,
   },
   // These sit on a bright flat panel now, not on a scrimmed illustration, so
@@ -452,10 +452,15 @@ const makeStyles = () => StyleSheet.create({
   chipActive: { backgroundColor: '#fff', borderColor: toon.ink },
   chipLabel: { color: PANEL_INK, opacity: 0.8 },
   chipLabelActive: { color: toon.ink, opacity: 1 },
+  // A FULL-WIDTH rule, not a vertical bar. Inside a wrapping row a 1×20 divider
+  // floated wherever the wrap happened to put it — sometimes mid-line, sometimes
+  // at a line's end — which is what read as "messy". As a 100%-wide element it
+  // forces the next axis onto its own line AND draws a clean separator between
+  // the two groups (who vs by, when vs where).
   chipDivider: {
-    width: 1,
-    height: 20,
-    marginHorizontal: space.xs,
-    backgroundColor: 'rgba(20,20,20,0.28)',
+    width: '100%',
+    height: 1,
+    marginVertical: 2,
+    backgroundColor: 'rgba(20,20,20,0.20)',
   },
 });

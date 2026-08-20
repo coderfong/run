@@ -54,7 +54,20 @@ function Line({ label, value, colors, type, tint }) {
  * history to look at a good run from last month is an ambush — the trigger is
  * meant to be "you just did something notable", and browsing is not that.
  */
-export default function TerritoryInsights({ runId, style, allowAutoPrompt = false }) {
+/**
+ * `hideClaimSummary` drops the two free lines that a result card already
+ * shouts — the total claimed, and the ground taken off a rival. ResultScreen
+ * sets it, because right above this panel the hero number IS the land claimed
+ * and the delta row IS the steal; repeating them here is the "redundant
+ * territory report" the panel was fairly accused of being. RunDetailScreen
+ * leaves it off: read back a week later there is no hero card above it, so the
+ * summary is the only place those numbers appear at all.
+ *
+ * What stays either way is the part a card never shows — new ground broken,
+ * biggest single capture, where the run leaves you on the board — and, for a
+ * subscriber, the form analytics that were always the actual depth here.
+ */
+export default function TerritoryInsights({ runId, style, allowAutoPrompt = false, hideClaimSummary = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const { openPaywall } = useProEntitlement();
@@ -113,11 +126,13 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
         TERRITORY REPORT
       </Text>
 
-      <Line label="Land claimed" value={km2(data.territory_m2)} colors={colors} type={type} />
+      {!hideClaimSummary ? (
+        <Line label="Land claimed" value={km2(data.territory_m2)} colors={colors} type={type} />
+      ) : null}
       {data.land_gained_m2 != null ? (
         <Line label="New ground" value={km2(data.land_gained_m2)} colors={colors} type={type} />
       ) : null}
-      {data.rivals_taken > 0 ? (
+      {!hideClaimSummary && data.rivals_taken > 0 ? (
         <Line
           label={`Taken from ${data.rivals_taken} ${data.rivals_taken === 1 ? 'runner' : 'runners'}`}
           value={km2(data.stolen_m2)}
@@ -199,7 +214,7 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
           // headline is built from the same real fields the panel above is
           // already showing them.
           title={notable.headline || 'See what this run means'}
-          blurb="How it compares to your last 30 days, whether it was your biggest claim yet, and which of your land is about to decay."
+          blurb="How this run compares with your recent form."
           rows={[
             { label: 'Territory efficiency' },
             { label: 'Personal best check' },

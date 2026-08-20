@@ -61,8 +61,8 @@ function ClubIntroOverlay({ step, onNext, accent }) {
         <Text style={styles.introTitle}>{ranking ? 'Club rankings' : 'Club view'}</Text>
         <Text style={styles.introBody}>
           {ranking
-            ? 'Switch here to see where every club stands this season. Tap a club to meet its crew.'
-            : 'This is your crew home: weekly goals, members, chat and invites all live in Club view.'}
+            ? 'See where every club stands this season. Tap one to meet its crew.'
+            : 'Weekly goals, members, chat and invites, all in one place.'}
         </Text>
         <ToonButton title={ranking ? 'Got it' : 'Show me rankings'} onPress={onNext} fill={{ color: accent, border: '#FFFFFF' }} />
       </Framed>

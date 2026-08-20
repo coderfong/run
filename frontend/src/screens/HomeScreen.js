@@ -206,7 +206,8 @@ function HeroCarousel({ navigation }) {
           <HeroCard
             width={cardW}
             bg={GOLD}
-            art={require('../../assets/art/onboarding/pro-hero.png')}
+            art={require('../../assets/art/card-pro.png')}
+            artWidth="66%"
             eyebrow="PASER PRO"
             title="GO PRO"
             sub="Strategy · Insights · Exclusive styles"
@@ -304,7 +305,7 @@ function FeedList({ navigation, header }) {
           <EmptyState
             art={require('../../assets/art/empty-runs.png')}
             title="Your feed is quiet"
-            body="Start a run. The feed fills as you and your city claim land."
+            body="Runs from you and your pasers show up here. Add pasers to see theirs."
             actionLabel="Start run"
             onAction={() => navigation.navigate('Record')}
             accent={accent}

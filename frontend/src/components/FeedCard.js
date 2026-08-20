@@ -14,8 +14,6 @@ import { updateCached } from '../api/cache';
 import {
   NB,
   nbAccentFor,
-  nbInk,
-  nbRadius,
   nbTextOn,
   radius,
   space,
@@ -31,7 +29,7 @@ import PortraitBorder from './PortraitBorder';
 import { PressableScale, haptic } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
-import { Card, OverflowMenu, Row, StatValue } from './ui';
+import { Card, OverflowMenu, Row } from './ui';
 import { fmtArea } from './RivalCard';
 import GameLottie from './GameLottie';
 import ReactionBar, { POPOVER_HEIGHT, POPOVER_WIDTH, ReactionPopover, ReactionTrigger } from './ReactionBar';
@@ -149,8 +147,37 @@ function formatArea(m2) {
   return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
 }
 
+// One stat, in a drawn box with white paper — a raised tile on the coloured
+// card rather than a number lost on the fill. The frame and its pose are dealt
+// off the run id and the slot, so the three in a row are three different
+// drawings instead of three stamps of one (the anti-repeat idiom the rest of
+// the app's framed rows use). Text is fixed dark: the paper is always white,
+// whatever the scheme, so the theme's own (scheme-flipping) inks would vanish
+// on it in dark mode.
+function FramedStat({ item, index, label, value, unit, valueColor }) {
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
+  const seed = `stat:${item.id}:${index}`;
+  return (
+    <Framed
+      frame={frameVariant('box', seed)}
+      fill="#FFFFFF"
+      weight={INK.thin}
+      pose={framePose(seed)}
+      style={styles.statCell}
+      contentStyle={styles.statCellInner}
+    >
+      <Text style={[type.labelSm, styles.statLabel]} numberOfLines={1}>{label}</Text>
+      <View style={styles.statValueRow}>
+        <Text style={[type.statSm, { color: valueColor || NB.ink }]} numberOfLines={1}>{value}</Text>
+        {unit ? <Text style={[type.statSm, styles.statUnit]} numberOfLines={1}>{unit}</Text> : null}
+      </View>
+    </Framed>
+  );
+}
+
 export default function FeedCard({ item, navigation, autoPlaySteal = false, screenFocused = true }) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
   // when the file moved to themed styles, and since the only two uses of it
@@ -275,13 +302,14 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
       // colour on every render and on every device, and nothing has to store
       // a colour per row. See `nbAccentFor`.
       //
-      // It lands on the DROP and the meta chip, never on the card's fill. The
-      // fill has to stay neutral because it is the ground a route map, a
-      // photo and a clan-coloured stat sit on, and a saturated card would put
-      // the accent in an argument with all three. The standing rule that clan
-      // colour wins over chrome is intact.
+      // It is the card's FILL now, not just its drop — a flat saturated block,
+      // the way the reference boards colour a repeated list. The pieces that
+      // used to need a neutral ground for their own colour (the route map, a
+      // photo, the clan-coloured stats) each sit in their own drawn frame with
+      // its own paper now, so they no longer read directly against the fill and
+      // the clan-colour-wins rule holds where it still meets the chrome.
       accent={accent}
-      accentDrop
+      fill={accent}
       style={{ marginBottom: space.md }}
     >
       <Row between testID="feed-card-header" style={styles.header}>
@@ -311,32 +339,36 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
             </View>
           )}
           <View style={styles.identityText}>
-            <Text style={type.bodyBold} numberOfLines={1}>
+            {/* On the card's own colour now — `nbTextOn` keeps the name legible
+                whichever hue the run was dealt, in either scheme. */}
+            <Text style={[type.bodyBold, { color: nbTextOn(accent) }]} numberOfLines={1}>
               {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}
               {item.is_you ? ' · you' : ''}
             </Text>
-            {/* WHAT HAPPENED AND WHEN, in a block of the card's own colour.
-                One line, like the name above it — left to wrap it would go to
-                two on the narrowest phones and push the portrait off centre.
+            {/* WHAT HAPPENED AND WHEN, in its own drawn frame. One line, like
+                the name above it — left to wrap it would go to two on the
+                narrowest phones and push the portrait off centre.
 
-                A chip rather than grey caption text because this is the line
-                that says whether the run actually TOOK anything, and it was
-                previously the quietest thing on the card. `nbTextOn` picks the
-                label colour against the fill, since the deck runs from yellow
-                to purple and one fixed ink cannot survive both. */}
-            <View
-              style={[
-                styles.metaChip,
-                { backgroundColor: accent, borderColor: nbInk(scheme, accent) },
-              ]}
+                A framed white chip rather than grey caption text because this
+                is the line that says whether the run actually TOOK anything,
+                and on a saturated card a plain accent chip would blend into the
+                fill it sits on. The drawn frame gives it its own paper and edge
+                — the same hand-drawn box the stats below wear. */}
+            <Framed
+              frame={frameVariant('heading', `meta:${item.id}`)}
+              fill="#FFFFFF"
+              weight={INK.hairline}
+              pose={framePose(`meta:${item.id}`)}
+              style={styles.metaChip}
+              contentStyle={styles.metaChipInner}
             >
               <Text
-                style={[type.captionMedium, { color: nbTextOn(accent) }]}
+                style={[type.captionMedium, { color: NB.ink }]}
                 numberOfLines={1}
               >
                 {item.closed_loop ? 'took ground' : 'ran a path'} · {timeAgo(item.created_at)}
               </Text>
-            </View>
+            </Framed>
           </View>
         </Row>
         <Row gap={2} testID="feed-card-actions" style={styles.actions}>
@@ -383,7 +415,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
                   has kudoed: the count is hidden at zero, so tapping the heart
                   on and off changed the card not at all. */}
               <AppIcon name="like" size={28} opacity={kudoed ? 1 : 0.62} />
-              {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
+              {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : nbTextOn(accent) }]}>{count}</Text> : null}
             </PressableScale>
           </View>
           {/* Everything else. The list is built per row rather than being a
@@ -546,17 +578,34 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
         />
       )}
 
-      <Row between style={{ marginTop: space.md }}>
-        <StatValue size="sm" label="Distance" value={`${(item.distance_m / 1000).toFixed(2)}`} unit="km" />
-        <StatValue size="sm" label="Pace" value={pace(item.distance_m, item.duration_s)} unit="/km" />
-        <StatValue
-          size="sm"
+      {/* The three numbers, each in its own drawn frame with white paper — so
+          they read as raised tiles on the coloured card rather than text lost
+          on the fill. Distance and pace always; the third is the claim, in the
+          clan's colour when the run took ground. */}
+      <View style={styles.statRow}>
+        <FramedStat
+          item={item}
+          index={0}
+          label="Distance"
+          value={`${(item.distance_m / 1000).toFixed(2)}`}
+          unit="km"
+        />
+        <FramedStat
+          item={item}
+          index={1}
+          label="Pace"
+          value={pace(item.distance_m, item.duration_s)}
+          unit="/km"
+        />
+        <FramedStat
+          item={item}
+          index={2}
           label={item.closed_loop ? 'Claimed' : 'Not claimed'}
           value={item.closed_loop ? formatArea(item.area_m2).split(' ')[0] : NO_VALUE}
           unit={item.closed_loop ? formatArea(item.area_m2).split(' ')[1] : ''}
-          color={item.closed_loop ? c.stroke : colors.textDim}
+          valueColor={item.closed_loop ? c.stroke : undefined}
         />
-      </Row>
+      </View>
     </Card>
     {/* The picker. `transparent` and un-animated, so what you see is the strip
         arriving on its own 160ms rise and nothing else — a modal that dims or
@@ -632,18 +681,28 @@ const makeStyles = (colors) =>
     // the name would go straight back to being crushed.
     identity: { flexGrow: 1, flexShrink: 1, minWidth: IDENTITY_MIN },
     identityText: { flexGrow: 1, flexShrink: 1 },
-    // `flex-start` so the block is only as wide as its own text — stretched to
-    // the identity column's full width it would read as a banner across the
-    // card rather than as a chip under the name.
+    // `flex-start` so the drawn chip is only as wide as its own text —
+    // stretched to the identity column's full width it would read as a banner
+    // across the card rather than as a chip under the name.
     metaChip: {
       alignSelf: 'flex-start',
-      marginTop: 3,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: nbRadius.sm,
-      borderWidth: NB.strokeThin,
+      marginTop: 4,
       maxWidth: '100%',
     },
+    metaChipInner: { paddingHorizontal: 2 },
+    // The three framed stat tiles, sharing the row evenly with a small gap.
+    statRow: {
+      flexDirection: 'row',
+      gap: space.sm,
+      marginTop: space.md,
+    },
+    statCell: { flex: 1 },
+    statCellInner: { alignItems: 'center' },
+    // Fixed inks, not the theme's: the tile's paper is always white, so a
+    // scheme-flipping label/value colour would disappear on it in dark mode.
+    statLabel: { color: '#5c5c66', marginBottom: 2 },
+    statValueRow: { flexDirection: 'row', alignItems: 'flex-end' },
+    statUnit: { color: '#5c5c66', marginLeft: 3, marginBottom: 2 },
     // Never shrinks: 40pt is already the minimum a thumb can hit. `marginLeft:
     // auto` is what keeps the strip against the right edge on the wrapped
     // line, where `between` has nothing to push it away from.

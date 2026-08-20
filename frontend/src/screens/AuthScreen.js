@@ -24,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { warmUp } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import ForgotPassword from '../auth/ForgotPassword';
 import { brand, nbField, radius, space, type, useTheme } from '../theme';
@@ -329,6 +330,16 @@ export default function AuthScreen() {
   const reduced = useReduceMotion();
 
   useEffect(() => preloadScreenImagesAfterInteractions('Onboarding'), []);
+
+  // Wake the API while the welcome screen is being read.
+  //
+  // This is the FIRST screen of a fresh install, and the host spins the
+  // instance down when it is left alone, so the sign-in that follows is the
+  // call most likely in the whole app to land on a cold server. Starting the
+  // boot here spends it on the seconds someone takes to choose a button and
+  // type a username, instead of on a spinner after they press Sign in.
+  // Unawaited and silent, exactly as on the run screen. See warmUp.
+  useEffect(() => warmUp(), []);
 
   const enter = reduced ? undefined : FadeIn.duration(320);
   const exit = reduced ? undefined : FadeOut.duration(200);

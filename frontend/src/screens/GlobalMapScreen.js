@@ -4,11 +4,12 @@ import Svg, { Polyline } from 'react-native-svg';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { Flame, X } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Flame, Lock, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
+import { BORDER_TIERS } from '../config/progression';
 
 import { api } from '../api/client';
-import { radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { NB, nbInk, nbRadius, radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { cityBbox } from '../config/cities';
 import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
@@ -62,6 +63,18 @@ function ringCentroid(t) {
   return { latitude: cy / (6 * a), longitude: cx / (6 * a) };
 }
 
+// Repeat-claim saturation: each time the owner re-runs the same ground the
+// territory's `reinforcements` count rises, and the fill deepens with it so
+// hard-held land reads bolder than a one-off claim. Diminishing returns +
+// a ceiling keep a heavily farmed block strong but never fully opaque.
+const SAT_GAIN = 0.6; // most a stack of claims can deepen the fill (×1.6)
+const SAT_SCALE = 2.5; // reinforcements for ~63% of the gain
+const SAT_MAX = 0.92; // hard opacity ceiling (never a flat wall of colour)
+function claimSaturation(reinforcements) {
+  const reps = Math.max(0, reinforcements ?? 0);
+  return 1 + SAT_GAIN * (1 - Math.exp(-reps / SAT_SCALE));
+}
+
 // Build the whole-board GeoJSON once per data change. Each ring is a feature
 // carrying its clan colors, owning territory id, clan key, and contested flag.
 function toFeatures(territories, userId, playerAccent) {
@@ -86,7 +99,12 @@ function toFeatures(territories, userId, playerAccent) {
           // Territory fill ~48% (own a touch higher), faded by decay so land
           // visibly weakens as it nears expiry — but never down to the wash
           // it used to fade to, which read as barely-there rather than aged.
-          fillOpacity: (mine ? 0.58 : 0.48) * (0.55 + 0.45 * (t.freshness ?? 1)),
+          // Then deepened by repeat claims (`reinforcements`), capped, so
+          // hard-held ground reads more saturated than a single claim.
+          fillOpacity: Math.min(
+            SAT_MAX,
+            (mine ? 0.58 : 0.48) * (0.55 + 0.45 * (t.freshness ?? 1)) * claimSaturation(t.reinforcements)
+          ),
           contested: !!t.contested,
         },
       });
@@ -133,7 +151,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { equipped } = useAvatar();
+  const { equipped, rankKey } = useAvatar();
   const accent = useAccent();
   const reduce = useReduceMotion();
   // The board's entrance is keyed to arriving on the tab, not to mounting:
@@ -168,6 +186,32 @@ export default function GlobalMapScreen({ route, navigation }) {
   // board exactly as it has always been.
   const [layerKey, setLayerKey] = useState('all');
 
+  // --- rank-scoped board -------------------------------------------------
+  // The map shows only the land of runners in ONE rank tier: yours by default,
+  // so you see the rivals you are actually racing and not the whole planet.
+  // The arrows scout other tiers; tiers above your own are viewable but locked
+  // until you reach them (the explainer sheet spells this out).
+  const ownTier = useMemo(() => {
+    const i = BORDER_TIERS.findIndex((t) => t.key === rankKey);
+    return i < 0 ? 0 : i;
+  }, [rankKey]);
+  const [viewRankTier, setViewRankTier] = useState(ownTier);
+  const [rankInfoOpen, setRankInfoOpen] = useState(false);
+  // Whether the runner has taken the wheel. Until they touch the selector the
+  // board follows their own tier as it loads/updates (rankKey arrives async);
+  // once they scout a tier by hand, we stop yanking it back under them.
+  const pickedRef = useRef(false);
+  // A stable mirror of the viewed tier, read inside the [] -deps fetchViewport
+  // and onIdle closures the same way zoomRef is — so those callbacks keep their
+  // referential identity and Mapbox's PureComponent gate is not defeated.
+  const viewRankRef = useRef(ownTier);
+  useEffect(() => {
+    if (!pickedRef.current) setViewRankTier(ownTier);
+  }, [ownTier]);
+  useEffect(() => {
+    viewRankRef.current = viewRankTier;
+  }, [viewRankTier]);
+
   // --- Territory Planner -------------------------------------------------
   const { isPro, openPaywall, plannerPreviewsLeft, spendPlannerPreview } = useProEntitlement();
   const [planning, setPlanning] = useState(false);
@@ -184,14 +228,38 @@ export default function GlobalMapScreen({ route, navigation }) {
   // It wins over the my-location fly-in below: the caller is pointing at
   // something specific, and a `focus` only ever arrives on an explicit tap.
   const focus = route?.params?.focus;
+  // A capture can hand us the attacker's [lon, lat] ring; fitting the camera to
+  // it frames the EXACT ground taken instead of a fixed-zoom drop on the point.
+  const focusRing =
+    Array.isArray(focus?.ring) && focus.ring.length >= 3 ? focus.ring : null;
+  const hasExplicitFocus =
+    (Number.isFinite(focus?.lat) && Number.isFinite(focus?.lon)) || !!focusRing;
+  // A stable key so a fresh params object (React Navigation makes a new one per
+  // navigation) fires the fly-in once, not on every render.
+  const focusKey = focus
+    ? `${focus.lat ?? ''}:${focus.lon ?? ''}:${
+        focusRing ? `${focusRing.length}@${focusRing[0].join(',')}` : ''
+      }`
+    : '';
   useEffect(() => {
-    if (!Number.isFinite(focus?.lat) || !Number.isFinite(focus?.lon)) return;
-    const t = setTimeout(
-      () => mapRef.current?.flyTo({ latitude: focus.lat, longitude: focus.lon }, 15, 700),
-      450
-    );
+    if (!hasExplicitFocus) return;
+    const t = setTimeout(() => {
+      if (focusRing) {
+        const pts = focusRing
+          .map(([lon, lat]) => ({ latitude: lat, longitude: lon }))
+          .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+        if (pts.length >= 2) {
+          mapRef.current?.fitToPoints(pts, 64, 700);
+          return;
+        }
+      }
+      if (Number.isFinite(focus?.lat) && Number.isFinite(focus?.lon)) {
+        mapRef.current?.flyTo({ latitude: focus.lat, longitude: focus.lon }, 15, 700);
+      }
+    }, 450);
     return () => clearTimeout(t);
-  }, [focus?.lat, focus?.lon]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusKey]);
 
   // Land on the player's dot as soon as the screen opens.
   useEffect(() => {
@@ -207,8 +275,9 @@ export default function GlobalMapScreen({ route, navigation }) {
         setLocState('ok');
         // small delay so the camera call lands after the map is ready
         // Explicit "See the map" focus owns the camera. A late location fix
-        // must not pull the runner away from the land they just asked to see.
-        if (!Number.isFinite(focus?.lat) || !Number.isFinite(focus?.lon)) {
+        // must not pull the runner away from the land they just asked to see —
+        // whether that focus is a point or the attacker's ring.
+        if (!hasExplicitFocus) {
           setTimeout(() => mapRef.current?.flyTo(p, 15, 700), 400);
         }
       } catch {
@@ -216,7 +285,8 @@ export default function GlobalMapScreen({ route, navigation }) {
       }
     })();
     return () => { alive = false; };
-  }, [focus?.lat, focus?.lon]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusKey]);
 
   // Pulse the contested outline while heat is on (Reduce Motion → steady).
   useEffect(() => {
@@ -237,15 +307,19 @@ export default function GlobalMapScreen({ route, navigation }) {
     // Mirrors the backend feature cap (map_zoom_vlow=11): crossing it changes
     // how much comes back, so re-fetch rather than reuse the capped set.
     const capped = (z ?? zoomRef.current) < 11;
+    // The board is scoped to one rank tier; a different tier is a different set
+    // of land, so it joins the cache key. Without it, scouting another rank and
+    // panning back would re-serve the previous tier's cached region.
+    const rank = viewRankRef.current;
     const cov = coveredRef.current;
-    if (!force && cov && cov.capped === capped && bboxContains(cov, bbox)) return;
+    if (!force && cov && cov.capped === capped && cov.rank === rank && bboxContains(cov, bbox)) return;
 
     const padded = padBbox(bbox);
     const seq = ++seqRef.current;
     try {
-      const data = await api.mapPolygons(padded, z);
+      const data = await api.mapPolygons(padded, z, { rank });
       if (seq !== seqRef.current) return; // superseded by a newer viewport
-      coveredRef.current = { ...padded, capped };
+      coveredRef.current = { ...padded, capped, rank };
       setList(data.territories);
       setLoadError(false);
     } catch {
@@ -288,6 +362,21 @@ export default function GlobalMapScreen({ route, navigation }) {
       if (v) fetchViewport(v.bbox, v.z, true);
     }, [])
   );
+
+  // Switching rank re-scopes the board in place. Force a refetch of the current
+  // viewport (no camera move fires an idle on its own). The mirror ref is set
+  // by its own effect above, which runs before this one on the same commit.
+  useEffect(() => {
+    const v = lastViewRef.current;
+    if (v) fetchViewport(v.bbox, v.z, true);
+  }, [viewRankTier, fetchViewport]);
+
+  // Move the scoped tier by one step and take the wheel off the auto-follow.
+  const stepRank = useCallback((dir) => {
+    pickedRef.current = true;
+    setSelected(null);
+    setViewRankTier((t) => Math.max(0, Math.min(BORDER_TIERS.length - 1, t + dir)));
+  }, []);
 
   const locateMe = async () => {
     try {
@@ -596,6 +685,16 @@ export default function GlobalMapScreen({ route, navigation }) {
   const loaded = list !== null;
   const showEmpty = loaded && rows.length === 0 && !loadError;
 
+  // Rank selector view-model. `ring` is a colour or a gradient array; the
+  // swatch takes the first stop. Tiers above the runner's own are LOCKED —
+  // still viewable (you can scout the board ahead), just flagged as not yours.
+  const viewedTier = BORDER_TIERS[Math.max(0, Math.min(BORDER_TIERS.length - 1, viewRankTier))];
+  const viewedRing = Array.isArray(viewedTier.ring) ? viewedTier.ring[0] : viewedTier.ring;
+  const rankLocked = viewRankTier > ownTier;
+  const atFirstTier = viewRankTier <= 0;
+  const atLastTier = viewRankTier >= BORDER_TIERS.length - 1;
+  const ownTierLabel = BORDER_TIERS[Math.max(0, Math.min(BORDER_TIERS.length - 1, ownTier))].label;
+
   return (
     <View style={styles.container}>
       {/* The board arrives as one move. A map builds itself in visible stages
@@ -664,6 +763,21 @@ export default function GlobalMapScreen({ route, navigation }) {
           )}
         </GameMap>
 
+        {/* A neo-brutalist frame around the live board. The map read as an
+            unbounded full-bleed surface with nothing holding it; this is the
+            heavy stroke that contains it. Drawn OVER the map but UNDER the
+            controls, and never takes a touch. Inset to the safe area so the
+            whole stroke shows and the corners echo the screen's own. The colour
+            follows the scheme because the basemap does — dark ink on the light
+            style, cream on the dark one. */}
+        <View
+          pointerEvents="none"
+          style={[
+            styles.mapFrame,
+            { top: insets.top + space.sm, bottom: insets.bottom + space.sm, borderColor: nbInk(scheme) },
+          ]}
+        />
+
         {/* One map tool rail. Grouping heat, layers and recentering keeps three
             equal controls in one predictable place instead of scattering one
             button near the tab bar and two mismatched buttons at the top. */}
@@ -712,6 +826,65 @@ export default function GlobalMapScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* Rank scope selector. The board shows only the land of runners in the
+            chosen tier — yours by default. Arrows scout adjacent tiers; the
+            centre opens the explainer. A locked note appears when scouting a
+            tier above your own. Hidden while planning, which owns the board.
+            `box-none` so only the pill and its buttons take touches. */}
+        {!planning ? (
+          <View pointerEvents="box-none" style={[styles.rankBar, { top: insets.top + space.md }]}>
+            <View style={[styles.rankPill, { borderColor: nbInk(scheme), backgroundColor: colors.card }]}>
+              <TouchableOpacity
+                onPress={() => stepRank(-1)}
+                disabled={atFirstTier}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Scout a lower rank"
+                style={[styles.rankArrow, atFirstTier && styles.rankArrowOff]}
+              >
+                <ChevronLeft size={20} color={colors.text} strokeWidth={2.75} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.rankCenter}
+                onPress={() => setRankInfoOpen(true)}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={`Viewing ${viewedTier.label} rank${rankLocked ? ', locked' : ''}. Learn how the ranked map works`}
+              >
+                <View style={[styles.rankSwatch, { backgroundColor: viewedRing, borderColor: nbInk(scheme) }]} />
+                <Text style={[type.captionMedium, styles.rankLabel, { color: colors.text }]} numberOfLines={1}>
+                  {viewedTier.label}
+                </Text>
+                {rankLocked ? <Lock size={13} color={colors.textDim} strokeWidth={2.75} /> : null}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => stepRank(1)}
+                disabled={atLastTier}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Scout a higher rank"
+                style={[styles.rankArrow, atLastTier && styles.rankArrowOff]}
+              >
+                <ChevronRight size={20} color={colors.text} strokeWidth={2.75} />
+              </TouchableOpacity>
+            </View>
+            {rankLocked ? (
+              <TouchableOpacity
+                onPress={() => setRankInfoOpen(true)}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel={`Locked. Reach ${viewedTier.label} to compete here`}
+                style={[styles.rankLockNote, { borderColor: nbInk(scheme), backgroundColor: colors.warn }]}
+              >
+                <Lock size={12} color="#fff" strokeWidth={2.75} />
+                <Text style={[type.caption, styles.rankLockText]} numberOfLines={1}>
+                  Locked · reach {viewedTier.label} to compete here
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* THE DRAWING SURFACE. Absolutely filled over the map, mounted only
             while draw mode is on, so nothing intercepts a tap on a territory
             the rest of the time.
@@ -746,7 +919,7 @@ export default function GlobalMapScreen({ route, navigation }) {
         ) : null}
 
         {showEmpty && (
-          <View style={[styles.noticePill, { top: insets.top + space.md }]}>
+          <View style={[styles.noticePill, { top: insets.top + space.md + 52 }]}>
             <Text style={type.heading}>Unclaimed. Be first.</Text>
             <Text style={[type.caption, { marginTop: 2 }]}>Close a loop here to claim the first land.</Text>
           </View>
@@ -863,12 +1036,46 @@ export default function GlobalMapScreen({ route, navigation }) {
           ))
         )}
       </Sheet>
+
+      {/* Explainer: why the board only shows one rank at a time. */}
+      <Sheet visible={rankInfoOpen} onClose={() => setRankInfoOpen(false)}>
+        <View style={styles.rankInfoHead}>
+          <View style={[styles.rankSwatch, styles.rankInfoSwatch, { backgroundColor: viewedRing, borderColor: nbInk(scheme) }]} />
+          <Text style={type.heading}>Ranked map</Text>
+        </View>
+        <Text style={[type.body, { color: colors.textDim, marginTop: space.sm }]}>
+          The board shows land held by runners in one rank. You start on your own
+          tier, {ownTierLabel}, so the map fills with the rivals you are actually
+          racing rather than the whole world.
+        </Text>
+        <Text style={[type.body, { color: colors.textDim, marginTop: space.md }]}>
+          Take ground and hold it to climb the ladder. Use the arrows to scout
+          another tier: ranks above yours stay locked until you reach them, so you
+          can see what waits ahead but you compete on your own.
+        </Text>
+        <Button
+          title="Got it"
+          variant="gradient"
+          onPress={() => setRankInfoOpen(false)}
+          style={{ marginTop: space.lg }}
+        />
+      </Sheet>
     </View>
   );
 }
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  // The board frame — a heavy stroke inset to the safe area. No fill, no drop
+  // (nothing sits behind a full-screen overlay to drop onto); the stroke alone
+  // is the frame. top/bottom are set inline from the safe-area insets.
+  mapFrame: {
+    position: 'absolute',
+    left: space.sm,
+    right: space.sm,
+    borderWidth: NB.stroke,
+    borderRadius: nbRadius.lg,
+  },
   // The reveal layer sits inside `container`, so the screen's background is
   // what shows through while the board is still held at zero opacity.
   fill: { flex: 1 },
@@ -910,6 +1117,51 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+
+  // Rank scope selector — a centred NB pill at the top of the board. The
+  // wrapping bar spans the width but takes no touches (`box-none` on the view)
+  // so panning the map around it still works; only the pill reacts.
+  rankBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: 6,
+  },
+  rankPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: NB.stroke,
+    borderRadius: radius.pill,
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+    gap: 2,
+    ...shadow.raised,
+  },
+  rankArrow: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  rankArrowOff: { opacity: 0.28 },
+  rankCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 6,
+    minWidth: 96,
+    justifyContent: 'center',
+  },
+  rankSwatch: { width: 14, height: 14, borderRadius: 4, borderWidth: 2 },
+  rankLabel: { textTransform: 'uppercase', letterSpacing: 0.4 },
+  rankLockNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: NB.stroke,
+    borderRadius: radius.pill,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  rankLockText: { color: '#fff' },
+  rankInfoHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  rankInfoSwatch: { width: 18, height: 18, borderRadius: 5 },
 
   card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

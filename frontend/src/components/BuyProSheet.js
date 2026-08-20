@@ -34,10 +34,10 @@ import { useAccent } from '../hooks/useAccent';
 import usePro from '../hooks/usePro';
 import { useStoreAvailable } from '../pro/storeAvailable';
 import { finishPurchase, fetchProductPrices, restorePurchases, storeSubscribe } from '../iap';
-import { brand, radius, space, useTheme, useThemedType } from '../theme';
+import { brand, NB, nbInk, nbRadius, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
 import { toast } from '../ui/toast';
 import AppIcon from './AppIcon';
-import { Row, Sheet } from './ui';
+import { HardShadow, Row, Sheet } from './ui';
 import ToonButton from './ui/ToonButton';
 
 const TERMS_URL = 'https://www.gameablestudios.com/terms';
@@ -64,7 +64,7 @@ export default function BuyProSheet({
   context,
   automatic = false,
 }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const accent = useAccent();
   const { pro } = usePro();
@@ -231,29 +231,45 @@ export default function BuyProSheet({
         <Perk key={icon} icon={icon} label={label} colors={colors} type={type} />
       ))}
 
-      <Row gap={space.sm} style={{ marginTop: space.sm }}>
+      <Row gap={space.md} align="stretch" style={{ marginTop: space.sm }}>
         {PLANS.map((p) => {
           const on = p.id === plan;
+          // The rest of the app draws its boxes the neo-brutalist way — a heavy
+          // ink stroke and a hard, zero-blur offset drop — so this picker does
+          // too, instead of the flat card with a thin coloured hairline it used
+          // to be. Selection is told the same way a pressed button is told
+          // apart from a flat field: the chosen plan is a RAISED block in the
+          // accent (stroke + hard drop), the other sits flush with no drop.
+          const fill = on ? withAlpha(accent, scheme === 'dark' ? 0.22 : 0.14) : colors.card;
           return (
-            <TouchableOpacity
+            <HardShadow
               key={p.id}
-              onPress={() => setPlan(p.id)}
-              disabled={busy || restoring}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: on }}
-              accessibilityLabel={`${p.label}, ${priceFor(p)} per ${p.period}`}
-              style={[
-                styles.plan,
-                { backgroundColor: colors.card, borderColor: on ? accent : colors.border },
-              ]}
+              radius={nbRadius.sm}
+              offset={on ? NB.offsetSm : 0}
+              accent={accent}
+              on={fill}
+              style={{ flex: 1 }}
             >
-              <Text style={[type.bodySmBold, { color: colors.text }]}>{p.label}</Text>
-              <Text style={[type.heading, { color: colors.text }]}>{priceFor(p)}</Text>
-              <Text style={[type.caption, { color: colors.textDim }]}>per {p.period}</Text>
-              {p.badge ? (
-                <Text style={[type.caption, { color: colors.textMuted }]}>{p.badge}</Text>
-              ) : null}
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setPlan(p.id)}
+                disabled={busy || restoring}
+                activeOpacity={0.85}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`${p.label}, ${priceFor(p)} per ${p.period}`}
+                style={[
+                  styles.plan,
+                  { backgroundColor: fill, borderColor: nbInk(scheme, fill) },
+                ]}
+              >
+                <Text style={[type.bodySmBold, { color: colors.text }]}>{p.label}</Text>
+                <Text style={[type.heading, { color: colors.text }]}>{priceFor(p)}</Text>
+                <Text style={[type.caption, { color: colors.textDim }]}>per {p.period}</Text>
+                {p.badge ? (
+                  <Text style={[type.caption, { color: colors.textMuted }]}>{p.badge}</Text>
+                ) : null}
+              </TouchableOpacity>
+            </HardShadow>
           );
         })}
       </Row>
@@ -350,6 +366,6 @@ function Disclosure({ colors, type, price, period }) {
 
 const styles = StyleSheet.create({
   perk: { borderRadius: radius.card, padding: space.md, marginBottom: space.sm },
-  plan: { flex: 1, borderRadius: radius.card, borderWidth: 2, padding: space.md, gap: 2 },
+  plan: { flex: 1, borderRadius: nbRadius.sm, borderWidth: NB.stroke, padding: space.md, gap: 2 },
   notice: { borderRadius: radius.card, borderWidth: 2, padding: space.md, marginBottom: space.sm },
 });

@@ -94,7 +94,7 @@ export default function ClubChatScreen({ route }) {
           </View>
         ) : messages.length === 0 ? (
           <View style={{ flex: 1, justifyContent: 'center' }}>
-            <EmptyState title="Say hi" body="Kick off the club chat. Plan the next run together." />
+            <EmptyState title="Say hi" body="Plan the next run together." />
           </View>
         ) : (
           <Arrival active={arriving} style={{ flex: 1 }}>

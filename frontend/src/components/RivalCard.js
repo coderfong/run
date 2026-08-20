@@ -11,9 +11,9 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { brand, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
+import { brand, nbTextOn, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
-import { ToonButton, ToonCard, ToonGhostButton, OutlinedText } from './ui';
+import { ToonButton, ToonCard, ToonGhostButton } from './ui';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import { useAvatar } from '../state/avatar';
@@ -143,15 +143,20 @@ export default function RivalCard({
     <ToonCard style={style} padded={false}>
       <Body style={styles.body} {...bodyProps}>
         <View style={styles.eyebrowRow}>
-          <OutlinedText
-            style={[toonType.label, { color: behind ? '#ef4444' : brand.teal }]}
-            outline={toon.ink}
-            width={1.5}
-            align="left"
-            containerStyle={{ alignSelf: 'flex-start' }}
-          >
-            {behind ? '⚔ UNDER ATTACK' : '🔥 RIVALRY'}
-          </OutlinedText>
+          {/* A FILLED tag, not tinted outlined text. The word used to be bright
+              teal with a thin ink outline, which all but vanished on the card;
+              a solid state-coloured plate with bold ink-or-white text (whichever
+              reads on the fill) makes the rivalry unmistakable. */}
+          {(() => {
+            const tagFill = behind ? '#ef4444' : brand.teal;
+            return (
+              <View style={[styles.eyebrowBadge, { backgroundColor: tagFill, borderColor: toon.ink }]}>
+                <Text style={[toonType.label, styles.eyebrowBadgeText, { color: nbTextOn(tagFill) }]}>
+                  {behind ? '⚔ UNDER ATTACK' : '🔥 RIVALRY'}
+                </Text>
+              </View>
+            );
+          })()}
           {rival.clan_tag ? (
             <Text style={[type.caption, { color: rival.clan_color?.stroke || colors.textDim }]}>
               [{rival.clan_tag}]
@@ -204,6 +209,14 @@ export default function RivalCard({
 const styles = StyleSheet.create({
   body: { paddingHorizontal: space.lg, paddingTop: space.md },
   eyebrowRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  // The filled rivalry tag: a stroked pill in the state colour.
+  eyebrowBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: toonRadius.pill,
+    borderWidth: 2,
+  },
+  eyebrowBadgeText: { fontSize: 12, letterSpacing: 0.8 },
 
   sides: { flexDirection: 'row', alignItems: 'center', marginTop: space.md, gap: space.sm },
   side: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },

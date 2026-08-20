@@ -620,20 +620,20 @@ function RootNavigator() {
         <LandCaptureAlertHost
           onViewLand={(capture) => {
             if (!navigationRef.isReady()) return;
+            // A real ring lets the map FIT the exact ground taken; a bare point
+            // is the fallback (older captures / any path without the ring).
+            const ring = Array.isArray(capture?.territoryRing) && capture.territoryRing.length >= 3
+              ? capture.territoryRing
+              : null;
             const focus =
               Number.isFinite(capture?.lat) && Number.isFinite(capture?.lon)
-                ? { focus: { lat: capture.lat, lon: capture.lon } }
-                : undefined;
+                ? { focus: { lat: capture.lat, lon: capture.lon, ring } }
+                : ring
+                  ? { focus: { ring } }
+                  : undefined;
             navigationRef.navigate('Tabs', {
               screen: 'Map',
               params: { screen: 'MapMain', params: focus },
-            });
-          }}
-          onOpenNotifications={() => {
-            if (!navigationRef.isReady()) return;
-            navigationRef.navigate('Tabs', {
-              screen: 'Home',
-              params: { screen: 'Notifications', initial: false },
             });
           }}
         />

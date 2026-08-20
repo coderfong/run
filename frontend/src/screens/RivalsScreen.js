@@ -114,7 +114,7 @@ export default function RivalsScreen({ navigation }) {
           <EmptyState
             icon={<Swords size={64} color={colors.textDim} />}
             title="No rivals yet"
-            body="Claim ground someone else holds, or lose some of yours, and the rivalry starts itself."
+            body="Claim ground someone else holds, or lose some of yours, and a rivalry begins."
             actionLabel="Start a run"
             onAction={() => navigation.navigate('Record')}
             style={{ paddingTop: space.xl }}

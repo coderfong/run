@@ -10,8 +10,8 @@ import { api } from '../api/client';
 import { updateCached } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { NEUTRAL } from '../state/clan';
-import { NB, nbField, radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Card, Row, Input, StatValue, Skeleton } from '../components/ui';
+import { NB, nbField, nbInk, nbRadius, radius, space, toonSurface, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { Screen, Card, Row, Input, StatValue, Skeleton, HardShadow } from '../components/ui';
 import { Arrival, PressableScale, haptic, useArrival } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
@@ -20,6 +20,7 @@ import ReactionBar, { ReactionTrigger } from '../components/ReactionBar';
 import { useRunReactions } from '../hooks/useRunReactions';
 import AppIcon from '../components/AppIcon';
 import TerritoryInsights from '../components/TerritoryInsights';
+import { ProLockedSection } from '../components/ProLock';
 import { openSafetyActions } from '../utils/safety';
 import { longDateTime, sinceServer } from '../utils/time';
 
@@ -55,7 +56,7 @@ function timeAgo(iso) {
 }
 
 export default function RunDetailScreen({ navigation, route }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const { runId, focusComments = false } = route.params;
@@ -176,20 +177,25 @@ export default function RunDetailScreen({ navigation, route }) {
   const page = (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
     <Screen scroll scrollRef={scrollRef} contentStyle={{ paddingBottom: space.xxl }}>
-      {/* map */}
-      <View style={styles.map}>
-        {MAP_READY && path.length > 1 ? (
-          <GameMap initialCenter={path[0]} initialZoom={14}>
-            {ring.length >= 3 && <TerritoryFill id="d-terr" points={ring} fillColor={c.stroke} strokeColor={c.stroke} fillOpacity={0.35} />}
-            <Trail id="d-trail" points={path} color={c.stroke} width={5} />
-            <MapPoint id="d-start" point={path[0]} color={c.stroke} />
-          </GameMap>
-        ) : (
-          <View style={styles.mapPlaceholder}>
-            <Text style={type.caption}>{MAP_READY ? 'No route recorded' : 'Map needs the dev build'}</Text>
-          </View>
-        )}
-      </View>
+      {/* map — a defined NB object: heavy stroke on the inner box (which clips),
+          hard offset drop from HardShadow so it lands on Android too. The clan
+          colours stay inside the trail and territory; the box's own edge is
+          neutral chrome. */}
+      <HardShadow radius={radius.card} on={colors.bgElevated} style={{ marginTop: space.md }}>
+        <View style={styles.map}>
+          {MAP_READY && path.length > 1 ? (
+            <GameMap initialCenter={path[0]} initialZoom={14}>
+              {ring.length >= 3 && <TerritoryFill id="d-terr" points={ring} fillColor={c.stroke} strokeColor={c.stroke} fillOpacity={0.35} />}
+              <Trail id="d-trail" points={path} color={c.stroke} width={5} />
+              <MapPoint id="d-start" point={path[0]} color={c.stroke} />
+            </GameMap>
+          ) : (
+            <View style={styles.mapPlaceholder}>
+              <Text style={type.caption}>{MAP_READY ? 'No route recorded' : 'Map needs the dev build'}</Text>
+            </View>
+          )}
+        </View>
+      </HardShadow>
 
       {/* header */}
       <Row between style={{ marginTop: space.lg }}>
@@ -271,20 +277,36 @@ export default function RunDetailScreen({ navigation, route }) {
 
       {/* splits — drawn box. The two panels on this page are the two blocks
           of detail you came here to read, so they are the ones that earn the
-          ink; the map and the stat row above are already strong shapes. */}
+          ink; the map and the stat row above are already strong shapes.
+
+          PRO depth: the per-kilometre breakdown is a richer VIEW of a run, not
+          a lever on it — reading your splits changes nothing about the ground
+          you hold, so it is a fair thing to sell. When PRO is off in this
+          build the lock never appears and everyone keeps their splits. */}
       {d.splits.length > 0 && (
-        <Card frame="panel" frameTint={c.stroke} style={[styles.framedPanel, { marginTop: space.xl }]}>
-          <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>Splits</Text>
-          {d.splits.map((s) => (
-            <View key={s.km} style={styles.splitRow}>
-              <Text style={styles.splitKm}>{s.km} km</Text>
-              <View style={styles.track}>
-                <View style={[styles.bar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: withAlpha(c.stroke, 0.5) }]} />
+        <ProLockedSection
+          context="run_detail"
+          feature="run_splits"
+          title="Splits"
+          blurb="Your per kilometre pace, fastest to slowest."
+          style={{ marginTop: space.xl }}
+        >
+          {/* marginTop lives on the Card too, not only on the wrapper: when
+              PRO is off or the runner is a subscriber the section renders these
+              children directly, so the gap has to travel with them. */}
+          <Card frame="panel" frameTint={c.stroke} style={[styles.framedPanel, { marginTop: space.xl }]}>
+            <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>Splits</Text>
+            {d.splits.map((s) => (
+              <View key={s.km} style={styles.splitRow}>
+                <Text style={styles.splitKm}>{s.km} km</Text>
+                <View style={styles.track}>
+                  <View style={[styles.bar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: withAlpha(c.stroke, 0.5) }]} />
+                </View>
+                <Text style={styles.splitPace}>{paceStr(s.seconds)}</Text>
               </View>
-              <Text style={styles.splitPace}>{paceStr(s.seconds)}</Text>
-            </View>
-          ))}
-        </Card>
+            ))}
+          </Card>
+        </ProLockedSection>
       )}
 
       {/* What this run did for the ground you hold — the same free/PRO split
@@ -359,7 +381,7 @@ export default function RunDetailScreen({ navigation, route }) {
           <PressableScale
             onPress={sendComment}
             disabled={!draft.trim() || sending}
-            style={[styles.sendBtn, { backgroundColor: c.stroke, opacity: draft.trim() && !sending ? 1 : 0.4 }]}
+            style={[styles.sendBtn, { backgroundColor: c.stroke, borderColor: nbInk(scheme, c.stroke), opacity: draft.trim() && !sending ? 1 : 0.4 }]}
             accessibilityRole="button"
             accessibilityLabel="Post comment"
           >
@@ -379,7 +401,15 @@ export default function RunDetailScreen({ navigation, route }) {
 }
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
-  map: { height: 240, borderRadius: radius.card, overflow: 'hidden', marginTop: space.md, backgroundColor: colors.bgElevated },
+  // Stroke lives on the clipping box; the drop is the HardShadow wrapper's job.
+  // marginTop moved to that wrapper so the box slides fully under its own drop.
+  map: {
+    height: 240,
+    borderRadius: radius.card,
+    overflow: 'hidden',
+    backgroundColor: colors.bgElevated,
+    ...toonSurface(colors, scheme, { on: colors.bgElevated }).outline,
+  },
   mapPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   kudos: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, paddingVertical: space.sm },
   kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
@@ -412,10 +442,15 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     color: colors.text,
     ...nbField(scheme, { on: colors.bgElevated, stroke: NB.strokeThin }),
   },
+  // Squared, stroked — part of the docked composer row, so it takes the stroke
+  // and not the drop, the same call the comment field beside it makes (a flush
+  // control, not a block sitting on the page). Border colour is set inline
+  // against the clan fill it carries.
   sendBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.stroke,
     alignItems: 'center',
     justifyContent: 'center',
   },

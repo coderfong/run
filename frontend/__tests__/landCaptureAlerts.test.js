@@ -61,6 +61,46 @@ describe('land capture alert normalisation', () => {
     expect(alert.territoryId).toBe('territory-9');
   });
 
+  it('keeps a valid attacker ring and drops non-finite vertices', () => {
+    const alert = normaliseLandCaptureAlert({
+      category: 'stolen',
+      actor_username: 'RivalKai',
+      data: {
+        territory_ring: [
+          [103.8198, 1.3521],
+          [103.8205, 1.3521],
+          ['nope', 1.35],
+          [103.8205, 1.3528],
+          [103.8198, 1.3528],
+        ],
+      },
+    });
+    expect(alert.territoryRing).toEqual([
+      [103.8198, 1.3521],
+      [103.8205, 1.3521],
+      [103.8205, 1.3528],
+      [103.8198, 1.3528],
+    ]);
+  });
+
+  it('drops a ring that is too short to be a shape', () => {
+    const alert = normaliseLandCaptureAlert({
+      category: 'stolen',
+      actor_username: 'RivalKai',
+      data: { territory_ring: [[103.8, 1.35], [103.81, 1.35]] },
+    });
+    expect(alert.territoryRing).toBeNull();
+  });
+
+  it('has a null ring when the payload omits one', () => {
+    const alert = normaliseLandCaptureAlert({
+      category: 'stolen',
+      actor_username: 'RivalKai',
+      data: { territory_id: 't-1' },
+    });
+    expect(alert.territoryRing).toBeNull();
+  });
+
   it('reads the new km²-only notification copy back into square metres', () => {
     const alert = normaliseLandCaptureAlert({
       category: 'stolen',

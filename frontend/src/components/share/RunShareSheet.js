@@ -17,6 +17,7 @@ import React, { Component, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   InteractionManager,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -28,7 +29,7 @@ import * as Sentry from '@sentry/react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
-import { Copy, Download, Share2 } from 'lucide-react-native';
+import { Copy, Download, Lock, Share2 } from 'lucide-react-native';
 
 import RunShareCard, {
   ACCENTS,
@@ -42,7 +43,6 @@ import { EVENTS, track } from '../../analytics';
 import { GOLD } from '../../config/pro';
 import { shareStyleByKey, stylesForRun } from '../../config/shareStyles';
 import { useProEntitlement } from '../../pro/ProProvider';
-import RunPostEditor from '../RunPostEditor';
 import { radius, space, useTheme, useThemedStyles } from '../../theme';
 import { PressableScale, haptic } from '../../ui/motion';
 import { toast } from '../../ui/toast';
@@ -126,12 +126,42 @@ class ShareBoundary extends Component {
 }
 
 // A labelled strip of controls.
-function Row({ label, children }) {
+//
+// `locked` is the share flow's version of the Chunk 7 padlock (see
+// AvatarStudioScreen): a customisation that is PASER PRO shows a gold lock on
+// its label, dims its controls and swallows taps into the paywall rather than
+// letting a free account change it. The controls stay VISIBLE — the point is to
+// show what PRO buys — they just do not respond until it is bought.
+function Row({ label, locked, onLockedPress, children }) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      {children}
+      <View style={styles.rowHead}>
+        <Text style={[styles.rowLabel, styles.rowLabelInHead]}>{label}</Text>
+        {locked ? (
+          <View style={styles.proTag}>
+            <Lock size={11} color={GOLD} strokeWidth={2.6} />
+            <Text style={styles.proTagText}>PRO</Text>
+          </View>
+        ) : null}
+      </View>
+      {locked ? (
+        <View>
+          <View style={styles.lockedControls} pointerEvents="none">
+            {children}
+          </View>
+          {/* One tap target over the whole dimmed row, so touching any swatch
+              or chip opens the pitch instead of half-working. */}
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onLockedPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${label}, PASER PRO`}
+          />
+        </View>
+      ) : (
+        children
+      )}
     </View>
   );
 }
@@ -277,6 +307,17 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   // The one thing that actually blocks: a PRO style, on a free account, with
   // the store live. Everything else exports exactly as it always did.
   const styleLocked = activeStyle.pro && !isPro && canShowPro;
+
+  // The fine-grain LOOKS — the accent colour and where the text sits — are PRO.
+  // Everything that decides WHAT the card says (which stats, the route, the
+  // runner) stays free; this gates the polish, not the substance. Off entirely
+  // for subscribers and in builds with no store, so a free-forever build shows
+  // no dead padlocks.
+  const customizeLocked = !isPro && canShowPro;
+  const tapLockedCustomize = (feature) => {
+    track(EVENTS.TEASER_TAP, { source: 'share', feature });
+    openPaywall('share');
+  };
 
   const applyStyle = (style) => {
     setStyleKey(style.key);
@@ -524,13 +565,13 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </View>
           </View>
 
-          <Text style={styles.hint}>
-            Everything around your run stays see through, so your own story shows behind it.
-          </Text>
-
           {/* --- customise ------------------------------------------------ */}
 
-          <Row label="Accent">
+          <Row
+            label="Accent"
+            locked={customizeLocked}
+            onLockedPress={() => tapLockedCustomize('accent')}
+          >
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.chipRow}>
                 {swatches.map((s) => {
@@ -592,8 +633,14 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
           {/* Text is WHITE and only white now — the dark option is gone. See
               the tone note in RunShareCard: black type on a card with no
-              background of its own is the one combination that vanishes. */}
-          <Row label="Text">
+              background of its own is the one combination that vanishes. The
+              alignment IS a PRO look — where the numbers sit is polish, so it
+              shares the accent's padlock. */}
+          <Row
+            label="Text"
+            locked={customizeLocked}
+            onLockedPress={() => tapLockedCustomize('align')}
+          >
             <View style={styles.chipWrap}>
               {[
                 { key: 'left', label: 'Left' },
@@ -656,13 +703,11 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </View>
           </Row>
 
-          <Row label="Home post">
-            <RunPostEditor
-              runId={cardProps.run?.runId}
-              initialCaption={cardProps.run?.caption}
-              initialMedia={cardProps.run?.media}
-            />
-          </Row>
+          {/* No "Home post" editor here any more. Posting to Home is its own
+              thing — a caption and photos on your runner card — and it lives on
+              the Home screen where the card does. Bolting it onto the share
+              flow made one screen do two jobs and blurred "share to Instagram"
+              with "edit my feed". */}
         </ScrollView> : (
           <View style={styles.preparing}>
             {editorReady ? (
@@ -747,6 +792,24 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
 
   row: { marginTop: space.md, alignSelf: 'stretch' },
   rowLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.sm },
+  rowHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm },
+  rowLabelInHead: { marginBottom: 0 },
+  // The gold PRO tag on a locked customisation's label. Same GOLD the padlocks
+  // everywhere else in the app use, so a locked control reads as PRO at a glance.
+  proTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: GOLD,
+  },
+  proTagText: { ...type.labelSm, fontSize: 9, letterSpacing: 1, color: GOLD },
+  // A locked row's controls stay on screen so the runner can see what PRO buys;
+  // they are just dimmed and, via the Pressable over them, inert until it is.
+  lockedControls: { opacity: 0.4 },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   chip: {
@@ -796,7 +859,6 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     paddingHorizontal: space.lg,
   },
   cardFallbackText: { ...type.bodySm, color: '#FFFFFF', textAlign: 'center' },
-  hint: { ...type.caption, color: colors.textDim, textAlign: 'center', marginTop: space.md },
 
   actions: {
     paddingTop: space.md,

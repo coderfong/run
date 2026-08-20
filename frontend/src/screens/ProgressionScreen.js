@@ -15,8 +15,8 @@ import AppIcon from '../components/AppIcon';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
-import { brand, fonts, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
-import { Card, Framed, Row, Sheet, Skeleton, Screen, OutlinedText, ToonButton } from '../components/ui';
+import { NB, brand, fonts, nbRadius, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { Card, Framed, Row, Sheet, Skeleton, Screen, OutlinedText, ToonButton, HardShadow } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
 import GameAnimation from '../components/GameAnimation';
@@ -263,7 +263,7 @@ const INFO_SECTIONS = [
   },
   {
     title: 'Rewards',
-    body: 'Reaching a level unlocks its tier on the ladder below. Free rewards are for everyone; PASER PRO adds a second, better reward on the same tier. Tap a lit tile to collect it, or use Claim all to grab everything at once.',
+    body: 'Reaching a level unlocks its tier below. Everyone gets the free reward; PASER PRO adds a second, better one on the same tier. Tap a lit tile to collect, or use Claim all.',
   },
 ];
 
@@ -530,7 +530,10 @@ export default function ProgressionScreen() {
           accessibilityRole="button"
           accessibilityLabel="How level, rank and rewards work"
         >
-          <Info size={18} color="#fff" />
+          {/* A squared white NB tile, not the translucent black disc it was —
+              the same call the back button made. No drop: it floats over busy
+              header art, where a hard shadow reads as muck. */}
+          <Info size={18} color={NB.ink} />
         </TouchableOpacity>
         <View style={styles.headerInner}>
           <PortraitBorder borderKey={rank?.key || 'wood'} size={104}>
@@ -635,8 +638,8 @@ export default function ProgressionScreen() {
                 PASER PRO
               </OutlinedText>
               <Text style={[type.caption, { color: colors.textMuted, marginTop: 2 }]}>
-                Every tier pays twice: 17 exclusive cosmetics, a rarer box AND
-                energy on box tiers, and bigger energy packs everywhere else.
+                Every tier pays twice: exclusive cosmetics, rarer boxes and
+                bigger energy packs, all the way to level 50.
               </Text>
             </View>
           </Row>
@@ -677,17 +680,21 @@ export default function ProgressionScreen() {
 
       {/* Solid, code-drawn lane buttons; the labels never depend on artwork. */}
       <View style={styles.trackHead}>
-        <View style={[styles.ticket, styles.ticketFree]}>
-          <View style={styles.ticketHighlight} pointerEvents="none" />
-          <Text style={[toonType.label, styles.ticketText, { color: '#fff' }]}>FREE</Text>
-        </View>
+        <HardShadow color={toon.ink} offset={NB.offsetSm} radius={radius.pill} style={styles.ticketWrap}>
+          <View style={[styles.ticket, styles.ticketFree]}>
+            <View style={styles.ticketHighlight} pointerEvents="none" />
+            <Text style={[toonType.label, styles.ticketText, { color: '#fff' }]}>FREE</Text>
+          </View>
+        </HardShadow>
         {showPremium ? (
           <>
             <View style={{ width: SPINE_W }} />
-            <View style={[styles.ticket, styles.ticketPro]}>
-              <View style={styles.ticketHighlight} pointerEvents="none" />
-              <Text style={[toonType.label, styles.ticketText, styles.ticketTextPro]}>PASER PRO</Text>
-            </View>
+            <HardShadow color={toon.ink} offset={NB.offsetSm} radius={radius.pill} style={styles.ticketWrap}>
+              <View style={[styles.ticket, styles.ticketPro]}>
+                <View style={styles.ticketHighlight} pointerEvents="none" />
+                <Text style={[toonType.label, styles.ticketText, styles.ticketTextPro]}>PASER PRO</Text>
+              </View>
+            </HardShadow>
           </>
         ) : null}
       </View>
@@ -774,9 +781,10 @@ const styles = StyleSheet.create({
   headerScrim: { backgroundColor: 'rgba(14,10,28,0.52)' },
   infoBtn: {
     position: 'absolute', top: space.md, right: space.md, zIndex: 1,
-    width: 30, height: 30, borderRadius: 15,
+    width: 32, height: 32, borderRadius: nbRadius.sm,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.32)',
+    backgroundColor: '#fff',
+    borderWidth: NB.strokeThin, borderColor: NB.ink,
   },
   headerInner: { alignItems: 'center', padding: space.lg },
   // Always white: the panel underneath is the purple art plus a dark scrim in
@@ -799,14 +807,15 @@ const styles = StyleSheet.create({
   passBanner: { marginTop: space.md },
 
   trackHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xl, marginBottom: space.sm },
-  // Flat fills plus an ink border, hard shadow, and small highlight give the
-  // labels the same tactile button language as the rest of the pass.
+  // Flat fills plus an ink border and small highlight give the labels the same
+  // tactile button language as the rest of the pass. The hard drop is the
+  // HardShadow wrapper's job now — it used to be iOS-only shadow props that
+  // Android renders as a blurred material shadow pointing the wrong way.
+  ticketWrap: { flex: 1 },
   ticket: {
     flex: 1, height: LANE_H, flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2.5, borderColor: toon.ink, borderRadius: radius.pill,
-    shadowColor: toon.ink, shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1, shadowRadius: 0, elevation: 3,
   },
   ticketFree: { backgroundColor: brand.pink },
   ticketPro: { backgroundColor: GOLD },

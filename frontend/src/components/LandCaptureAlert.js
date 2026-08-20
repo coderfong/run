@@ -44,6 +44,7 @@ import {
   landCaptureAlertKey,
   normaliseLandCaptureAlert,
 } from '../utils/landCaptureAlerts';
+import { fitRingToBox } from '../utils/staticMercator';
 import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
 import useCaptureStage from '../effects/useCaptureStage';
@@ -51,19 +52,22 @@ import { layoutDefenders } from '../effects/anchors';
 import { pickCaptureStyle } from '../effects/captureStyles';
 import { fmtArea } from './RivalCard';
 import { OutlinedText, ToonButton, ToonGhostButton } from './ui';
+import { CharacterBust } from './character/CharacterRig';
+import AppIcon from './AppIcon';
 
 // A still frame of exactly where this happened, not a live map: this modal
 // can pop up over any screen, and a second live Mapbox instance mounted on
 // top of whatever the screen underneath is already running is a cost with no
 // payoff here. The Static Images API is one HTTPS image — same style, same
 // token, none of the weight.
-function staticMapUrl({ lat, lon, width, height, scheme, pinHex }) {
+function staticMapUrl({ lat, lon, width, height, scheme, pinHex, zoom = 15 }) {
   if (!MAP_READY || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const style = styleForTheme(scheme).replace('mapbox://styles/', '');
   const w = Math.max(64, Math.min(640, Math.round(width)));
   const h = Math.max(64, Math.min(640, Math.round(height)));
+  const z = Math.max(1, Math.min(20, Number(zoom) || 15));
   const pin = `pin-s+${pinHex}(${lon},${lat})`;
-  return `https://api.mapbox.com/styles/v1/${style}/static/${pin}/${lon},${lat},15,0/${w}x${h}@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`;
+  return `https://api.mapbox.com/styles/v1/${style}/static/${pin}/${lon},${lat},${z},0/${w}x${h}@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`;
 }
 
 const POLL_MS = 10_000;
@@ -106,7 +110,7 @@ function HazardRail({ style }) {
   );
 }
 
-export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
+export function LandCaptureAlertHost({ onViewLand }) {
   const { colors, scheme } = useTheme();
   const { equipped } = useAvatar();
   const reduced = useReduceMotion();
@@ -115,6 +119,13 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
   const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
   const [phase, setPhase] = useState('incoming');
+  // Two stages, split on the user's ask. `alert` is the plain warning — "land
+  // captured", the runner's own character, and two choices. `playback` is where
+  // the capture choreography actually runs, ONCE, ending on TERRITORY STOLEN.
+  // Keeping the choreography out of the alert is also what stops it replaying:
+  // it now mounts a single time, when View is pressed, rather than living behind
+  // the always-open warning where every re-render could restart it.
+  const [view, setView] = useState('alert');
   const recent = useRef(new Map());
   const pulse = useSharedValue(0);
   // The card's own kick on arrival — separate from `pulse` (the ambient wash)
@@ -237,6 +248,7 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
   useEffect(() => {
     if (!current) return undefined;
     setPhase('incoming');
+    setView('alert');
     haptic.warning();
     pulse.value = 0;
     pulse.value = reduced
@@ -264,7 +276,24 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
       cancelAnimation(pulse);
       cancelAnimation(entrance);
     };
-  }, [current, pulse, entrance, reduced, captureStage]);
+    // Keyed on `current` ALONE: this is the "a new event just arrived, present
+    // it from scratch" setup, and setView('alert') here must fire only for a
+    // genuinely new capture — never on an ordinary re-render. pulse/entrance are
+    // stable shared values and captureStage is a stable ref in the runtime, but
+    // depending on them let a changed reference snap the view back to 'alert'
+    // mid-playback (it re-ran on every render under the reanimated test mock,
+    // undoing VIEW AFFECTED LAND the instant it was pressed).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+
+  // Level the stage the moment playback opens, so the style plays from rest
+  // rather than from wherever the previous one was parked.
+  useEffect(() => {
+    if (view === 'playback') {
+      setPhase('incoming');
+      captureStage.reset();
+    }
+  }, [view, captureStage]);
 
   const entranceStyle = useAnimatedStyle(() => ({
     transform: [{ scale: entrance.value || 1 }],
@@ -296,24 +325,36 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
   // extra round-trip needed.
   const styleId = useMemo(() => pickCaptureStyle(current?.territoryId ?? null), [current]);
   const seed = useMemo(() => String(current?.territoryId ?? ''), [current]);
-  // No real polygon for what was taken reaches this alert (only the area and
-  // a point) — layoutDefenders' fallback for empty rings is a seeded fan
-  // around the claim point, which is exactly the shape a single defender
-  // needs anyway.
+  // The real ground the rival ran, framed into the stage's own pixel space and
+  // aligned to the snapshot beneath it (same centre + zoom). When present, this
+  // is what boxes the EXACT area; when absent (older captures / any path that
+  // omits the ring), everything below falls back to the point + seeded fan.
+  const framed = useMemo(
+    () => fitRingToBox(current?.territoryRing, stageBox),
+    [current, stageBox]
+  );
+  const stageRings = framed?.rings ?? [];
+  // With a real ring, the defender stands inside the actual shape; without one,
+  // layoutDefenders' empty-rings fallback is a seeded fan around the claim
+  // point, which is exactly the shape a single defender needs anyway.
   const defenderRects = useMemo(
-    () => layoutDefenders(1, { bounds: stageBox, claimPoint, territoryRings: [] }, seed, DEFENDER_SIZE),
-    [stageBox, claimPoint, seed]
+    () => layoutDefenders(1, { bounds: stageBox, claimPoint, territoryRings: stageRings }, seed, DEFENDER_SIZE),
+    [stageBox, claimPoint, seed, framed]
   );
   const mapUrl = useMemo(
     () => staticMapUrl({
-      lat: current?.lat,
-      lon: current?.lon,
+      // Centre + zoom the snapshot on the ring when we have it, so the projected
+      // box lines up with the streets under it; otherwise the claim point at a
+      // default zoom.
+      lat: framed?.center.lat ?? current?.lat,
+      lon: framed?.center.lon ?? current?.lon,
+      zoom: framed?.zoom,
       width: stageBox.width,
       height: stageBox.height,
       scheme,
       pinHex: 'FF4967',
     }),
-    [current, stageBox, scheme]
+    [current, stageBox, scheme, framed]
   );
 
   const handleTerritoryReveal = useCallback(() => {
@@ -327,18 +368,28 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
 
   if (!current) return null;
 
+  const settled = phase === 'settled';
   const captured = phase !== 'incoming';
   const hasFocus = Number.isFinite(current.lat) && Number.isFinite(current.lon);
-  const headline = captured ? 'LAND CAPTURED' : 'LAND UNDER ATTACK';
-  const detail = captured
-    ? `${current.attacker.username} took ${fmtArea(current.takenM2)} from you.`
-    : `${current.attacker.username} is breaking through your border.`;
+  // The alert opens post-capture ("land captured"); the choreography flips it to
+  // "territory stolen" once it has played out under View.
+  const headline = view === 'playback' && settled ? 'TERRITORY STOLEN' : 'LAND CAPTURED';
+  const detail = `${current.attacker.username} took ${fmtArea(current.takenM2)} from you.`;
 
   const closeThen = (action) => {
     const event = current;
     setCurrent(null);
     action?.(event);
   };
+
+  const lossStrip = (
+    <View style={[styles.loss, { backgroundColor: withAlpha(brand.pink, 0.13) }]}>
+      <Text style={[toonType.sub, { color: colors.textMuted }]}>TERRITORY LOST</Text>
+      <OutlinedText style={styles.lossAmount} outline={toon.ink} width={2.5}>
+        {`−${fmtArea(current.takenM2)}`}
+      </OutlinedText>
+    </View>
+  );
 
   return (
     <Modal
@@ -365,97 +416,122 @@ export function LandCaptureAlertHost({ onViewLand, onOpenNotifications }) {
           </OutlinedText>
           <Text style={[toonType.sub, styles.detail, { color: colors.text }]}>{detail}</Text>
 
-          <View
-            style={[
-              styles.stage,
-              {
-                width: stageBox.width,
-                height: stageBox.height,
-                backgroundColor: colors.bg,
-                borderColor: captured ? brand.pink : '#FFB020',
-              },
-            ]}
-          >
-            {/* Where it happened, not just a number — a still frame centred
-                on the real lat/lon, or the old plain grid when there is no
-                token or no location on this event. */}
-            {mapUrl ? (
-              <Image source={{ uri: mapUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-            ) : (
-              <View style={styles.mapGrid} />
-            )}
-            <View pointerEvents="none" style={styles.stageScrim} />
-
-            {/* The real capture-style choreography — the same engine and the
-                same style id the attacker's own screen played (both are
-                seeded off the territory), just cast with the victim's own
-                avatar standing in the defender's spot. `stage` is the shared
-                camera transform, so a style's zooms and shakes move the map
-                snapshot underneath along with the cast. */}
-            <Animated.View
-              style={[StyleSheet.absoluteFill, captureStage.style]}
-              pointerEvents="none"
-            >
-              <CaptureCast
-                ref={castRef}
-                attacker={current.attacker.avatar}
-                attackerPoint={claimPoint}
-                defenders={defender}
-                defenderRects={defenderRects}
-                bounds={stageBox}
-                reducedMotion={reduced}
-                fadeIn={reduced ? 0 : 140}
+          {view === 'alert' ? (
+            <>
+              {/* Just the warning: the runner's own character standing on the
+                  ground that was taken, and two choices. NO choreography here —
+                  that is what View plays, and keeping it out of the always-open
+                  warning is what stops it replaying. */}
+              <View style={styles.you}>
+                <CharacterBust equipped={equipped} size={96} bg={colors.bg} />
+              </View>
+              {lossStrip}
+              <ToonButton
+                title={hasFocus ? 'VIEW AFFECTED LAND' : 'OPEN TERRITORY MAP'}
+                onPress={() => setView('playback')}
+                size="sm"
+                icon={<MapPin size={18} color="#fff" strokeWidth={3} />}
+                fill={{ colors: ['#FF5B73', '#E72F55', '#B9163A'], border: toon.ink }}
+                style={styles.primaryAction}
               />
-              <CaptureStylePlayer
-                style={styleId}
-                playToken={current.captureId || current.id || current.createdAt}
-                bounds={stageBox}
-                claimPoint={claimPoint}
-                territoryRings={[]}
-                characterRect={characterRect}
-                defenderRects={defenderRects}
-                defenderCount={1}
-                reducedMotion={reduced}
-                seed={seed}
-                tint={brand.pink}
-                ink={toon.ink}
-                onTerritoryReveal={handleTerritoryReveal}
-                onContact={handleContact}
-                onComplete={handleStyleComplete}
-                stage={captureStage}
-                cast={castRef}
+              <View style={styles.secondaryActions}>
+                <ToonGhostButton title="DISMISS" onPress={() => setCurrent(null)} color={colors.textMuted} />
+              </View>
+            </>
+          ) : (
+            <>
+              {/* Playback: the real capture-style choreography, cast from the
+                  victim's side and played ONCE (keyed so it mounts a single
+                  time), ending on the STOLEN banner — the mirror of the
+                  attacker's own payoff. `stage` is the shared camera transform,
+                  so the style's zooms and shakes move the map snapshot with the
+                  cast. */}
+              <View
+                style={[
+                  styles.stage,
+                  {
+                    width: stageBox.width,
+                    height: stageBox.height,
+                    backgroundColor: colors.bg,
+                    borderColor: settled ? brand.pink : '#FFB020',
+                  },
+                ]}
+              >
+                {mapUrl ? (
+                  <Image source={{ uri: mapUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                ) : (
+                  <View style={styles.mapGrid} />
+                )}
+                <View pointerEvents="none" style={styles.stageScrim} />
+
+                <Animated.View
+                  style={[StyleSheet.absoluteFill, captureStage.style]}
+                  pointerEvents="none"
+                >
+                  <CaptureCast
+                    ref={castRef}
+                    attacker={current.attacker.avatar}
+                    attackerPoint={claimPoint}
+                    defenders={defender}
+                    defenderRects={defenderRects}
+                    bounds={stageBox}
+                    reducedMotion={reduced}
+                    fadeIn={reduced ? 0 : 140}
+                  />
+                  <CaptureStylePlayer
+                    key={`play:${seed}:${current.id || current.captureId || 'x'}`}
+                    style={styleId}
+                    playToken={current.captureId || current.id || current.createdAt || 'play'}
+                    bounds={stageBox}
+                    claimPoint={claimPoint}
+                    territoryRings={stageRings}
+                    characterRect={characterRect}
+                    defenderRects={defenderRects}
+                    defenderCount={1}
+                    reducedMotion={reduced}
+                    seed={seed}
+                    tint={brand.pink}
+                    ink={toon.ink}
+                    onTerritoryReveal={handleTerritoryReveal}
+                    onContact={handleContact}
+                    onComplete={handleStyleComplete}
+                    stage={captureStage}
+                    cast={castRef}
+                  />
+                </Animated.View>
+
+                {settled ? (
+                  <View style={styles.stolenBanner}>
+                    <AppIcon name="steal" size={18} />
+                    <Text style={styles.stolenBannerText}>TERRITORY STOLEN</Text>
+                  </View>
+                ) : (
+                  <View style={styles.stageLabel}>
+                    <ShieldAlert size={15} color="#fff" />
+                    <Text style={styles.stageLabelText}>{captured ? 'BORDER BREACHED' : 'CAPTURE INCOMING'}</Text>
+                  </View>
+                )}
+              </View>
+
+              {lossStrip}
+
+              {/* The choreography's own zoom framed the land here; this takes the
+                  runner to the live board. With the attacker's ring in the
+                  payload it fits the map to the EXACT ground taken; without one
+                  it falls back to centring on the point. */}
+              <ToonButton
+                title={hasFocus ? 'ZOOM TO THE LAND' : 'OPEN TERRITORY MAP'}
+                onPress={() => closeThen(onViewLand)}
+                size="sm"
+                icon={<MapPin size={18} color="#fff" strokeWidth={3} />}
+                fill={{ colors: ['#FF5B73', '#E72F55', '#B9163A'], border: toon.ink }}
+                style={styles.primaryAction}
               />
-            </Animated.View>
-
-            <View style={styles.stageLabel}>
-              <ShieldAlert size={15} color="#fff" />
-              <Text style={styles.stageLabelText}>{captured ? 'BORDER BREACHED' : 'CAPTURE INCOMING'}</Text>
-            </View>
-          </View>
-
-          <View style={[styles.loss, { backgroundColor: withAlpha(brand.pink, 0.13) }]}> 
-            <Text style={[toonType.sub, { color: colors.textMuted }]}>TERRITORY LOST</Text>
-            <OutlinedText style={styles.lossAmount} outline={toon.ink} width={2.5}>
-              {`−${fmtArea(current.takenM2)}`}
-            </OutlinedText>
-          </View>
-
-          <ToonButton
-            title={hasFocus ? 'VIEW AFFECTED LAND' : 'OPEN TERRITORY MAP'}
-            onPress={() => closeThen(onViewLand)}
-            size="sm"
-            icon={<MapPin size={18} color="#fff" strokeWidth={3} />}
-            fill={{ colors: ['#FF5B73', '#E72F55', '#B9163A'], border: toon.ink }}
-            style={styles.primaryAction}
-          />
-          <View style={styles.secondaryActions}>
-            <ToonGhostButton
-              title="NOTIFICATIONS"
-              onPress={() => closeThen(onOpenNotifications)}
-              color={colors.textMuted}
-            />
-            <ToonGhostButton title="DISMISS" onPress={() => setCurrent(null)} color={colors.textMuted} />
-          </View>
+              <View style={styles.secondaryActions}>
+                <ToonGhostButton title="DISMISS" onPress={() => setCurrent(null)} color={colors.textMuted} />
+              </View>
+            </>
+          )}
         </Animated.View>
       </View>
     </Modal>
@@ -557,6 +633,25 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   stageLabelText: { ...toonType.sub, color: '#fff', fontSize: 11 },
+  // The alert view's character — the runner shown standing on the ground taken.
+  you: { marginTop: 8, marginBottom: 4, alignItems: 'center', justifyContent: 'center' },
+  // The STOLEN banner that lands once the choreography settles, bottom-centre of
+  // the stage — the victim-side echo of the attacker's TERRITORY STOLEN payoff.
+  stolenBanner: {
+    position: 'absolute',
+    bottom: 12,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(217,31,69,0.95)',
+    borderWidth: 2,
+    borderColor: toon.ink,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+  },
+  stolenBannerText: { ...toonType.sub, color: '#fff', fontSize: 13, letterSpacing: 0.5 },
   loss: {
     width: '100%',
     marginTop: 10,

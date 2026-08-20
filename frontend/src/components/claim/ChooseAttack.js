@@ -426,7 +426,7 @@ export default function ChooseAttack({
                 style={[styles.recFrame, unavailable && styles.recUnavailable]}
                 contentStyle={styles.recChip}
               >
-                <r.Icon size={30} color={active ? '#FFFFFF' : r.color} strokeWidth={2.6} />
+                <r.Icon size={22} color={active ? '#FFFFFF' : r.color} strokeWidth={2.6} />
                 <Text style={[styles.recText, { color: active ? '#FFFFFF' : D.text }]} numberOfLines={2}>
                   {r.label}
                 </Text>
@@ -531,7 +531,7 @@ export default function ChooseAttack({
   );
 }
 
-const HANDLE = 26;
+const HANDLE = 32;
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   recGrid: {
@@ -547,18 +547,18 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   recPressable: { flex: 1, minWidth: 0 },
   recFill: { width: '100%' },
-  // SQUARE, from the column width the row gives it. These are the three big
-  // choices on the screen and the letterbox they used to be sized the label
-  // down to 7.5pt to fit; a square has room for an icon you can read at a
-  // glance and type at a normal size. The sheet below the map was grown to
-  // match (ResultScreen's `claimSheet`).
-  recFrame: { width: '100%', aspectRatio: 1 },
+  // A short card, not a square. The square (see git history) had room to spare
+  // above and below the icon+label stack and read as oversized next to the
+  // rail; a 1.5 ratio keeps the icon glanceable and the label at a normal size
+  // while giving the row back its height. The sheet below the map keeps the
+  // larger share of the screen as a result (ResultScreen's `claimSheet`).
+  recFrame: { width: '100%', aspectRatio: 1.5 },
   recUnavailable: { opacity: 0.38 },
   recChip: {
-    flex: 1, paddingVertical: 6, paddingHorizontal: 4,
+    flex: 1, paddingVertical: 5, paddingHorizontal: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 4,
   },
   // Two lines allowed: "BEST DEFENCE" wraps rather than truncating on a narrow
   // phone, and centred in a square that reads as deliberate.
@@ -573,18 +573,20 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     gap: space.sm,
   },
   railEnd: { ...type.captionMedium, color: colors.textDim, letterSpacing: 1, fontSize: 9 },
-  // A generous touch target: the rail is 8px of paint but 40px of finger.
-  railTouch: { height: 34, justifyContent: 'center' },
+  // A generous touch target, and a rail with real presence: the position pick
+  // is the primary control on this screen, so the track is a bold 10px bar and
+  // the finger area is 46px tall.
+  railTouch: { height: 46, justifyContent: 'center' },
   railTrack: {
-    height: 6,
-    borderRadius: 3,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: colors.cardAlt,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  railFill: { position: 'absolute', height: 6, borderRadius: 3 },
+  railFill: { position: 'absolute', height: 10, borderRadius: 5 },
   // Where the claim sits if nothing is touched — the run as it was run.
-  restNotch: { position: 'absolute', top: 3, width: 2, height: 28, borderRadius: 1, opacity: 0.7 },
+  restNotch: { position: 'absolute', top: 7, width: 2, height: 32, borderRadius: 1, opacity: 0.7 },
   handle: {
     position: 'absolute',
     width: HANDLE,
@@ -594,7 +596,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  handleCore: { width: 10, height: 10, borderRadius: 5 },
+  handleCore: { width: 12, height: 12, borderRadius: 6 },
 
   dialWrap: {
     flexDirection: 'row',
@@ -611,17 +613,20 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // ~48%-wide cells ever had room for.
   breakdown: { flexDirection: 'column', gap: 4, padding: 8 },
   breakdownStale: { opacity: 0.55 },
+  // Label and number sit together, not pushed to opposite edges: space-between
+  // left a wide empty gap between e.g. "NEW" and its figure. flex-start keeps
+  // the pair close so the eye reads label→value as one thing.
   metric: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     minWidth: 0,
     borderLeftWidth: 2,
     paddingLeft: 6,
   },
   metricDim: { opacity: 0.48 },
   metricLabel: { ...type.captionMedium, color: colors.textDim, fontSize: 10, lineHeight: 13 },
-  metricValue: { ...type.bodySmBold, color: colors.text, fontSize: 15, lineHeight: 18, marginLeft: 8 },
+  metricValue: { ...type.bodySmBold, color: colors.text, fontSize: 15, lineHeight: 18, marginLeft: 6 },
 
   moveRow: {
     minHeight: 40,

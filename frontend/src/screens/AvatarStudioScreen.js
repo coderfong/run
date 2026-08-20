@@ -37,12 +37,12 @@ import { GOLD } from '../config/pro';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useProEntitlement } from '../pro/ProProvider';
 
-import { radius, space, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
-import { Button, Framed, Screen } from '../components/ui';
+import { NB, nbInk, nbRadius, radius, space, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
+import { Button, Framed, Screen, HardShadow } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { RARITY_COLOR } from '../components/RewardArt';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
-import { PressableScale, Reveal, haptic } from '../ui/motion';
+import { PressableScale, PressableShift, Reveal, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { useAvatar } from '../state/avatar';
 import { useClan } from '../state/clan';
@@ -362,9 +362,10 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
         <SceneBackdrop minHeight={sceneMinH} anchor="bottom" ambient="leaves" ambientDensity={1.4} />
         {/* The runner is the subject, so they stand in the CENTRE of the scene.
             The dice used to sit in the same flex row, which pushed the
-            character off-centre by half the button — on a scene composed around
-            a middle it read as a mistake. It floats in the top-left corner now,
-            clear of the character entirely, and takes no part in the layout. */}
+            character off-centre by half the button. It stays out of the layout
+            (absolute), but docks to the RIGHT and centres on the character's own
+            height — beside the runner rather than floating in a corner where the
+            slot chips or the character's own headroom kept swallowing it. */}
         <View style={styles.runnerRow}>
           <Reveal>
             <PressableScale
@@ -378,14 +379,19 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
             </PressableScale>
           </Reveal>
         </View>
-        <PressableScale
-          onPress={doRandom}
-          style={styles.diceBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Randomize character"
-        >
-          <AppIcon name="randomize" size={32} />
-        </PressableScale>
+        <View style={styles.diceDock} pointerEvents="box-none">
+          <HardShadow offset={NB.offsetSm} radius={nbRadius.sm} on={colors.card}>
+            <PressableShift
+              onPress={doRandom}
+              offset={NB.offsetSm}
+              style={styles.diceBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Randomize character"
+            >
+              <AppIcon name="randomize" size={30} />
+            </PressableShift>
+          </HardShadow>
+        </View>
       </View>
 
 
@@ -479,11 +485,11 @@ const PRO_BAR = {
   marginHorizontal: space.gutter,
   marginTop: space.md,
   padding: space.md,
-  borderWidth: 2,
+  borderWidth: NB.stroke,
   borderRadius: radius.card,
 };
 
-const makeStyles = (colors) => StyleSheet.create({
+const makeStyles = (colors, scheme) => StyleSheet.create({
   proBar: PRO_BAR,
   // flex-end so the rig's feet land on the road at the bottom of the scene
   // instead of floating in the sky above it.
@@ -491,31 +497,31 @@ const makeStyles = (colors) => StyleSheet.create({
   // Full width so the runner is centred on the SCENE, not on whatever the row
   // happens to contain.
   runnerRow: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'flex-end' },
-  // Floated, so adding or removing it can never shift the character again.
-  // Top corner rather than bottom: the runner stands at the FOOT of the
-  // scene, so anything low sat either beside their shoulder or, once the
-  // stage is taller than the art it draws, underneath the slot chips,
-  // which paint after it and swallowed it whole.
-  //
-  // LEFT rather than right: the right edge is where floating overlays
-  // dock, and the sky over the runner's left shoulder is the one part of
-  // this screen nothing else ever wants. `zIndex`/`elevation` keep it
-  // above every later sibling on both platforms, so it cannot be hidden
-  // again by something drawn beneath the stage.
-  diceBtn: {
+  // A full-height dock pinned to the right of the stage, centring the dice on
+  // the character's own height so it sits BESIDE the runner. Absolute, so
+  // adding or removing it can never shift the centred character. `zIndex`/
+  // `elevation` keep it above every later sibling on both platforms, so the
+  // slot chips drawn afterwards can no longer paint over it.
+  diceDock: {
     position: 'absolute',
-    left: space.sm,
-    top: space.sm,
+    right: space.md,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
     zIndex: 5,
     elevation: 5,
+  },
+  // A squared NB tile now — heavy stroke, hard offset drop (HardShadow), and it
+  // presses like every other NB box. Was a soft round card with a hairline rim.
+  diceBtn: {
     width: 52,
     height: 52,
-    borderRadius: radius.pill,
+    borderRadius: nbRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: NB.stroke,
+    borderColor: nbInk(scheme, colors.card),
   },
 
   chipRail: {
@@ -533,8 +539,8 @@ const makeStyles = (colors) => StyleSheet.create({
     gap: space.xs,
     borderRadius: radius.card,
     backgroundColor: colors.bgElevated,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.bgElevated),
   },
   chipActive: { backgroundColor: colors.text, borderColor: colors.text },
   chipIcon: {

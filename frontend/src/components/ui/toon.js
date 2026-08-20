@@ -28,7 +28,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Image } from '../../ui/image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
+import { ChevronRight, Plus } from 'lucide-react-native';
 
 import {
   NB,
@@ -45,6 +45,7 @@ import {
 import { Bar, PressableScale } from '../../ui/motion';
 import HardShadow from './HardShadow';
 import OutlinedText from './OutlinedText';
+import BackButton from './BackButton';
 
 // The copy colour on a `panel` header. Fixed, not `colors.text`: a panel is a
 // saturated brand fill in both schemes, so the type has to stay ink either way.
@@ -245,28 +246,30 @@ export function ToonHeader({
           style,
         ]}
       >
-        {/* Compact puts the chevron IN the row (see below); the standard panel
-            gives it a line of its own above the title. */}
+        {/* Compact puts the tile IN the row (see below); the standard panel
+            gives it a line of its own above the title. A panel is a fixed
+            saturated fill in both schemes, so the tile is a white square with
+            PANEL_INK stroke and drop either way — the scheme gets no say, the
+            same as the copy beside it. */}
         {onBack && !compact ? (
-          <PressableScale
+          <BackButton
             onPress={onBack}
+            fill="#fff"
+            ink={PANEL_INK}
+            on="#fff"
             style={styles.panelBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <ChevronLeft size={24} color={PANEL_INK} />
-          </PressableScale>
+          />
         ) : null}
         <View style={[styles.panelRow, compact && styles.panelRowCompact]}>
           {onBack && compact ? (
-            <PressableScale
+            <BackButton
               onPress={onBack}
-              style={[styles.panelBack, styles.panelBackInline]}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
-            >
-              <ChevronLeft size={22} color={PANEL_INK} />
-            </PressableScale>
+              fill="#fff"
+              ink={PANEL_INK}
+              on="#fff"
+              size={36}
+              style={styles.panelBackInline}
+            />
           ) : null}
           <View style={styles.panelText}>
             {/* The ink styles go LAST, after the caller's overrides. Every
@@ -351,14 +354,16 @@ export function ToonHeader({
         </>
       ) : null}
       {onBack ? (
-        <PressableScale
+        // Over a dark scrimmed image: a white tile with a black drop, the same
+        // NB tile the panel uses, rather than the translucent disc this variant
+        // used to draw.
+        <BackButton
           onPress={onBack}
+          fill="#fff"
+          ink={NB.ink}
+          on="#fff"
           style={styles.headerBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <ChevronLeft size={24} color="#fff" />
-        </PressableScale>
+        />
       ) : null}
       <View style={[styles.headerRow, framed && styles.headerRowFramed]}>
         {/* A runner leaning in from each edge, framing the title. The left one
@@ -706,13 +711,10 @@ const styles = StyleSheet.create({
   headerSideArtRight: { marginRight: -space.gutter },
   // scaleX(-1) mirrors the left runner so the pair lean toward each other.
   headerSideArtFlip: { transform: [{ scaleX: -1 }] },
+  // Placement only now — the tile itself is a BackButton. The old circle's
+  // size/fill/rim moved into that component.
   headerBack: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.22)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignSelf: 'flex-start',
     marginBottom: space.sm,
   },
   eyebrow: { color: brand.pink, textTransform: 'uppercase' },
@@ -753,21 +755,10 @@ const styles = StyleSheet.create({
   // final glyph.
   panelRowCompact: { gap: 0 },
   panelArtCompact: { width: PANEL_ART_COMPACT_W, marginLeft: space.xs },
-  // A white pill, not the dark disc the scrimmed headers use: on a bright flat
-  // panel a black-22% circle reads as a smudge.
-  //
-  // The stroke is `strokeThin` and a fixed ink rather than `nbInk`, because the
-  // fill is a fixed near-white in both schemes — the same reason the copy on a
-  // panel is PANEL_INK. There is nothing here for the scheme to decide.
+  // Placement only — the white tile, its stroke and its drop are the
+  // BackButton's job now. It keeps a line of its own above the title.
   panelBack: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderWidth: NB.strokeThin,
-    borderColor: PANEL_INK,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignSelf: 'flex-start',
     marginBottom: space.xs,
   },
   // In the row, not above it — the line it used to occupy is most of what
@@ -775,9 +766,6 @@ const styles = StyleSheet.create({
   // `gap` is zeroed to pull the ART in, and a shared gap would have closed this
   // side too, jamming the eyebrow against the chevron.
   panelBackInline: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     marginBottom: 0,
     marginRight: space.sm,
   },

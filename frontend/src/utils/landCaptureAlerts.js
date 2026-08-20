@@ -6,6 +6,27 @@ function finiteNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+// The attacker's land outline, [[lon, lat], ...]. Kept only when it is a real
+// ring (three+ finite points) so the alert can trust it without re-checking:
+// a bad or missing ring simply falls back to the seeded fan + point framing.
+function ringFrom(raw, data) {
+  const ring = Array.isArray(raw.territory_ring)
+    ? raw.territory_ring
+    : Array.isArray(data.territory_ring)
+      ? data.territory_ring
+      : null;
+  if (!ring) return null;
+  const cleaned = ring
+    .map((pt) => {
+      if (!Array.isArray(pt)) return null;
+      const lon = finiteNumber(pt[0]);
+      const lat = finiteNumber(pt[1]);
+      return lon == null || lat == null ? null : [lon, lat];
+    })
+    .filter(Boolean);
+  return cleaned.length >= 3 ? cleaned : null;
+}
+
 function areaFromBody(body) {
   if (typeof body !== 'string') return null;
   const match = body.replace(/,/g, '').match(/took\s+([\d.]+)\s*(km²|m²)/i);
@@ -49,6 +70,10 @@ export function normaliseLandCaptureAlert(raw) {
     takenM2,
     lat: finiteNumber(raw.lat) ?? finiteNumber(data.lat),
     lon: finiteNumber(raw.lon) ?? finiteNumber(data.lon),
+    // The real ground the rival ran, so the alert boxes the exact area (and
+    // "ZOOM TO THE LAND" fits the map to it) instead of a stand-in fan. Null
+    // on older captures / any path that omits it → the point+fan fallback.
+    territoryRing: ringFrom(raw, data),
     // The territory that was taken. pickCaptureStyle/pickCaptureVariant hash
     // this to the exact style the attacker's own screen played, so the alert
     // can replay the real thing instead of a generic stand-in.

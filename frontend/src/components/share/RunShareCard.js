@@ -307,10 +307,12 @@ const TONE = {
 };
 
 function Stat({ label, value, unit, u, tone, align, color }) {
-  // Poppins Black throughout, where the value used to be Space Grotesk. The
-  // tabular figures that font was chosen for do not matter here — this card is
-  // rasterised once and never counts up, so nothing can jitter — and the
-  // heaviest weight in the app is what a neo-brutalist number wants.
+  // Anton throughout (fonts.poster), where this used to be Poppins Black. The
+  // card is rasterised once and never counts up, so the tabular figures the
+  // old Space Grotesk was chosen for do not matter — what matters is that the
+  // exported card reads as athletic rather than kiddy, and Poppins Black's
+  // round caps were the kiddy part. Anton is the tall condensed poster face
+  // Strava uses; the neo-brutalist ink stroke round it does the rest.
   const hard = {
     textShadowColor: tone.shadow,
     textShadowOffset: { width: 1.5 * u, height: 1.5 * u },
@@ -322,7 +324,7 @@ function Stat({ label, value, unit, u, tone, align, color }) {
         style={[
           type.labelSm,
           {
-            fontFamily: fonts.hero,
+            fontFamily: fonts.poster,
             fontSize: LABEL_U * u,
             letterSpacing: 1.1 * u,
             color: tone.label,
@@ -354,7 +356,7 @@ function Stat({ label, value, unit, u, tone, align, color }) {
           style={[
             type.statHero,
             {
-              fontFamily: fonts.hero,
+              fontFamily: fonts.poster,
               fontSize: VALUE_U * u,
               lineHeight: VALUE_LINE_U * u,
               color: color || tone.text,
@@ -385,7 +387,7 @@ function Stat({ label, value, unit, u, tone, align, color }) {
             style={[
               type.statSm,
               {
-                fontFamily: fonts.hero,
+                fontFamily: fonts.poster,
                 fontSize: UNIT_U * u,
                 color: tone.unit,
                 marginLeft: 4 * u,
@@ -477,7 +479,12 @@ export default function RunShareCard({
   // below is taken from it — so the stale number was quietly letting the stat
   // block sit on top of the wordmark.
   const signatureH = 40 * u;
-  const statRows = Math.ceil(stats.length / 2);
+  // How many numbers sit on a line. TWO or fewer get a line each, Strava-style —
+  // a card with just distance and time reads better as two full-width rows than
+  // as one cramped pair sharing a line. Three or more go two-up, because past
+  // that a single column would push the numbers off the bottom of the card.
+  const perRow = stats.length <= 2 ? 1 : 2;
+  const statRows = Math.ceil(stats.length / perRow);
   const statsH = statRows * STAT_ROW_U * u;
   const bottomBlock = padBottom + signatureH + STATS_TO_MARK_U * u + statsH;
   // The route no longer takes every pixel the furniture does not. It gets a
@@ -683,9 +690,11 @@ export default function RunShareCard({
           <View
             key={key}
             style={{
-              // One chosen metric gets the whole row — half a row with nothing
-              // beside it reads as a layout that lost something.
-              width: stats.length === 1 ? '100%' : '50%',
+              // One per line at two or fewer (see perRow), two-up beyond that.
+              // A single metric already got the whole row this way; now a pair
+              // does too, so distance-and-time stack like Strava rather than
+              // splitting one line down the middle.
+              width: perRow === 1 ? '100%' : '50%',
               height: STAT_ROW_U * u,
             }}
           >
@@ -747,7 +756,7 @@ export default function RunShareCard({
           >
             <Text
               style={{
-                fontFamily: fonts.hero,
+                fontFamily: fonts.poster,
                 fontSize: 15 * u,
                 letterSpacing: 2.6 * u,
                 // Judged against the badge fill: `glow` is the clan colour or

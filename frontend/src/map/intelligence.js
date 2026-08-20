@@ -75,7 +75,7 @@ export const LAYERS = [
   {
     key: 'contested',
     label: 'Recently captured',
-    blurb: 'Land claimed in the last few days. The board is still moving here.',
+    blurb: 'Land claimed in the last few days.',
     pro: false,
     available: true,
     source: 'map-polygons.contested',
@@ -87,7 +87,7 @@ export const LAYERS = [
   {
     key: 'at_risk',
     label: 'Your land at risk',
-    blurb: 'Your own territory closest to expiring. Run it again to hold it.',
+    blurb: 'Your land that is closest to expiring.',
     pro: true,
     available: true,
     source: 'map-polygons.freshness',
@@ -105,7 +105,7 @@ export const LAYERS = [
   {
     key: 'vulnerable',
     label: 'Vulnerable territories',
-    blurb: "Other runners' land that is weakest and closest to going. The cheapest ground on the board.",
+    blurb: "Other players' land that is weak and close to expiring.",
     pro: true,
     available: true,
     source: 'map-polygons.freshness + strength',
@@ -123,7 +123,7 @@ export const LAYERS = [
   {
     key: 'strongholds',
     label: 'Enemy strongholds',
-    blurb: 'Strong, well defended ground. Expect to lose the exchange here.',
+    blurb: "Other players' land that is strong and well defended.",
     pro: true,
     available: true,
     source: 'map-polygons.strength + defenders',
@@ -140,7 +140,7 @@ export const LAYERS = [
   {
     key: 'age',
     label: 'Territory age',
-    blurb: 'How long each claim has stood. Old ground has usually stopped being defended.',
+    blurb: 'Each claim shaded by how old it is.',
     pro: true,
     available: true,
     source: 'map-polygons.created_at',
@@ -167,7 +167,7 @@ export const LAYERS = [
   {
     key: 'churn',
     label: 'Highly contested',
-    blurb: 'Ground that has changed hands the most. Needs capture history the map does not carry yet.',
+    blurb: 'Land that has changed hands the most.',
     pro: true,
     available: false,
     // The data exists in the database (territory_events, migration 0038) but
