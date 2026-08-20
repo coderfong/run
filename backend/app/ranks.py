@@ -123,6 +123,21 @@ def rank_for_points(points: int) -> dict:
     }
 
 
+def tier_bounds(tier: int) -> tuple[int, int | None]:
+    """The half-open points band ``[floor, ceil)`` that maps to a tier index.
+
+    Used to filter a board to a single rank: a row belongs to tier ``t`` when
+    its decayed points sit at or above this tier's floor and below the next
+    tier's. The top tier has no ceiling (``None``). Callers clamp nothing —
+    an out-of-range index is folded onto the nearest real tier, so a stale
+    client asking for tier 99 gets Mythic rather than an empty board.
+    """
+    t = max(0, min(len(RANK_TIERS) - 1, int(tier)))
+    floor = RANK_TIERS[t][0]
+    ceil = RANK_TIERS[t + 1][0] if t + 1 < len(RANK_TIERS) else None
+    return floor, ceil
+
+
 SELECT_COLS = "COALESCE(u.rank_points, 0), u.rank_points_at"
 
 

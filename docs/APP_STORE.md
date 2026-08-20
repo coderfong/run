@@ -2,13 +2,18 @@
 
 Audited 2026-08-12 against the current iOS build configuration and Apple's
 current submission rules. Bundle id: `com.pacerrun.app`.
+**Updated 2026-08-20: `IAP_ENABLED` is now true — this version SELLS the PASER
+PRO subscription and the energy/coin consumables. The purchase-related sections
+below were rewritten to match; do not reuse any older copy that says the app
+has no in-app purchases.**
 
 ## Submission status
 
 The source now passes Expo's store-readiness checks and produces an iOS bundle,
-but **do not submit the existing EAS build**. Build 23 predates the changes in
-this working tree. Complete every unchecked gate in "Before submission" below,
-then create and test a fresh production build.
+but **do not submit an old EAS build**. Complete every unchecked gate in
+"Before submission" below — including the two new in-app-purchase gates — then
+create and test a fresh production build, and submit its nine IAP products in
+the same submission.
 
 ## App Store Connect metadata
 
@@ -61,9 +66,43 @@ Run to claim territory, build your runner, team up with a club, and share your
 achievements with PASERs. This update also improves privacy and community safety.
 ```
 
-Do not advertise PASER PRO, Energy purchases, or coin packs in this version:
-those purchase surfaces are deliberately disabled until a real StoreKit flow
-is complete.
+## In-app purchases (this version sells all of these)
+
+`IAP_ENABLED` is true in this build, so the store is live. Every product below
+must be created and **submitted for review with the app** (a first app version
+that contains IAP is reviewed together with its products; leaving any of them in
+"Missing Metadata" blocks the whole submission). Prices are the tiers the client
+assumes until the storefront answers with real localized prices.
+
+Auto-renewable subscription — one subscription group ("PASER PRO"):
+
+| Product ID | Reference name | Duration | Price tier |
+| --- | --- | --- | --- |
+| `paser_pro_monthly` | PASER PRO Monthly | 1 month | $4.99 |
+| `paser_pro_annual` | PASER PRO Yearly | 1 year | $39.99 |
+
+Both plans MUST be in the SAME subscription group, or a runner switching plans
+is billed for both. Each needs a localized display name, description, and a
+review screenshot of the paywall. The app's own paywall (`BuyProSheet`) already
+carries the 3.1.2 disclosures: price per period, auto-renew and cancellation
+terms, and links to the Apple standard EULA and the privacy policy.
+
+Consumables (no subscription group, `restore` not required):
+
+| Product ID | Reference name | Price |
+| --- | --- | --- |
+| `energy_refill_small` | 50 energy | $0.99 |
+| `energy_pack_large` | 150 energy | $1.99 |
+| `energy_refill_full` | Full energy refill | $2.99 |
+| `coins_pouch` | 500 coins | $0.99 |
+| `coins_sack` | 1200 coins | $1.99 |
+| `coins_chest` | 3000 coins | $4.99 |
+| `coins_vault` | 6500 coins | $9.99 |
+
+Energy is a claim-pacing consumable; coins buy cosmetics only. Neither is a
+randomized draw, so the loot-box answer stays No. The description need not list
+these products, but Review Notes below must describe them accurately — do not
+tell Apple the app has no purchases.
 
 Apple Health sync **is** in this version and may be described, but describe it
 exactly: an optional switch that saves finished runs to Apple Health as running
@@ -83,6 +122,7 @@ for App Functionality, and **not used for tracking**:
 | Identifiers - User ID | Account, social graph, runs, and moderation |
 | Identifiers - Device ID | Push-notification token, if Apple classifies the token this way |
 | Other Data - Other Data Types | Date of birth used for the 13+ gate and stronger route-privacy defaults for minors |
+| Purchases - Purchase History | PASER PRO subscription and consumable (energy/coin) transactions, to grant and restore entitlements |
 
 Declare Diagnostics only if `EXPO_PUBLIC_SENTRY_DSN` is enabled in the submitted
 mobile build. The current production profile does not set it. Answer **No** for
@@ -100,7 +140,8 @@ never used for advertising or shared with third parties.
 - Messaging and chat: Yes
 - Social media: Yes
 - Health or wellness topics: Yes
-- Loot boxes: No for this build (nothing can be purchased; paid surfaces are off)
+- Loot boxes: No (coins and energy are sold in fixed quantities, not randomized draws)
+- In-app purchases: Yes (one auto-renewable subscription plus energy/coin consumables)
 - Gambling, contests, advertising, web access: No
 - Set the app's minimum age to 13; onboarding already enforces 13+
 
@@ -141,7 +182,22 @@ finished run to Apple Health as a running workout with its time and distance.
 PASER requests write access only and never reads health data.
 
 PURCHASES
-This version does not offer in-app purchases.
+This version offers in-app purchases. PASER PRO is an auto-renewable
+subscription (monthly or yearly) that unlocks depth features only: route
+planning, territory and rival analytics, run history, and leaderboard filters.
+PRO never sells competitive advantage - it cannot grant more or stronger
+territory, slower decay, cheaper energy, or a leaderboard position.
+
+To reach the subscription, open the You tab and tap the PASER PRO card, or tap
+any padlocked PRO feature. The paywall shows both plans, the price per period,
+the auto-renewal and cancellation terms, and links to the Terms of Use and
+Privacy Policy.
+
+The app also sells consumables: energy refills (a claim-pacing resource) and
+coin packs (spent only on cosmetic outfits). Open the shop from the coin/energy
+balance on the Home or You screen. Consumables are not randomized.
+
+All purchases can be exercised in the sandbox with the demo account.
 ```
 
 ## Screenshots
@@ -205,6 +261,22 @@ make sure every screenshot reflects the submitted binary.
       already states that PASER writes finished runs to Apple Health and reads
       nothing, which is exactly what the binary now does.
 - [ ] Create a real, stable reviewer account and paste it into Review Notes.
+- [ ] **In-app purchase store setup (owner-only, App Store Connect).** This is
+      the first version with IAP, so the products are reviewed with the app.
+      Create the two subscriptions in ONE group and all seven consumables (ids
+      and prices in "In-app purchases" above), give each localized metadata and
+      the subscription group a review screenshot of the paywall, and make sure
+      the Paid Apps agreement is active and banking/tax are complete or every
+      product stays "Missing Metadata" and blocks submission. Add all nine to
+      the version's In-App Purchases section so they submit together.
+- [ ] **Backend IAP verification is ON (owner-only, Render env).** Set
+      `iap_verify_receipts=true`, `apple_app_apple_id` (App Store Connect ->
+      App Information -> Apple ID, needed for production verification), and
+      `apple_bundle_id=com.pacerrun.app`. Left false, every subscribe/consume
+      call grants for free; set true without the identifiers, it fails closed
+      and real purchases cannot complete. Verify a sandbox purchase completes
+      end to end before submitting - the release rule is that no build may ship
+      a buy button that cannot complete a real transaction.
 - [x] Build 25 (2.1.0) built and uploaded to App Store Connect on 2026-08-12.
       EAS build id `c57ede84-3644-4f75-98c1-f37bd0b86aa1`. This is the first
       build with the HealthKit module actually linked, and the first since

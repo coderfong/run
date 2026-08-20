@@ -1587,6 +1587,15 @@ def claim_territory(
         victim_id = str(ev["victim_id"])
         taken_by_victim[victim_id] = taken_by_victim.get(victim_id, 0.0) + float(ev["area_m2"])
 
+    # The attacker's own territory outline, so the victim's alert can box the
+    # EXACT ground the rival ran instead of the seeded-fan stand-in. Only the
+    # largest ring, decimated and rounded — a full multipolygon would blow past
+    # Expo's ~4KB push limit, and this is a plaback overlay, not a survey.
+    territory_ring = (
+        _decimate_ring(territory_out.rings[0])
+        if territory_out and territory_out.rings else None
+    )
+
     for victim_id, taken_m2 in taken_by_victim.items():
         capture_id = f"{run.id}:{victim_id}"
         background.add_task(
@@ -1608,6 +1617,11 @@ def claim_territory(
                 # and pickCaptureVariant are pure hashes of this id, so no
                 # further server round-trip is needed to keep the two in sync.
                 "territory_id": str(territory_out.id),
+                # [[lon, lat], ...] of the attacker's land — the alert projects
+                # this into its stage to box the real area, and "ZOOM TO THE
+                # LAND" fits the live map to it. Omitted when unavailable so the
+                # client keeps its point-and-fan fallback.
+                **({"territory_ring": territory_ring} if territory_ring else {}),
             },
             str(user.id),
         )
@@ -2251,6 +2265,21 @@ def _claim_territory(
     )
 
     return _territory_out(db, new_row[0]), stolen_total, stolen_from, events, ground
+
+
+def _decimate_ring(ring, max_pts: int = 28):
+    """Cap a [lon, lat] ring to a push-safe vertex count and precision.
+
+    A capture alert boxes the shape at thumbnail scale, so 28 points and ~1m
+    precision (5 decimals) are more than enough — and keep the whole payload
+    well under Expo's ~4KB push ceiling. Evenly sampled, so the outline stays
+    recognisable rather than collapsing to one arc."""
+    if not ring:
+        return None
+    if len(ring) > max_pts:
+        step = len(ring) / max_pts
+        ring = [ring[int(i * step)] for i in range(max_pts)]
+    return [[round(float(lon), 5), round(float(lat), 5)] for lon, lat in ring]
 
 
 def _territory_out(db: Session, tid) -> schemas.TerritoryOut | None:

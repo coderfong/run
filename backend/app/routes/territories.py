@@ -17,7 +17,7 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models, ranks, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -51,6 +51,10 @@ def map_polygons(
     max_lon: Optional[float] = Query(None),
     max_lat: Optional[float] = Query(None),
     zoom: Optional[float] = Query(None, description="client map zoom; drives simplification"),
+    rank: Optional[int] = Query(
+        None,
+        description="scope the board to one rank tier (0=Wood … 9=Mythic); omit for all ranks",
+    ),
     limit: int = Query(2000, ge=1, le=10000),
     viewer: Optional[models.User] = Depends(current_user_optional),
 ):
@@ -65,6 +69,23 @@ def map_polygons(
         if has_bbox
         else ""
     )
+
+    # Scope to one rank tier when asked. The band is [floor, ceil) over the
+    # owner's DECAYED points — so a whale who has gone idle drops out of the top
+    # board the same way they do everywhere else. The filter must live in SQL,
+    # not a Python post-pass: this endpoint has a LIMIT, and filtering after the
+    # fact would return far fewer rows than asked whenever the tier is sparse.
+    # DECAY_SQL is repeated here because it reads `u.rank_points` at row scope,
+    # which no SELECT alias is visible to; the doc on DECAY_SQL owns that debt.
+    rank_params = {}
+    rank_clause = ""
+    if rank is not None:
+        floor, ceil = ranks.tier_bounds(rank)
+        rank_clause = f"AND ({ranks.DECAY_SQL}) >= :rank_floor"
+        rank_params["rank_floor"] = floor
+        if ceil is not None:
+            rank_clause += f" AND ({ranks.DECAY_SQL}) < :rank_ceil"
+            rank_params["rank_ceil"] = ceil
 
     rows = db.execute(
         text(
@@ -88,6 +109,8 @@ def map_polygons(
                            t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
                        ) - t.created_at)))
                    )) AS freshness,
+                   t.reinforcements,
+                   ({ranks.DECAY_SQL}) AS rank_pts,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
             FROM territories t
             JOIN users u ON u.id = t.user_id
@@ -95,6 +118,7 @@ def map_polygons(
             WHERE (t.verified OR t.user_id = :viewer_id)
               AND now() < COALESCE(t.expires_at, t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400))
               {bbox_clause}
+              {rank_clause}
             ORDER BY t.area_m2 DESC
             LIMIT :limit
             """
@@ -109,15 +133,17 @@ def map_polygons(
             "viewer_id": viewer_id,
             "contested_since": contested_since,
             "life_per": settings.territory_life_days_per_strength,
+            **rank_params,
         },
     ).fetchall()
 
     out = []
-    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, defenders, strength, avatar, freshness, wkt in rows:
+    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, defenders, strength, avatar, freshness, reinforcements, rank_pts, wkt in rows:
         geom = shapely_wkt.loads(wkt)
         rings = geometry_to_rings(geom)  # largest-first
         if not rings:
             continue
+        rinfo = ranks.rank_for_points(int(rank_pts or 0))
         out.append(
             schemas.TerritoryOut(
                 id=tid,
@@ -134,6 +160,10 @@ def map_polygons(
                 strength=float(strength or 1.0),
                 avatar=avatar,
                 freshness=float(freshness if freshness is not None else 1.0),
+                reinforcements=int(reinforcements or 0),
+                rank_key=rinfo["key"],
+                rank_tier=rinfo["tier"],
+                rank_label=rinfo["label"],
             )
         )
 

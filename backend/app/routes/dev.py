@@ -1,13 +1,15 @@
 """Allowlisted development scenarios that exercise real rivalry state.
 
-These endpoints deliberately mutate the same territory and rivalry tables as
-normal claims. They are never exposed to an ordinary account: both routes
-enforce the server-side DEV_RUN_ACCOUNTS allowlist used by the run simulator.
+These endpoints deliberately mutate the same territory, rivalry and crossed-
+paths tables as normal play. They are never exposed to an ordinary account:
+every route enforces the server-side DEV_RUN_ACCOUNTS allowlist used by the run
+simulator.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -16,7 +18,7 @@ from shapely.ops import unary_union
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models
+from .. import models, paserby, schemas
 from ..database import get_db
 from ..devtools import is_dev_account
 from ..notifications import notify
@@ -24,6 +26,7 @@ from ..security import current_user
 from .runs import (
     STEAL_LEDGER_MIN_M2,
     _claim_territory,
+    _decimate_ring,
     _run_route,
     _run_stamp,
 )
@@ -207,6 +210,12 @@ def rival_takes_mine(
         raise HTTPException(409, "the dev rival did not take any of your land")
 
     capture_id = f"dev:{uuid.uuid4()}"
+    # Same outline the real claim path sends, so the dev alert exercises the
+    # real-area box + "ZOOM TO THE LAND" fit rather than the fan fallback.
+    territory_ring = (
+        _decimate_ring(territory.rings[0])
+        if territory and territory.rings else None
+    )
     event_data = {
         "capture_id": capture_id,
         "taken_m2": taken_from_me,
@@ -215,6 +224,8 @@ def rival_takes_mine(
         "attacker_id": str(rival.id),
         "attacker_username": rival.username,
         "attacker_avatar": rival.avatar or {},
+        "territory_id": str(territory.id) if territory else None,
+        **({"territory_ring": territory_ring} if territory_ring else {}),
     }
     background.add_task(
         notify,
@@ -232,7 +243,190 @@ def rival_takes_mine(
         "rival_avatar": rival.avatar or {},
         "taken_m2": taken_from_me,
         "territory_id": str(territory.id) if territory else None,
+        "territory_ring": territory_ring,
         "lat": centre.y,
         "lon": centre.x,
         "capture_id": capture_id,
     }
+
+
+# ---------------------------------------------------------------------------
+# Crossroads (PASERBY) — populate the plaza from a desk
+# ---------------------------------------------------------------------------
+#
+# Crossroads only has anything in it after two runners cross paths in the real
+# world, so at a desk it is empty and there is no way in (the entry button is
+# hidden until there is at least one encounter). This seeds REAL encounter rows
+# against a set of throwaway bot runners, the same rows the matcher would write
+# — so what the plaza draws is the real screen reading the real tables, not a
+# mock. It is the crossed-paths analogue of the run simulator: the client
+# builds the synthetic input (the runners' cosmetic loadouts) and the server
+# does the real, allowlisted mutation.
+#
+# It is scoped entirely to the caller: the bots belong to this developer, and
+# nothing here touches another runner's encounters.
+
+# How many runners a seed defaults to when the client names no count. Comfortably
+# more than one plaza-full (twenty) so paging is exercised out of the box.
+_CROSSROADS_DEFAULT = 24
+# A hard ceiling so a fat-fingered count cannot mint hundreds of bot users.
+_CROSSROADS_MAX = 60
+
+# Spread across the ladder so every familiarity rung and its colour is present:
+# Crossed Paths (1), Familiar Face (2-4), Running Regular (5-9), Local Legend
+# (10+). Cycled by index.
+_CROSS_COUNTS = [1, 1, 2, 3, 5, 8, 12, 2, 1, 6]
+# Broad-date spread so `when` shows every phrase it can ("Earlier today",
+# "Yesterday", "This week", "A while back"). Days back, cycled by index.
+_CROSS_DAY_OFFSETS = [0, 0, 1, 2, 5, 9]
+# Rank-point rungs, so the portrait borders vary across the plaza. Straddles the
+# tier thresholds from migration 0019 (250 / 700 / 1500 / 3000 / ...).
+_CROSS_RANK_POINTS = [0, 300, 800, 1600, 3200, 6000, 10000, 22000]
+
+
+def _crossroads_prefix(user) -> str:
+    """The username stem every one of this developer's Crossroads bots shares,
+    so a re-seed or a clear can find exactly them and nobody else."""
+    compact = str(user.id).replace("-", "")[:12]
+    return f"DevCross_{compact}_"
+
+
+def _wipe_crossroads_bots(db: Session, user) -> int:
+    """Delete this developer's Crossroads bots. Their encounters and pair rows
+    go with them — both tables reference users ON DELETE CASCADE — so this both
+    clears the plaza and keeps a re-seed from stacking duplicates."""
+    n = db.execute(
+        text("DELETE FROM users WHERE username LIKE :p AND is_bot"),
+        {"p": _crossroads_prefix(user) + "%"},
+    ).rowcount
+    return int(n or 0)
+
+
+@router.post("/paserby/seed")
+def seed_crossroads(
+    payload: schemas.DevCrossroadsSeedIn | None = None,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Fill the caller's Crossroads with synthetic crossings for testing."""
+    _require_dev(user)
+
+    avatars = (payload.avatars if payload else None) or []
+    count = (payload.count if payload else None) or (len(avatars) or _CROSSROADS_DEFAULT)
+    count = max(1, min(int(count), _CROSSROADS_MAX))
+
+    # Start clean so the count is exactly what was asked for rather than an
+    # accumulation across taps.
+    _wipe_crossroads_bots(db, user)
+
+    # A few real clubs, if the world has been seeded, so some cards carry a clan
+    # tag and colour. Absent on a bare local DB — then the bots simply have no
+    # club, which is a valid card too.
+    clan_ids = [
+        r[0]
+        for r in db.execute(text("SELECT id::text FROM clans ORDER BY created_at LIMIT 12")).fetchall()
+    ]
+
+    me = str(user.id)
+    prefix = _crossroads_prefix(user)
+    today = paserby.local_today()
+    created = 0
+
+    for i in range(count):
+        bot_id = str(uuid.uuid4())
+        # Level 1..30 via _level(xp) = floor(sqrt(xp/100)); a clean square keeps
+        # the displayed level exact.
+        level = 1 + (i % 30)
+        xp = level * level * 100
+        rank_points = _CROSS_RANK_POINTS[i % len(_CROSS_RANK_POINTS)]
+        # Roughly half wear a club, cycling through whatever clubs exist.
+        clan_id = clan_ids[i % len(clan_ids)] if clan_ids and i % 2 == 0 else None
+        avatar = avatars[i % len(avatars)] if avatars else {}
+
+        db.execute(
+            text(
+                """
+                INSERT INTO users
+                    (id, username, password_hash, created_at, clan_id, avatar,
+                     is_bot, xp, rank_points, rank_points_at)
+                VALUES
+                    (:id, :u, NULL, now(), :cid, CAST(:avatar AS jsonb),
+                     true, :xp, :rp, now())
+                """
+            ),
+            {
+                "id": bot_id,
+                "u": f"{prefix}{i}",
+                "cid": clan_id,
+                "avatar": json.dumps(avatar or {}),
+                "xp": xp,
+                "rp": rank_points,
+            },
+        )
+        if clan_id is not None:
+            db.execute(
+                text(
+                    "INSERT INTO clan_members (clan_id, user_id, role) "
+                    "VALUES (:cid, :uid, 'member')"
+                ),
+                {"cid": clan_id, "uid": bot_id},
+            )
+
+        # The encounter is stored with the pair ORDERED (user_a_id < user_b_id),
+        # exactly as the matcher writes it — the CHECK constraint enforces it.
+        a, b = sorted([me, bot_id])
+        bot_is_a = a == bot_id
+        # An incoming high five (the OTHER runner waved at me) lives on the bot's
+        # side of the row. One in four, so both the "they waved" and the plain
+        # states are on screen.
+        incoming = i % 4 == 0
+        a_hf = "now()" if (incoming and bot_is_a) else "NULL"
+        b_hf = "now()" if (incoming and not bot_is_a) else "NULL"
+        day = today - timedelta(days=_CROSS_DAY_OFFSETS[i % len(_CROSS_DAY_OFFSETS)])
+        db.execute(
+            text(
+                f"""
+                INSERT INTO paserby_encounters
+                    (user_a_id, user_b_id, run_a_id, run_b_id, encounter_date,
+                     user_a_high_five_at, user_b_high_five_at)
+                VALUES
+                    (CAST(:a AS uuid), CAST(:b AS uuid), NULL, NULL, :d,
+                     {a_hf}, {b_hf})
+                """
+            ),
+            {"a": a, "b": b, "d": day},
+        )
+        # The familiar-faces counter and the cooldown share this row; it is what
+        # `times_crossed` and the familiarity label are read from.
+        db.execute(
+            text(
+                """
+                INSERT INTO paserby_pairs
+                    (lower_user_id, higher_user_id, encounter_count, last_encounter_at)
+                VALUES (CAST(:a AS uuid), CAST(:b AS uuid), :cnt, now())
+                """
+            ),
+            {"a": a, "b": b, "cnt": _CROSS_COUNTS[i % len(_CROSS_COUNTS)]},
+        )
+        created += 1
+
+    db.commit()
+    summary = paserby.summary_for(db, user.id)
+    return {
+        "ok": True,
+        "created": created,
+        "total": summary["total"],
+        "unseen": summary["unseen"],
+    }
+
+
+@router.post("/paserby/clear")
+def clear_crossroads(
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove everything a previous seed put in the caller's Crossroads."""
+    _require_dev(user)
+    removed = _wipe_crossroads_bots(db, user)
+    db.commit()
+    return {"ok": True, "removed": removed}

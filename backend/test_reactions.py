@@ -98,6 +98,18 @@ check("an unknown emote is refused", r.status_code == 422, str(r.status_code))
 check("and nothing was stored", reactions_of(bob_h)["reactions"] == [])
 
 print("\n== on the feed ==")
+# The feed is pasers-scoped now (see test_feed.py), so bob only sees alice's
+# run if they are pasers. This test is about the reaction summary riding along
+# on a feed row, not about who is allowed into the feed — so link them directly
+# and get on with it.
+db.execute(
+    text(
+        "INSERT INTO paser_links (requester_id, addressee_id, status, responded_at) "
+        "VALUES (:a, :b, 'accepted', now())"
+    ),
+    {"a": alice, "b": bob},
+)
+db.commit()
 c.post(f"/runs/{run_id}/reactions", json={"emote": "respect"}, headers=bob_h)
 feed = c.get("/feed", headers=bob_h).json()["items"]
 row = next((x for x in feed if x["id"] == run_id), None)
@@ -129,6 +141,9 @@ check("comment responses contain no emote field", all("emote" not in x for x in 
 db.execute(text("DELETE FROM run_reactions WHERE run_id = :r"), {"r": run_id})
 db.execute(text("DELETE FROM run_comments WHERE run_id = :r"), {"r": run_id})
 db.execute(text("DELETE FROM runs WHERE id = :r"), {"r": run_id})
+db.execute(
+    text("DELETE FROM paser_links WHERE requester_id=:a OR addressee_id=:a"), {"a": alice}
+)
 for uid in (alice, bob):
     db.execute(text("DELETE FROM notifications WHERE user_id=:u OR actor_id=:u"), {"u": uid})
     db.execute(text("DELETE FROM notif_prefs WHERE user_id=:u"), {"u": uid})

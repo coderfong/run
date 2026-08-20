@@ -117,6 +117,16 @@ class TerritoryOut(BaseModel):
     # 1.0 = freshly claimed, 0.0 = about to expire. Land decays over
     # strength × N days; the client fades the fill as this drops.
     freshness: float = 1.0
+    # How many times the owner has re-run over this ground (0 = claimed once).
+    # The client deepens the fill saturation as this rises, so repeat-claimed
+    # land reads bolder on the board.
+    reinforcements: int = 0
+    # The owner's competitive rank tier at render time (decay already applied),
+    # so the board can be scoped and banded by rank. `rank_tier` is the ladder
+    # index (0 = Wood), matching `key`/`label` in ranks.RANK_TIERS 1:1.
+    rank_key: str = "wood"
+    rank_tier: int = 0
+    rank_label: str = "Wood"
 
 
 class RunResultOut(BaseModel):
@@ -227,6 +237,19 @@ class RunVisibilityIn(BaseModel):
 class AvatarIn(BaseModel):
     """The client's equipped cosmetics loadout (a flat dict of slot→id/index)."""
     avatar: dict
+
+
+class DevCrossroadsSeedIn(BaseModel):
+    """DEV harness: populate the caller's Crossroads with synthetic crossings.
+
+    `avatars` are full equipped loadouts the client generated
+    (config/cosmetics.randomEquipped), one per runner meant to stand in the
+    plaza — sending them is what makes the seeded characters wear real
+    cosmetics instead of the default look. `count` overrides how many runners
+    to seed; it falls back to the number of avatars, then to a sensible default.
+    """
+    avatars: Optional[List[dict]] = None
+    count: Optional[int] = None
 
 
 class RunDaysOut(BaseModel):

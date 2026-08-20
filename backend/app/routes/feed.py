@@ -1,9 +1,11 @@
 """GET /feed — the activity feed.
 
-Phase 4: a cursor-paginated stream of completed runs (own + others), each
-carrying the area it claimed. Shadow-flagged runs are hidden from everyone
-but their owner. Phase 5 enriches this with clan-scoped filtering and
-territory/clan/goal events; Phase 6 adds kudos counts.
+A cursor-paginated stream of completed runs, scoped like a Strava social
+timeline: you see your own runs plus those of your accepted pasers and your
+clanmates — not the whole city. Each item carries the area it claimed.
+Shadow-flagged and private runs are hidden from everyone but their owner.
+The audience predicate lives in the main query's WHERE clause; kudos, emote,
+and steal counts are enriched per page below.
 """
 
 from datetime import datetime, timezone
@@ -137,6 +139,30 @@ def feed(
               -- A private run does not appear on anyone else's feed at all.
               -- It still records, still claims, still counts for every total.
               AND (COALESCE(r.visibility, 'public') = 'public' OR r.user_id = :uid)
+              -- Strava-style social timeline: the feed is the activity of people
+              -- you actually know, not the whole city. A run shows only if it is
+              -- YOURS, an accepted paser's, or a clanmate's (same clan). A
+              -- stranger's run — a bot, a rival, someone who stole your land — no
+              -- longer streams past here. It stays reachable by direct link,
+              -- profile, the rival/steal surfaces, and the map; this scoping only
+              -- decides what fills the timeline. The visibility clause above
+              -- still hides a private run even from pasers.
+              AND (
+                    r.user_id = :uid
+                    OR EXISTS (
+                          SELECT 1 FROM paser_links pl
+                          WHERE pl.status = 'accepted'
+                            AND ((pl.requester_id = :uid AND pl.addressee_id = r.user_id)
+                              OR (pl.addressee_id = :uid AND pl.requester_id = r.user_id))
+                    )
+                    OR EXISTS (
+                          -- clan_members.user_id is UNIQUE, so this is "shares
+                          -- my one clan", not a fan-out across many.
+                          SELECT 1 FROM clan_members me
+                          JOIN clan_members them ON them.clan_id = me.clan_id
+                          WHERE me.user_id = :uid AND them.user_id = r.user_id
+                    )
+              )
               AND NOT EXISTS (
                     SELECT 1 FROM user_blocks b
                     WHERE (b.blocker_id = CAST(:uid AS uuid) AND b.blocked_id = r.user_id)
