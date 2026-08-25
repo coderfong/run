@@ -3,11 +3,16 @@
  *
  * Four things are pinned here, and each of them has already been wrong once:
  *
- *   * WHO HOPS IN. Arriving at the Crossroads marks everybody seen, and the
+ *   * WHO ARRIVES. Arriving at the Crossroads marks everybody seen, and the
  *     refresh behind that carries `seen: true` for the whole list. The screen
  *     therefore latches the newcomers on the FIRST list it is given; if that
  *     ever moves back into an effect, or starts reading the live list, nobody
  *     ever arrives again and the feature silently becomes a static picture.
+ *
+ *   * THE GREETING IS SKIPPABLE. Newcomers are greeted one at a time behind a
+ *     dim (components/paserby/ArrivalCeremony), which is a couple of seconds
+ *     each. A tap on the dim has to end the whole thing — without it, a plaza
+ *     with a queue in it is a cutscene you cannot get out of.
  *
  *   * YOUR OWN RUNNER IS ON THE SCREEN. The arrival and the high five are both
  *     aimed at it. Without it they are two characters bouncing at nothing.
@@ -70,6 +75,7 @@ import { api } from '../src/api/client';
 import CrossroadsScreen from '../src/screens/CrossroadsScreen';
 import { CrossroadsAlertHost, setAtCrossroads } from '../src/components/CrossroadsAlert';
 import CharacterRig from '../src/components/character/CharacterRig';
+import ArrivalSpotlight from '../src/components/paserby/ArrivalCeremony';
 import { crossroadsWaitingLine } from '../src/config/paserby';
 
 const navigation = {
@@ -180,6 +186,29 @@ describe('the Crossroads plaza', () => {
     expect(tree.root.findAllByType(CharacterRig).length).toBe(3);
     act(() => tree.unmount());
   });
+
+  it('dims the plaza for newcomers, and gives up the whole ceremony on one tap', async () => {
+    mockCrossroads = {
+      encounters: [
+        encounter({ id: 'a', seen: false }),
+        encounter({ id: 'b', seen: false }),
+        encounter({ id: 'c', seen: true }),
+      ],
+      unseen: 2,
+      total: 3,
+      enabled: true,
+    };
+    const tree = await mount();
+    const dim = () => tree.root.findAllByType(ArrivalSpotlight)[0];
+
+    // Somebody is arriving, so the rest of the square is under the wash.
+    expect(dim().props.on).toBe(true);
+
+    // One tap ends it — every runner still queued is simply standing there.
+    await act(async () => pressable(tree, 'Skip the arrivals').props.onPress());
+    expect(dim().props.on).toBe(false);
+    act(() => tree.unmount());
+  }, 30000);
 
   it('offers View and Remove on a runner, and Remove hides rather than blocks', async () => {
     mockCrossroads = {

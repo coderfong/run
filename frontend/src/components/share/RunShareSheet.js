@@ -49,6 +49,14 @@ import { toast } from '../../ui/toast';
 import { afterHandoff } from '../../utils/appActive';
 import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 
+// WHAT A PADLOCK SAYS, and it says it in one line wherever it appears.
+//
+// Every locked thing on this sheet used to explain itself differently: the
+// style lock had a sentence about looking at it as long as you like, the rows
+// had nothing at all but a gold tag. One short line, repeated, is both easier
+// to read and easier to believe than a fresh pitch per control.
+const PRO_NOTE = 'This can only be unlocked with PASER PRO.';
+
 // Instagram's own gradient, so the destination is recognisable at a glance.
 const IG_GRADIENT = ['#F9CE34', '#EE2A7B', '#6228D7'];
 
@@ -162,6 +170,10 @@ function Row({ label, locked, onLockedPress, children }) {
       ) : (
         children
       )}
+      {/* Under the controls rather than beside the label: the tag says WHAT is
+          locked, this says what to do about it, and a sentence in the head
+          would push the row's own name off the line on a narrow phone. */}
+      {locked ? <Text style={styles.proNote}>{PRO_NOTE}</Text> : null}
     </View>
   );
 }
@@ -609,10 +621,10 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           {/* Named looks. First control in the list because it is the one that
               moves everything else, and a runner who picks a style is usually
               done. The PRO ones are selectable and previewable by anybody —
-              the padlock is about EXPORTING, and the line under the row says
-              so rather than leaving somebody to discover it at the last step.
-              A paywall sprung at the moment of posting would be the worst
-              possible place for one. */}
+              the padlock is about EXPORTING, and the note under the row says
+              so before the runner discovers it at the last step. A paywall
+              sprung at the moment of posting would be the worst possible
+              place for one. */}
           <Row label="Style">
             <View style={styles.chipWrap}>
               {styleOptions.map((option) => {
@@ -638,11 +650,8 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 openPaywall('share');
               }}
               accessibilityRole="button"
-              style={{ marginTop: space.xs }}
             >
-              <Text style={[styles.rowLabel, { color: GOLD }]}>
-                {`${activeStyle.label} is a PASER PRO card. Look at it as long as you like · unlock to post it.`}
-              </Text>
+              <Text style={styles.proNote}>{PRO_NOTE}</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -719,8 +728,8 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
           {/* WHICH numbers, which is now a PRO choice. Free posts the three the
               card is designed around — distance, pace, time — and that is a
-              finished card, not a crippled one. Elevation, best km, average
-              speed and the ground the run took are the ones you unlock. */}
+              finished card, not a crippled one. Climbing, best km, pace
+              consistency and the ground the run took are the ones you unlock. */}
           <Row
             label="Stats"
             locked={customizeLocked}
@@ -842,6 +851,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderColor: GOLD,
   },
   proTagText: { ...type.labelSm, fontSize: 9, letterSpacing: 1, color: GOLD },
+  // PRO_NOTE, wherever it lands. A sentence, so NOT the uppercase label style
+  // the rest of the row headings use.
+  proNote: { ...type.captionMedium, color: GOLD, marginTop: space.sm },
   // A locked row's controls stay on screen so the runner can see what PRO buys;
   // they are just dimmed and, via the Pressable over them, inert until it is.
   lockedControls: { opacity: 0.4 },

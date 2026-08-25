@@ -34,8 +34,12 @@ import {
   Inter_500Medium,
   Inter_600SemiBold,
   Inter_700Bold,
+  // The share card's poster face (fonts.poster). Anton was here until
+  // 2026-08-25 and is gone with it: the card's numbers are a heavy grotesque
+  // now, which is the type on the reference card everybody is comparing it to,
+  // and one weight of a family already loaded costs nothing extra to ship.
+  Inter_900Black,
 } from '@expo-google-fonts/inter';
-import { Anton_400Regular } from '@expo-google-fonts/anton';
 import { Poppins_700Bold, Poppins_900Black } from '@expo-google-fonts/poppins';
 
 import HomeScreen from './src/screens/HomeScreen';
@@ -779,7 +783,7 @@ function App() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
-    Anton_400Regular,
+    Inter_900Black,
     Poppins_700Bold,
     Poppins_900Black,
   });

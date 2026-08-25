@@ -11,6 +11,12 @@
 // route is the thing propping them up. Empty space on a sticker is not waste,
 // it is the runner's own story showing through.
 //
+// The 2026-08-25 pass finished that job: the poster face is a heavy grotesque
+// rather than a condensed one (fonts.poster), the column reserves room for the
+// ink outline so the numbers stop arriving with shaved edges, and the art
+// column is measured against the STAT BLOCK — level with the numbers and hard
+// up against them, instead of pinned to the top corner of the story.
+//
 // The mascot stayed. It stands ON the end of the route, anchored by the foot it
 // runs on rather than by the middle of its own box — see MARK_FOOT.
 //
@@ -83,16 +89,24 @@ const ROUTE_SHARE = 0.3;
 // a box keeps its aspect ratio (projectGroups uses one scale for both axes), so
 // a column much wider than it is tall wastes most of itself on air — and the
 // numbers are the thing being posted.
-const ART_COL = 0.46;
+//
+// This is the FLOOR the numbers are sized against, not the final split: once
+// the type has taken what it needs, whatever it did not use goes to the art,
+// so the route and the runner end up right against the numbers instead of
+// pinned to the far edge with a strip of nothing between.
+//
+// 0.46 until the poster face changed. A heavy grotesque sets a good third
+// wider than the condensed one it replaced, so at the old split the numbers
+// were running out of COLUMN before they reached the size VALUE_FOR_ROWS
+// wanted for them — a card whose whole idea is one enormous type size was
+// quietly drawing it 10% smaller. The type gets the width back and the art
+// gets it returned the moment a card does not need it.
+const ART_COL = 0.4;
 const COL_GAP = 8;
 // The art column is a tall rectangle rather than the full height of the card,
 // for the same reason: a 1:3 slot draws a postage stamp in the middle of a lot
-// of nothing. Sat a little above centre of the space it is given, which is what
-// puts it LEVEL WITH THE NUMBERS rather than floating in the corner above them
-// — the two columns have to overlap vertically or the card reads as two
-// unrelated things stacked on a diagonal.
+// of nothing.
 const ART_ASPECT = 1.6;
-const ART_RISE = 0.46;
 
 // How thick the route draws, as a share of the card's width rather than a
 // fixed size. A 5pt line on a 1080px export is a hair — on the exported PNG it
@@ -206,13 +220,22 @@ export function availableStats(run = {}) {
   // Result data may come back as numeric strings, and old persisted runs can
   // contain nulls. Normalise before formatting so the share stage can never
   // call a number method on an unexpected wire value.
+  const consistencyMeasured =
+    run.consistencySeconds !== null
+    && run.consistencySeconds !== undefined
+    && run.consistencySeconds !== ''
+    && Number.isFinite(Number(run.consistencySeconds))
+    && Number(run.consistencySeconds) >= 0;
   run = {
     ...run,
     distanceM: Number.isFinite(Number(run.distanceM)) ? Number(run.distanceM) : 0,
     durationS: Number.isFinite(Number(run.durationS)) ? Number(run.durationS) : 0,
     elevationM: Number.isFinite(Number(run.elevationM)) ? Number(run.elevationM) : 0,
+    climbPerKm: Number.isFinite(Number(run.climbPerKm)) ? Number(run.climbPerKm) : 0,
     bestKmSeconds: Number.isFinite(Number(run.bestKmSeconds)) ? Number(run.bestKmSeconds) : 0,
-    avgSpeedKmh: Number.isFinite(Number(run.avgSpeedKmh)) ? Number(run.avgSpeedKmh) : 0,
+    consistencySeconds: Number.isFinite(Number(run.consistencySeconds))
+      ? Number(run.consistencySeconds)
+      : 0,
     areaM2: Number.isFinite(Number(run.areaM2)) ? Number(run.areaM2) : 0,
   };
   const out = [
@@ -224,14 +247,22 @@ export function availableStats(run = {}) {
   if (run.elevationM > 0) {
     out.push({ key: 'elevation', label: 'Elev gain', value: String(Math.round(run.elevationM)), unit: 'm' });
   }
+  if (run.climbPerKm > 0) {
+    out.push({ key: 'climbPerKm', label: 'Climb / km', value: String(Math.round(run.climbPerKm)), unit: 'm/km' });
+  }
   if (run.bestKmSeconds) {
     // "best/km" rather than "/km": with the labels off the card, a bare /km
     // under a pace of /km is two numbers claiming to be the same thing. The
     // unit is the only thing left that can tell them apart.
     out.push({ key: 'bestKm', label: 'Best km', value: paceStr(run.bestKmSeconds), unit: 'best/km' });
   }
-  if (run.avgSpeedKmh) {
-    out.push({ key: 'avgSpeed', label: 'Avg speed', value: run.avgSpeedKmh.toFixed(1), unit: 'km/h' });
+  if (consistencyMeasured) {
+    out.push({
+      key: 'consistency',
+      label: 'Consistency',
+      value: `±${paceStr(run.consistencySeconds)}`,
+      unit: '/km',
+    });
   }
   if (run.areaM2 > 0) {
     out.push({ key: 'territory', label: 'Territory', value: km2(run.areaM2), unit: 'km²' });
@@ -287,10 +318,31 @@ export const ACCENTS = [
 // Indexed by how many numbers are on the card, in design units.
 const VALUE_FOR_ROWS = [0, 78, 66, 54, 42, 34, 29];
 
-// Tight, the way a poster stacks — the lines nearly touch. Not tighter: Anton
-// is a tall face and a line box under about 1.1 starts clipping caps on
-// Android, which is a bug you only ever see on somebody else's phone.
+// Tight, the way a poster stacks — the lines nearly touch. Not tighter: a line
+// box under about 1.1 starts clipping caps on Android, which is a bug you only
+// ever see on somebody else's phone.
 const LINE_RATIO = 1.15;
+
+// How thick the ink outline round every number is, as a share of the type's
+// own size. The stroke grows WITH the type: held at a fixed width it thinned
+// out as the digits got bigger, which is the opposite of what a heavier number
+// needs.
+//
+// It is a RATIO rather than a number of points because the card has to know
+// how far the outline bleeds past the glyphs BEFORE it picks a font size —
+// see valueSize. That bleed is why the numbers were arriving with their edges
+// shaved off: the size was chosen so the glyphs exactly filled the column, the
+// outline then hung eight copies past both ends of that, and `fit` shrank and
+// clipped the row trying to get them back inside.
+const OUTLINE_RATIO = 0.045;
+
+// A last few percent of slack in the width budget, on top of the outline.
+// `emWidth` below is an ESTIMATE of how wide a string sets, and when it
+// underestimates by even a couple of percent `adjustsFontSizeToFit` fires —
+// which on iOS, on a Text with an explicit lineHeight, is exactly what crops
+// the glyphs. The fit is kept as a backstop; this is what stops it firing in
+// normal use.
+const FIT_SAFETY = 0.97;
 
 // The unit rides at the TOP of the digits, small and in caps — the reference's
 // superscript KM. Set against the value's own size so it stays in proportion
@@ -298,15 +350,40 @@ const LINE_RATIO = 1.15;
 const UNIT_RATIO = 0.3;
 const UNIT_RISE = 0.16;
 
-// Roughly how wide a glyph is in Anton, in ems. This exists only to CHOOSE a
-// font size that will fit — `fit` still measures for real underneath — so it
-// needs to be about right rather than exact. Digits carry the default; the
-// punctuation a pace or a duration is full of is what actually varies.
-const EM_DEFAULT = 0.47;
-const EM = { '.': 0.26, ':': 0.26, "'": 0.2, '"': 0.3, ' ': 0.24, '/': 0.36, '²': 0.3 };
+// How wide a glyph sets in the poster face, in ems. This exists to CHOOSE a
+// font size that will fit — `fit` still measures for real underneath — but it
+// has to err WIDE, because an underestimate is what hands a too-big string to
+// the fitter, and `adjustsFontSizeToFit` on a Text with an explicit lineHeight
+// is exactly what was cropping the numbers.
+//
+// MEASURED, not guessed: these are Inter Black's own advance widths, read out
+// of the hmtx table that ships in node_modules. The table they replace was
+// Anton's and was rounded down on top of that, so a number was budgeted about
+// a quarter narrower than it draws.
+//
+// The digits are the subtle part. The card asks for TABULAR figures (statHero
+// carries fontVariant: ['tabular-nums']), and Inter's tabular digits are all
+// 0.645em — but the feature is a request, not a promise, and where it does not
+// apply the proportional widths run from 0.452 ('1') to 0.711 ('0'). Each
+// entry is therefore the WIDER of the two, so the estimate holds whichever
+// figures the platform actually draws.
+const EM = {
+  '0': 0.711, '1': 0.645, '2': 0.646, '3': 0.669, '4': 0.702,
+  '5': 0.646, '6': 0.675, '7': 0.645, '8': 0.679, '9': 0.675,
+  '.': 0.373, ':': 0.373, "'": 0.372, '"': 0.625, ' ': 0.199, '/': 0.412, '²': 0.475,
+  // The units are the only letters on the card and they are drawn uppercase,
+  // so these are caps.
+  B: 0.668, E: 0.613, H: 0.75, K: 0.759, M: 0.956, S: 0.666, T: 0.687,
+};
+// Anything not in the table, which should be nothing: M is the widest cap
+// Inter Black has short of W, so an unlisted glyph is over-budgeted rather
+// than under.
+const EM_DEFAULT = 0.956;
 function emWidth(s) {
   let w = 0;
-  for (const ch of String(s)) w += EM[ch] === undefined ? EM_DEFAULT : EM[ch];
+  // Uppercased to match the unit's own textTransform — 'km' is drawn as 'KM',
+  // and lowercase widths would have measured a string the card never renders.
+  for (const ch of String(s).toUpperCase()) w += EM[ch] === undefined ? EM_DEFAULT : EM[ch];
   return w;
 }
 
@@ -365,6 +442,9 @@ const TONE = {
 // any of them can be drawn.
 function Stat({ value, unit, size, lineH, u, tone, align, color }) {
   const unitSize = size * UNIT_RATIO;
+  // The outline hangs this far past the glyphs on every side, and the row has
+  // to own that room rather than let it hang over the edge of the column.
+  const bleed = size * OUTLINE_RATIO;
   return (
     // STRETCHED and justified rather than aligned: the number needs a box it
     // can be too big for, or `fit` has nothing to measure against and a long
@@ -376,6 +456,13 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
         flexDirection: 'row',
         alignItems: 'flex-start',
         justifyContent: ROW_JUSTIFY[align],
+        // Room for the ink ring, INSIDE the row. Without it the leftmost and
+        // rightmost copies of the outline sat outside the stat column, where
+        // the card's own `overflow: hidden` (and Android's clipping of
+        // children generally) shaves them flat — which is what "the edges are
+        // cut off" was.
+        paddingHorizontal: bleed,
+        overflow: 'visible',
       }}
     >
       {/* A real stroke, not a shadow. This is the number somebody screenshots
@@ -387,18 +474,20 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
             fontFamily: fonts.poster,
             fontSize: size,
             lineHeight: lineH,
-            // Anton is already narrow; a touch negative closes the gaps that
-            // open up between digits at poster size.
-            letterSpacing: -0.012 * size,
+            // Tight, the way the reference sets its figures: a heavy
+            // grotesque at poster size leaves gaps between digits that only
+            // negative tracking closes.
+            letterSpacing: -0.02 * size,
             color: color || tone.text,
           },
         ]}
         outline={tone.ink}
-        // The stroke grows WITH the type. Held at a fixed width it thinned out
-        // as the digits got bigger, which is the opposite of what a heavier
-        // number needs — the outline is the card's whole answer to landing on
-        // a white t-shirt, so it stays proportional to what it outlines.
-        width={0.058 * size}
+        // Proportional to the type (see OUTLINE_RATIO), and known to the
+        // layout above so the column can reserve the room it needs. Held at a
+        // fixed width it thinned out as the digits got bigger, which is the
+        // opposite of what a heavier number needs — the outline is the card's
+        // whole answer to landing on a white t-shirt.
+        width={bleed}
         align={align}
         // The backstop. The block is already sized to its widest member, so
         // this should almost never fire — but "almost never" is not "never"
@@ -415,7 +504,7 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
             fontFamily: fonts.poster,
             fontSize: unitSize,
             lineHeight: unitSize * 1.15,
-            letterSpacing: 0.4 * u,
+            letterSpacing: 0.2 * u,
             textTransform: 'uppercase',
             color: tone.unit,
             marginLeft: 2 * u,
@@ -439,7 +528,7 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
  * @param {object}   props
  * @param {number}   props.width         rendered width in dp
  * @param {object}   props.team          clan colours {fill, stroke, glow}
- * @param {object}   props.run           {distanceM, durationS, areaM2, elevationM, claimed}
+ * @param {object}   props.run           {distanceM, durationS, areaM2, elevationM, climbPerKm, consistencySeconds, claimed}
  * @param {Array}    props.path          recorded route [{latitude, longitude}]
  * @param {Array}    props.rings         claimed/claimable rings [[[lon,lat], …]]
  * @param {string}   props.accent        accent colour; defaults to the clan's
@@ -529,18 +618,31 @@ export default function RunShareCard({
   const hasArt = showRoute && drawable;
   const splitCols = sideBySide && hasArt;
   const inner = width - padX * 2;
-  const artW = splitCols ? inner * ART_COL : width;
-  const typeW = splitCols ? inner - artW - COL_GAP * u : inner;
+  const typeW = splitCols ? inner - inner * ART_COL - COL_GAP * u : inner;
 
   // ONE SIZE for every number on the card, chosen so the WIDEST of them fits
   // the column it has to live in. See VALUE_FOR_ROWS: the base is how big the
   // type may be for this many rows, and the column is how big it may be given
   // what the run actually reads.
+  //
+  // The column has to hold the OUTLINE as well as the glyphs. Both scale with
+  // the type, so what fits is one division rather than a loop: the string sets
+  // `widestEm` ems wide and the ink ring adds OUTLINE_RATIO of an em at each
+  // end of it.
   const base = (VALUE_FOR_ROWS[stats.length] || VALUE_FOR_ROWS[VALUE_FOR_ROWS.length - 1]) * u;
   const widestEm = stats.reduce((m, s) => Math.max(m, statEm(s)), 1);
-  const valueSize = Math.min(base, typeW / widestEm);
+  const emPerLine = widestEm + 2 * OUTLINE_RATIO;
+  const valueSize = Math.min(base, (typeW * FIT_SAFETY) / emPerLine);
   const lineH = valueSize * LINE_RATIO;
   const statsH = stats.length * lineH;
+
+  // What the numbers ACTUALLY take across, which is usually less than the
+  // column they were offered — the type is capped by VALUE_FOR_ROWS long
+  // before it runs out of width. The art gets the difference (see ART_COL), so
+  // "beside the numbers" means beside them rather than somewhere off to the
+  // right of them.
+  const typeUsed = splitCols ? Math.min(typeW, valueSize * emPerLine) : typeW;
+  const artW = splitCols ? inner - typeUsed - COL_GAP * u : width;
 
   // The numbers sit above the wordmark and the art is measured against them.
   const statsBottom = padBottom + signatureH + STATS_TO_MARK_U * u;
@@ -559,8 +661,16 @@ export default function RunShareCard({
   const artH = splitCols
     ? Math.max(height * 0.16, Math.min(bandH, artW * ART_ASPECT))
     : Math.max(height * 0.16, Math.min(stackedFree, height * ROUTE_SHARE));
+  // LEVEL WITH THE NUMBERS, which is the whole claim the side-by-side layout
+  // makes. The art box used to be placed against the top safe area (a share of
+  // whatever the furniture left over), and on a 9:16 story that stood the route
+  // and the runner up in the corner with the numbers a long way below them:
+  // two unrelated things on a diagonal rather than one row. It shares the stat
+  // block's centre line now, and only slides off it when the card runs out of
+  // room top or bottom.
+  const artFloor = Math.max(bandTop, height - padBottom - signatureH - artH);
   const artTop = splitCols
-    ? bandTop + Math.max(0, (bandH - artH) * ART_RISE)
+    ? Math.max(bandTop, Math.min(artFloor, statsTop + statsH / 2 - artH / 2))
     // Centred in the space it was given, so the gap above the route and the
     // gap down to the numbers are the same gap.
     : padTop + Math.max(0, (stackedFree - artH) / 2);
@@ -641,13 +751,28 @@ export default function RunShareCard({
     // mirror the anchor when the figure is flipped, because `flip` mirrors the
     // whole box.
     const footX = flip ? 1 - MARK_FOOT : MARK_FOOT;
+    // ACROSS, the figure is kept to its OWN COLUMN give or take a stride.
+    // It used to be clamped only to the card, which was harmless while the art
+    // sat up in the corner on its own — now that the box stands level with the
+    // numbers, a route ending against the inner edge would walk the mascot
+    // right across the figures.
+    //
+    // The licence is HALF THE FIGURE, not a few points, and that is the whole
+    // care needed here: the foot is anchored to the end dot (see MARK_FOOT and
+    // the test that pins it), so a tight fence would silently unstick the
+    // runner from the end of its own route — which is the one thing on this
+    // card that means anything — every time somebody finished a lap near the
+    // inside edge. Half a figure of overhang never happens by accident and
+    // still catches the case worth catching.
+    const stride = runnerSize * 0.5;
+    const minLeft = splitCols ? Math.max(4 * u, artLeft - stride) : 4 * u;
+    const maxLeft = splitCols
+      ? Math.min(width - runnerSize - 4 * u, artLeft + artW - runnerSize + stride)
+      : width - runnerSize - 4 * u;
     return {
       // `route.end` is in the ART BOX's own pixels — the box is no longer the
       // whole card, so its offset has to come back in here.
-      left: Math.max(
-        4 * u,
-        Math.min(width - runnerSize - 4 * u, artLeft + route.end[0] - runnerSize * footX)
-      ),
+      left: Math.max(minLeft, Math.min(maxLeft, artLeft + route.end[0] - runnerSize * footX)),
       top: floor > ceiling ? Math.max(ceiling, Math.min(floor, wanted)) : ceiling,
     };
   })();
@@ -856,16 +981,17 @@ export default function RunShareCard({
           >
             <Text
               style={{
-                // THE SAME FACE AND THE SAME RHYTHM as the numbers above it.
-                // It was already Anton, but at 15u tracked out to 2.6u it read
-                // as a different, wider typeface sitting under a column of
-                // condensed figures — letterspacing that heavy takes a narrow
-                // poster face and un-condenses it. Bigger and tight instead, so
-                // the wordmark and the numbers are visibly one piece of
-                // lettering rather than a logo pasted under a card.
+                // THE SAME FACE AND THE SAME RHYTHM as the numbers above it,
+                // which is the point: the wordmark and the figures have to
+                // read as one piece of lettering rather than as a logo pasted
+                // under a card. It follows fonts.poster wherever that goes —
+                // so the 2026-08-25 switch to a heavy grotesque took the
+                // wordmark with it — and it stays tightly tracked, because
+                // letterspacing heavy enough to be noticed is what made it
+                // look like a different typeface the last time.
                 fontFamily: fonts.poster,
                 fontSize: 18 * u,
-                letterSpacing: 1.2 * u,
+                letterSpacing: 1 * u,
                 // Judged against the badge fill: `glow` is the clan colour or
                 // the accent, so it can arrive as anything from pale teal to
                 // deep purple, and a fixed white wordmark disappears on half of

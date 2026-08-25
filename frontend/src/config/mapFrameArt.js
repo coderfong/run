@@ -1,16 +1,23 @@
 // The frame drawn around the BOARD, one per rank tier.
 //
-// Cut from a contact sheet by scripts/cut-rank-frames.py — re-run that rather
-// than hand-editing anything here. Keys are BORDER_TIERS keys; `none` has no
-// art on purpose and falls back to the plain NB stroke, because the tier below
-// wood is the state before the first run has landed and should not be dressed
-// up as a rank.
+// Installed by scripts/install-map-frames.py — re-run that rather than
+// hand-editing anything here. Keys are BORDER_TIERS keys; `none` has no art on
+// purpose and falls back to the plain NB stroke, because the tier below wood is
+// the state before the first run has landed and should not be dressed up as a
+// rank. (The pack these replaced was cut off a contact sheet by
+// cut-rank-frames.py, which is kept for the next sheet that arrives that way.)
 //
-// These are drawn at roughly 2:3 and the board they sit on runs from 0.55
-// (Pro Max) to 0.66 (SE), so they are STRETCHED to fit rather than nine-sliced.
-// That is deliberate: every one of these tiers hangs an ornament off the middle
-// of a rail — a gem, a star, a finial — and a nine slice stretches exactly that
-// span. A frame this chunky carries a 10% aspect error invisibly; it does not
+// THIN, AND CROPPED TO THE INK. The board wears these on the screen's own
+// edges, so every pixel of margin baked into a file is a pixel of map covered
+// for nothing — the installer crops each to its alpha bounding box for exactly
+// that reason. The art itself spends 5.6-8.5% of its width on the band, against
+// the 10-13% the previous pack drew, which is most of what the map got back.
+//
+// These are drawn at roughly 0.56 and the board they sit on runs from 0.50 to
+// 0.53, so they are STRETCHED to fit rather than nine-sliced. That is
+// deliberate: every one of these tiers hangs an ornament off the middle of a
+// rail — a gem, a star, a finial — and a nine slice stretches exactly that
+// span. A frame carries a few percent of aspect error invisibly; it does not
 // survive having its centrepiece smeared sideways.
 
 export const MAP_FRAME_ART = {

@@ -14,11 +14,17 @@
 //
 // YOU ARE IN IT. Your own runner stands on the near path at the front (`You`),
 // which is what turns the square from a picture of other people into a place
-// you are standing in. Anyone you have not seen yet HOPS IN to their spot from
-// off the side of the frame and greets you as they land, and you hop back —
-// same for a high five, in the other direction. The whole vocabulary is
-// CharacterRig's own `celebrate`, a jump with a laughing face, so an arrival, a
-// greeting and a high five all read as the same happy gesture.
+// you are standing in. Anyone you have not seen yet ARRIVES — one at a time,
+// with the rest of the plaza dimmed behind them, walking up the near path to
+// meet you and setting off a burst when they land. That is a ceremony rather
+// than a transition and it has its own file: components/paserby/ArrivalCeremony,
+// which is where the timing, the dim and the fireworks live. This screen owns
+// only the running order (`order` / `beat` below), because only this screen
+// knows who is standing where.
+//
+// A high five is the same gesture in the other direction. The whole vocabulary
+// is CharacterRig's own `celebrate`, a jump with a laughing face, so an
+// arrival, a greeting and a high five all read as the same happy thing.
 //
 // Everything it shows is still public and still vague: a character, a name, a
 // familiarity label and a broad phrase. No place, no route, no time — see
@@ -37,7 +43,6 @@ import Animated, {
   FadeIn,
   useAnimatedStyle,
   useSharedValue,
-  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -60,6 +65,18 @@ import CharacterRig, { CharacterBust } from '../components/character/CharacterRi
 import PortraitBorder from '../components/PortraitBorder';
 import PlazaScene, { PLAZA_SPOTS, plazaDepth, plazaPoint } from '../components/paserby/PlazaScene';
 import CrossroadsIntro from '../components/paserby/CrossroadsIntro';
+import ArrivalSpotlight, {
+  ARRIVE_MS,
+  BURST_MS,
+  BURST_SCALE,
+  HOPS,
+  HOP_RISE,
+  HOP_SCALE,
+  MAX_ARRIVALS,
+  MEET_MS,
+  MeetingBurst,
+  arrivalBurst,
+} from '../components/paserby/ArrivalCeremony';
 import { setAtCrossroads } from '../components/CrossroadsAlert';
 import { COPY, encounterSubtitle, familiarityLabel } from '../config/paserby';
 import { art, ART_BG } from '../config/onboardingArt';
@@ -107,66 +124,67 @@ const PANEL_YELLOW = ART_BG.panelCrossroads;
 // front, exactly like the depth ordering behind it.
 const YOU_SPOT = { x: 0.5, y: 0.795 };
 
-// A newcomer's walk on: up the near path from off the side of the frame, in
-// three hops, landing on their own paving spot.
-//
-// The trip shrinks them as it goes (`HOP_SCALE`), because the path is nearer
-// the camera than the paving is — the same perspective `plazaDepth` gives the
-// standing crowd, just in motion. Without it they slid across the picture at a
-// fixed size and read as a sticker being dragged.
-const HOP_MS = 920;
-const HOPS = 3;
-const HOP_RISE = 0.15;
-const HOP_SCALE = 0.24;
-// They arrive one after another rather than as a wave. Short enough that six of
-// them is under two seconds.
-const HOP_STAGGER_MS = 240;
-// Past this many, the rest are simply standing there when you look up. A plaza
-// that has been saving up thirty new faces should not make you watch a queue.
-const MAX_HOPPERS = 6;
-
 /**
  * One runner, standing on their circle. No label, no button, no chrome — the
  * whole character IS the control.
  *
- * `turn` is their place in the arrival queue, or -1 for somebody who was
- * already here — see `MAX_HOPPERS`.
+ * `phase` is where they are in the greeting ceremony (see
+ * components/paserby/ArrivalCeremony):
+ *
+ *   settled   they were already here, or their arrival is over
+ *   waiting   they are a newcomer whose turn has not come — drawn nowhere
+ *   arriving  it is their moment: they walk on, and they are LIT, above the
+ *             scrim that has everybody else under it
  */
-function Standing({ encounter, spot, box, index, reduced, turn = -1, rigRef, onLanded, onPress }) {
+function Standing({ encounter, spot, box, index, reduced, phase = 'settled', rigRef, onLanded, onPress }) {
   const width = RIG_FRONT * plazaDepth(spot.y);
   const height = width * RIG_ASPECT;
   const { x, y } = plazaPoint(box, spot.x, spot.y);
-  const arriving = turn >= 0 && !reduced;
+
+  // Are they part of the ceremony AT ALL? Somebody who was already in the
+  // square is `settled` from their first frame and never touches any of this —
+  // and once a newcomer has landed they must keep the walk's animated style
+  // even though it now resolves to an identity transform, because detaching it
+  // would hand them back the standing fade they already skipped.
+  const ceremonial = useRef(phase !== 'settled');
+  if (phase !== 'settled') ceremonial.current = true;
 
   // Where the walk on starts: off the side of the frame nearest their own spot,
   // at the depth of the approach path. Measured through `plazaPoint` like
   // everything else here, so it is a point on the PAINTING and holds its
   // relationship to the paving at any screen shape.
   const from = useMemo(() => {
-    if (!arriving) return { dx: 0, dy: 0 };
     const entry = plazaPoint(box, spot.x < 0.5 ? -0.15 : 1.15, 0.83);
     return { dx: entry.x - x, dy: entry.y - y };
-  }, [arriving, box, spot.x, x, y]);
+  }, [box, spot.x, x, y]);
 
   // 0 while they are still off frame, 1 once they are standing on their spot.
-  const walk = useSharedValue(arriving ? 0 : 1);
+  const walk = useSharedValue(phase === 'settled' ? 1 : 0);
 
   useEffect(() => {
-    if (!arriving) return undefined;
-    const delay = turn * HOP_STAGGER_MS;
+    // Nobody is drawn until their turn comes round, and a ceremony that was
+    // skipped simply puts whoever was still queued on their spot — skipping is
+    // "they are already here", not "they arrive faster".
+    if (phase === 'waiting') {
+      walk.value = 0;
+      return undefined;
+    }
+    if (phase === 'settled') {
+      walk.value = 1;
+      return undefined;
+    }
     walk.value = 0;
-    walk.value = withDelay(
-      delay,
-      withTiming(1, { duration: HOP_MS, easing: Easing.out(Easing.quad) })
-    );
+    walk.value = withTiming(1, { duration: ARRIVE_MS, easing: Easing.out(Easing.quad) });
     // The greeting lands ON the landing, not before it — `celebrate` is the
     // rig's own hop with a laughing face (components/character/CharacterRig).
+    // `onLanded` hops YOU on the same frame, so the two of you meet rather
+    // than take turns.
     const id = setTimeout(() => {
       rigRef?.current?.play('celebrate');
       onLanded?.();
-    }, delay + HOP_MS);
+    }, ARRIVE_MS);
     return () => clearTimeout(id);
-  }, [arriving, turn, walk, rigRef, onLanded]);
+  }, [phase, walk, rigRef, onLanded]);
 
   const walkStyle = useAnimatedStyle(() => {
     const p = walk.value;
@@ -186,17 +204,23 @@ function Standing({ encounter, spot, box, index, reduced, turn = -1, rigRef, onL
 
   return (
     <Animated.View
-      // The walk is attached only when there IS one. A settled `walkStyle` is
-      // opacity 1 and an identity transform, and an animated style that writes
-      // opacity every frame is an animated style that overrides the entering
-      // fade — so leaving it on for everybody would quietly kill the stagger
-      // the twenty standing runners arrive with.
+      // The walk is attached only to runners who have one. An animated style
+      // that writes opacity every frame is an animated style that overrides the
+      // entering fade, so leaving it on for everybody would quietly kill the
+      // stagger the twenty standing runners arrive with.
+      //
+      // `zIndex` is what puts the newcomer ON TOP of the dim while it is their
+      // moment. Everybody else sits at 0, under the scrim at 1 — see `crowd`.
       style={[
         styles.standing,
-        { left: x - width / 2, top: y - height, width },
-        arriving && walkStyle,
+        { left: x - width / 2, top: y - height, width, zIndex: phase === 'arriving' ? 2 : 0 },
+        ceremonial.current && walkStyle,
       ]}
-      entering={reduced || arriving ? undefined : FadeIn.delay(Math.min(index, 10) * 60).duration(260)}
+      entering={
+        reduced || ceremonial.current
+          ? undefined
+          : FadeIn.delay(Math.min(index, 10) * 60).duration(260)
+      }
     >
       {/* The mirror is its own box INSIDE the walk. Flipping the wrapper would
           flip the arrival with it, so a runner entering from the left would hop
@@ -351,6 +375,7 @@ export default function CrossroadsScreen({ navigation }) {
   // `profileLoading` matters: the flag is read from disk, and rendering before
   // it lands would flash the card at somebody who has already read it.
   const { profile, loading: profileLoading, completeCrossroadsIntro } = useProfile();
+  const introUp = focused && !profileLoading && !profile.crossroadsIntroSeen;
   // Your own runner, standing at the front of the square (see `You`).
   const { equipped } = useAvatar();
 
@@ -400,19 +425,6 @@ export default function CrossroadsScreen({ navigation }) {
   }
   const arrivals = latched.current;
 
-  // You wave back. Throttled, because six arrivals 240 ms apart would otherwise
-  // restart your own hop before it finished and read as a twitch.
-  //
-  // No haptic: this fires on its own, up to six times, at a moment nobody
-  // asked for anything. Buzzing is for things you did — see the high five.
-  const lastGreet = useRef(0);
-  const greet = useCallback(() => {
-    const now = Date.now();
-    if (now - lastGreet.current < 600) return;
-    lastGreet.current = now;
-    meRig.current?.play('celebrate');
-  }, []);
-
   const encounters = useMemo(() => [...(data?.encounters || []), ...more], [data, more]);
   const enabled = data?.enabled !== false;
   const open = encounters.find((e) => e.id === openId) || null;
@@ -427,6 +439,107 @@ export default function CrossroadsScreen({ navigation }) {
   useEffect(() => {
     if (encounters.length) preloadRunnerAssets(encounters);
   }, [encounters]);
+
+  // --- the greeting ceremony ----------------------------------------------
+  //
+  // WHO arrives and in WHAT ORDER, once, for the whole plaza. It used to be
+  // worked out inside `crowd`, which is called per page — so page two handed
+  // out turns 0..5 of its own and its newcomers hopped in on top of page one's.
+  // One list, in the order the server sent them, capped at `MAX_ARRIVALS`.
+  const order = useMemo(() => {
+    if (reduced || !arrivals?.size) return [];
+    const out = [];
+    for (const e of encounters) {
+      if (arrivals.has(e.id) && out.length < MAX_ARRIVALS) out.push(e.id);
+    }
+    return out;
+  }, [encounters, arrivals, reduced]);
+
+  // Which arrival is on stage. Past the end of `order` the ceremony is over
+  // and the dim lifts — which is also what skipping does, in one step.
+  const [beat, setBeat] = useState(0);
+  // Where the last burst went off, and a token that replays it.
+  const [meeting, setMeeting] = useState(null);
+  //
+  // NOT while the explainer is up, and not while the screen is parked behind
+  // another one. The first-ever visit is both the visit with the most people
+  // to greet AND the one that opens with `CrossroadsIntro` over the top, so a
+  // ceremony that started on mount would play out its whole run behind a modal
+  // and be finished by the time the reader put it away. Gating it here rather
+  // than delaying it means the walk on simply has not started yet — and if you
+  // leave mid-arrival, the runner steps back off and comes in again when you
+  // return, which is the right answer for a moment aimed AT you.
+  const ceremony = focused && !introUp && beat < order.length;
+
+  // The two things `onLanded` needs to know, read through a ref rather than
+  // closed over. It is handed to every `Standing` as an effect dependency, so
+  // an identity that changed when the beat did would restart the walk of the
+  // runner currently taking it.
+  const stage = useRef({ order, beat });
+  stage.current = { order, beat };
+  const beatTimer = useRef(null);
+  const burstTimer = useRef(null);
+  useEffect(
+    () => () => {
+      clearTimeout(beatTimer.current);
+      clearTimeout(burstTimer.current);
+    },
+    []
+  );
+
+  // They have landed on their spot. THIS is the meeting: your own runner jumps
+  // on the same frame theirs does (`Standing` plays theirs), the burst goes off
+  // where they are standing, and the next newcomer steps up once it has been
+  // held long enough to be a moment.
+  //
+  // The one haptic on this screen that nobody asked for by tapping something.
+  // The constitution's rule is buttons and loop closes only (theme/haptics.js),
+  // and the old wave deliberately had none because it fired up to six times at
+  // nothing in particular. A capped, one-at-a-time ceremony behind a dim is the
+  // same kind of exception the capture cutscene's impact frame already is: it
+  // is the beat the sequence exists for, and there are at most three of them.
+  const onLanded = useCallback(() => {
+    const { order: running, beat: at } = stage.current;
+    meRig.current?.play('celebrate');
+    haptic.light();
+    setMeeting({ id: running[at], token: at + 1 });
+    clearTimeout(burstTimer.current);
+    burstTimer.current = setTimeout(() => setMeeting(null), BURST_MS);
+    clearTimeout(beatTimer.current);
+    beatTimer.current = setTimeout(() => setBeat((n) => n + 1), MEET_MS);
+  }, []);
+
+  // A tap on the dim ends it. Whoever was still queued is simply standing there
+  // — see `Standing`'s `settled` phase — and the plaza comes back up.
+  const skipCeremony = useCallback(() => {
+    clearTimeout(beatTimer.current);
+    setBeat(stage.current.order.length);
+  }, []);
+
+  const turnOf = useMemo(() => new Map(order.map((id, i) => [id, i])), [order]);
+
+  // Where the burst is drawn. The runner's index in the flat list is what
+  // decides both their page and their spot on it (`crowd` slices the same list
+  // the same way), so the point is measured off the painting exactly the way
+  // the character standing there was.
+  const meetingSpot = useMemo(() => {
+    if (!meeting || !box) return null;
+    const i = encounters.findIndex((e) => e.id === meeting.id);
+    if (i < 0) return null;
+    const spot = PLAZA_SPOTS[i % SPOTS];
+    const width = RIG_FRONT * plazaDepth(spot.y);
+    const { x, y } = plazaPoint(box, spot.x, spot.y);
+    return {
+      page: Math.floor(i / SPOTS),
+      name: arrivalBurst(encounters[i]),
+      size: width * BURST_SCALE,
+      x,
+      // `plazaPoint` gives the paving they are standing ON. The burst belongs
+      // around the two of them meeting, so it lifts to the middle of the body.
+      y: y - width * RIG_ASPECT * 0.45,
+      token: meeting.token,
+    };
+  }, [meeting, box, encounters]);
 
   // Arriving IS seeing them — clear the badge here and in the summary Home
   // reads, so the count doesn't linger on the way back.
@@ -529,15 +642,6 @@ export default function CrossroadsScreen({ navigation }) {
   // in front of them.
   const crowd = (rows, key) => {
     const placed = rows.map((e, i) => ({ e, spot: PLAZA_SPOTS[i], index: i }));
-
-    // Arrival turns are handed out in STANDING order, not draw order, so the
-    // hops come in from the front of the square backwards — which is the order
-    // the list is in, and the order somebody would actually notice them.
-    const turns = new Map();
-    placed.forEach(({ e }) => {
-      if (arrivals?.has(e.id) && turns.size < MAX_HOPPERS) turns.set(e.id, turns.size);
-    });
-
     const drawn = [...placed].sort((a, b) => a.spot.y - b.spot.y);
     return (
       <View
@@ -545,20 +649,51 @@ export default function CrossroadsScreen({ navigation }) {
         style={box ? { width: box.width, height: box.height } : null}
         pointerEvents="box-none"
       >
-        {drawn.map(({ e, spot, index }) => (
-          <Standing
-            key={e.id}
-            encounter={e}
-            spot={spot}
-            box={box}
-            index={index}
-            reduced={reduced}
-            turn={turns.has(e.id) ? turns.get(e.id) : -1}
-            rigRef={rigFor(e.id)}
-            onLanded={greet}
-            onPress={() => setOpenId(e.id)}
+        {drawn.map(({ e, spot, index }) => {
+          const turn = turnOf.has(e.id) ? turnOf.get(e.id) : -1;
+          return (
+            <Standing
+              key={e.id}
+              encounter={e}
+              spot={spot}
+              box={box}
+              index={index}
+              reduced={reduced}
+              phase={
+                turn < 0 || turn < beat
+                  ? 'settled'
+                  : ceremony && turn === beat
+                    ? 'arriving'
+                    : 'waiting'
+              }
+              rigRef={rigFor(e.id)}
+              onLanded={onLanded}
+              onPress={() => setOpenId(e.id)}
+            />
+          );
+        })}
+
+        {/* THE DIM, and everything above it. It goes in the page rather than at
+            the root of the screen because the newcomer having their moment is
+            drawn in here, and nothing inside a container can be lifted above a
+            scrim outside it — the two have to be siblings to be ordered. The
+            page box is the size of the screen, so the wash covers the plaza;
+            the header panel and the setting card are laid over the top of it
+            and stay legible, which is what chrome should do.
+
+            One per page: only the one you are looking at is on screen, and a
+            View costs nothing. z-order in here is 0 for the standing crowd,
+            1 for the dim, 2 for whoever is arriving, 3 for the burst. */}
+        <ArrivalSpotlight on={ceremony} onSkip={skipCeremony} style={styles.dim} />
+        {meetingSpot && meetingSpot.page === key ? (
+          <MeetingBurst
+            name={meetingSpot.name}
+            x={meetingSpot.x}
+            y={meetingSpot.y}
+            size={meetingSpot.size}
+            token={meetingSpot.token}
           />
-        ))}
+        ) : null}
       </View>
     );
   };
@@ -661,7 +796,7 @@ export default function CrossroadsScreen({ navigation }) {
           as well as to the flag: both tab stacks register this screen, and a
           copy parked behind another one must not put a modal over it. */}
       <CrossroadsIntro
-        visible={focused && !profileLoading && !profile.crossroadsIntroSeen}
+        visible={introUp}
         onClose={completeCrossroadsIntro}
       />
 
@@ -693,6 +828,8 @@ const styles = StyleSheet.create({
   transparent: { backgroundColor: 'transparent' },
 
   standing: { position: 'absolute' },
+  // Between the standing crowd (0) and whoever is arriving (2).
+  dim: { zIndex: 1 },
   // Half of them face the other way. The art is symmetrical enough that a
   // mirror costs nothing and it is most of what stops twenty of them reading as
   // one repeated sticker.

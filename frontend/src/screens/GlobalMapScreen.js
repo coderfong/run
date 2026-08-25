@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { PanResponder, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import Svg, { Polyline } from 'react-native-svg';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { ChevronLeft, ChevronRight, Flame, Lock, Users, X } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, ChevronRight, Flame, Lock, MoreHorizontal, Users, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
 import { BORDER_TIERS } from '../config/progression';
@@ -19,7 +20,7 @@ import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
-import { ScreenIn, useReduceMotion } from '../ui/motion';
+import { Pop, ScreenIn, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { territoryRings } from '../components/claim/geometry';
@@ -77,6 +78,19 @@ const TOP_VIEW = RANK_VIEWS.length - 1;
 // the chip it is drawn on is a constant near-black and the clubs view has no
 // colour of its own to borrow — the colours on that board belong to the clubs.
 const CLUB_INK = '#F4F4F7';
+
+// How much of the board's WIDTH one of the frames spends on its own rail.
+// Every tier in the pack draws its band between 5.6% and 8.5% of the frame's
+// width, so a single number stands in for all ten closely enough to lay
+// controls out against — and laying them out against it is the point. The
+// frame is drawn on the board's EDGES now, so anything near a corner sits
+// UNDER a rail unless it is pushed in past this.
+const RAIL = 0.085;
+
+// One compact menu holds every map action. It stays on the right edge where the
+// old tool rail lived, but opens wide enough for labels and the rank stepper so
+// the map never asks the runner to decode five unrelated floating icons.
+const ACTIONS_W = 238;
 
 function RankMark({ tier }) {
   const art = BORDER_ART[tier.key];
@@ -237,6 +251,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  const { width: screenW } = useWindowDimensions();
   const { user } = useAuth();
   const { equipped, rankKey } = useAvatar();
   const accent = useAccent();
@@ -269,6 +284,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   // Which intelligence overlay is drawn on top of the board. 'all' is the
   // board exactly as it has always been.
   const [layerKey, setLayerKey] = useState('all');
@@ -295,6 +311,12 @@ export default function GlobalMapScreen({ route, navigation }) {
   // and onIdle closures the same way zoomRef is — so those callbacks keep their
   // referential identity and Mapbox's PureComponent gate is not defeated.
   const viewRankRef = useRef(ownTier);
+  // Which way the last step went, so the incoming frame can arrive from the
+  // direction it was scouted in: stepping UP settles a larger frame down onto
+  // the board, stepping DOWN grows a smaller one into it. Read during render
+  // rather than held in state because it only ever changes in lockstep with
+  // the tier it describes, and it must not cause a render of its own.
+  const stepDirRef = useRef(0);
   useEffect(() => {
     if (!pickedRef.current) setViewRankTier(ownTier);
   }, [ownTier]);
@@ -461,6 +483,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   // Move the scoped tier by one step and take the wheel off the auto-follow.
   const stepRank = useCallback((dir) => {
     pickedRef.current = true;
+    stepDirRef.current = dir;
     setSelected(null);
     setViewRankTier((t) => Math.max(CLUB_VIEW, Math.min(TOP_VIEW, t + dir)));
   }, []);
@@ -784,6 +807,18 @@ export default function GlobalMapScreen({ route, navigation }) {
   // The clubs view has no rank, so it takes the plain NB stroke and a neutral
   // ink rather than borrowing some tier's frame and colour.
   const frameArt = viewedTier ? MAP_FRAME_ART[viewedTier.key] : null;
+  // What the frame is keyed on, and so what a change of frame is. The clubs
+  // view has no tier, and it still gets a key of its own so stepping onto it
+  // transitions like every other step.
+  const frameKey = viewedTier ? viewedTier.key : 'clubs';
+  // The board is the WHOLE screen now, minus only the top inset so the top
+  // rail clears the notch and the clock. It used to be inset by a gutter on
+  // all four sides, which cost the map a band of itself twice over: once to
+  // the gutter and again to the frame drawn inside it.
+  const boardTop = insets.top;
+  // Everything the frame would otherwise cover gets pushed in past the rail.
+  const rail = Math.round(screenW * RAIL);
+  const railTop = boardTop + rail + space.xs;
   const viewColor = (viewedTier && rankColor(viewedTier)) || CLUB_INK;
   const viewLabel = viewedTier ? viewedTier.label : 'Clubs';
   const rankLocked = !isClubView && viewRankTier > ownTier;
@@ -877,7 +912,7 @@ export default function GlobalMapScreen({ route, navigation }) {
         {rankLocked && !planning ? (
           <View
             pointerEvents="none"
-            style={[styles.lockedWrap, { top: insets.top + space.sm, bottom: space.sm }]}
+            style={[styles.lockedWrap, { top: boardTop }]}
           >
             <View style={styles.lockedScrim} />
             <View style={styles.lockedBody}>
@@ -903,151 +938,210 @@ export default function GlobalMapScreen({ route, navigation }) {
 
             The frame IS the rank: each tier's own drawn frame is what holds
             the board, so scouting up the ladder visibly changes what you are
-            looking through. `none` has no art and falls back to the plain NB
-            stroke, whose colour follows the scheme because the basemap does.
+            looking through. The clubs view has no rank and falls back to the
+            plain NB stroke, whose colour follows the scheme because the
+            basemap does.
 
             Stretched, not nine-sliced — see the note in config/mapFrameArt.
 
-            The TOP is inset past the notch so the frame clears it. The bottom
-            is only the plain gutter: this screen sits in a material top-tab
+            ON THE EDGES. It used to hold a gutter off every side and the art
+            it drew spent 10-13% of its own width on the band, so the board
+            gave up a wide margin of map before the frame had drawn anything.
+            The rail sits on the screen's edge now and the art behind it is
+            half the weight; the only inset left is the top one, which the
+            clock and the notch require.
+
+            The bottom is flush: this screen sits in a material top-tab
             navigator, which (unlike bottom-tabs) never re-provides
             SafeAreaInsetsContext, so `insets.bottom` here is still the raw
             device inset even though the scene already ends above the tab dock
             — and that dock has already spent the inset on its own padding.
-            Adding it again left ~42pt of dead space under the frame against
-            8pt at the sides. */}
-        {frameArt ? (
-          <Image
-            pointerEvents="none"
-            source={frameArt}
-            style={[styles.mapFrame, { top: insets.top + space.sm, bottom: space.sm }]}
-            resizeMode="stretch"
-            fadeDuration={0}
-            accessible={false}
-          />
-        ) : (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.mapFrameStroke,
-              { top: insets.top + space.sm, bottom: space.sm, borderColor: nbInk(scheme) },
-            ]}
-          />
-        )}
 
-        {/* One map tool rail. Grouping heat, layers and recentering keeps three
-            equal controls in one predictable place instead of scattering one
-            button near the tab bar and two mismatched buttons at the top. */}
-        <View style={[styles.topControls, { top: insets.top + space.md }]}>
-          <TouchableOpacity
-            style={[styles.controlButton, heatOn && { backgroundColor: colors.warn }]}
-            onPress={() => setHeatOn((v) => !v)}
-            accessibilityRole="button"
-            accessibilityLabel="Toggle contested zones"
+            A CHANGE OF FRAME IS A MOMENT. Scouting the ladder is the one place
+            in the app where the thing you are looking through is what changed,
+            and a frame that simply blinks from wood to bronze reads as a
+            re-render. The outgoing frame dissolves while the incoming one
+            settles into place from the direction it was scouted in — up the
+            ladder it comes down onto the board from slightly larger, down the
+            ladder it grows into it. Both sit behind `reduce`. */}
+        <View pointerEvents="none" style={[styles.board, { top: boardTop }]}>
+          <Animated.View
+            key={frameKey}
+            style={StyleSheet.absoluteFill}
+            entering={reduce ? undefined : FadeIn.duration(280)}
+            exiting={reduce ? undefined : FadeOut.duration(220)}
           >
-            <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={() => setLayersOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Map layers"
-            hitSlop={8}
-          >
-            <AppIcon name="layers" size={30} />
-            {/* A dot rather than a badge: the rail is 48pt of icon and a
-                number on it would be unreadable. It only says "this is not
-                showing the plain board", which is the thing worth knowing. */}
-            {layerKey !== 'all' ? (
-              <View style={[styles.layerDot, { backgroundColor: activeLayer.tint || colors.text }]} />
-            ) : null}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.controlButton, planning && { backgroundColor: GOLD }]}
-            onPress={() => (planning ? closePlanner() : openPlanner())}
-            accessibilityRole="button"
-            accessibilityLabel={planning ? 'Close territory planner' : 'Plan a run'}
-            hitSlop={8}
-          >
-            <AppIcon name="route" size={30} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={locateMe}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Center map on my location"
-            hitSlop={8}
-          >
-            <AppIcon name="locate" size={30} />
-          </TouchableOpacity>
+            {/* Pop fires on mount, and every frame here IS a mount — the key
+                above is what makes the swap a swap. `from` past 1 arrives
+                shrinking, under 1 arrives growing. */}
+            <Pop
+              trigger={frameKey}
+              from={stepDirRef.current < 0 ? 0.95 : 1.05}
+              style={StyleSheet.absoluteFill}
+            >
+              {frameArt ? (
+                <Image
+                  source={frameArt}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="stretch"
+                  fadeDuration={0}
+                  accessible={false}
+                />
+              ) : (
+                <View style={[styles.mapFrameStroke, { borderColor: nbInk(scheme) }]} />
+              )}
+            </Pop>
+          </Animated.View>
         </View>
 
-        {/* Rank scope selector. The board shows only the land of runners in the
-            chosen tier — yours by default. Arrows scout adjacent tiers; the
-            centre opens the explainer. A locked note appears when scouting a
-            tier above your own. Hidden while planning, which owns the board.
-            `box-none` so only the pill and its buttons take touches. */}
-        {!planning ? (
-          <View pointerEvents="box-none" style={[styles.rankBar, { top: insets.top + space.md }]}>
-            <View style={[styles.rankPill, { borderColor: nbInk(scheme), backgroundColor: colors.card }]}>
-              <TouchableOpacity
-                onPress={() => stepRank(-1)}
-                disabled={atFirstTier}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Scout a lower rank"
-                style={[styles.rankArrow, atFirstTier && styles.rankArrowOff]}
-              >
-                <ChevronLeft size={20} color={colors.text} strokeWidth={2.75} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.rankCenter}
-                onPress={() => setRankInfoOpen(true)}
-                hitSlop={6}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isClubView
-                    ? 'Viewing the clubs board, every rank. Learn how the ranked map works'
-                    : `Viewing ${viewLabel} rank${rankLocked ? ', locked' : ''}. Learn how the ranked map works`
-                }
-              >
-                {/* The clubs view wears the club glyph where a rank wears its
-                    frame — the two are alternatives on the same selector, so
-                    the slot is the same size and in the same place either way. */}
-                {viewedTier ? (
-                  <RankMark tier={viewedTier} />
-                ) : (
-                  <View style={styles.clubMark}>
-                    <Users size={22} color={CLUB_INK} strokeWidth={2.5} />
+        {/* One right-side dropdown for the whole map. Rank used to stretch
+            across the board while four icon-only actions formed a second
+            control system beside it. The trigger below keeps every action in
+            the same predictable place, and the open panel gives each one a
+            name. Rank remains a stepper rather than being buried in an
+            explainer: lower and higher tiers are still one tap away. */}
+        {actionsOpen ? (
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            onPress={() => setActionsOpen(false)}
+            activeOpacity={1}
+            accessibilityRole="button"
+            accessibilityLabel="Close map actions"
+          />
+        ) : null}
+        <View style={[styles.mapActions, { top: railTop, right: rail + space.xs }]}>
+          <TouchableOpacity
+            style={styles.actionsTrigger}
+            onPress={() => setActionsOpen((open) => !open)}
+            accessibilityRole="button"
+            accessibilityLabel="Map actions"
+            accessibilityState={{ expanded: actionsOpen }}
+          >
+            <MoreHorizontal size={23} color={colors.text} strokeWidth={2.8} />
+            <ChevronDown
+              size={14}
+              color={colors.textMuted}
+              strokeWidth={2.8}
+              style={{ transform: [{ rotate: actionsOpen ? '180deg' : '0deg' }] }}
+            />
+          </TouchableOpacity>
+
+          {actionsOpen ? (
+            <View style={styles.actionsPanel}>
+              <View style={styles.rankMenu}>
+                <TouchableOpacity
+                  onPress={() => stepRank(-1)}
+                  disabled={atFirstTier}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scout a lower rank"
+                  style={[styles.rankStep, atFirstTier && styles.actionOff]}
+                >
+                  <ChevronLeft size={22} color={colors.text} strokeWidth={3} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.rankChoice}
+                  onPress={() => {
+                    setActionsOpen(false);
+                    setRankInfoOpen(true);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isClubView
+                      ? 'Viewing the clubs board, every rank. Learn how the ranked map works'
+                      : `Viewing ${viewLabel} rank${rankLocked ? ', locked' : ''}. Learn how the ranked map works`
+                  }
+                >
+                  {viewedTier ? (
+                    <RankMark tier={viewedTier} />
+                  ) : (
+                    <View style={styles.clubMark}>
+                      <Users size={22} color={colors.text} strokeWidth={2.6} />
+                    </View>
+                  )}
+                  <View style={styles.rankChoiceText}>
+                    <Text style={[type.labelSm, { color: colors.textMuted }]}>Rank</Text>
+                    <Text style={[type.bodySmBold, { color: viewColor }]} numberOfLines={1}>
+                      {viewLabel}
+                    </Text>
                   </View>
-                )}
-                {/* The view, said in its own colour. On a fixed dark chip
-                    rather than on the pill: half the ladder is a pale metal
-                    (silver, platinum, the wood brown going the other way), and
-                    those cannot all clear a light card. A constant dark
-                    backing lets every tier keep its actual hue, which is the
-                    whole point of colouring it. */}
-                <View style={styles.rankNameChip}>
-                  <Text style={[type.captionMedium, styles.rankName, { color: viewColor }]} numberOfLines={1}>
-                    {viewLabel}
-                  </Text>
-                </View>
-                {rankLocked ? <Lock size={13} color={colors.textDim} strokeWidth={2.75} /> : null}
-              </TouchableOpacity>
+                  {rankLocked ? <Lock size={15} color={colors.textMuted} strokeWidth={2.6} /> : null}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => stepRank(1)}
+                  disabled={atLastTier}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scout a higher rank"
+                  style={[styles.rankStep, atLastTier && styles.actionOff]}
+                >
+                  <ChevronRight size={22} color={colors.text} strokeWidth={3} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={[styles.actionDivider, { backgroundColor: colors.border }]} />
+
               <TouchableOpacity
-                onPress={() => stepRank(1)}
-                disabled={atLastTier}
-                hitSlop={10}
+                style={[styles.actionRow, heatOn && { backgroundColor: colors.warn }]}
+                onPress={() => {
+                  setHeatOn((value) => !value);
+                  setActionsOpen(false);
+                }}
                 accessibilityRole="button"
-                accessibilityLabel="Scout a higher rank"
-                style={[styles.rankArrow, atLastTier && styles.rankArrowOff]}
+                accessibilityLabel="Toggle contested zones"
               >
-                <ChevronRight size={20} color={colors.text} strokeWidth={2.75} />
+                <View style={styles.actionIcon}>
+                  <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2.4} />
+                </View>
+                <Text style={[type.bodySmBold, { color: heatOn ? '#fff' : colors.text }]}>Contested zones</Text>
+                {heatOn ? <Text style={[type.labelSm, styles.actionState, { color: '#fff' }]}>On</Text> : null}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => {
+                  setActionsOpen(false);
+                  setLayersOpen(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Map layers"
+              >
+                <View style={styles.actionIcon}><AppIcon name="layers" size={27} /></View>
+                <Text style={[type.bodySmBold, { color: colors.text }]}>Map layers</Text>
+                {layerKey !== 'all' ? (
+                  <View style={[styles.layerDot, { backgroundColor: activeLayer.tint || colors.text }]} />
+                ) : null}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionRow, planning && { backgroundColor: GOLD }]}
+                onPress={() => {
+                  setActionsOpen(false);
+                  if (planning) closePlanner(); else openPlanner();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={planning ? 'Close territory planner' : 'Plan a run'}
+              >
+                <View style={styles.actionIcon}><AppIcon name="route" size={27} /></View>
+                <Text style={[type.bodySmBold, { color: planning ? '#0B0B0F' : colors.text }]}>
+                  {planning ? 'Close planner' : 'Plan a run'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => {
+                  setActionsOpen(false);
+                  locateMe();
+                }}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Center map on my location"
+              >
+                <View style={styles.actionIcon}><AppIcon name="locate" size={27} /></View>
+                <Text style={[type.bodySmBold, { color: colors.text }]}>My location</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
 
         {/* THE DRAWING SURFACE. Absolutely filled over the map, mounted only
             while draw mode is on, so nothing intercepts a tap on a territory
@@ -1242,20 +1336,21 @@ export default function GlobalMapScreen({ route, navigation }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  // The board frame. Two forms: the rank's drawn art, and the plain stroke the
-  // `none` tier falls back to. Both are absolutely positioned over the board
-  // and both get their top/bottom inline from the safe-area insets.
-  mapFrame: {
+  // THE BOARD. The rect the frame is drawn into: the screen's three hard
+  // edges, with only `top` passed inline from the safe-area inset. No
+  // width/height — the four edges size it, and the art is stretched into
+  // whatever that comes out as.
+  board: {
     position: 'absolute',
-    left: space.sm,
-    right: space.sm,
-    // No width/height: `left`/`right`/`top`/`bottom` size it, and the art is
-    // stretched into whatever that comes out as.
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
+  // What the clubs view is held in, having no rank and so no drawn frame. It
+  // fills the same rect the art would, so stepping between the two moves
+  // nothing.
   mapFrameStroke: {
-    position: 'absolute',
-    left: space.sm,
-    right: space.sm,
+    ...StyleSheet.absoluteFillObject,
     borderWidth: NB.stroke,
     borderRadius: nbRadius.lg,
   },
@@ -1264,22 +1359,46 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   fill: { flex: 1 },
   center: { flex: 1, backgroundColor: colors.bg, justifyContent: 'center', alignItems: 'center', padding: space.xl },
 
-  topControls: {
+  mapActions: {
     position: 'absolute',
-    right: space.gutter,
-    backgroundColor: colors.card,
-    borderRadius: radius.pill,
-    padding: 4,
-    gap: 2,
-    ...shadow.raised,
+    width: ACTIONS_W,
+    alignItems: 'flex-end',
   },
-  controlButton: {
-    width: 48,
+  actionsTrigger: {
+    width: 52,
     height: 48,
-    borderRadius: 24,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
+    backgroundColor: colors.card,
+    borderRadius: radius.pill,
+    ...shadow.raised,
   },
+  actionsPanel: {
+    width: ACTIONS_W,
+    marginTop: space.xs,
+    backgroundColor: colors.card,
+    borderRadius: radius.card,
+    padding: space.xs,
+    ...shadow.raised,
+  },
+  rankMenu: { minHeight: 56, flexDirection: 'row', alignItems: 'center' },
+  rankStep: { width: 36, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  rankChoice: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  rankChoiceText: { flex: 1, minWidth: 0 },
+  actionOff: { opacity: 0.28 },
+  actionDivider: { height: StyleSheet.hairlineWidth, marginVertical: space.xs },
+  actionRow: {
+    minHeight: 48,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+  },
+  actionIcon: { width: 28, alignItems: 'center', justifyContent: 'center' },
+  actionState: { marginLeft: 'auto' },
 
   noticePill: {
     position: 'absolute',
@@ -1293,60 +1412,14 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
 
   locationDot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2.5, borderColor: colors.card },
   layerDot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
+    marginLeft: 'auto',
     width: 8,
     height: 8,
     borderRadius: 4,
   },
-
-  // Rank scope selector — a centred NB pill at the top of the board. The
-  // wrapping bar spans the width but takes no touches (`box-none` on the view)
-  // so panning the map around it still works; only the pill reacts.
-  rankBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    gap: 6,
-  },
-  rankPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: NB.stroke,
-    borderRadius: radius.pill,
-    paddingVertical: 5,
-    paddingHorizontal: 6,
-    gap: 2,
-    ...shadow.raised,
-  },
-  rankArrow: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  rankArrowOff: { opacity: 0.28 },
-  // A constant dark chip, not a themed surface: it exists so a pale tier
-  // colour has something to read against, and following the scheme would take
-  // that away in light mode, which is the case that needs it.
-  rankNameChip: {
-    backgroundColor: '#14141A',
-    borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  rankName: { textTransform: 'uppercase', letterSpacing: 0.4 },
-  // The clubs glyph stands in the same box a tier's frame occupies, so the
-  // pill does not resize when you step off the ladder onto it.
+  // The clubs glyph, in the explainer's heading. The selector says "Clubs" in
+  // the same type every rank is said in and needs no mark of its own.
   clubMark: { width: RANK_MARK, height: RANK_MARK, alignItems: 'center', justifyContent: 'center' },
-  rankCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: 6,
-    // Was 96 — the width the tier's NAME needed. The mark is a fixed square,
-    // so the pill is now the same size on every rank instead of resizing
-    // itself between "Wood" and "Prismatic" as you scout.
-    minWidth: RANK_MARK,
-    justifyContent: 'center',
-  },
   rankInfoHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
 
   // The locked board. The scrim is a separate absolutely-filled child rather
@@ -1354,8 +1427,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // fading the lock and the type sitting on it.
   lockedWrap: {
     position: 'absolute',
-    left: space.sm,
-    right: space.sm,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: nbRadius.lg,

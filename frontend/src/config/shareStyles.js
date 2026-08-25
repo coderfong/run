@@ -21,6 +21,12 @@
 // posting or sending it. Somebody has to see the thing on their own run to
 // want it, and a blurred thumbnail sells nothing.
 //
+// "GOLD" IS NOT HERE ANY MORE. It was a centred card in the gold accent, which
+// is a swatch and a placement — two controls a runner already has — sold as a
+// third PRO style. Cut 2026-08-25: a preset that adds nothing the PRO looks
+// beside it do not already do just pads the row and makes the padlock look
+// greedy.
+//
 // STYLES THAT ARE NOT HERE. "Animated", "Season Recap" and "Territory
 // Takeover" were all asked for and none of them is a preset: the first needs a
 // video encoder, the second needs season history the card is never given, the
@@ -103,17 +109,6 @@ export const SHARE_STYLES = [
     // battle" card for a quiet solo jog is a lie about the run, and the
     // runner's followers are the ones being told it.
     availableFor: (run) => Number(run?.stolen_m2 || 0) > 0 || Number(run?.rivals_taken || 0) > 0,
-  },
-  {
-    key: 'gold',
-    label: 'Gold',
-    pro: true,
-    preset: {
-      accent: '#F5B32C',
-      align: 'center',
-      showRoute: true,
-      showCharacter: true,
-    },
   },
 ];
 

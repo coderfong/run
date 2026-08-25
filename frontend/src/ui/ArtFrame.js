@@ -295,12 +295,44 @@ function CapLayer({ spec, source, width, height, scale, tint, opacity }) {
   if (!imageSource) return null;
   return (
     <Image
+      // REMOUNT WHEN THE GEOMETRY MOVES. `capInsets` is applied in exactly one
+      // place on Fabric — `didReceiveImage:`, as the loaded UIImage is turned
+      // resizable — and `updateProps:` forwards only `resizeMode` and
+      // `tintColor`. A reload is the only thing that re-applies it, and a
+      // reload needs a NEW image source, which for Fabric means a new `uri`:
+      // `ImageSource::operator==` ties on type and uri alone, so the density
+      // and the size below are invisible to it. Every one of those numbers
+      // moves with `fitted`, so keying on `fitted` is what makes the two agree
+      // — without it, a box that grows or shrinks across the corner-fit clamp
+      // keeps the corners it was first drawn with. Rare, and free: the key is
+      // constant for as long as the geometry is.
+      key={geometry.fitted}
       source={imageSource}
       capInsets={geometry.capInsets}
       resizeMode="stretch"
       fadeDuration={0}
       pointerEvents="none"
-      style={[StyleSheet.absoluteFill, { opacity }, tint ? { tintColor: tint } : null]}
+      style={[
+        StyleSheet.absoluteFill,
+        // THE BOX, RESTATED — and it has to be, however redundant it looks
+        // next to `absoluteFill`. RN's Image puts the SOURCE's declared point
+        // size in FRONT of the caller's style:
+        //
+        //   style = [{width, height}, styles.base, props.style]   Image.ios.js
+        //
+        // `absoluteFill` is only `position` plus four offsets, so it has no
+        // width or height to overwrite that with, and on an absolutely
+        // positioned node an explicit dimension beats `right`/`bottom`. The
+        // frame therefore drew at the DRAWING's own fitted size — tens of
+        // points — pinned to the top left of whatever it was meant to wrap.
+        //
+        // The slice path never showed this because every window states its own
+        // width and height after the same absoluteFill. This one is the whole
+        // layer, so it states the whole box.
+        { width, height },
+        { opacity },
+        tint ? { tintColor: tint } : null,
+      ]}
     />
   );
 }

@@ -20,7 +20,7 @@ import ReactionBar, { ReactionTrigger } from '../components/ReactionBar';
 import { useRunReactions } from '../hooks/useRunReactions';
 import AppIcon from '../components/AppIcon';
 import TerritoryInsights from '../components/TerritoryInsights';
-import { ProLockedSection } from '../components/ProLock';
+import { ProFrosted, ProLockedSection } from '../components/ProLock';
 import { openSafetyActions } from '../utils/safety';
 import { longDateTime, sinceServer } from '../utils/time';
 
@@ -289,6 +289,22 @@ export default function RunDetailScreen({ navigation, route }) {
           feature="run_splits"
           title="Splits"
           blurb="Your per kilometre pace, fastest to slowest."
+          // The table itself, times frosted out — the same preview the result
+          // screen shows, so a locked run reads the same a week later as it
+          // did on the day. Four rows, or a long run walls the page off.
+          peek={
+            <View>
+              {d.splits.slice(0, 4).map((s) => (
+                <View key={s.km} style={styles.splitRow}>
+                  <Text style={styles.splitKm}>{s.km} km</Text>
+                  <View style={styles.track}>
+                    <View style={[styles.bar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: withAlpha(c.stroke, 0.5) }]} />
+                  </View>
+                  <ProFrosted style={styles.splitPace}>{paceStr(s.seconds)}</ProFrosted>
+                </View>
+              ))}
+            </View>
+          }
           style={{ marginTop: space.xl }}
         >
           {/* marginTop lives on the Card too, not only on the wrapper: when

@@ -13,11 +13,18 @@ import { darkColors as colors } from './dark';
 
 export const fonts = {
   hero: 'Poppins_900Black',
-  // Condensed athletic caps. Poppins Black is round and playful, which reads as
-  // kiddy on the share card people post to their story; Anton is the tall,
-  // narrow poster face Strava and race bibs use, so the exported card looks
-  // like sports kit rather than a toy. Used ONLY on the share card for now.
-  poster: 'Anton_400Regular',
+  // The share card's own face, and only the share card's: the three enormous
+  // numbers, their units, and the wordmark under them.
+  //
+  // Anton until 2026-08-25. Poppins Black was the first attempt and read as
+  // kiddy on something people post to their story; Anton fixed that but is a
+  // CONDENSED poster face, and side by side with the card everybody compares
+  // this to the numbers were visibly narrower and lighter than the reference.
+  // Inter Black is the heavy neutral grotesque that reference actually uses:
+  // wide digits, small counters, nothing stylised. It is also a weight of a
+  // family the app already loads, so the switch adds no new font to the
+  // bundle — it takes one away.
+  poster: 'Inter_900Black',
   display: 'SpaceGrotesk_700Bold',
   displayMedium: 'SpaceGrotesk_500Medium',
   body: 'Inter_400Regular',

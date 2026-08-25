@@ -51,8 +51,9 @@ const RUN = {
   durationS: 3550,
   areaM2: 77000,
   elevationM: 42,
+  climbPerKm: 4.1,
   bestKmSeconds: 331,
-  avgSpeedKmh: 10.5,
+  consistencySeconds: 18,
   claimed: true,
 };
 
@@ -163,7 +164,7 @@ describe('the run share card', () => {
       mount(
         <RunShareCard
           width={300}
-          run={{ distanceM: '10310', durationS: '3550', avgSpeedKmh: '10.5' }}
+          run={{ distanceM: '10310', durationS: '3550', consistencySeconds: '18' }}
           path={[PATH[0], null, { latitude: undefined, longitude: 103 }, PATH[1]]}
           rings={[[RINGS[0][0], null, RINGS[0][1], RINGS[0][2]]]}
         />
@@ -176,6 +177,22 @@ describe('the run share card', () => {
       expect(stat.value).toEqual(expect.any(String));
       expect(stat.value).not.toMatch(/NaN|Infinity|undefined/);
     }
+  });
+
+  test('offers useful PRO insights instead of average speed', () => {
+    const stats = availableStats(RUN);
+    const keys = stats.map((stat) => stat.key);
+    expect(keys).toEqual(expect.arrayContaining(['bestKm', 'elevation', 'climbPerKm', 'consistency']));
+    expect(keys).not.toContain('avgSpeed');
+    expect(stats.find((stat) => stat.key === 'consistency')).toMatchObject({
+      value: '±0:18',
+      unit: '/km',
+    });
+  });
+
+  test('a perfectly even run can share a zero-variation consistency', () => {
+    const stat = availableStats({ consistencySeconds: 0 }).find((item) => item.key === 'consistency');
+    expect(stat).toMatchObject({ value: '±0:00', unit: '/km' });
   });
 
   test('a run with nothing measured still offers distance and time only', () => {

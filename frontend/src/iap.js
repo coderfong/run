@@ -147,10 +147,10 @@ export async function storePurchase(productId) {
 
 /**
  * Store-formatted prices for a set of product ids, keyed by id — e.g.
- * `{ premium_pass: '$4.99' }`, already localized to the storefront the
- * device is signed into. Callers should fall back to a static price on
- * failure (offline, store unreachable) rather than blocking the sheet from
- * opening at all.
+ * `{ paser_pro_monthly: 'S$4.98' }`, already localized to the storefront the
+ * device is signed into, and always naming its currency (see `withCurrency`).
+ * Callers should fall back to a static price on failure (offline, store
+ * unreachable) rather than blocking the sheet from opening at all.
  *
  * Pass `{ subscription: true }` for PRO. Subscriptions live in a separate
  * catalogue on both stores, so asking for them as 'in-app' returns nothing
@@ -162,9 +162,38 @@ export async function fetchProductPrices(skus, { subscription = false } = {}) {
   await ensureConnection();
   const products = await fetchProducts({ skus, type: subscription ? 'subs' : 'in-app' });
   const out = {};
-  for (const p of products || []) out[p.id] = p.displayPrice;
+  for (const p of products || []) {
+    const shown = withCurrency(p);
+    if (shown) out[p.id] = shown;
+  }
   if (__DEV__) logPriceLookup(skus, products, out);
   return out;
+}
+
+/**
+ * The store's own price string, guaranteed to say which currency it is in.
+ *
+ * Most storefronts format with a bare symbol — `$2.99` in the US, `$4.98` in
+ * Singapore — and on an app sold only in Singapore a bare `$` reads as SGD
+ * whatever it actually is. That is not academic: a phone signed into a US
+ * Apple Account showed `$2.99` on the PRO paywall while App Store Connect
+ * charges S$4.98 here, and on screen the two are indistinguishable.
+ *
+ * So when the price names no currency of its own, the ISO code is appended:
+ * `$2.99 USD`, `$4.98 SGD`. A string that already carries one (`S$4.98`,
+ * `SGD 4.98`, `US$2.99`) is left exactly as the store wrote it, which is
+ * what any letter in it means.
+ *
+ * The number is never rewritten. Apple bills what App Store Connect says for
+ * the storefront the buyer is signed into; this only stops the app from
+ * implying a currency other than the one being charged.
+ */
+function withCurrency(product) {
+  const shown = product?.displayPrice;
+  if (!shown) return null;
+  const code = product.currency;
+  if (!code || /[a-z]/i.test(shown)) return shown;
+  return `${shown} ${code}`;
 }
 
 /**

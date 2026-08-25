@@ -125,17 +125,19 @@ in the storefront the ACCOUNT is signed into, not the region the app is sold in,
 so those were the US rows of the same table. That is correct behaviour, not a
 pricing bug, and it is why the US column is worth nothing here. **Test the
 paywall on an Apple Account whose storefront is Singapore**, or the number on
-screen is answering a question nobody asked.
+screen is answering a question nobody asked. The paywall now labels that answer
+with its currency (`$2.99 USD`), so a US test account can no longer be mistaken
+for a Singapore price.
 
 Two things follow for the metadata. The Description must quote the **SGD**
 price, because that is the only price any buyer of this app can see. And the
-hardcoded fallbacks in `config/pro.js` and `BuyEnergySheet.js` are US dollar
-tiers: shown to a Singapore buyer whose store lookup fails, beside a `$` that
-reads as SGD, they advertise a price Apple does not charge. Bring them to the
-SGD prices, or the fallback is a false claim rather than a safety net.
+hardcoded fallbacks must be the SGD prices, not the US tiers the products were
+planned at: shown to a Singapore buyer whose store lookup fails, beside a `$`
+that reads as SGD, a US tier advertises a price Apple does not charge. PRO's
+two are SGD as of 2026-08-25.
 
-The consumable prices are in the same position and have never been checked
-against the live store at all.
+The seven consumables in `BuyEnergySheet.js` are still US tiers and have never
+been checked against the live store at all.
 
 Both plans MUST be in the SAME subscription group, or a runner switching plans
 is billed for both. Each needs a localized display name, description, and a
@@ -165,12 +167,21 @@ Consumables (no subscription group, `restore` not required):
 
 Both sheets ask the store for the real, storefront-localized price when they
 open and fall back to a hardcoded string when that answer is empty
-(`fallbackPrice` in `config/pro.js`, `price` in `BuyEnergySheet.js`). Those
-fallbacks are US dollar tiers while the app sells only in Singapore, so today
-they are **wrong for every buyer** the moment a lookup fails — see the SGD note
-above. Whatever they are set to, they only agree with the store by maintenance:
-change a price in App Store Connect and the fallback is a lie until it is
-changed here too, and in the Description.
+(`fallbackPrice` in `config/pro.js`, `price` in `BuyEnergySheet.js`). PRO's two
+fallbacks are the SGD prices App Store Connect charges; **the seven consumables
+are still US tiers** while the app sells only in Singapore, so a lookup that
+fails there advertises a price Apple does not charge. Whatever they are set to,
+they only agree with the store by maintenance: change a price in App Store
+Connect and the fallback is a lie until it is changed here too, and in the
+Description.
+
+Whatever the store does answer is now shown with its currency named.
+`withCurrency` in `iap.js` appends the ISO code to any price the storefront
+formatted with a bare symbol, so the US answer reads `$2.99 USD` and the
+Singapore one reads `$4.98 SGD` instead of both reading as plain `$`. It never
+changes the number, and a string the store already made explicit (`S$4.98`) is
+left alone. This is what stops the paragraph above this one from being a thing
+you have to remember while looking at a paywall.
 
 An empty answer looks exactly like a working one on screen, so diagnose it
 rather than guessing:

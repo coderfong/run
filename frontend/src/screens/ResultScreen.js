@@ -53,7 +53,7 @@ import useClaimSequence from '../components/claim/useClaimSequence';
 import PaserbyReveal from '../components/paserby/PaserbyReveal';
 import RunShareSheet from '../components/share/RunShareSheet';
 import TerritoryInsights from '../components/TerritoryInsights';
-import { ProLockedSection, ProInlineLock } from '../components/ProLock';
+import { ProFrosted, ProLockedSection, ProInlineLock } from '../components/ProLock';
 import { useProEntitlement } from '../pro/ProProvider';
 import XpProgress from '../components/XpProgress';
 import { Image } from '../ui/image';
@@ -250,6 +250,20 @@ function paceStr(seconds) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// Standard deviation across completed kilometre splits. Average speed is just
+// pace with the units inverted; this says something the headline pace cannot:
+// how evenly the runner held it. One split is not a pattern, so short runs do
+// not get a made-up consistency score.
+function paceConsistencySeconds(splits) {
+  if (!splits || splits.length < 2) return null;
+  const mean = splits.reduce((sum, split) => sum + split.seconds, 0) / splits.length;
+  const variance = splits.reduce(
+    (sum, split) => sum + (split.seconds - mean) ** 2,
+    0
+  ) / splits.length;
+  return Math.round(Math.sqrt(variance));
+}
+
 function formatPace(distanceM, durationS) {
   if (!distanceM || distanceM < 50 || !durationS) return '·';
   return `${paceStr((durationS / (distanceM / 1000)))} /km`;
@@ -275,20 +289,29 @@ function QuietStat({ label, value, unit, accent }) {
   );
 }
 
-function Splits({ splits, accent }) {
+/**
+ * `bare`     drop the section heading and its top margin. For the locked peek,
+ *            where the lock card already carries the title.
+ * `frosted`  render the paces as unreadable smears. The rows, the kilometre
+ *            numbers and the bar shapes stay sharp, so a locked runner can see
+ *            exactly what the table IS — a pace per kilometre, longest bar
+ *            slowest — without being handed a single one of the times.
+ */
+function Splits({ splits, accent, bare, frosted }) {
   const styles = useThemedStyles(makeStyles);
   if (!splits.length) return null;
   const slowest = Math.max(...splits.map((s) => s.seconds));
+  const Pace = frosted ? ProFrosted : Text;
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Splits</Text>
+    <View style={bare ? undefined : styles.section}>
+      {!bare && <Text style={styles.sectionTitle}>Splits</Text>}
       {splits.map((s) => (
         <View key={s.km} style={styles.splitRow}>
           <Text style={styles.splitKm}>{s.km} km</Text>
           <View style={styles.splitBarTrack}>
             <View style={[styles.splitBar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: accent }]} />
           </View>
-          <Text style={styles.splitPace}>{paceStr(s.seconds)}</Text>
+          <Pace style={styles.splitPace}>{paceStr(s.seconds)}</Pace>
         </View>
       ))}
     </View>
@@ -304,7 +327,7 @@ export default function ResultScreen({ navigation, route }) {
   const { equipped } = useAvatar();
   const { user } = useAuth();
   const { trailGlowColor } = useSettings();
-  // PRO gate for the secondary stat row (best km, elevation, average speed).
+  // PRO gate for the secondary stat row (best km, climbing, consistency).
   // Read here without side effects — the impression fires from ProInlineLock,
   // the one surface that actually renders when this is true. `canShowPro &&
   // !isPro` is exactly "locked": a build that cannot sell PRO leaves the row
@@ -825,13 +848,44 @@ export default function ResultScreen({ navigation, route }) {
   // The rest of the run, beyond the three numbers this screen always had.
   const elevation = useMemo(() => elevationChangeM(path), [path]);
   const elevationM = elevation.gain;
-  const elevationLossM = elevation.loss;
   const bestKmSeconds = useMemo(
     () => (splits.length ? Math.min(...splits.map((s) => s.seconds)) : null),
     [splits]
   );
-  const avgSpeedKmh =
-    result.duration_s > 0 ? (result.distance_m / 1000) / (result.duration_s / 3600) : null;
+  const consistencySeconds = useMemo(() => paceConsistencySeconds(splits), [splits]);
+  const climbPerKm =
+    elevationM != null && result.distance_m > 0
+      ? elevationM / (result.distance_m / 1000)
+      : null;
+  // The second stat row, as data rather than as four hand-written JSX blocks.
+  // Both branches of the PRO gate read this: unlocked it becomes QuietStats,
+  // locked it becomes the frosted preview inside the lock, and they cannot
+  // drift apart into a lock that advertises stats the feature does not have.
+  const advancedStats = useMemo(
+    () => [
+      {
+        label: 'Best km',
+        value: bestKmSeconds ? paceStr(bestKmSeconds) : '·',
+        unit: bestKmSeconds ? '/km' : undefined,
+      },
+      {
+        label: 'Elev gain',
+        value: elevationM == null ? '·' : String(Math.round(elevationM)),
+        unit: elevationM == null ? undefined : 'm',
+      },
+      {
+        label: 'Climb / km',
+        value: climbPerKm == null ? '·' : String(Math.round(climbPerKm)),
+        unit: climbPerKm == null ? undefined : 'm/km',
+      },
+      {
+        label: 'Consistency',
+        value: consistencySeconds == null ? '·' : `±${paceStr(consistencySeconds)}`,
+        unit: consistencySeconds == null ? undefined : '/km',
+      },
+    ],
+    [bestKmSeconds, elevationM, climbPerKm, consistencySeconds]
+  );
   // Same formula RunningScreen shows live (defaultWeightKg — no per-runner
   // weight is collected), so the number a runner sees mid-run and the one on
   // this recap always agree.
@@ -848,8 +902,9 @@ export default function ResultScreen({ navigation, route }) {
       durationS: result.duration_s,
       areaM2: heroAreaM2,
       elevationM,
+      climbPerKm,
       bestKmSeconds,
-      avgSpeedKmh,
+      consistencySeconds,
       claimed: captured,
     }),
     [
@@ -858,8 +913,9 @@ export default function ResultScreen({ navigation, route }) {
       result.duration_s,
       heroAreaM2,
       elevationM,
+      climbPerKm,
       bestKmSeconds,
-      avgSpeedKmh,
+      consistencySeconds,
       captured,
     ]
   );
@@ -1604,7 +1660,7 @@ export default function ResultScreen({ navigation, route }) {
           <QuietStat label="Duration" value={formatDuration(result.duration_s)} />
           <QuietStat label="Calories" value={String(caloriesKcal)} unit="kcal" />
         </View>
-        {/* The DEEPER read of the run — best split, elevation, average speed.
+        {/* The DEEPER read of the run — best split, climbing, consistency.
             The four headline numbers above (distance, pace, duration,
             calories) stay free for everyone; this second row is PRO depth. It
             is a richer view, not an advantage: knowing your elevation gain
@@ -1615,31 +1671,19 @@ export default function ResultScreen({ navigation, route }) {
           <ProInlineLock
             context="run_insights"
             feature="run_stats"
-            label="Best km · Elevation · Avg speed"
-            style={{ marginTop: space.sm }}
+            label="Best km, climbing and pace consistency"
+            // The row's OWN numbers, frosted. Same four values the unlocked
+            // branch below renders, off the same list — a lock that showed a
+            // different set of names from the thing it unlocks is the bug this
+            // shares a source to avoid.
+            preview={advancedStats}
+            style={{ marginTop: space.md }}
           />
         ) : (
           <View style={[styles.quietRow, styles.quietRowTight]}>
-            <QuietStat
-              label="Best km"
-              value={bestKmSeconds ? paceStr(bestKmSeconds) : '·'}
-              unit={bestKmSeconds ? '/km' : undefined}
-            />
-            <QuietStat
-              label="Elev gain"
-              value={elevationM == null ? '·' : String(Math.round(elevationM))}
-              unit={elevationM == null ? undefined : 'm'}
-            />
-            <QuietStat
-              label="Elev loss"
-              value={elevationLossM == null ? '·' : String(Math.round(elevationLossM))}
-              unit={elevationLossM == null ? undefined : 'm'}
-            />
-            <QuietStat
-              label="Avg speed"
-              value={avgSpeedKmh ? avgSpeedKmh.toFixed(1) : '·'}
-              unit={avgSpeedKmh ? 'km/h' : undefined}
-            />
+            {advancedStats.map((s) => (
+              <QuietStat key={s.label} label={s.label} value={s.value} unit={s.unit} />
+            ))}
           </View>
         )}
 
@@ -1662,17 +1706,32 @@ export default function ResultScreen({ navigation, route }) {
                 spinning coin, the number counting into it, and the whole thing
                 popping in on a spring once the XP bar has come to rest. */}
             <Pop trigger={result.run_id} delay={COINS_DELAY}>
-              <HardShadow offset={NB.offsetSm} accent={nbAccents.yellow} radius={nbRadius.sm}>
+              <HardShadow
+                offset={NB.offset}
+                accent={nbAccents.yellow}
+                radius={nbRadius.sm}
+                style={styles.earnDrop}
+              >
                 <View style={styles.earnChip}>
-                  <GameAnimation name="coinSpin" size={26} trigger={result.run_id} />
-                  <CountUpText
-                    value={result.coins_gained}
-                    from={0}
-                    delay={COINS_DELAY}
-                    format={fmtCoins}
-                    style={styles.earnItem}
-                  />
-                  <Text style={styles.earnUnit}>coins</Text>
+                  {/* THE COIN, ON INK. It was a gold coin spinning directly on
+                      the block's gold fill, which is the one background it
+                      cannot be seen against — at 26pt it read as a pale dot
+                      and the payout looked like a plain yellow label. The well
+                      is the darkest thing on the card, so the coin is now the
+                      first thing the eye lands on. */}
+                  <View style={styles.earnCoin}>
+                    <GameAnimation name="coinSpin" size={34} trigger={result.run_id} />
+                  </View>
+                  <View style={styles.earnAmount}>
+                    <CountUpText
+                      value={result.coins_gained}
+                      from={0}
+                      delay={COINS_DELAY}
+                      format={fmtCoins}
+                      style={styles.earnItem}
+                    />
+                    <Text style={styles.earnUnit}>coins</Text>
+                  </View>
                 </View>
               </HardShadow>
             </Pop>
@@ -1773,6 +1832,9 @@ export default function ResultScreen({ navigation, route }) {
             feature="run_splits"
             title="Splits"
             blurb="Your per kilometre pace, fastest to slowest."
+            // The real table, with the times frosted out. Capped at four rows
+            // so a 20 km run does not hand the page a wall of blurred bars.
+            peek={<Splits splits={splits.slice(0, 4)} accent={team.glow} bare frosted />}
             style={{ marginTop: space.xl }}
           >
             <Splits splits={splits} accent={team.glow} />
@@ -1869,7 +1931,15 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // card's content instead of left-aligned like a floating receipt.
   earnRow: {
     flexDirection: 'row',
+    // Stretched, or the card's own centring shrinks this to its content and
+    // `flexWrap` has no width to wrap against.
+    alignSelf: 'stretch',
     alignItems: 'center',
+    justifyContent: 'center',
+    // The block got wider, and the cap note sits beside it. On a narrow phone
+    // the two together are wider than the card, so let the note drop under
+    // rather than squeezing the payout.
+    flexWrap: 'wrap',
     gap: space.md,
     marginTop: space.lg,
   },
@@ -1877,24 +1947,47 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // saturated non-clan colour on the card, and it is spending the deck's
   // yellow the way theme/nb.js says chrome may — this is currency, not
   // territory, so it does not have to be the runner's clan colour.
+  //
+  // Sized like a reward rather than like a chip. At 17pt beside a 44pt hero
+  // area the payout was the smallest number in the card it was supposed to be
+  // the payoff of; it is the second-largest now, and it is the only one on an
+  // inverted ground.
   earnChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.sm,
+    gap: space.md,
     backgroundColor: nbAccents.yellow,
     borderWidth: NB.stroke,
     borderColor: NB.ink,
     borderRadius: nbRadius.sm,
-    paddingLeft: space.sm,
-    paddingRight: space.md,
-    paddingVertical: 6,
+    paddingLeft: 7,
+    paddingRight: space.lg,
+    paddingVertical: 7,
   },
-  earnItem: { ...type.statSm, color: nbTextOn(nbAccents.yellow) },
+  // Reserve for the drop, symmetric so the block stays optically centred in a
+  // card that centres its contents.
+  earnDrop: { marginBottom: NB.offset, marginLeft: NB.offset, marginRight: NB.offset },
+  // The dark well the coin spins in. A circle, because a coin in a rounded
+  // rectangle reads as a token in a slot.
+  earnCoin: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: NB.ink,
+    overflow: 'hidden',
+  },
+  // Number over unit, so the unit does not push the amount off centre and the
+  // amount gets the full height of the block.
+  earnAmount: { alignItems: 'flex-start' },
+  earnItem: { ...type.stat, color: nbTextOn(nbAccents.yellow) },
   earnUnit: {
     ...type.labelSm,
     color: nbTextOn(nbAccents.yellow),
-    letterSpacing: 0.8,
-    opacity: 0.75,
+    letterSpacing: 1.2,
+    opacity: 0.8,
+    marginTop: -2,
   },
   earnCapped: { ...type.caption, color: colors.textDim },
 
