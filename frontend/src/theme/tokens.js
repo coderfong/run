@@ -68,6 +68,26 @@ export function toRgb(color) {
   };
 }
 
+/**
+ * A wash of `color` over `surface`, returned OPAQUE.
+ *
+ * `withAlpha` is the wrong tool whenever anything is drawn behind the box —
+ * and in the neo-brutalist deck something always is: `HardShadow` paints a
+ * solid block the full size of the card and offsets it, so a translucent fill
+ * lets that block through and a "14% accent tint" comes out as near-black. See
+ * the selected plan in BuyProSheet, which is exactly how this was found.
+ *
+ * Same maths, resolved against a known surface instead of deferred to the
+ * compositor. Falls back to the caller's colour if either is unparseable.
+ */
+export function tintOn(surface, color, amount = 0.15) {
+  const base = toRgb(surface);
+  const top = toRgb(color);
+  if (!base || !top) return color;
+  const channel = (from, to) => Math.round(from + (to - from) * amount);
+  return `rgb(${channel(base.r, top.r)},${channel(base.g, top.g)},${channel(base.b, top.b)})`;
+}
+
 /** WCAG relative luminance, 0 (black) to 1 (white). */
 export function luminance(color) {
   const rgb = toRgb(color);
@@ -243,13 +263,19 @@ export const runTuning = {
   minDistanceForLoopM: 80,
   openPathM2PerM: 50,
 
+  // Minimum step for path rebuilds that predate the live filter. What counts
+  // as movement during a run is decided by run/gpsFilter.js instead, where the
+  // floor scales with the fix's own reported accuracy.
   minStepM: 2,
 
   gpsHigh: { timeIntervalMs: 1000, distanceIntervalM: 3 },
   gpsRelaxed: { timeIntervalMs: 3000, distanceIntervalM: 8 },
   closureNearM: 100,
   paceChangeMps: 0.6,
-  modeStablePoints: 4,
+  // Restarting the OS watcher costs a fix or two of settling, so a mode has to
+  // look right for a while before we pay for it. At four points, a stretch of
+  // variable running flipped the watcher every few seconds.
+  modeStablePoints: 8,
 
   gpsGoodM: 10,
   gpsOkM: 25,

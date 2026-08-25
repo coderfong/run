@@ -6,14 +6,29 @@
 //
 // One shared projection for territory + route TOGETHER — fitted separately, a
 // run would float somewhere over a claim it is supposed to sit inside.
+//
+// THE BOX HAS PAPER. It used to be a frame with nothing inside it, which was
+// right when the card underneath was a neutral surface and wrong the day the
+// feed started dealing every run card a flat saturated fill of its own: the
+// route is drawn in the clan colour, the card became the clan colour, and a
+// pink line on a pink card is a blank box. The stat tiles on the same card
+// had already been given white paper for exactly this reason. So this box
+// gets it too, and the route's ink is then judged against THAT rather than
+// against whatever the card happens to be.
 
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Polygon, Polyline } from 'react-native-svg';
 
-import { withAlpha, useTheme, useThemedStyles } from '../theme';
+import { readableInk, withAlpha, useThemedStyles } from '../theme';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
+
+// The box's paper. A FIXED white, not the theme's card colour: this is a
+// drawing on a page, it is dealt onto surfaces the theme does not own (a
+// clan-coloured feed card), and the same run should not be a different
+// picture in dark mode. Matches the stat tiles beside it in FeedCard.
+const PAPER = '#FFFFFF';
 
 // Virtual drawing box; the <Svg> scales it to whatever width it is given,
 // aspect preserved.
@@ -58,7 +73,6 @@ export const svgPoints = (points) => points
  *           measured, not styled; see the note below.
  */
 export default function RouteThumb({ id, rings, path, color, compact = false, style }) {
-  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   // CSS `aspectRatio` used to size this box directly, and on at least some
   // devices it did not resolve against the parent's width the way a sibling
@@ -74,6 +88,10 @@ export default function RouteThumb({ id, rings, path, color, compact = false, st
   const line = (path?.length || 0) >= 2 ? path : null;
   if (!filteredRings.length && !line) return null;
   const boxH = compact ? THUMB_W : THUMB_H;
+  // The run's own colour whenever it can be seen on the paper, and a dark ink
+  // when it cannot — a pale yellow trail glow (ResultScreen passes the team's)
+  // is invisible on white the same way pink was invisible on pink.
+  const ink = readableInk(PAPER, { prefer: color });
   const project = makeProjection([...filteredRings, ...(line ? [line] : [])], 10, boxH);
   const projectedRings = filteredRings.map(project);
   const projectedLine = line ? project(line) : null;
@@ -83,12 +101,13 @@ export default function RouteThumb({ id, rings, path, color, compact = false, st
       style={style}
       onLayout={(e) => setBoxWidth(Math.round(e.nativeEvent.layout.width))}
     >
-      {/* A DRAWN BOX, not a grey plate — see the note this carried in
-          FeedCard before the extraction: the frame gives the route an edge
-          without a second surface colour under it. */}
+      {/* A DRAWN BOX on white paper: the ink is the edge, the paper is what
+          the route is drawn on. `on` is the paper too, so the frame's own
+          line is judged against what it actually sits on. */}
       <Framed
         frame={frameVariant('box', `route:${id}`)}
-        on={colors.card}
+        fill={PAPER}
+        on={PAPER}
         tint={withAlpha(color, 0.55)}
         weight={INK.thin}
         pose={framePose(`route:${id}`)}
@@ -105,8 +124,8 @@ export default function RouteThumb({ id, rings, path, color, compact = false, st
             <Polygon
               key={i}
               points={svgPoints(ring)}
-              fill={withAlpha(color, 0.22)}
-              stroke={color}
+              fill={withAlpha(ink, 0.22)}
+              stroke={ink}
               strokeWidth={2.5}
               strokeLinejoin="round"
             />
@@ -117,7 +136,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, st
               fill="none"
               // Lighter than the territory outline so the route reads as the
               // thing inside the land, not as a second border around it.
-              stroke={filteredRings.length ? withAlpha(color, 0.75) : color}
+              stroke={filteredRings.length ? withAlpha(ink, 0.75) : ink}
               strokeWidth={filteredRings.length ? 2 : 2.5}
               strokeLinejoin="round"
               strokeLinecap="round"

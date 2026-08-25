@@ -4,16 +4,29 @@
 // Each scope can be ranked by land, claims, captures, defenses, or distance.
 // Tap a club row to open its profile; solo rows aren't tappable (no profile).
 //
-// All seven boards live in ONE wrapped chip row under a `panel` ToonHeader —
-// Home's hero-card format, shared with Pasers and Rivals: flat brand colour,
-// black copy on the left, the board's characters as a cut-out on the right.
-// Whichever chip you tap last owns the header art and the panel colour, so the
-// illustration for a board is shown whole instead of as a thumbnail in a
-// picker.
+// THE HEADER IS CHROME, NOT THE PAGE. It used to carry FIFTEEN chips in three
+// wrapped rows — two scopes, five categories, four windows, four fields — under
+// a full-size hero panel with a three-line sentence reserved under the title.
+// On a phone that is most of the screen spent on the picker, on a page whose
+// entire job is to show a ranked list: the first standing was below the fold on
+// every board. The picker now reads
+//
+//     compact panel header · Clubs/Solo · one summary bar
+//
+// and the other twelve chips live in a sheet behind that bar. The bar states
+// the whole board in words ("Land held · Season · Everyone"), so nothing is
+// hidden — the sentence that used to be the header's subtitle IS the control
+// now, which is why the subtitle went away rather than being shortened.
+//
+// The panel keeps its per-board illustration and colour: whichever board was
+// chosen last owns the header art, chosen from the scope row or from inside the
+// sheet. `compact` + `stableArt` means swapping between a wide illustration and
+// a tall one can't resize the header underneath the reader's thumb.
 
 import React, { useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ChevronDown, Lock } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
@@ -22,9 +35,29 @@ import useCoarsePosition from '../hooks/useCoarsePosition';
 import { useProEntitlement } from '../pro/ProProvider';
 import { useAuth } from '../auth/AuthContext';
 import StandingBar from '../components/StandingBar';
-import { radius, space, toon, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
+import {
+  NB,
+  nbInk,
+  radius,
+  space,
+  toon,
+  withAlpha,
+  useTheme,
+  useThemedStyles,
+  useThemedType,
+} from '../theme';
 import { NEUTRAL } from '../state/clan';
-import { Screen, Card, Row, Skeleton, EmptyState, PANEL_INK, ToonHeader } from '../components/ui';
+import {
+  Screen,
+  Card,
+  Row,
+  Sheet,
+  Skeleton,
+  EmptyState,
+  PANEL_INK,
+  ToonButton,
+  ToonHeader,
+} from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import { Arrival, PressableScale, useArrival } from '../ui/motion';
 import { SEASON_CATEGORY_ART, SEASON_SCOPE_ART } from '../config/seasonArt';
@@ -63,36 +96,130 @@ const FIELD_OPTIONS = [
 const WINDOW_BY_KEY = Object.fromEntries(WINDOW_OPTIONS.map((i) => [i.key, i]));
 const FIELD_BY_KEY = Object.fromEntries(FIELD_OPTIONS.map((i) => [i.key, i]));
 
-// The seven chips, in strip order. `axis` is what a tap sets — the backend
-// board is still scope × category (see routes/leaderboard.py), so the two
-// scope chips and the five category chips stay independently selectable
-// rather than collapsing into one seven-way choice, which would leave three
-// of the ten boards unreachable.
-const BOARD_OPTIONS = [
-  ...SCOPE_OPTIONS.map((option) => ({ ...option, axis: 'scope', shortLabel: option.label })),
-  ...CATEGORY_OPTIONS.map((option) => ({ ...option, axis: 'category' })),
-];
-const BOARD_BY_KEY = Object.fromEntries(BOARD_OPTIONS.map((item) => [item.key, item]));
+// The board the screen opens on, and what "Reset" goes back to.
+const DEFAULTS = { category: 'land', window: 'season', field: 'all' };
 
-// One chip on the PRO row. `locked` still renders as a live control: tapping
-// it opens the paywall, which is a better answer than a chip that looks broken
-// or one that has been hidden so nobody knows the view exists.
-function FilterChip({ label, active, locked, onPress, styles, type }) {
+// Every board that owns an illustration, keyed the way `bannerKey` stores it.
+const ART_BY_KEY = {
+  ...Object.fromEntries(SCOPE_OPTIONS.map((o) => [o.key, o.art])),
+  ...Object.fromEntries(CATEGORY_OPTIONS.map((o) => [o.key, o.art])),
+};
+
+// One chip inside the filter sheet. `locked` still renders as a live control:
+// tapping it opens the paywall, which is a better answer than a chip that looks
+// broken or one that has been hidden so nobody knows the view exists.
+function SheetChip({ label, active, locked, onPress, styles, type, colors }) {
   return (
     <PressableScale
       onPress={onPress}
-      style={[styles.chip, active && styles.chipActive]}
+      style={[styles.sheetChip, active && styles.sheetChipActive]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={locked ? `${label}. Paser Pro` : label}
     >
       <Text
-        style={[type.bodySmBold, styles.chipLabel, active && styles.chipLabelActive]}
+        style={[type.bodySmBold, { color: active ? colors.primaryInk : colors.text }]}
         numberOfLines={1}
       >
-        {locked ? `${label} ✦` : label}
+        {label}
       </Text>
+      {locked ? (
+        <Lock size={12} color={active ? colors.primaryInk : colors.textDim} strokeWidth={2.5} />
+      ) : null}
     </PressableScale>
+  );
+}
+
+function ChipGroup({ title, children, styles, type, colors }) {
+  return (
+    <View style={{ marginBottom: space.lg }}>
+      <Text style={[type.captionMedium, { color: colors.textMuted, marginBottom: space.sm }]}>
+        {title}
+      </Text>
+      <View style={styles.sheetChipRow}>{children}</View>
+    </View>
+  );
+}
+
+// Rank by / when / who. Selections apply to the board LIVE — the sheet does not
+// close on a tap and there is no Apply button, so the header art, the summary
+// bar and the rows behind the backdrop all move as the chips are chosen. The
+// button at the bottom only dismisses.
+function BoardFiltersSheet({
+  visible,
+  onClose,
+  category,
+  window_,
+  field,
+  isPro,
+  onCategory,
+  onWindow,
+  onField,
+  onReset,
+  changed,
+  styles,
+  type,
+  colors,
+}) {
+  return (
+    <Sheet visible={visible} onClose={onClose}>
+      <Row between style={{ marginBottom: space.md }}>
+        <Text style={type.heading}>Filters</Text>
+        {changed ? (
+          <TouchableOpacity onPress={onReset} accessibilityRole="button">
+            <Text style={[type.captionMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>
+              Reset
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </Row>
+
+      <ChipGroup title="Rank by" styles={styles} type={type} colors={colors}>
+        {CATEGORY_OPTIONS.map((option) => (
+          <SheetChip
+            key={`c:${option.key}`}
+            label={option.label}
+            active={category === option.key}
+            onPress={() => onCategory(option.key)}
+            styles={styles}
+            type={type}
+            colors={colors}
+          />
+        ))}
+      </ChipGroup>
+
+      <ChipGroup title="When" styles={styles} type={type} colors={colors}>
+        {WINDOW_OPTIONS.map((option) => (
+          <SheetChip
+            key={`w:${option.key}`}
+            label={option.label}
+            active={window_ === option.key}
+            locked={!isPro && option.key !== DEFAULTS.window}
+            onPress={() => onWindow(option.key)}
+            styles={styles}
+            type={type}
+            colors={colors}
+          />
+        ))}
+      </ChipGroup>
+
+      <ChipGroup title="Who" styles={styles} type={type} colors={colors}>
+        {FIELD_OPTIONS.map((option) => (
+          <SheetChip
+            key={`f:${option.key}`}
+            label={option.label}
+            active={field === option.key}
+            locked={!isPro && option.key !== DEFAULTS.field}
+            onPress={() => onField(option.key)}
+            styles={styles}
+            type={type}
+            colors={colors}
+          />
+        ))}
+      </ChipGroup>
+
+      <ToonButton title="Show standings" size="sm" onPress={onClose} />
+    </Sheet>
   );
 }
 
@@ -112,31 +239,28 @@ function metricAmount(item, category) {
 }
 
 export default function SeasonScreen({ navigation, route }) {
+  const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [mode, setMode] = useState(route.params?.mode || 'clans');
   const [category, setCategory] = useState(
-    CATEGORY_BY_KEY[route.params?.category] ? route.params.category : 'land'
+    CATEGORY_BY_KEY[route.params?.category] ? route.params.category : DEFAULTS.category
   );
-  // Which chip's illustration the header is wearing — the last one tapped.
+  // Which board's illustration the header is wearing — the last one chosen.
   // Home links straight to a scope ("Clubs"/"Solo" on the season banner) with
   // no category, so open on THAT art rather than defaulting to land.
   const [bannerKey, setBannerKey] = useState(() => {
     if (CATEGORY_BY_KEY[route.params?.category]) return route.params.category;
     if (SEASON_SCOPE_ART[route.params?.mode]) return route.params.mode;
-    return 'land';
+    return DEFAULTS.category;
   });
-  // One cache entry PER BOARD (scope + category), so flipping between Clubs,
-  // Solo, land and distance re-shows a board you have already looked at
-  // instantly instead of blanking to skeletons on every toggle. useQuery
-  // re-seeds itself when the key changes, which also retires the request-id
-  // guard that used to be needed to ignore a slow board arriving late.
   // The PRO filters. `season` + `all` is the free board, so a runner who never
-  // touches these chips has exactly the screen they had before.
-  const [window_, setWindow] = useState('season');
-  const [field, setField] = useState('all');
+  // opens the sheet has exactly the screen they had before.
+  const [window_, setWindow] = useState(DEFAULTS.window);
+  const [field, setField] = useState(DEFAULTS.field);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   // The app's one paywall, opened with the context that explains WHY a
   // board filter is locked. No sheet of its own any more.
   const { isPro, openPaywall } = useProEntitlement();
@@ -150,6 +274,11 @@ export default function SeasonScreen({ navigation, route }) {
   // it outright rather than quietly answering globally.
   const ready = field !== 'local' || !!here;
 
+  // One cache entry PER BOARD, so flipping between Clubs, Solo, land and
+  // distance re-shows a board you have already looked at instantly instead of
+  // blanking to skeletons on every toggle. useQuery re-seeds itself when the
+  // key changes, which also retires the request-id guard that used to be
+  // needed to ignore a slow board arriving late.
   const { data: rows, loading } = useQuery(
     ready ? `season:${mode}:${category}:${window_}:${field}` : null,
     () => api.seasonLeaderboard(mode, category, boardOpts),
@@ -158,112 +287,110 @@ export default function SeasonScreen({ navigation, route }) {
 
   const selectFilter = (axis, key) => {
     // A free runner gets the paywall, not a silent no-op and not a 402 toast.
-    if (!isPro && key !== (axis === 'window' ? 'season' : 'all')) {
+    // The sheet closes FIRST: the paywall is a modal of its own, and the app
+    // never stacks one on top of another (see MapLayersSheet).
+    if (!isPro && key !== DEFAULTS[axis]) {
+      setFiltersOpen(false);
       openPaywall('leaderboard_history');
       return;
     }
     (axis === 'window' ? setWindow : setField)(key);
   };
 
-  const banner = BOARD_BY_KEY[bannerKey] || CATEGORY_BY_KEY.land;
-
-  const selectBoard = (option) => {
-    // No blanking here: changing the scope/category changes the query key, and
-    // a board that's already cached swaps in on the same frame as the tap.
-    setBannerKey(option.key);
-    if (option.axis === 'scope') setMode(option.key);
-    else setCategory(option.key);
+  const selectCategory = (key) => {
+    setCategory(key);
+    setBannerKey(key);
   };
+
+  const selectScope = (key) => {
+    setMode(key);
+    setBannerKey(key);
+  };
+
+  const reset = () => {
+    setCategory(DEFAULTS.category);
+    setWindow(DEFAULTS.window);
+    setField(DEFAULTS.field);
+    setBannerKey(DEFAULTS.category);
+  };
+
+  const art = ART_BY_KEY[bannerKey] || CATEGORY_BY_KEY[DEFAULTS.category].art;
+  // What the summary bar says, and what the sheet's Reset appears for. Scope is
+  // not counted: it has its own chips on the header and is never inside.
+  const changed =
+    (category !== DEFAULTS.category ? 1 : 0) +
+    (window_ !== DEFAULTS.window ? 1 : 0) +
+    (field !== DEFAULTS.field ? 1 : 0);
+  const summary = `${CATEGORY_BY_KEY[category].label} · ${WINDOW_BY_KEY[window_].label} · ${FIELD_BY_KEY[field].label}`;
 
   const header = (
     <ToonHeader
       panel
+      compact
       eyebrow="Season"
       title="Season standings"
       // Home's hero-card format: the selected board's characters as a cut-out
       // on the right of a flat panel in that board's colour, black copy on the
-      // left. The illustration used to fill the rectangle behind a scrim, which
-      // is why it needed white outlined text over it.
-      art={banner.art.source}
-      solid={banner.art.bg}
-      subtitle={`${mode === 'clans' ? 'Clubs' : 'Solo runners'} ranked by ${CATEGORY_BY_KEY[category].description} ${WINDOW_BY_KEY[window_].sentence}${FIELD_BY_KEY[field].sentence}.`}
-      // The two things that differ per board are the art's shape and the
-      // length of that sentence, and both were sizing the header — tapping
-      // from Captures (a wide illustration, a short sentence) to Land (a tall
-      // one, a long sentence) moved the whole board under the reader's thumb.
-      // Fixing the art box and reserving the sentence's tallest line count
-      // makes the header the same height on all seven.
+      // left. `compact` shrinks the cut-out and moves the back chevron inline
+      // with the title, which is about ninety points of the height this page
+      // was spending before a single standing was on screen.
+      art={art.source}
+      solid={art.bg}
+      // The board's sentence is the summary bar below, not a subtitle. Two
+      // copies of the same sentence in one header is what made it tall.
       stableArt
-      subtitleLines={3}
       titleStyle={type.display}
       eyebrowStyle={type.labelSm}
       top={insets.top}
       onBack={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('HomeMain'))}
       style={{ marginBottom: space.md }}
     >
-      {/* All seven boards, WRAPPED inside the panel's gutter. This used to be a
-          horizontal strip that bled past the gutter to advertise its own
-          scrollability — which just cut the last chip in half at the screen
-          edge and read as the row escaping the card. */}
-      <View style={styles.chipRow}>
-        {BOARD_OPTIONS.map((option, index) => {
-          const active = option.axis === 'scope' ? option.key === mode : option.key === category;
+      {/* WHO IS RANKED — the one axis that stays on the header, because it is
+          the axis that changes what the rows ARE (clubs or runners) rather
+          than how they are sorted. Two chips, one line, never wraps. */}
+      <View style={styles.scopeRow}>
+        {SCOPE_OPTIONS.map((option) => {
+          const active = option.key === mode;
           return (
-            <React.Fragment key={option.key}>
-              {/* hairline where "who is ranked" hands over to "ranked by what" */}
-              {index === SCOPE_OPTIONS.length ? <View style={styles.chipDivider} /> : null}
-              <PressableScale
-                onPress={() => selectBoard(option)}
-                style={[styles.chip, active && styles.chipActive]}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={
-                  option.axis === 'scope'
-                    ? `${option.label} standings`
-                    : `Rank by ${option.label}`
-                }
+            <PressableScale
+              key={option.key}
+              onPress={() => selectScope(option.key)}
+              style={[styles.chip, active && styles.chipActive]}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`${option.label} standings`}
+            >
+              <Text
+                style={[type.bodySmBold, styles.chipLabel, active && styles.chipLabelActive]}
+                numberOfLines={1}
               >
-                <Text
-                  style={[type.bodySmBold, styles.chipLabel, active && styles.chipLabelActive]}
-                  numberOfLines={1}
-                >
-                  {option.shortLabel}
-                </Text>
-              </PressableScale>
-            </React.Fragment>
+                {option.label}
+              </Text>
+            </PressableScale>
           );
         })}
       </View>
 
-      {/* The PRO row: WHEN and WHO, under the free "who is ranked by what"
-          row above. Locked chips stay visible and tappable rather than being
-          hidden or dimmed out of reach — a runner should be able to see what
-          PRO would give them and open the paywall from the thing itself. */}
-      <View style={styles.chipRow}>
-        {WINDOW_OPTIONS.map((option) => (
-          <FilterChip
-            key={`w:${option.key}`}
-            label={option.label}
-            active={window_ === option.key}
-            locked={!isPro && option.key !== 'season'}
-            onPress={() => selectFilter('window', option.key)}
-            styles={styles}
-            type={type}
-          />
-        ))}
-        <View style={styles.chipDivider} />
-        {FIELD_OPTIONS.map((option) => (
-          <FilterChip
-            key={`f:${option.key}`}
-            label={option.label}
-            active={field === option.key}
-            locked={!isPro && option.key !== 'all'}
-            onPress={() => selectFilter('field', option.key)}
-            styles={styles}
-            type={type}
-          />
-        ))}
-      </View>
+      {/* RANKED BY WHAT, WHEN, AMONG WHOM — twelve chips stated as one line of
+          copy. The bar is the control: it reads as a sentence when you are not
+          looking at it and opens the sheet when you are. */}
+      <PressableScale
+        onPress={() => setFiltersOpen(true)}
+        style={styles.summaryBar}
+        accessibilityRole="button"
+        accessibilityLabel={`Filters. ${summary}`}
+        accessibilityHint="Choose what the board ranks, over what period, and who is on it"
+      >
+        <Text style={[type.bodySmBold, styles.summaryText]} numberOfLines={1}>
+          {summary}
+        </Text>
+        {changed ? (
+          <View style={styles.summaryCount}>
+            <Text style={[type.captionMedium, styles.summaryCountText]}>{changed}</Text>
+          </View>
+        ) : null}
+        <ChevronDown size={16} color={PANEL_INK} strokeWidth={3} />
+      </PressableScale>
     </ToonHeader>
   );
 
@@ -272,19 +399,6 @@ export default function SeasonScreen({ navigation, route }) {
   // skeletons forever instead of reaching the empty state that explains why.
   const waiting = loading && ready;
   const arriving = useArrival(waiting);
-
-  if (waiting) {
-    return (
-      <Screen gutter={false} edges={[]}>
-        {header}
-        <View style={{ paddingHorizontal: space.gutter }}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} width="100%" height={64} style={{ borderRadius: radius.card, marginTop: space.sm }} />
-          ))}
-        </View>
-      </Screen>
-    );
-  }
 
   const openClan = (clanId) => navigation.navigate('ClubDetail', { clanId });
 
@@ -351,7 +465,12 @@ export default function SeasonScreen({ navigation, route }) {
         // `rows` holds the last board while the query is disabled, which would
         // show the global standings under a "Near me" heading. Empty is the
         // honest state, and the empty component below says why.
-        data={ready ? rows : []}
+        //
+        // The skeletons are an EMPTY STATE rather than an early return of a
+        // different tree. Changing a filter refetches, and a second tree would
+        // unmount the sheet the filter was chosen in — the sheet would slam
+        // shut on every tap inside it.
+        data={ready && !waiting ? rows : []}
         keyExtractor={(item) => item.clan_id || item.user_id}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl }}
         // The header is the full-bleed art rectangle, so it cancels the list's
@@ -373,7 +492,18 @@ export default function SeasonScreen({ navigation, route }) {
           </>
         }
         ListEmptyComponent={
-          field === 'local' && !here ? (
+          waiting ? (
+            <View>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton
+                  key={i}
+                  width="100%"
+                  height={64}
+                  style={{ borderRadius: radius.card, marginTop: space.sm }}
+                />
+              ))}
+            </View>
+          ) : field === 'local' && !here ? (
             <EmptyState
               icon={<AppIcon name="locate" size={44} />}
               title="PASER needs your location for this board"
@@ -400,6 +530,23 @@ export default function SeasonScreen({ navigation, route }) {
           </Arrival>
         )}
       />
+
+      <BoardFiltersSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        category={category}
+        window_={window_}
+        field={field}
+        isPro={isPro}
+        onCategory={selectCategory}
+        onWindow={(key) => selectFilter('window', key)}
+        onField={(key) => selectFilter('field', key)}
+        onReset={reset}
+        changed={changed}
+        styles={styles}
+        type={type}
+        colors={colors}
+      />
     </Screen>
   );
 }
@@ -425,26 +572,25 @@ function Amount({ value, unit, color }) {
   );
 }
 
-const makeStyles = () => StyleSheet.create({
+const makeStyles = (colors, scheme) => StyleSheet.create({
   rankCol: { width: 24, alignItems: 'center' },
   avatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
 
-  // --- header board chips ---
-  // Wrapped, not scrolled, and with no negative margin — the row stays inside
-  // the panel's gutter so no chip is ever clipped by the card edge.
-  chipRow: {
+  // --- header controls ---
+  // Two chips and one bar, both single-line by construction. Nothing here
+  // wraps, so the header's height is fixed on all ten boards.
+  scopeRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
     gap: space.sm,
     marginTop: space.md,
   },
-  // These sit on a bright flat panel now, not on a scrimmed illustration, so
-  // the whole set flips from white-on-dark to ink-on-light.
+  // These sit on a bright flat panel, not on a scrimmed illustration, so the
+  // whole set is ink-on-light rather than white-on-dark.
   chip: {
     paddingHorizontal: space.md,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
     borderColor: 'rgba(20,20,20,0.28)',
     backgroundColor: 'rgba(255,255,255,0.28)',
@@ -452,15 +598,51 @@ const makeStyles = () => StyleSheet.create({
   chipActive: { backgroundColor: '#fff', borderColor: toon.ink },
   chipLabel: { color: PANEL_INK, opacity: 0.8 },
   chipLabelActive: { color: toon.ink, opacity: 1 },
-  // A FULL-WIDTH rule, not a vertical bar. Inside a wrapping row a 1×20 divider
-  // floated wherever the wrap happened to put it — sometimes mid-line, sometimes
-  // at a line's end — which is what read as "messy". As a 100%-wide element it
-  // forces the next axis onto its own line AND draws a clean separator between
-  // the two groups (who vs by, when vs where).
-  chipDivider: {
-    width: '100%',
-    height: 1,
-    marginVertical: 2,
-    backgroundColor: 'rgba(20,20,20,0.20)',
+
+  // The summary bar. Whiter than an inactive chip and full width, so it reads
+  // as the header's one button rather than as a third chip that happens to be
+  // long — and so the sentence inside it has room to be a sentence.
+  summaryBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    marginTop: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    borderWidth: 1.5,
+    borderColor: 'rgba(20,20,20,0.32)',
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  summaryText: { flex: 1, color: PANEL_INK },
+  // How many axes are off their default. The sentence already says WHICH, so
+  // this only has to say "you changed something" at a glance.
+  summaryCount: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: toon.ink,
+  },
+  summaryCountText: { color: '#fff' },
+
+  // --- filter sheet ---
+  sheetChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  sheetChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: space.md,
+    paddingVertical: 9,
+    borderRadius: radius.pill,
+    borderWidth: NB.strokeThin,
+    borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
+  },
+  sheetChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: nbInk(scheme, colors.primary),
   },
 });

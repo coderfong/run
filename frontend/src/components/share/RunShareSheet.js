@@ -279,8 +279,10 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   // before anyone touches a control.
   const clanColor = cardProps.team?.glow;
   const [accent, setAccent] = useState(clanColor);
-  // Centred by default — see the `align` prop on RunShareCard for why.
-  const [align, setAlign] = useState('center');
+  // LEFT by default, and on this card `align` is the layout rather than just
+  // the rag: left and right stand the numbers in a column with the route
+  // beside them, centre stacks the route above them. See RunShareCard.
+  const [align, setAlign] = useState('left');
   const [showRoute, setShowRoute] = useState(true);
   const [trail, setTrail] = useState(TRAIL_NONE);
   // ON. The mascot standing at the end of the route is the part of the card
@@ -308,11 +310,22 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   // the store live. Everything else exports exactly as it always did.
   const styleLocked = activeStyle.pro && !isPro && canShowPro;
 
-  // The fine-grain LOOKS — the accent colour and where the text sits — are PRO.
-  // Everything that decides WHAT the card says (which stats, the route, the
-  // runner) stays free; this gates the polish, not the substance. Off entirely
-  // for subscribers and in builds with no store, so a free-forever build shows
-  // no dead padlocks.
+  // CUSTOMISING THE CARD IS PRO. The accent colour, where the card puts its
+  // numbers, and which numbers those are: all three are padlocked.
+  //
+  // The line moved on 2026-08-24 (it was accent + placement only, with the
+  // metrics free) and it moved because of what the card became. Free gets the
+  // card the redesign is FOR — three big numbers, distance, pace and time, the
+  // route and the runner beside them, the clan's own colour — finished, and
+  // good enough that most runners will post it untouched. What PRO buys is
+  // making it yours: your colour, your side of the story, your numbers.
+  //
+  // What is NOT gated: whether the route is drawn and whether the runner is
+  // standing on it. Those decide what the card SHOWS rather than how it looks,
+  // and taking your own avatar off your own card should never cost anything.
+  //
+  // Off entirely for subscribers and in builds with no store, so a free-forever
+  // build shows no dead padlocks.
   const customizeLocked = !isPro && canShowPro;
   const tapLockedCustomize = (feature) => {
     track(EVENTS.TEASER_TAP, { source: 'share', feature });
@@ -351,8 +364,10 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
         // hole in it, and the runner has no way to see what they lost.
         return keys.length > 1 ? keys.filter((k) => k !== key) : keys;
       }
-      // Six is three rows, which is the point where the route has nowhere left
-      // to be drawn.
+      // Six is six rows now that the numbers stack one per line, and the card
+      // shrinks the type to fit them (VALUE_FOR_ROWS). Past that the figures
+      // are small enough that the poster look is gone and the route has
+      // nowhere left to be drawn.
       return keys.length >= 6 ? keys : [...keys, key];
     });
 
@@ -631,13 +646,19 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </TouchableOpacity>
           ) : null}
 
-          {/* Text is WHITE and only white now — the dark option is gone. See
-              the tone note in RunShareCard: black type on a card with no
-              background of its own is the one combination that vanishes. The
-              alignment IS a PRO look — where the numbers sit is polish, so it
-              shares the accent's padlock. */}
+          {/* PLACEMENT, not "Text" — it moves the whole card now, not the rag.
+              Left and right stand the numbers down that side of the story with
+              the route and the runner in the column opposite; centre stacks
+              them, route above numbers, the way the card used to be. Which
+              matters on a story: the runner picks the side their own face is
+              not on.
+
+              Text colour is not a control at all. It is WHITE and only white;
+              see the tone note in RunShareCard, where black type on a card
+              with no background of its own is the one combination that
+              vanishes. */}
           <Row
-            label="Text"
+            label="Placement"
             locked={customizeLocked}
             onLockedPress={() => tapLockedCustomize('align')}
           >
@@ -676,10 +697,17 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </Row>
           ) : null}
 
-          <Row label="Runner">
+          {/* WHAT IS ON THE CARD, and it stays free. Route and runner used to
+              be split across two rows with the Route chip filed under Stats,
+              which put it behind the padlock the moment the metrics went PRO —
+              and "you cannot take your own avatar off your own card" is not a
+              thing worth selling. They are one row now because they are one
+              question, and neither of them is a look. */}
+          <Row label="On the card">
             <View style={styles.chipWrap}>
+              <Chip label="Route" on={showRoute} onPress={() => setShowRoute((v) => !v)} />
               <Chip
-                label={showCharacter ? 'On' : 'Off'}
+                label="Runner"
                 on={showCharacter}
                 onPress={() => setShowCharacter((v) => !v)}
               />
@@ -689,7 +717,15 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </View>
           </Row>
 
-          <Row label="Stats">
+          {/* WHICH numbers, which is now a PRO choice. Free posts the three the
+              card is designed around — distance, pace, time — and that is a
+              finished card, not a crippled one. Elevation, best km, average
+              speed and the ground the run took are the ones you unlock. */}
+          <Row
+            label="Stats"
+            locked={customizeLocked}
+            onLockedPress={() => tapLockedCustomize('stats')}
+          >
             <View style={styles.chipWrap}>
               {offered.map((s) => (
                 <Chip
@@ -699,7 +735,6 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                   onPress={() => toggleStat(s.key)}
                 />
               ))}
-              <Chip label="Route" on={showRoute} onPress={() => setShowRoute((v) => !v)} />
             </View>
           </Row>
 

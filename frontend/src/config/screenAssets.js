@@ -60,7 +60,7 @@ const SCREEN_IMAGE_ASSETS = {
     ICONS.route,
   ]),
   You: present([
-    artKeys('profileBanner', 'profileBannerDark', 'proBanner'),
+    artKeys('profileBanner', 'profileBannerDark', 'proCrew'),
     ICONS.customize,
     ICONS.invite,
   ]),

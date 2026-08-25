@@ -9,7 +9,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { ChevronRight, Lock } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
-import { frameVariant } from '../ui/frameRegistry';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
@@ -30,13 +30,14 @@ import { brand, nbField, radius, space, toon, withAlpha, useTheme, useThemedType
 import { levelBandColor } from '../config/progression';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { COPY as PASERBY_COPY } from '../config/paserby';
-import { Screen, Card, Row, Button, Input, StatValue, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
+import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
 import DevCrossroadsSeed from '../components/DevCrossroadsSeed';
+import SharedStatTile from '../components/StatTile';
 import { art } from '../config/onboardingArt';
 import GameAnimation from '../components/GameAnimation';
 import { toast } from '../ui/toast';
@@ -93,34 +94,11 @@ const km2Worklet = (m2) => {
   return (m2 / 1e6).toFixed(2);
 };
 
-function StatTile({ label, value, unit, accent, countTo, format }) {
+// One cell of the wall, at this page's width. The tile itself is shared with
+// RunnerProfile — see components/StatTile.js for what it is and why.
+function StatTile(props) {
   const styles = useThemedStyles(makeStyles);
-  return (
-    // Drawn boxes. The stat wall is the one place on You where the same shape
-    // repeats six times, so the hand-drawn edge does the most work here: six
-    // identical rounded rects read as a spreadsheet, six drawn boxes read as
-    // a page out of a notebook.
-    //
-    // The chip group, not `panel`. A tile is about 105pt across and `panel` is
-    // a 152pt drawing whose left corner alone is 39 of those — drawn on a tile
-    // it filled a third of the width with one corner and squeezed the label
-    // into a column so narrow that "Distance" broke across two lines. The chip
-    // frames are drawn at 44pt, so at tile size their corners are corners.
-    //
-    // Dealt from the group by label, so the six tiles are not six prints of one
-    // drawing — which is the thing that gives a hand-drawn look away.
-    <Card frame={frameVariant('chip', label)} frameTint={accent} style={styles.tile} padded>
-      <StatValue
-        size="md"
-        label={label}
-        value={value}
-        unit={unit}
-        color={accent}
-        countTo={countTo}
-        format={format}
-      />
-    </Card>
-  );
+  return <SharedStatTile {...props} style={styles.tile} />;
 }
 
 export default function ProfileScreen({ navigation }) {
@@ -410,11 +388,20 @@ export default function ProfileScreen({ navigation }) {
       </Reveal>
 
       {/* PASER PRO — shown only to non holders, and it is a POSTER: the crew,
-          the wordmark, one line. The banner art is painted with its right half
-          full of runners and its left half empty stage, so the copy sits in
-          the dark on the left with nothing behind it. Everything about what
-          PRO actually gives you is a tap away on the pass; a card on You that
-          listed it was three paragraphs nobody read.
+          the wordmark, one line. Everything about what PRO actually gives you
+          is a tap away on the paywall; a card on You that listed it was three
+          paragraphs nobody read.
+
+          IT IS DRAWN, not printed. This used to be the 16:9 `proBanner` — a
+          dark photographic-looking plate with a machine-cut gold hairline
+          around it, dropped into the middle of a page made of hand-drawn
+          boxes on paper. It read as an ad slot the app had sold to somebody
+          else, and it was the only surface on You with neither the ink line
+          nor the paper. So it is the same box Home's hero cards are: a heavy
+          ink frame, a flat gold fill, and the crew as a CUT-OUT (`proCrew`,
+          the transparent master) bleeding off the right edge rather than a
+          rectangle of somebody else's background. Same treatment as the PRO
+          slide on Home, which is the point — the two are one product.
 
           THE GATE IS ENTITLEMENT ITSELF, not `progression.premium_active`.
           Those two agree on the server (premium_active IS is_pro — see
@@ -426,44 +413,68 @@ export default function ProfileScreen({ navigation }) {
       {canShowPro && !isPro && !proLoading ? (
         <Reveal delay={110}>
           <PressableScale
-            style={styles.proCard}
             onPress={() => { haptic.light(); openPaywall('profile'); }}
             accessibilityRole="button"
             accessibilityLabel="Paser Pro. Strategy, insights and style. Territory planner, territory intelligence, advanced analytics, rival intelligence and exclusive customisation. Tap to explore"
           >
-            {/* Explicit 100%/100% rather than absoluteFill: that registered
-                style carries no width or height, and an Image handed one has
-                been seen falling back to its intrinsic size (see the same
-                note in onboarding/ui.js). */}
-            <Image
-              source={art('proBanner')}
-              style={styles.proArt}
-              resizeMode="cover"
-              accessible={false}
-            />
-            <View style={styles.proCopy}>
-              <OutlinedText
-                style={[type.title, { color: GOLD }]}
-                outline={toon.ink}
-                width={2}
-                align="left"
-                containerStyle={{ alignSelf: 'flex-start' }}
-              >
-                PASER PRO
-              </OutlinedText>
-              {/* WAS "Twice the rewards." That is a promise about POWER, and
-                  PRO does not sell power — see the contract at the top of
-                  config/pro.js and entitlements.py. Three words for the three
-                  things it does sell; the full list lives on the paywall,
-                  which is where somebody who taps this is going anyway. */}
-              <Text style={[type.bodySm, { color: 'rgba(255,255,255,0.78)', marginTop: 2 }]}>
-                Strategy. Insights. Style.
-              </Text>
-              <Row gap={2} style={styles.proCta}>
-                <Text style={[type.captionMedium, { color: GOLD }]}>Explore PRO</Text>
-                <ChevronRight size={14} color={GOLD} strokeWidth={3} />
-              </Row>
-            </View>
+            <Framed
+              frame={frameVariant('featured', 'pro:you')}
+              tint={toon.ink}
+              fill={GOLD}
+              weight={INK.bold}
+              pose={framePose('pro:you')}
+              inset={false}
+              style={styles.proCard}
+              contentStyle={styles.proCardContent}
+            >
+              <View style={styles.proCopy}>
+                <Text style={[type.labelSm, styles.proEyebrow]}>PASER PRO</Text>
+                {/* One line, always. "GO PRO" is comfortable in this column,
+                    but the column is a fraction of the screen and the screen
+                    can be a small phone at a large text size. */}
+                <Text
+                  style={[type.display, styles.proTitle]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                >
+                  GO PRO
+                </Text>
+                {/* WAS "Twice the rewards." That is a promise about POWER, and
+                    PRO does not sell power — see the contract at the top of
+                    config/pro.js and entitlements.py. Three words for the three
+                    things it does sell; the full list lives on the paywall,
+                    which is where somebody who taps this is going anyway. */}
+                <Text style={[type.bodySm, styles.proSub]}>
+                  Strategy. Insights. Style.
+                </Text>
+                <Framed
+                  frame={frameVariant('chip', 'Explore PRO')}
+                  tint={toon.ink}
+                  fill="#ffffff"
+                  weight={INK.thin}
+                  pose={framePose('Explore PRO')}
+                  inset={false}
+                  style={styles.proBtn}
+                  contentStyle={styles.proBtnContent}
+                >
+                  <Row gap={2}>
+                    <Text style={[type.buttonSm, { color: toon.ink }]}>Explore PRO</Text>
+                    <ChevronRight size={14} color={toon.ink} strokeWidth={3} />
+                  </Row>
+                </Framed>
+              </View>
+              {/* `contain`, and bled into the frame's padding on three sides so
+                  the crew stands as tall as the card allows. A cut-out has no
+                  edges to crop, so there is nothing for `cover` to do here but
+                  cut somebody's head off at a narrow width. */}
+              <Image
+                source={art('proCrew')}
+                style={styles.proArt}
+                resizeMode="contain"
+                accessible={false}
+              />
+            </Framed>
           </PressableScale>
         </Reveal>
       ) : null}
@@ -876,23 +887,38 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden' },
   xpFill: { height: '100%', borderRadius: 4 },
 
-  // The PRO poster. Its aspect is the BANNER'S OWN (16:9) so the art fills it
-  // exactly at every width and `cover` never has anything to crop; the dark
-  // background is the art's edge value, for the frame before it decodes. The
-  // copy is pinned to the left 44%, which is the empty half of the picture.
-  proCard: {
-    marginTop: space.xl,
-    aspectRatio: 16 / 9,
-    borderRadius: radius.card,
-    borderWidth: 2,
-    borderColor: GOLD,
-    backgroundColor: '#181316',
-    overflow: 'hidden',
-    justifyContent: 'center',
+  // The PRO poster — Home's hero card geometry, deliberately: a fixed 190pt
+  // box with the copy column on the left and the cut-out bleeding off the
+  // right. NOT an aspect ratio any more. That was the old banner's own 16:9,
+  // which only made sense while the picture WAS the card; a cut-out has no
+  // frame of its own, so the card sets the height and the art fills it.
+  //
+  // No radius, no border, no background here: the frame brings the edge, the
+  // paper and the depth (see Card's header). Anything set here would print a
+  // machine-cut rectangle behind a hand-drawn one.
+  proCard: { marginTop: space.xl, height: 190 },
+  proCardContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    padding: space.md,
   },
-  proArt: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
-  proCopy: { width: '44%', paddingLeft: space.lg },
-  proCta: { marginTop: space.sm, alignSelf: 'flex-start' },
+  proCopy: { flex: 1, justifyContent: 'center', paddingRight: space.sm },
+  // Ink on gold, not white on dark — the fill changed, so the whole column
+  // has to. The opacity steps are the hero cards' own.
+  proEyebrow: { color: toon.ink, opacity: 0.75 },
+  proTitle: { color: toon.ink, marginTop: 2 },
+  proSub: { color: toon.ink, opacity: 0.72, marginTop: 4 },
+  proBtn: { alignSelf: 'flex-start', marginTop: space.md },
+  proBtnContent: { paddingHorizontal: space.md, paddingVertical: 8 },
+  // Bleeds into the frame's padding so the crew stands the card's full height
+  // and runs off its right edge, the way the hero art does.
+  proArt: {
+    width: '62%',
+    height: 190,
+    marginVertical: -space.md,
+    marginRight: -space.md,
+  },
 
   trophyRow: { flexDirection: 'row', gap: space.sm },
   trophy: {

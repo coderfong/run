@@ -123,6 +123,19 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
 
 // Swipeable hero: Season → Clubs → Solo → PRO, each deep-linking somewhere.
 //
+// THREE CARDS, THREE DESTINATIONS. Season and Clubs used to open the SAME
+// screen in the SAME state — `Season` with no params already opens on the club
+// board — so two thirds of the carousel was one page wearing two coats, and
+// swiping to the second card was work with no payoff. The split now is by
+// QUESTION, not by scope chip:
+//
+//   Season  where the season stands   → the standings board
+//   Clubs   where YOUR club stands    → the club tab (or how to find one)
+//   Solo    where YOU stand           → the standings board, solo scope
+//
+// The clubs board itself did not disappear with the card that pointed at it —
+// it is the board Season opens on, and the Clubs chip on that header.
+//
 // THE PRO SLIDE IS LAST, AND IT IS A SLIDE. Home's other PRO surface (the card
 // partway down the feed) only appears after three finished runs, which left a
 // new account with no route to the paywall from the app's main screen at all.
@@ -138,6 +151,7 @@ function HeroCarousel({ navigation }) {
   const cardW = width - space.gutter * 2;
   const [page, setPage] = useState(0);
   const warmSeason = () => preloadScreenImages('Season');
+  const warmClub = () => preloadScreenImages('Club');
   const { isPro, canShowPro, openPaywall } = useProEntitlement();
   const showPro = canShowPro && !isPro;
   const pages = showPro ? 4 : 3;
@@ -175,7 +189,7 @@ function HeroCarousel({ navigation }) {
           eyebrow={`SEASON ${SEASON_NO} · ${SEASON_CITY}`}
           title="STANDINGS"
           sub={countdown()}
-          cta="View season"
+          cta="View standings"
           onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season')}
         />
@@ -184,12 +198,14 @@ function HeroCarousel({ navigation }) {
           bg={brand.purple}
           art={require('../../assets/art/card-clubs.png')}
           artWidth="69%"
-          eyebrow="STANDINGS"
+          eyebrow="YOUR CLUB"
           title="CLUBS"
-          sub="Who holds the most land"
-          cta="View clubs"
-          onPressIn={warmSeason}
-          onPress={() => navigation.navigate('Season', { mode: 'clans' })}
+          sub="Members, league and chat"
+          cta="Open your club"
+          onPressIn={warmClub}
+          // The tab, not the board. A runner with no club lands on the find and
+          // create screen, which is the answer this card should give them.
+          onPress={() => navigation.navigate('Club')}
         />
         <HeroCard
           width={cardW}
@@ -198,7 +214,7 @@ function HeroCarousel({ navigation }) {
           eyebrow="LADDER"
           title="SOLO"
           sub="Climb without a club"
-          cta="View solo"
+          cta="View the ladder"
           onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season', { mode: 'solo' })}
         />
@@ -225,6 +241,79 @@ function HeroCarousel({ navigation }) {
         ))}
       </View>
     </View>
+  );
+}
+
+// How far down the feed the arrival animation reaches. Past this the cards are
+// below the fold on every phone, so an entrance nobody sees costs a layout
+// animation per row and nothing else.
+const FIRST_PAGE_ANIMATED = 4;
+
+// One row of the feed, memoised.
+//
+// FeedCard is the most expensive component in the app — 86 native views for an
+// ordinary run — and without a memo every visible card re-rendered whenever the
+// LIST re-rendered: a focus revalidation landing, a pull finishing, another
+// page appending. None of those change a card that is already on screen, and
+// all of them were paying for one.
+//
+// The comparison is field-by-field on the props that actually reach the card,
+// rather than the default shallow one, because `item` is a fresh object every
+// time the feed response is re-seeded from cache — identical content, new
+// identity, which a shallow compare cannot tell from a real change.
+const FeedRow = React.memo(
+  function FeedRow({ item, index, navigation, autoPlaySteal, screenFocused, animate }) {
+    const card = (
+      <FeedCard
+        item={item}
+        navigation={navigation}
+        autoPlaySteal={autoPlaySteal}
+        screenFocused={screenFocused}
+      />
+    );
+    if (!animate) return card;
+    return (
+      <Animated.View entering={FadeInDown.delay(index * 30).duration(240)}>
+        {card}
+      </Animated.View>
+    );
+  },
+  (prev, next) =>
+    prev.autoPlaySteal === next.autoPlaySteal &&
+    prev.screenFocused === next.screenFocused &&
+    prev.animate === next.animate &&
+    prev.navigation === next.navigation &&
+    sameRow(prev.item, next.item)
+);
+
+// Everything about a feed row that a card can DRAW differently.
+//
+// Deliberately not a shallow compare, and deliberately not a deep one either.
+// A row's run facts — distance, duration, route, rings, who it took ground
+// from — are settled the moment the run is submitted and cannot change for a
+// given id, so comparing them would be work with no possible finding. What CAN
+// move under a card that is already on screen is the social layer, and that is
+// what this checks.
+//
+// The lists are compared by CONTENT rather than by identity, which is the part
+// that matters: every focus revalidation rebuilds the feed response, so an
+// identity check would find a new `reactions` array on every single refresh
+// and re-render every visible card for a set of chips that had not changed.
+const listSig = (list, of) => (Array.isArray(list) ? list.map(of).join('|') : '');
+
+function sameRow(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.kudoed === b.kudoed &&
+    a.kudos_count === b.kudos_count &&
+    a.caption === b.caption &&
+    a.my_reaction === b.my_reaction &&
+    a.comment_count === b.comment_count &&
+    listSig(a.media, String) === listSig(b.media, String) &&
+    listSig(a.reactions, (r) => `${r?.emote}:${r?.count}`) ===
+      listSig(b.reactions, (r) => `${r?.emote}:${r?.count}`)
   );
 }
 
@@ -293,8 +382,68 @@ function FeedList({ navigation, header }) {
   // it is tapped — twenty bombs going off down a scroll is not a payoff.
   const autoStealId = (loading ? null : rows.find((r) => r.victims?.length))?.id ?? null;
 
+  // A FEED CARD IS 86 NATIVE VIEWS — measured, not estimated, and down from
+  // 241 before the frames learned to nine-slice themselves natively (see
+  // ui/ArtFrame.js). Two things still follow from it, and both are below.
+  //
+  // First: FlatList's default `initialNumToRender` is 10, so opening Home
+  // built roughly two and a half THOUSAND views before it could draw a frame.
+  // Four fills the first screen on the largest phone we support; the rest
+  // arrive in small batches as you scroll, which is what the windowing props
+  // are for. `windowSize` is in screenfuls — five keeps two either side of
+  // what you are looking at, which is enough to scroll into without ever
+  // showing a hole, and far short of the ten (five screens' worth of cards)
+  // the default keeps alive.
+  //
+  // Second: the entrance animation is now keyed off the FIRST page only.
+  // `entering` fires whenever a cell MOUNTS, and a virtualized list mounts
+  // cells continuously as you scroll — so every card past the first screenful
+  // was fading and sliding in under the scroll, which reads as the list
+  // stuttering rather than as an animation. It belongs to arriving on Home,
+  // so it now runs for the cards that are there when you arrive.
+  const renderRow = useCallback(
+    ({ item, index }) => (
+      <View style={styles.feedRow}>
+        {loading ? (
+          // Matches the card it stands in for: the feed card's radius comes
+          // from the limited scale now, and the literal 16 that used to be
+          // here left the placeholder visibly rounder than its replacement.
+          <Skeleton width="100%" height={110} style={{ borderRadius: radius.card, marginBottom: space.md }} />
+        ) : (
+          <FeedRow
+            item={item}
+            index={index}
+            navigation={navigation}
+            autoPlaySteal={item.id === autoStealId}
+            screenFocused={screenFocused}
+            animate={!reduce && index < FIRST_PAGE_ANIMATED}
+          />
+        )}
+        {/* PASER PRO, partway down the feed rather than above it. Renders
+            nothing at all for a subscriber, for anybody under three finished
+            runs, or while the store is off — see ProHomeCard's own header
+            for why each of those is a rule. Placed AFTER the third card so
+            it is below real content on any screen size.
+            `min(2, last)` rather than a flat 2: a feed with one or two cards
+            in it never reached index 2, so the card silently did not exist
+            on exactly the accounts a quiet feed describes. It still lands
+            after real content, just after less of it. */}
+        {index === Math.min(2, rows.length - 1) && !loading ? <ProHomeCard /> : null}
+      </View>
+    ),
+    [loading, styles.feedRow, navigation, autoStealId, screenFocused, reduce, rows.length]
+  );
+
   return (
     <FlatList
+      initialNumToRender={4}
+      maxToRenderPerBatch={3}
+      windowSize={5}
+      // NOT `removeClippedSubviews`. It would help here more than almost
+      // anywhere — eighty images a row is exactly what it is for — but it is
+      // the flag with a standing history of blank cells on iOS, and a feed
+      // that sometimes shows empty cards is worse than one that holds a few
+      // extra views.
       style={{ backgroundColor: colors.bg }}
       contentContainerStyle={{ paddingBottom: space.xxl, flexGrow: 1 }}
       data={rows}
@@ -315,35 +464,7 @@ function FeedList({ navigation, header }) {
       refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={accent} colors={[accent]} />}
       onEndReached={loading ? undefined : loadMore}
       onEndReachedThreshold={0.5}
-      renderItem={({ item, index }) => (
-        <View style={styles.feedRow}>
-          {loading ? (
-            // Matches the card it stands in for: the feed card's radius comes
-            // from the limited scale now, and the literal 16 that used to be
-            // here left the placeholder visibly rounder than its replacement.
-            <Skeleton width="100%" height={110} style={{ borderRadius: radius.card, marginBottom: space.md }} />
-          ) : (
-            <Animated.View entering={reduce ? undefined : FadeInDown.delay(Math.min(index, 12) * 30).duration(240)}>
-              <FeedCard
-                item={item}
-                navigation={navigation}
-                autoPlaySteal={item.id === autoStealId}
-                screenFocused={screenFocused}
-              />
-            </Animated.View>
-          )}
-          {/* PASER PRO, partway down the feed rather than above it. Renders
-              nothing at all for a subscriber, for anybody under three finished
-              runs, or while the store is off — see ProHomeCard's own header
-              for why each of those is a rule. Placed AFTER the third card so
-              it is below real content on any screen size.
-              `min(2, last)` rather than a flat 2: a feed with one or two cards
-              in it never reached index 2, so the card silently did not exist
-              on exactly the accounts a quiet feed describes. It still lands
-              after real content, just after less of it. */}
-          {index === Math.min(2, rows.length - 1) && !loading ? <ProHomeCard /> : null}
-        </View>
-      )}
+      renderItem={renderRow}
     />
   );
 }

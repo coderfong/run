@@ -33,8 +33,18 @@ for (const f of files.slice(0, 3)) {
 }
 console.log(`${total} requires, ${miss} missing`);
 
-// duplicate ids per slot
-const src = fs.readFileSync('src/config/cosmetics.js', 'utf8');
+// duplicate ids per slot.
+//
+// Scanned inside the ITEMS literal ONLY. cosmetics.js holds other objects
+// shaped `slot: [ ... ]` at the same indent — FIRST_RUN_ITEMS, the first-run
+// starter rack, is one — and reading the whole file reported those as extra
+// slots holding zero items.
+const wholeFile = fs.readFileSync('src/config/cosmetics.js', 'utf8');
+const itemsStart = wholeFile.indexOf('export const ITEMS = {');
+const itemsEnd = wholeFile.indexOf('\n};', itemsStart);
+const src = itemsStart === -1 || itemsEnd === -1
+  ? wholeFile
+  : wholeFile.slice(itemsStart, itemsEnd);
 const slotRe = /\n  (\w+): \[([\s\S]*?)\n  \],/g;
 let s;
 let dupes = 0;

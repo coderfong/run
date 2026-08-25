@@ -26,20 +26,33 @@ export const GOLD = '#eab308';
 
 export const PRO_PRODUCTS = [PRO_MONTHLY, PRO_ANNUAL];
 
-// Shown only until the store answers with real, storefront-localized prices.
-// Never used to CHARGE anything, and never shown next to a currency the device
-// isn't actually in — see the fallback handling in the paywall.
+// Shown only until the store answers with real, storefront-localized prices,
+// and never used to CHARGE anything: Apple bills whatever the product costs in
+// App Store Connect, never this string.
+//
+// PASER is sold in SINGAPORE ONLY, so these are the SGD prices a buyer is
+// actually charged (read off App Store Connect 2026-08-25), not the US tiers
+// the products were planned at. They were US dollars until then, which was
+// wrong for every buyer the app has. `priceFor` is a plain `||` and does NOT
+// check the storefront — an earlier version of this comment claimed it did —
+// so whatever is written here is what a failed lookup advertises.
+//
+// The same storefront rule is why a US test account sees US prices here on a
+// Singapore-only app: StoreKit answers for the ACCOUNT's storefront, not the
+// app's market. That is not a bug, and it is the usual reason a device looks
+// like it disagrees with App Store Connect. `fetchProductPrices` warns in dev
+// whenever a lookup falls back rather than answering.
 export const PLANS = [
   {
     id: PRO_MONTHLY,
     label: 'Monthly',
-    fallbackPrice: '$4.99',
+    fallbackPrice: 'S$4.98',
     period: 'month',
   },
   {
     id: PRO_ANNUAL,
     label: 'Yearly',
-    fallbackPrice: '$39.99',
+    fallbackPrice: 'S$39.98',
     period: 'year',
     // Worked out from the fallbacks above and replaced with the real
     // saving once both store prices land, so this can never advertise a

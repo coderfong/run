@@ -163,7 +163,39 @@ export async function fetchProductPrices(skus, { subscription = false } = {}) {
   const products = await fetchProducts({ skus, type: subscription ? 'subs' : 'in-app' });
   const out = {};
   for (const p of products || []) out[p.id] = p.displayPrice;
+  if (__DEV__) logPriceLookup(skus, products, out);
   return out;
+}
+
+/**
+ * Why the sheets show a fallback price. Dev builds only.
+ *
+ * A sku the store does not know about is omitted from the answer rather than
+ * erroring, and the callers deliberately swallow failures so the sheet still
+ * opens — so an empty result and a working store look identical on screen,
+ * and the fallback price silently stands in for a number nobody checked.
+ * This says which ids came back, in which currency, and which did not.
+ *
+ * Run it on a DEV CLIENT ON A REAL DEVICE signed into a Sandbox Apple Account.
+ * The simulator has no store, and a TestFlight build has no console — see
+ * `docs/APP_STORE.md` for reading the same thing off a TestFlight build.
+ */
+function logPriceLookup(skus, products, out) {
+  const found = products || [];
+  for (const p of found) {
+    console.log(`[iap] ${p.id} = ${p.displayPrice} (${p.currency ?? 'currency not reported'})`);
+  }
+  const missing = skus.filter((s) => !out[s]);
+  if (!missing.length) return;
+  console.warn(
+    `[iap] the store returned nothing for ${missing.join(', ')} — the sheet is ` +
+      'showing its hardcoded fallback price for these, which is not necessarily ' +
+      'what Apple would charge. Usual causes, in the order worth checking: the ' +
+      'Paid Apps agreement is not active in Agreements, Tax, and Banking; the ' +
+      'product is still in Missing Metadata; the id differs from the one in ' +
+      'config/pro.js or BuyEnergySheet.js (they are case sensitive); or a ' +
+      'subscription is being asked for as an in-app product, or the reverse.',
+  );
 }
 
 /**

@@ -1346,7 +1346,10 @@ const ClaimActor = React.forwardRef(function ClaimActor(
       {/* No `ring` and no `bg`: an actor in the scene is a body, not a framed
           portrait. Every cast member is drawn the same way, which is why the
           runner and the rivals read as being in the same scene. */}
-      <CharacterBust equipped={worn} size={size} bg="transparent" />
+      {/* Crisp: an actor is squashed and stretched by its action chain (the
+          scaleX/scaleY sequences above), so its layers have to be decoded for
+          the largest size they reach rather than the one they rest at. */}
+      <CharacterBust equipped={worn} size={size} bg="transparent" crisp />
     </Animated.View>
   );
 });

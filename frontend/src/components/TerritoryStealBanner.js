@@ -242,7 +242,10 @@ function BurstHead({ victim, clock, index, size }) {
         style,
       ]}
     >
-      <CharacterBust equipped={victim.avatar || {}} size={size} bg="transparent" />
+      {/* Crisp, like the heads on the bar below: this one is thrown by the
+          blast and the entry overshoots to 1.12, so the layers are decoded for
+          the size they reach rather than the size they land at. */}
+      <CharacterBust equipped={victim.avatar || {}} size={size} bg="transparent" crisp />
     </Animated.View>
   );
 }
@@ -322,6 +325,7 @@ function SettledHead({ victim, clock, index, size, reduced, trigger, playToken }
             equipped={victim.avatar || {}}
             size={size}
             bg="transparent"
+            crisp
           />
         </Animated.View>
         <Animated.View style={[styles.stackedHead, sadStyle]}>
@@ -329,6 +333,7 @@ function SettledHead({ victim, clock, index, size, reduced, trigger, playToken }
             equipped={sadAvatar}
             size={size}
             bg="transparent"
+            crisp
           />
         </Animated.View>
       </Animated.View>

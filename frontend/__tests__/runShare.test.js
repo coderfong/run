@@ -11,6 +11,7 @@
 // screen can actually hand it.
 
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 
 import RunShareSheet from '../src/components/share/RunShareSheet';
@@ -20,6 +21,7 @@ import RunShareCard, {
   availableStats,
 } from '../src/components/share/RunShareCard';
 import LogoRunner, { MARK_FOOT } from '../src/components/character/LogoRunner';
+import OutlinedText from '../src/components/ui/OutlinedText';
 import TrailDecorations, {
   TRAIL_DECORATIONS,
   trailMarks,
@@ -116,10 +118,18 @@ describe('the run share card', () => {
       .findAll((n) => typeof n.props?.cx === 'number' && n.props?.fill === TEAM.glow)
       .map((n) => n.props)[0];
 
+    // The dot's cx is in the ART BOX's own pixels and the runner's left is in
+    // the card's, so the column's offset has to come back in — the same
+    // correction the card itself makes. Getting this wrong is invisible in the
+    // stacked layout, where the box starts at 0.
+    const art = tree.root
+      .findAll((n) => n.props?.style?.position === 'absolute')
+      .map((n) => n.props.style)
+      .find((st) => typeof st.width === 'number' && typeof st.height === 'number' && st.top > 0);
     const footX = box.left + size * MARK_FOOT;
-    expect(Math.abs(footX - dot.cx)).toBeLessThan(1);
+    expect(Math.abs(footX - (art.left + dot.cx))).toBeLessThan(1);
     // The box centre is NOT the anchor — if it were, this would be ~0 too.
-    expect(Math.abs(box.left + size / 2 - dot.cx)).toBeGreaterThan(size * 0.1);
+    expect(Math.abs(box.left + size / 2 - (art.left + dot.cx))).toBeGreaterThan(size * 0.1);
     act(() => tree.unmount());
   });
 
@@ -173,9 +183,10 @@ describe('the run share card', () => {
     expect(keys).toEqual(['distance', 'time']);
   });
 
-  // The simplified card, 2026-08-16: a route, four numbers and the wordmark.
-  test('shows four numbers by default and no territory headline', () => {
-    expect(DEFAULT_STATS).toEqual(['distance', 'time', 'elevation', 'territory']);
+  // The rebuilt card, 2026-08-24: three numbers, no labels over them, the route
+  // and the runner in a column beside them.
+  test('shows three unlabelled numbers by default and no territory headline', () => {
+    expect(DEFAULT_STATS).toEqual(['distance', 'pace', 'time']);
 
     let tree;
     act(() => {
@@ -187,19 +198,51 @@ describe('the run share card', () => {
       .findAll((n) => typeof n.props?.children === 'string')
       .map((n) => n.props.children);
     // The eyebrow and the 44pt km² that used to head the card are gone; area is
-    // one of the numbers now, so it is said once.
+    // a chip now rather than a default, so it is not said at all unless asked
+    // for.
     expect(text).not.toContain('TERRITORY CLAIMED');
     expect(text).not.toContain('TERRITORY EARNED');
-    expect(text).toContain('Territory');
-    expect(text).toContain('Elev gain');
+    // The LABELS are gone too — the unit is what says what a number is.
+    expect(text).not.toContain('Territory');
+    expect(text).not.toContain('Elev gain');
+    expect(text).not.toContain('Distance');
+    expect(text).not.toContain('Pace');
+    expect(text).toContain('km');
+    expect(text).toContain('/km');
     expect(text).toContain('PASER');
     act(() => tree.unmount());
   });
 
-  // "Smaller" is the whole point of the change, so it is worth a number rather
-  // than an opinion: the route band is capped at a share of the card instead of
-  // taking every pixel the furniture leaves.
-  test('keeps the route to a band, not the whole card', () => {
+  // ONE SIZE for every number on the card. `fit` shrinks each string on its own
+  // and that is the backstop, not the mechanism: a card whose over-the-hour
+  // duration is set smaller than the distance above it is three type sizes in a
+  // column, which is the one thing the poster layout must not do.
+  test('draws every number at the same size', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        // A long run: "1:38:22" is the string that used to shrink on its own.
+        <RunShareCard
+          width={360}
+          team={TEAM}
+          run={{ distanceM: 21097, durationS: 5902 }}
+          path={PATH}
+          rings={RINGS}
+        />
+      );
+    });
+    const sizes = tree.root
+      .findAllByType(OutlinedText)
+      .map((n) => StyleSheet.flatten(n.props.style).fontSize);
+    expect(sizes.length).toBeGreaterThan(1);
+    expect(new Set(sizes).size).toBe(1);
+    act(() => tree.unmount());
+  });
+
+  // SIDE BY SIDE: the route is a column beside the numbers, not a band across
+  // the card. It is narrower than the card and offset from its edge, and it
+  // still sits clear of Instagram's own chrome at the top.
+  test('stands the route in a column beside the numbers', () => {
     let tree;
     act(() => {
       tree = renderer.create(
@@ -210,10 +253,54 @@ describe('the run share card', () => {
     const band = tree.root
       .findAll((n) => typeof n.props?.style?.height === 'number' && n.props?.style?.top > 0)
       .map((n) => n.props.style)
+      .find((s) => typeof s.width === 'number' && s.width < 360 && s.width > 60);
+    expect(band).toBeDefined();
+    // Its own column, on the side the numbers are not.
+    expect(band.left).toBeGreaterThan(360 * 0.4);
+    expect(band.left + band.width).toBeLessThanOrEqual(360);
+    expect(band.top).toBeGreaterThanOrEqual(height * 0.11);
+    act(() => tree.unmount());
+  });
+
+  // Centre is the OLD shape, kept: route in a capped band across the top with
+  // the numbers under it. It is the one layout where the route gets the full
+  // width of the card, and it must still not take the whole card.
+  test('centre keeps the stacked layout, route capped to a band', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <RunShareCard width={360} align="center" team={TEAM} run={RUN} path={PATH} rings={RINGS} />
+      );
+    });
+    const height = 360 * (16 / 9);
+    const band = tree.root
+      .findAll((n) => typeof n.props?.style?.height === 'number' && n.props?.style?.top > 0)
+      .map((n) => n.props.style)
       .find((s) => s.width === 360);
     expect(band.height).toBeLessThanOrEqual(height * 0.31);
-    // ...and sits clear of Instagram's own chrome at the top.
     expect(band.top).toBeGreaterThanOrEqual(height * 0.11);
+    act(() => tree.unmount());
+  });
+
+  // With no route to stand on the figure is the subject, not a detail stuck at
+  // the end of an invisible line. The "Character showcase" preset is exactly
+  // this combination, and it used to render no character at all.
+  test('still draws the runner with the route switched off', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <RunShareCard
+          width={360}
+          team={TEAM}
+          run={RUN}
+          path={PATH}
+          rings={RINGS}
+          equipped={EQUIPPED}
+          showRoute={false}
+        />
+      );
+    });
+    expect(tree.root.findAllByType(LogoRunner).length).toBe(1);
     act(() => tree.unmount());
   });
 });

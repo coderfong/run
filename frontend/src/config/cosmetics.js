@@ -406,6 +406,70 @@ ITEMS.footwear = [
 ];
 
 // ---------------------------------------------------------------------------
+// First run — a STARTER RACK, not the catalogue
+// ---------------------------------------------------------------------------
+//
+// The wardrobe is big on purpose: it is the thing lootboxes, the pass and the
+// level ladder hand out over a season. Showing all of it in the five minutes
+// before anybody has run a step is the one place that works against itself —
+// forty-six pairs of shorts is a shop, not a character, and the reward loses
+// its shine when the runner has already seen (and could already wear) every
+// piece of it on day zero.
+//
+// So the first-run steps draw from these lists instead: a handful per slot,
+// picked to cover the shapes rather than the colourways, so every choice
+// reads as a different character rather than the same tee in a tenth tint.
+// Everything left out is still FREE — it is simply met later, in the Avatar
+// Studio, where the rest of the catalogue is the point.
+//
+// Slots not listed here (face, glasses, footwear, extras) show their unlocked
+// list unchanged: they are small already, or they are not part of the flow.
+export const FIRST_RUN_ITEMS = {
+  hair: [
+    'none', 'buzz', 'twoblock', 'curtains', 'middlepart', 'swept',
+    'curls', 'pixie', 'bluntbob', 'fringebob', 'sleeklong', 'hijab',
+  ],
+  top: [
+    'stripetee', 'singlet', 'puffblouse', 'k2t', 'o12t', 'o1t',
+    'o10t', 'o2t', 'k5t',
+  ],
+  bottom: [
+    'wb001', 'wb002', 'wb014', 'wb024', 'wb018', 'wb052',
+    'wb092', 'wb009', 'wb013',
+  ],
+  headwear: [
+    'none', 'cap', 'sportcap', 'dadcap', 'knitbeanie', 'cuffbeanie',
+    'beret', 'headscarf', 'pinkbow',
+  ],
+};
+
+/**
+ * The grid one first-run step should show.
+ *
+ * `unlocked` is the runner's own unlocked list for the slot — already filtered
+ * by the caller, because only it knows the entitlement context. The starter
+ * rack is applied ON TOP of that and never widens it, so a piece that has not
+ * been earned cannot slip into the flow through this door.
+ *
+ * `keepId` is whatever is worn right now, and it survives the rack whether it
+ * is in it or not: the runner may arrive wearing a pass reward or a piece
+ * chosen in the Studio, and a grid that cannot show what is already on the
+ * character reads as the selection having been lost.
+ *
+ * Two guards, both about never handing back an empty grid: an id that has been
+ * renamed out of the catalogue is skipped, and if the intersection comes out
+ * too thin to be a choice at all (art pulled, a slot renamed wholesale) the
+ * full list comes back rather than a step with two tiles on it.
+ */
+export function firstRunItems(slot, unlocked, keepId) {
+  const rack = FIRST_RUN_ITEMS[slot];
+  if (!rack) return unlocked;
+  const wanted = new Set(rack);
+  const picked = unlocked.filter((item) => wanted.has(item.id) || item.id === keepId);
+  return picked.length >= 3 ? picked : unlocked;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

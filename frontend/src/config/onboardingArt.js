@@ -37,13 +37,21 @@ const ART = {
 
   // --- backdrops ----------------------------------------------------------
   stage: require('../../assets/art/onboarding/stage.png'),
-  // PASER PRO — the crew, in two shapes cut from one square master by
+  // PASER PRO — the crew, in three shapes cut from one square master by
   // `scripts/install-pro-art.py`: 4:3 for the first-run panel, 16:9 with the
-  // crew hard right for the card on You (the left of that one is empty stage
-  // on purpose, because the card draws its copy there). Regenerate both from
-  // the master rather than editing either by hand.
+  // crew hard right, and the transparent CUT-OUT. Regenerate them from the
+  // master rather than editing any of them by hand.
+  //
+  // The cut-out is the one the app reaches for now. Both painted plates carry
+  // their own dark background, which means dropping either into the paper page
+  // prints a rectangle of somebody else's stage inside a hand-drawn box; the
+  // cut-out sits on whatever fill the card already has. `proBanner` is kept
+  // because it is a real, regenerable shape of the same art, but nothing
+  // renders it — the poster on You is a framed gold card now (ProfileScreen)
+  // and the slide on Home was always the cut-out.
   proHero: require('../../assets/art/onboarding/pro-hero.png'),
   proBanner: require('../../assets/art/ui/pro-banner.png'),
+  proCrew: require('../../assets/art/card-pro.png'),
   // The plaza where the running paths meet — the stage the CROSSED PATHS beat
   // plays on (components/paserby/PlazaScene.js). Painted with a flat sky and
   // six ground circles the encountered runners stand on, so the scene supplies

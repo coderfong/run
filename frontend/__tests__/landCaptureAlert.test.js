@@ -111,8 +111,13 @@ describe('the land capture alert', () => {
       act(() => { btn.props.onPress(); });
     };
 
-    // Alert → playback (boxes the area), then playback → the live map.
+    // The route through the sequence, in order: alert → the full-screen
+    // cutscene → its payoff → the live map. SKIP is the always-available way
+    // to the payoff, so this does not have to wait out a real style's
+    // choreography; ZOOM TO THE LAND does not exist until the payoff has
+    // landed, which is why it is walked rather than reached for.
     expect(() => press('VIEW AFFECTED LAND')).not.toThrow();
+    expect(() => press('SKIP')).not.toThrow();
     expect(() => press('ZOOM TO THE LAND')).not.toThrow();
 
     // The exact ring reaches the map so it can fit to the real ground.

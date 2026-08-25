@@ -5,13 +5,25 @@
 // and, on the banner, one corner cut off. They carry the same toon voice as the
 // character art and the buttons.
 //
-// NINE SLICE, MINUS THE MIDDLE. A frame's interior is empty, so only the four
-// corners and the four edges are drawn — eight clipped Images rather than nine,
-// and nothing at all over the content. Corners are drawn at their natural size
-// and never stretched; edges stretch along one axis only. Stretching a hand
-// drawn line lengthways just makes it a slightly straighter hand drawn line,
-// which is exactly what you want; stretching a CORNER is what makes a nine
-// slice look broken, and is what the measured insets exist to prevent.
+// NINE SLICE. Corners are drawn at their fitted size and never stretched;
+// edges stretch along one axis only. Stretching a hand drawn line lengthways
+// just makes it a slightly straighter hand drawn line, which is exactly what
+// you want; stretching a CORNER is what makes a nine slice look broken, and is
+// what the measured insets exist to prevent.
+//
+// THERE ARE TWO WAYS THAT HAPPENS HERE, and which one runs is decided per
+// frame, per render:
+//
+//   * NATIVELY, in one view, by handing iOS a `capInsets` image. This is the
+//     path almost everything takes. See the long note on NATIVE_NINE_SLICE
+//     below for how the point-valued line weight survives it.
+//   * BY HAND, as eight clipped Images — minus the middle, since a frame's
+//     interior is empty. This is what runs on Android, on a boiling frame, and
+//     anywhere the cut poses are missing. It is sixteen views per layer, which
+//     is why it stopped being the default.
+//
+// Both draw the same box; `sliceLayout` is the spec, and frameNineSlice.test.js
+// holds the native path to it.
 //
 // THE SCALE. Corners at their natural size is right until the box is SMALLER
 // than its own corners, and then it is badly wrong: a label whose art wants
@@ -45,7 +57,7 @@
 // crawling stops.
 
 import React, { useEffect, useMemo } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { Image, Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -165,6 +177,132 @@ export function frameMiddle(spec, width, height, scale = 1) {
     width: Math.max(0, width - left - Math.round(insets.right * fitted)),
     height: Math.max(0, height - top - Math.round(insets.bottom * fitted)),
   };
+}
+
+// ---------------------------------------------------------------------------
+// The native nine slice.
+//
+// Everything below the slice maths draws a frame as EIGHT clipped windows —
+// eight <View overflow:hidden> each holding an offset <Image>. Sixteen native
+// views for a line, thirty-two once there is a fill behind it, and a feed card
+// carries four or five frames: measured, a single feed card was 241 native
+// views and about 150 of them were this.
+//
+// iOS does the identical job in one view. `capInsets` maps straight onto
+// UIImage's `resizableImageWithCapInsets:resizingMode:UIImageResizingModeStretch`,
+// which keeps the four corners at a fixed size and stretches the edges and the
+// middle — the same contract `sliceLayout` documents, done by the compositor.
+// The middle costs nothing either way: every ink drawing is transparent inside
+// (checked, all seventeen) and every paper drawing is solid inside, so the
+// stretched centre is either nothing at all or the fill itself. That is also
+// why the fast path needs no separate `middle` rectangle.
+//
+// TWO THINGS MAKE IT NOT A DROP IN, and both are handled here.
+//
+// 1. THE POSES HAVE TO BE APART. A frame's art is a strip of three drawings and
+//    the middle of that strip is the second drawing, so stretching the whole
+//    image is nonsense. scripts/split-frame-poses.py cuts them; the strips stay
+//    for the boil, which cannot swap an image source on the UI thread.
+//
+// 2. CAP INSETS ARE IN POINTS, AND OUR LINE WEIGHT IS A POINT VALUE. This is
+//    the part worth reading twice. The frames were drawn at wildly different
+//    sizes, so the app never draws them at their own scale: `weightScale` works
+//    out the factor that turns a given drawing into a 5pt (or 3.75pt, or 6.5pt)
+//    line, and it lands around a third for every frame in the pack. A cap inset
+//    is fixed in the IMAGE's point space, so left alone every corner would come
+//    out roughly three times too heavy — the frames would read as a different,
+//    much clumsier set of drawings.
+//
+//    The lever for that is the source's `scale`, which is a documented field on
+//    an image source and is what tells iOS the density a bitmap is drawn at: an
+//    image of P pixels declared at scale S measures P/S points. Declaring
+//    `scale: 1 / fitted` therefore makes the drawing measure exactly
+//    `pixels * fitted` points, which puts its corners at `inset * fitted` — the
+//    same number `sliceLayout` rounds to for the slice path. The geometry is
+//    identical by construction, which is what `capFrameGeometry` below exists
+//    to make testable.
+//
+// If this ever needs turning off, it is one constant. The slice path is
+// untouched and still runs on Android, on every boiling frame, and on anything
+// whose poses are missing.
+const NATIVE_NINE_SLICE = Platform.OS === 'ios';
+
+/**
+ * What to hand a capInsets <Image> so it draws the frame `sliceLayout` would.
+ *
+ * Exported and pure because it is the whole of the risk: the pixels are the
+ * compositor's business, but whether the numbers agree with the slice path is
+ * arithmetic, and arithmetic can be pinned. Null when there is nothing to draw.
+ */
+export function capFrameGeometry(spec, width, height, scale = 1) {
+  if (!spec?.insets || !width || !height) return null;
+  const fitted = frameScale(spec, width, height, scale);
+  if (!(fitted > 0)) return null;
+  const { insets } = spec;
+  return {
+    fitted,
+    // The density that makes the drawing measure `pixels * fitted` points.
+    scale: 1 / fitted,
+    // Point dimensions at that density. Only used as the intrinsic size hint —
+    // the style below gives the real box — but they have to agree with `scale`
+    // or the hint contradicts the image.
+    width: spec.frameWidth * fitted,
+    height: spec.frameHeight * fitted,
+    // NOT rounded, unlike the slice path's corners. Rounding here would cut the
+    // image somewhere other than the corner boundary it was measured at, which
+    // is a sub-pixel slice of the wrong drawing along every edge.
+    capInsets: {
+      left: insets.left * fitted,
+      right: insets.right * fitted,
+      top: insets.top * fitted,
+      bottom: insets.bottom * fitted,
+    },
+  };
+}
+
+/**
+ * One layer of a frame, nine-sliced by iOS. One native view.
+ *
+ * `tint` recolours the drawing the same way the slices do — the art is one flat
+ * colour and `tintColor` is what makes it wear a clan colour or the theme's
+ * line. Template rendering is applied before the image is made resizable (see
+ * RCTImageComponentView), so the two compose.
+ */
+function CapLayer({ spec, source, width, height, scale, tint, opacity }) {
+  const geometry = useMemo(
+    () => capFrameGeometry(spec, width, height, scale),
+    [spec, width, height, scale]
+  );
+  // The bundled asset with its declared density REPLACED, and nothing else
+  // touched. Spread rather than rebuilt from the uri: the resolver also sets
+  // `__packager_asset`, which is how the loader knows this is art shipped
+  // inside the app rather than something off the network, and dropping it
+  // would change how the image is fetched in a release build.
+  //
+  // Memoised on the values that actually vary, so the object identity is stable
+  // between renders — a fresh source object every pass makes RCTImageView treat
+  // it as a new image and reload it.
+  const resolved = source ? Image.resolveAssetSource(source) : null;
+  const uri = resolved?.uri || null;
+  const imageSource = useMemo(
+    () => (resolved && geometry
+      ? { ...resolved, width: geometry.width, height: geometry.height, scale: geometry.scale }
+      : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [uri, geometry?.width, geometry?.height, geometry?.scale]
+  );
+
+  if (!imageSource) return null;
+  return (
+    <Image
+      source={imageSource}
+      capInsets={geometry.capInsets}
+      resizeMode="stretch"
+      fadeDuration={0}
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { opacity }, tint ? { tintColor: tint } : null]}
+    />
+  );
 }
 
 // Slow. The source is three drawings, and cycled quickly three drawings read as
@@ -333,6 +471,52 @@ export default function ArtFrame({
   // path too — and gets the cheaper one for free.
   const boiling = boil && !reduced;
   const SliceView = boiling ? BoilingSlice : StillSlice;
+
+  // THE FAST PATH. One view per layer instead of sixteen — see the note on
+  // NATIVE_NINE_SLICE above for what it is and what it costs.
+  //
+  // Every condition here is a reason the compositor cannot do the job:
+  // a boiling frame needs the strip and a per-frame offset, Android has no
+  // capInsets, and a frame whose poses were never cut has nothing to hand it.
+  // Any of them falls through to the eight slices, which still work.
+  const inkPose = spec.posesInk?.[stillPose];
+  const paperPose = spec.posesPaper?.[stillPose];
+  const canCap = NATIVE_NINE_SLICE && !boiling && !!inkPose && (!wantsPaper || !!paperPose);
+
+  if (canCap) {
+    return (
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
+        {/* Paper under, ink over, exactly as below — and with no separate
+            middle rectangle, because the paper drawing's own middle is solid
+            and stretches to fill the box. Full alpha on the paper for the same
+            reason it has full alpha below: `opacity` softens the LINE, and a
+            surface that is paler at its edges than at its centre is two
+            colours in one box. */}
+        {wantsPaper ? (
+          <CapLayer
+            spec={spec}
+            source={paperPose}
+            width={width}
+            height={height}
+            scale={scale}
+            tint={fill}
+            opacity={1}
+          />
+        ) : null}
+        {layer === 'paper' ? null : (
+          <CapLayer
+            spec={spec}
+            source={inkPose}
+            width={width}
+            height={height}
+            scale={scale}
+            tint={tint}
+            opacity={opacity}
+          />
+        )}
+      </View>
+    );
+  }
 
   const slices = (source, slotTint, slotOpacity) => layout.map(({ key, rect, box }) => (
     <SliceView

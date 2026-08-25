@@ -16,6 +16,7 @@ import CharacterRig, { PartThumb } from '../../components/character/CharacterRig
 import {
   ITEMS,
   SLOTS,
+  firstRunItems,
   itemPreviewSources,
   itemVariantSources,
   unlockLabel,
@@ -43,8 +44,18 @@ export default function CharacterStep({
   // is a shop pitch, and this is the five minutes where they are meeting their
   // character — the locked catalogue is the Avatar Studio's job. The equipped
   // item is always kept, so a server-granted piece can never vanish mid-flow.
+  //
+  // Then narrowed again to the STARTER RACK (`firstRunItems`): unlocked is not
+  // the same question as "worth showing now". Free covers dozens of colourways
+  // per slot, and scrolling forty pairs of shorts before the first run both
+  // buries the choice and spends the wardrobe the pass and the boxes are meant
+  // to hand out later. The rest is met in the Avatar Studio, already unlocked.
   const items = useMemo(
-    () => all.filter((item) => isUnlocked(item) || item.id === equipped[slotKey]),
+    () => firstRunItems(
+      slotKey,
+      all.filter((item) => isUnlocked(item) || item.id === equipped[slotKey]),
+      equipped[slotKey]
+    ),
     [all, isUnlocked, equipped, slotKey]
   );
 

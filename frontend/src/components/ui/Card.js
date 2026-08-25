@@ -189,13 +189,22 @@ export default function Card({
   );
 }
 
-// Style keys that place a box in its PARENT rather than describe the box. These
-// move to the shadow wrapper; everything else stays on the card.
+// Style keys that place or SIZE the box in its parent rather than describe the
+// box. These move to the shadow wrapper; everything else stays on the card.
+//
+// Sizing has to travel with placement, and the reason is not symmetry. The
+// wrapper is the thing the parent lays out, so a `width: '31%'` left on the
+// card resolved against a wrapper that had no width of its own — Yoga answers
+// that with `auto`, so the card shrank to its longest word and a stat wall came
+// out as six black columns with the labels set one letter per line. On the
+// wrapper the percentage has a real parent to measure against, and the card
+// fills it for free: a column container stretches its child by default.
 const PLACEMENT = new Set([
   'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
   'marginHorizontal', 'marginVertical', 'marginStart', 'marginEnd',
   'position', 'top', 'right', 'bottom', 'left', 'start', 'end',
   'alignSelf', 'flex', 'flexGrow', 'flexShrink', 'flexBasis', 'zIndex',
+  'width', 'minWidth', 'maxWidth',
 ]);
 
 function splitPlacement(style) {

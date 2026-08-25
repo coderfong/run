@@ -9,6 +9,13 @@
 // a crash history (see docs/SHARING.md and the share flag harness), so adding
 // a second rendering path to it to sell a subscription would be a bad trade.
 //
+// A FREE PRESET MAY SET A PRO CONTROL, and that is on purpose. Accent,
+// placement and the choice of stats are padlocked as CONTROLS (2026-08-24), but
+// "Clean" is a curated look that happens to be centred, and gating the free
+// looks behind the same padlock would leave one free style that changes
+// nothing. The line is: you cannot dial your own colour and position without
+// PRO; you can always pick a look somebody drew for you.
+//
 // PREVIEW IS ALWAYS FREE. Selecting a PRO style applies it to the real card,
 // with the runner's real run, at full size. The gate is on EXPORT — saving,
 // posting or sending it. Somebody has to see the thing on their own run to
@@ -25,7 +32,13 @@
 // Stat keys must exist in RunShareCard's `availableStats` for the run, and the
 // sheet filters them against it — a preset asking for a stat this particular
 // run does not have simply drops it rather than rendering a blank tile.
-const CORE_STATS = ['distance', 'duration', 'pace'];
+//
+// `time`, not `duration`: the key the card actually publishes is `time`, and
+// this list said `duration` from the day it was written, so every preset using
+// it silently dropped the clock and posted two numbers instead of three. A key
+// added here has to be checked against `availableStats` — the filter that
+// makes a wrong key safe is the same filter that makes it invisible.
+const CORE_STATS = ['distance', 'pace', 'time'];
 
 export const SHARE_STYLES = [
   // --- free ---------------------------------------------------------------

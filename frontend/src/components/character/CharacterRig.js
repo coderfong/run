@@ -116,7 +116,7 @@ const SWAP_COALESCE_MS = 180;
 // because that bails out early for an empty slot and hooks cannot live behind
 // a return, and kept off the static path because every bust in the feed draws
 // ten of these.
-function SwapLayer({ img, frame, entered, onSwapIn, captureSafe }) {
+function SwapLayer({ img, frame, entered, onSwapIn, captureSafe, crisp = false }) {
   // The art currently on screen. A layer's FIRST load is the rig drawing
   // itself, not a change, so it must arrive plainly; only art that replaces
   // different art counts.
@@ -149,11 +149,11 @@ function SwapLayer({ img, frame, entered, onSwapIn, captureSafe }) {
 
   const Img = captureSafe ? RNImage : ExpoImage;
   return (
-    <Img source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp onLoad={onLoad} />
+    <Img source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp={crisp} onLoad={onLoad} />
   );
 }
 
-function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false }) {
+function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false, crisp = false }) {
   if (!img) return null;
   const base = LAYOUT[fit || slot];
   if (!base) return null;
@@ -180,11 +180,12 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
         entered={entered}
         onSwapIn={onSwapIn}
         captureSafe={captureSafe}
+        crisp={crisp}
       />
     );
   }
   const Img = captureSafe ? RNImage : ExpoImage;
-  return <Img source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp />;
+  return <Img source={img} style={frame} resizeMode="contain" fadeDuration={0} crisp={crisp} />;
 }
 
 // Footwear, one shoe at a time.
@@ -205,7 +206,7 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
 // as one layer the whole collar ring sits in front of the leg and reads as an
 // empty ring beside the ankle instead of around it. The two pieces tile, so a
 // shoe with no back piece is simply the old single layer.
-function Feet({ item, equipped, bodyW, bodyH, back = false, captureSafe = false, ...rest }) {
+function Feet({ item, equipped, bodyW, bodyH, back = false, captureSafe = false, crisp = false, ...rest }) {
   const feet = item?.feet;
   if (!feet) {
     const img = back ? item?.backImg : itemWornImage('footwear', item, equipped);
@@ -217,6 +218,7 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, captureSafe = false,
         bodyW={bodyW}
         bodyH={bodyH}
         captureSafe={captureSafe}
+        crisp={crisp}
         {...rest}
       />
     );
@@ -253,7 +255,7 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, captureSafe = false,
             }}
             resizeMode="contain"
             fadeDuration={0}
-            crisp
+            crisp={crisp}
           />
         );
       })}
@@ -286,6 +288,29 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     // mounts cannot assume that decode has finished, so this swaps every
     // layer back to RN's own synchronous Image for that one render tree only.
     captureSafe = false,
+    // FULL-RESOLUTION DECODE. Off unless the rig's own scale can move.
+    //
+    // Every layer used to be drawn `crisp` — that is, with expo-image's
+    // `allowDownscaling` turned OFF, decoding the source PNG at its full size
+    // whatever the view draws at. The character art is ~512px square, so one
+    // layer is about a megabyte of bitmap and a dressed runner is eight of
+    // them. In the studio that is correct and deliberate: the rig springs to
+    // 1.12 on a tap and on a part landing, and a bitmap decoded for the
+    // resting size magnifies into mush. See ui/image.js.
+    //
+    // But the rig is drawn far more often as a 30-40pt PORTRAIT that never
+    // moves — a bust on every feed card, over every territory on the map,
+    // beside every leaderboard row. Those were each paying eight full-size
+    // decodes to draw a thumbnail, which is most of what made a screenful of
+    // runners expensive to build and to hold in memory.
+    //
+    // The default is the honest test of whether it is needed: `animateSwaps`
+    // is the studio's part-landing spring, and a `ref` is the only route to
+    // the imperative `play()` nod. A rig with neither cannot change its own
+    // scale, so there is nothing for a full decode to protect. A caller whose
+    // PARENT scales it (RunningScreen's live marker sits in a Pulse) can ask
+    // for it by hand.
+    crisp,
   },
   ref
 ) {
@@ -342,6 +367,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
   // DRESSING (the studio, the two onboarding steps) rather than one being
   // looked at. Off everywhere else: a feed of twenty busts must not run a load
   // callback per layer as it scrolls.
+  const decodeCrisp = crisp ?? (animateSwaps || !!ref);
   const layerBox = {
     bodyW,
     bodyH,
@@ -349,6 +375,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     entered: painted.current,
     onSwapIn,
     captureSafe,
+    crisp: decodeCrisp,
   };
 
   // A short hop: up, back down to where they stood — with a happy face.
@@ -457,7 +484,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
               style={{ position: 'absolute', width: bodyW, height: bodyH }}
               resizeMode="contain"
               fadeDuration={0}
-              crisp
+              crisp={decodeCrisp}
             />
             {/* Shoes under the trouser hem, the way a hem falls over a shoe: a
                 trouser leg ends ON the foot, so drawing the shoe over it cuts
@@ -491,7 +518,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
           style={{ position: 'absolute', width: bodyW, height: bodyH }}
           resizeMode="contain"
           fadeDuration={0}
-          crisp
+          crisp={decodeCrisp}
           pointerEvents="none"
         />
         {/* `atNeck` now means worn ON THE HEAD — the headset alone. It sits
@@ -519,7 +546,7 @@ export default CharacterRig;
 // Props: equipped, size (circle diameter), ring (border color), bg.
 // ---------------------------------------------------------------------------
 
-export const CharacterBust = React.memo(function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,255,0.06)', style }) {
+export const CharacterBust = React.memo(function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,255,0.06)', style, crisp }) {
   const W = size * BUST.bodyScale;
   return (
     <View
@@ -540,6 +567,10 @@ export const CharacterBust = React.memo(function CharacterBust({ equipped, size 
         equipped={equipped}
         size={W}
         animate={false}
+        // Left off, a bust decodes to the size it draws at — which is the
+        // point of a bust. Set it where the CALLER animates the portrait's
+        // scale, since the rig cannot see that from in here.
+        crisp={crisp}
         style={{ position: 'absolute', left: (size - W) / 2, top: BUST.top * size }}
       />
     </View>
@@ -583,7 +614,13 @@ export const CharacterBust = React.memo(function CharacterBust({ equipped, size 
  *                loadout wants it, and the one that had it was patching this
  *                same hole by hand.
  */
-export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, contrastHair = true }) {
+// `crisp` is OFF here, unlike on the rig's own layers, and the reason is that
+// nothing ever magnifies a tile. The grid is a wall of these — a slot can hold
+// most of the 294-item catalogue — and each one was decoding a ~512px source
+// PNG (about a megabyte of bitmap) to draw a 56pt chip. The one thing that
+// moves them is PressableScale, which only ever goes DOWN (scaleTo 0.97), and
+// a bitmap decoded for the resting size is more than enough for a shrink.
+export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, contrastHair = true, crisp = false }) {
   const { scheme } = useTheme();
   const previewEquipped = equipped
     || (slot === 'hair' && contrastHair
@@ -649,7 +686,7 @@ export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, c
             }}
             resizeMode="contain"
             fadeDuration={0}
-            crisp
+            crisp={crisp}
           />
         </View>
       </View>
@@ -662,7 +699,7 @@ export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, c
         style={{ width: size, height: size }}
         resizeMode="contain"
         fadeDuration={0}
-        crisp
+        crisp={crisp}
       />
     </View>
   );

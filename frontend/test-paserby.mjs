@@ -61,14 +61,42 @@ eq('a repeat encounter names itself', P.repeatLine(4), 'Familiar face! You have 
 eq('a first encounter has no repeat line', P.repeatLine(1), null);
 eq('the overflow line', P.moreLine(4), '+4 more at the Crossroads');
 eq('...and nothing when there is no overflow', P.moreLine(0), null);
-eq('the empty state', P.COPY.empty, 'No crossed paths yet. Keep running and you may meet another PASER.');
+// The empty state is a heading plus a line — the two are rendered as separate
+// pieces of outlined text, so the sentence is not one string any more.
+eq('the empty state heading', P.COPY.emptyTitle, 'No crossed paths yet');
+eq('the empty state', P.COPY.empty, 'Keep running and you may meet another PASER.');
 eq('the reveal heading', P.COPY.revealHeading, 'CROSSED PATHS');
 eq('the screen name', P.COPY.screen, 'Crossroads');
 eq('the feature name', P.COPY.feature, 'PASERBY');
 
+// The notification body — the push, and the in-app banner that mirrors it.
+// These four strings must match `crossroads_waiting_line` in
+// backend/app/paserby.py word for word; one runner can see both.
+eq(
+  'one arrival',
+  P.crossroadsWaitingLine(1),
+  'A new PASER is waiting for you at the Crossroads.'
+);
+eq(
+  'several arrivals',
+  P.crossroadsWaitingLine(4),
+  '4 new PASERs are waiting for you at the Crossroads.'
+);
+eq(
+  'zero never says zero',
+  P.crossroadsWaitingLine(0),
+  'A new PASER is waiting for you at the Crossroads.'
+);
+eq(
+  'and neither does nonsense',
+  P.crossroadsWaitingLine(undefined),
+  'A new PASER is waiting for you at the Crossroads.'
+);
+
 // The one naming rule the brief is explicit about.
 const allCopy = JSON.stringify(P.COPY) + JSON.stringify(P.FAMILIARITY)
-  + P.crossedPathsLine(2) + P.repeatLine(2) + P.moreLine(2);
+  + P.crossedPathsLine(2) + P.repeatLine(2) + P.moreLine(2)
+  + P.crossroadsWaitingLine(2);
 check('no copy anywhere says "StreetPass"', !/street\s*pass/i.test(allCopy));
 
 console.log('\n== the Home badge ==');

@@ -4,9 +4,13 @@ import Svg, { Polyline } from 'react-native-svg';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { ChevronLeft, ChevronRight, Flame, Lock, X } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Flame, Lock, Users, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
+import { Image } from '../ui/image';
 import { BORDER_TIERS } from '../config/progression';
+import { BORDER_ART } from '../config/borderArt';
+import { MAP_FRAME_ART, rankColor } from '../config/mapFrameArt';
+import PortraitBorder from '../components/PortraitBorder';
 
 import { api } from '../api/client';
 import { NB, nbInk, nbRadius, radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
@@ -37,6 +41,56 @@ import { analyseRoute } from '../map/planner';
 import { isDrag, shouldSample, strokeToRoute } from '../map/freehand';
 import { useProEntitlement } from '../pro/ProProvider';
 import { shortDate } from '../utils/time';
+
+// RankMark — a rank said the way the app already says it everywhere else: the
+// FRAME that tier wears. The pill used to carry a colour chip and the tier's
+// name in caps, which is the rank spelled out twice in a language nothing else
+// on the board speaks — the portrait beside a runner's name has been the badge
+// for a rank since the ladder shipped, so this is that same badge, empty.
+//
+// A FIXED box, not PortraitBorder's measured one. That component sizes itself
+// to the ring so a bust seats exactly inside the opening, and the openings run
+// from 0.62 (onyx) to 0.91 (wood) of the art — sizing off them would leave the
+// pill a different width on every tier and jumping as you scout. There is no
+// portrait to seat here, so the art just gets a square and is centred in it.
+// Tiers with no art (the 'none' tier below wood) keep the drawn SVG ring.
+const RANK_MARK = 34;
+
+// The eleven ways to look at the board, which the arrows step through.
+//
+// Ten of them are RANKS, and `none` is deliberately not one: it is the tier
+// below wood, the state before a first run has landed, not a way of looking at
+// the board. Keeping it in also put every rank one place out from the server's
+// own numbering — /map-polygons counts Wood 0 … Mythic 9 while BORDER_TIERS
+// counts from `none` — so scoping the board to Wood was quietly asking for
+// Bronze, and Mythic clamped back onto Prismatic.
+const RANK_VIEWS = BORDER_TIERS.filter((t) => t.key !== 'none');
+
+// The eleventh is CLUBS: no rank filter at all, the whole board coloured by
+// the club holding each plot. It sits before wood because it is the wide view
+// you step in from, and it is the one view that is never locked — there is no
+// rank to be too low for.
+const CLUB_VIEW = -1;
+const TOP_VIEW = RANK_VIEWS.length - 1;
+
+// The clubs view's stand-in for a rank colour. A constant near-white, because
+// the chip it is drawn on is a constant near-black and the clubs view has no
+// colour of its own to borrow — the colours on that board belong to the clubs.
+const CLUB_INK = '#F4F4F7';
+
+function RankMark({ tier }) {
+  const art = BORDER_ART[tier.key];
+  if (!art) return <PortraitBorder tier={tier} size={RANK_MARK - 6} />;
+  return (
+    <Image
+      source={art.src}
+      style={{ width: RANK_MARK, height: RANK_MARK }}
+      resizeMode="contain"
+      fadeDuration={0}
+      accessible={false}
+    />
+  );
+}
 
 // Area-weighted centroid (shoelace) of a territory's largest ring — where the
 // owner portrait sits. Vertex-averaging drifts off-centre once a claim is
@@ -145,6 +199,39 @@ function bboxContains(outer, inner) {
   );
 }
 
+// The contested outline, doing its own breathing.
+//
+// The pulse used to be `pulse` state on GlobalMapScreen, stepped by an
+// interval every 650ms. Two things were wrong with that, and both of them are
+// about WHERE the state lived rather than about the effect:
+//
+//   * This is the largest screen in the app, and it is a tab — the navigator
+//     mounts all four at launch and never unmounts them. So the interval was
+//     re-rendering the entire map screen roughly twice a second for as long as
+//     the process lived, including the whole time the runner was on Home.
+//   * Turning heat on was therefore a permanent tax. There was no way back
+//     other than toggling it off again, which nobody thinks to do.
+//
+// Here, the re-render is one Mapbox layer, and it stops when the tab is not
+// being looked at. Mounted only while heat is on, so the timer does not exist
+// the rest of the time.
+function HeatOutline({ featureCollection, reduce, focused }) {
+  const [pulse, setPulse] = useState(0.85);
+
+  useEffect(() => {
+    if (reduce || !focused) return undefined;
+    const id = setInterval(() => setPulse((p) => (p > 0.6 ? 0.35 : 0.9)), 650);
+    return () => clearInterval(id);
+  }, [reduce, focused]);
+
+  return (
+    <ContestedOutline
+      featureCollection={featureCollection}
+      opacity={reduce ? 0.8 : pulse}
+    />
+  );
+}
+
 export default function GlobalMapScreen({ route, navigation }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
@@ -190,9 +277,12 @@ export default function GlobalMapScreen({ route, navigation }) {
   // The map shows only the land of runners in ONE rank tier: yours by default,
   // so you see the rivals you are actually racing and not the whole planet.
   // The arrows scout other tiers; tiers above your own are viewable but locked
-  // until you reach them (the explainer sheet spells this out).
+  // until you reach them (the explainer sheet spells this out). Stepping below
+  // wood lands on the clubs view, which drops the rank filter entirely.
   const ownTier = useMemo(() => {
-    const i = BORDER_TIERS.findIndex((t) => t.key === rankKey);
+    const i = RANK_VIEWS.findIndex((t) => t.key === rankKey);
+    // Below wood (no runs yet) there is no tier of one's own; wood is the
+    // first board there is anything to see on.
     return i < 0 ? 0 : i;
   }, [rankKey]);
   const [viewRankTier, setViewRankTier] = useState(ownTier);
@@ -219,7 +309,6 @@ export default function GlobalMapScreen({ route, navigation }) {
   // Null until a preview has actually been RUN. Drawing points costs nothing;
   // this is the thing the free allowance pays for.
   const [planAnalysis, setPlanAnalysis] = useState(null);
-  const [pulse, setPulse] = useState(0.85);
   const [myLoc, setMyLoc] = useState(null);
   // 'pending' | 'ok' | 'fail' — territory auto-fit only runs as a fallback.
   const [locState, setLocState] = useState('pending');
@@ -288,13 +377,6 @@ export default function GlobalMapScreen({ route, navigation }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusKey]);
 
-  // Pulse the contested outline while heat is on (Reduce Motion → steady).
-  useEffect(() => {
-    if (!heatOn || reduce) return;
-    const id = setInterval(() => setPulse((p) => (p > 0.6 ? 0.35 : 0.9)), 650);
-    return () => clearInterval(id);
-  }, [heatOn, reduce]);
-
   // Load land for `bbox`. Skips only when the visible viewport is genuinely
   // INSIDE what we already loaded (and the server's zoom cap band hasn't
   // changed) — never on a lossy rounded key. `force` bypasses the skip so a
@@ -317,7 +399,12 @@ export default function GlobalMapScreen({ route, navigation }) {
     const padded = padBbox(bbox);
     const seq = ++seqRef.current;
     try {
-      const data = await api.mapPolygons(padded, z, { rank });
+      // CLUB_VIEW sends no rank at all, which is what the endpoint reads as
+      // "every rank". The cache key above still carries -1, so stepping club →
+      // wood → club refetches rather than re-serving the wrong board.
+      const data = await api.mapPolygons(padded, z, {
+        rank: rank === CLUB_VIEW ? undefined : rank,
+      });
       if (seq !== seqRef.current) return; // superseded by a newer viewport
       coveredRef.current = { ...padded, capped, rank };
       setList(data.territories);
@@ -375,7 +462,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   const stepRank = useCallback((dir) => {
     pickedRef.current = true;
     setSelected(null);
-    setViewRankTier((t) => Math.max(0, Math.min(BORDER_TIERS.length - 1, t + dir)));
+    setViewRankTier((t) => Math.max(CLUB_VIEW, Math.min(TOP_VIEW, t + dir)));
   }, []);
 
   const locateMe = async () => {
@@ -685,15 +772,24 @@ export default function GlobalMapScreen({ route, navigation }) {
   const loaded = list !== null;
   const showEmpty = loaded && rows.length === 0 && !loadError;
 
-  // Rank selector view-model. `ring` is a colour or a gradient array; the
-  // swatch takes the first stop. Tiers above the runner's own are LOCKED —
-  // still viewable (you can scout the board ahead), just flagged as not yours.
-  const viewedTier = BORDER_TIERS[Math.max(0, Math.min(BORDER_TIERS.length - 1, viewRankTier))];
-  const viewedRing = Array.isArray(viewedTier.ring) ? viewedTier.ring[0] : viewedTier.ring;
-  const rankLocked = viewRankTier > ownTier;
-  const atFirstTier = viewRankTier <= 0;
-  const atLastTier = viewRankTier >= BORDER_TIERS.length - 1;
-  const ownTierLabel = BORDER_TIERS[Math.max(0, Math.min(BORDER_TIERS.length - 1, ownTier))].label;
+  // Rank selector view-model. The tier itself is all the pill needs now — it
+  // draws that rank's frame (see RankMark). Tiers above the runner's own are
+  // LOCKED — still viewable (you can scout the board ahead), just flagged as
+  // not yours.
+  const isClubView = viewRankTier === CLUB_VIEW;
+  const viewedTier = isClubView
+    ? null
+    : RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, viewRankTier))];
+  // The frame that holds the board, and the one colour the view is said in.
+  // The clubs view has no rank, so it takes the plain NB stroke and a neutral
+  // ink rather than borrowing some tier's frame and colour.
+  const frameArt = viewedTier ? MAP_FRAME_ART[viewedTier.key] : null;
+  const viewColor = (viewedTier && rankColor(viewedTier)) || CLUB_INK;
+  const viewLabel = viewedTier ? viewedTier.label : 'Clubs';
+  const rankLocked = !isClubView && viewRankTier > ownTier;
+  const atFirstTier = viewRankTier <= CLUB_VIEW;
+  const atLastTier = viewRankTier >= TOP_VIEW;
+  const ownTierLabel = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))].label;
 
   return (
     <View style={styles.container}>
@@ -726,7 +822,9 @@ export default function GlobalMapScreen({ route, navigation }) {
               mode is where a blurred neon outline actually reads as vivid
               rather than muddy against a light basemap. */}
           <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} dark={scheme === 'dark'} />
-          {heatOn && <ContestedOutline featureCollection={contestedFC} opacity={reduce ? 0.8 : pulse} />}
+          {heatOn && (
+            <HeatOutline featureCollection={contestedFC} reduce={reduce} focused={focused} />
+          )}
           {/* The intelligence overlay, drawn ON TOP of the unchanged board.
               Every claim stays exactly as visible as it was — a layer adds a
               reading, it never takes the map away. */}
@@ -763,20 +861,79 @@ export default function GlobalMapScreen({ route, navigation }) {
           )}
         </GameMap>
 
-        {/* A neo-brutalist frame around the live board. The map read as an
-            unbounded full-bleed surface with nothing holding it; this is the
-            heavy stroke that contains it. Drawn OVER the map but UNDER the
-            controls, and never takes a touch. Inset to the safe area so the
-            whole stroke shows and the corners echo the screen's own. The colour
-            follows the scheme because the basemap does — dark ink on the light
-            style, cream on the dark one. */}
-        <View
-          pointerEvents="none"
-          style={[
-            styles.mapFrame,
-            { top: insets.top + space.sm, bottom: insets.bottom + space.sm, borderColor: nbInk(scheme) },
-          ]}
-        />
+        {/* LOCKED. Scouting a tier above your own covers the whole board, not
+            a chip in a corner: the board is the thing that is locked, and a
+            small note beside a rank arrow reads as a caption on the arrow.
+
+            It does NOT take touches. You can still pan and pinch the land you
+            are scouting, which is the entire reason the tiers above yours are
+            viewable at all — the overlay says you cannot COMPETE here, and
+            taking the map away as well would be saying something else.
+
+            Drawn BEFORE the frame and before the controls, so the scrim dims
+            the land and nothing else: the rank's frame stays at full strength
+            on top of it, which matters because the frame is the thing saying
+            which rank this is, and the rail and the rank bar stay usable. */}
+        {rankLocked && !planning ? (
+          <View
+            pointerEvents="none"
+            style={[styles.lockedWrap, { top: insets.top + space.sm, bottom: space.sm }]}
+          >
+            <View style={styles.lockedScrim} />
+            <View style={styles.lockedBody}>
+              <Lock size={34} color={viewColor} strokeWidth={2.75} />
+              {/* `title`, and no letterSpacing of its own. This is a heading
+                  like any other heading in the app: the token already carries
+                  the hero face and already uppercases, so the hand-set caps
+                  and the 2pt tracking it used to add were the screen speaking
+                  its own dialect. The 30pt `display` it took also ran into the
+                  frame on the narrow devices. */}
+              <Text style={[type.title, { color: viewColor }]}>Locked</Text>
+              <Text style={[type.bodySm, styles.lockedNote]}>
+                Reach <Text style={{ color: viewColor }}>{viewLabel}</Text> to compete here
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* The frame around the live board. The map read as an unbounded
+            full-bleed surface with nothing holding it; this is what contains
+            it. Drawn OVER the map but UNDER the controls, and never takes a
+            touch.
+
+            The frame IS the rank: each tier's own drawn frame is what holds
+            the board, so scouting up the ladder visibly changes what you are
+            looking through. `none` has no art and falls back to the plain NB
+            stroke, whose colour follows the scheme because the basemap does.
+
+            Stretched, not nine-sliced — see the note in config/mapFrameArt.
+
+            The TOP is inset past the notch so the frame clears it. The bottom
+            is only the plain gutter: this screen sits in a material top-tab
+            navigator, which (unlike bottom-tabs) never re-provides
+            SafeAreaInsetsContext, so `insets.bottom` here is still the raw
+            device inset even though the scene already ends above the tab dock
+            — and that dock has already spent the inset on its own padding.
+            Adding it again left ~42pt of dead space under the frame against
+            8pt at the sides. */}
+        {frameArt ? (
+          <Image
+            pointerEvents="none"
+            source={frameArt}
+            style={[styles.mapFrame, { top: insets.top + space.sm, bottom: space.sm }]}
+            resizeMode="stretch"
+            fadeDuration={0}
+            accessible={false}
+          />
+        ) : (
+          <View
+            pointerEvents="none"
+            style={[
+              styles.mapFrameStroke,
+              { top: insets.top + space.sm, bottom: space.sm, borderColor: nbInk(scheme) },
+            ]}
+          />
+        )}
 
         {/* One map tool rail. Grouping heat, layers and recentering keeps three
             equal controls in one predictable place instead of scattering one
@@ -849,12 +1006,33 @@ export default function GlobalMapScreen({ route, navigation }) {
                 onPress={() => setRankInfoOpen(true)}
                 hitSlop={6}
                 accessibilityRole="button"
-                accessibilityLabel={`Viewing ${viewedTier.label} rank${rankLocked ? ', locked' : ''}. Learn how the ranked map works`}
+                accessibilityLabel={
+                  isClubView
+                    ? 'Viewing the clubs board, every rank. Learn how the ranked map works'
+                    : `Viewing ${viewLabel} rank${rankLocked ? ', locked' : ''}. Learn how the ranked map works`
+                }
               >
-                <View style={[styles.rankSwatch, { backgroundColor: viewedRing, borderColor: nbInk(scheme) }]} />
-                <Text style={[type.captionMedium, styles.rankLabel, { color: colors.text }]} numberOfLines={1}>
-                  {viewedTier.label}
-                </Text>
+                {/* The clubs view wears the club glyph where a rank wears its
+                    frame — the two are alternatives on the same selector, so
+                    the slot is the same size and in the same place either way. */}
+                {viewedTier ? (
+                  <RankMark tier={viewedTier} />
+                ) : (
+                  <View style={styles.clubMark}>
+                    <Users size={22} color={CLUB_INK} strokeWidth={2.5} />
+                  </View>
+                )}
+                {/* The view, said in its own colour. On a fixed dark chip
+                    rather than on the pill: half the ladder is a pale metal
+                    (silver, platinum, the wood brown going the other way), and
+                    those cannot all clear a light card. A constant dark
+                    backing lets every tier keep its actual hue, which is the
+                    whole point of colouring it. */}
+                <View style={styles.rankNameChip}>
+                  <Text style={[type.captionMedium, styles.rankName, { color: viewColor }]} numberOfLines={1}>
+                    {viewLabel}
+                  </Text>
+                </View>
                 {rankLocked ? <Lock size={13} color={colors.textDim} strokeWidth={2.75} /> : null}
               </TouchableOpacity>
               <TouchableOpacity
@@ -868,20 +1046,6 @@ export default function GlobalMapScreen({ route, navigation }) {
                 <ChevronRight size={20} color={colors.text} strokeWidth={2.75} />
               </TouchableOpacity>
             </View>
-            {rankLocked ? (
-              <TouchableOpacity
-                onPress={() => setRankInfoOpen(true)}
-                activeOpacity={0.9}
-                accessibilityRole="button"
-                accessibilityLabel={`Locked. Reach ${viewedTier.label} to compete here`}
-                style={[styles.rankLockNote, { borderColor: nbInk(scheme), backgroundColor: colors.warn }]}
-              >
-                <Lock size={12} color="#fff" strokeWidth={2.75} />
-                <Text style={[type.caption, styles.rankLockText]} numberOfLines={1}>
-                  Locked · reach {viewedTier.label} to compete here
-                </Text>
-              </TouchableOpacity>
-            ) : null}
           </View>
         ) : null}
 
@@ -1040,7 +1204,15 @@ export default function GlobalMapScreen({ route, navigation }) {
       {/* Explainer: why the board only shows one rank at a time. */}
       <Sheet visible={rankInfoOpen} onClose={() => setRankInfoOpen(false)}>
         <View style={styles.rankInfoHead}>
-          <View style={[styles.rankSwatch, styles.rankInfoSwatch, { backgroundColor: viewedRing, borderColor: nbInk(scheme) }]} />
+          {/* The same mark the pill wears, so the explainer opens on the thing
+              that was tapped rather than on a chip of its colour. */}
+          {viewedTier ? (
+            <RankMark tier={viewedTier} />
+          ) : (
+            <View style={styles.clubMark}>
+              <Users size={22} color={colors.text} strokeWidth={2.5} />
+            </View>
+          )}
           <Text style={type.heading}>Ranked map</Text>
         </View>
         <Text style={[type.body, { color: colors.textDim, marginTop: space.sm }]}>
@@ -1052,6 +1224,10 @@ export default function GlobalMapScreen({ route, navigation }) {
           Take ground and hold it to climb the ladder. Use the arrows to scout
           another tier: ranks above yours stay locked until you reach them, so you
           can see what waits ahead but you compete on your own.
+        </Text>
+        <Text style={[type.body, { color: colors.textDim, marginTop: space.md }]}>
+          Step left past Wood for the clubs board. That one has no rank: it shows
+          every runner, coloured by the club holding the ground.
         </Text>
         <Button
           title="Got it"
@@ -1066,10 +1242,17 @@ export default function GlobalMapScreen({ route, navigation }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  // The board frame — a heavy stroke inset to the safe area. No fill, no drop
-  // (nothing sits behind a full-screen overlay to drop onto); the stroke alone
-  // is the frame. top/bottom are set inline from the safe-area insets.
+  // The board frame. Two forms: the rank's drawn art, and the plain stroke the
+  // `none` tier falls back to. Both are absolutely positioned over the board
+  // and both get their top/bottom inline from the safe-area insets.
   mapFrame: {
+    position: 'absolute',
+    left: space.sm,
+    right: space.sm,
+    // No width/height: `left`/`right`/`top`/`bottom` size it, and the art is
+    // stretched into whatever that comes out as.
+  },
+  mapFrameStroke: {
     position: 'absolute',
     left: space.sm,
     right: space.sm,
@@ -1140,28 +1323,58 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   rankArrow: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   rankArrowOff: { opacity: 0.28 },
+  // A constant dark chip, not a themed surface: it exists so a pale tier
+  // colour has something to read against, and following the scheme would take
+  // that away in light mode, which is the case that needs it.
+  rankNameChip: {
+    backgroundColor: '#14141A',
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  rankName: { textTransform: 'uppercase', letterSpacing: 0.4 },
+  // The clubs glyph stands in the same box a tier's frame occupies, so the
+  // pill does not resize when you step off the ladder onto it.
+  clubMark: { width: RANK_MARK, height: RANK_MARK, alignItems: 'center', justifyContent: 'center' },
   rankCenter: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
     paddingHorizontal: 6,
-    minWidth: 96,
+    // Was 96 — the width the tier's NAME needed. The mark is a fixed square,
+    // so the pill is now the same size on every rank instead of resizing
+    // itself between "Wood" and "Prismatic" as you scout.
+    minWidth: RANK_MARK,
     justifyContent: 'center',
   },
-  rankSwatch: { width: 14, height: 14, borderRadius: 4, borderWidth: 2 },
-  rankLabel: { textTransform: 'uppercase', letterSpacing: 0.4 },
-  rankLockNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: NB.stroke,
-    borderRadius: radius.pill,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  rankLockText: { color: '#fff' },
   rankInfoHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  rankInfoSwatch: { width: 18, height: 18, borderRadius: 5 },
+
+  // The locked board. The scrim is a separate absolutely-filled child rather
+  // than a background on the wrapper so it can carry its own opacity without
+  // fading the lock and the type sitting on it.
+  lockedWrap: {
+    position: 'absolute',
+    left: space.sm,
+    right: space.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: nbRadius.lg,
+    overflow: 'hidden',
+  },
+  // A CONSTANT near-black, not `colors.bg`. In dark mode the two are much the
+  // same, but over the light basemap a themed scrim lands mid-grey, and the
+  // darker half of the ladder (wood's brown, onyx even at its bright stop)
+  // cannot be read on mid-grey. The locked board is the same "switched off"
+  // state in both schemes, so it gets the same backing in both, and every rank
+  // colour has one known thing to contrast against.
+  lockedScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0B0B0F', opacity: 0.72 },
+  // The padding has to clear the FRAME, not the wrapper. The wrapper is the
+  // frame's outer box and every tier's band runs 7-8% of the board's width
+  // deep, which is ~30pt on a Pro Max — so the old space.xl put the type
+  // underneath the band rather than inside it. space.huge leaves a real gutter
+  // on the narrowest device and a generous one on the widest.
+  lockedBody: { alignItems: 'center', gap: space.sm, paddingHorizontal: space.huge },
+  lockedNote: { textAlign: 'center', color: '#F4F4F7' },
 
   card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

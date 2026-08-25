@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StatusBar, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import {
+  Alert,
+  AppState,
+  InteractionManager,
+  StatusBar,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import Animated, { Easing, FadeIn } from 'react-native-reanimated';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
@@ -69,6 +77,7 @@ import { OfflineBanner } from './src/ui/offline';
 import { ToastHost } from './src/ui/toast';
 import { RivalPopupHost } from './src/components/RivalPopup';
 import { LandCaptureAlertHost } from './src/components/LandCaptureAlert';
+import { CrossroadsAlertHost } from './src/components/CrossroadsAlert';
 import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
@@ -76,6 +85,7 @@ import { useProSync } from './src/hooks/usePro';
 import ProProvider from './src/pro/ProProvider';
 import { hydrateProExposure } from './src/pro/exposure';
 import { hydrateCache } from './src/api/cache';
+import { warmUp } from './src/api/client';
 import { preloadCriticalImages, preloadStartupImages } from './src/config/screenAssets';
 // No static `colors` here on purpose — App used to build the nav theme and the
 // header chrome from it, which pinned both to the dark palette. Everything
@@ -341,9 +351,49 @@ const YouTab = withBoundary(YouStack);
 // disabled on Map so Mapbox panning isn't hijacked (Map sits mid-order, so it
 // bookends the swipe: Home↔Map and Club↔You swipe; leave Map by tapping).
 const Tab = createMaterialTopTabNavigator();
+
+// How long after launch the other three tabs get built. Long enough that Home
+// has drawn and its first requests are away; short enough that nobody has
+// finished reading the screen and reached for a tab.
+const TAB_PRELOAD_DELAY_MS = 1500;
+
 function MainTabs() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
+
+  // PRELOAD THE OTHER TABS — BUT NOT DURING LAUNCH.
+  //
+  // `lazyPreloadDistance: 3` is what stops a tab tap from being a mount, and
+  // it is worth keeping. As a FIXED option, though, it did that work at the
+  // worst possible moment: opening the app built all four tabs at once, and
+  // one of the four is the map — a Mapbox GL context, a style download and a
+  // tile request, all racing the screen the runner is actually looking at.
+  //
+  // So it starts at zero and moves to three once the app is idle. Home mounts
+  // alone, draws, and settles; the other three are built behind it a beat
+  // later and are ready by the time anybody switches. Changing a screen option
+  // remounts nothing — the tabs that already exist stay exactly as they are.
+  const [preloadDistance, setPreloadDistance] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    let task = null;
+    const timer = setTimeout(() => {
+      task = InteractionManager.runAfterInteractions(() => {
+        if (alive) setPreloadDistance(3);
+      });
+    }, TAB_PRELOAD_DELAY_MS);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      task?.cancel?.();
+    };
+  }, []);
+
+  const screenOptions = useMemo(
+    () => ({ swipeEnabled: true, lazy: true, lazyPreloadDistance: preloadDistance }),
+    [preloadDistance]
+  );
+
   return (
     <Tab.Navigator
       tabBarPosition="bottom"
@@ -354,14 +404,13 @@ function MainTabs() {
       // than relying on the navigator's default.
       style={{ backgroundColor: colors.bg }}
       sceneContainerStyle={{ backgroundColor: colors.bg }}
-      // Keep lazy mounting's low initial cost, but prepare every one of our
-      // four tabs while Home is visible. With the default distance of 0, iOS
-      // first mounted and decoded a tab only after the user tapped/swiped it.
-      // This still means all four MOUNT together — useQuery (hooks/useQuery.js)
-      // now separately gates each screen's first data fetch on that screen
-      // actually being focused, so mounting eagerly no longer means every tab
-      // also fires its first network request in the same burst the app opens.
-      screenOptions={{ swipeEnabled: true, lazy: true, lazyPreloadDistance: 3 }}
+      // Lazy mounting's low initial cost, and every tab prepared before it is
+      // asked for — see `preloadDistance` above for why the second half of
+      // that is deferred rather than set here. Separately, useQuery
+      // (hooks/useQuery.js) gates each screen's FIRST fetch on that screen
+      // being focused, so a preloaded tab is built without also firing its
+      // network requests.
+      screenOptions={screenOptions}
     >
       <Tab.Screen name="Home" component={HomeTab} />
       <Tab.Screen name="Map" component={MapTab} options={{ swipeEnabled: false }} />
@@ -637,6 +686,20 @@ function RootNavigator() {
             });
           }}
         />
+        {/* Somebody new turning up at the plaza, while the app is open. The
+            banner sits over whatever screen is up and blocks nothing. */}
+        <CrossroadsAlertHost
+          onOpen={() => {
+            if (!navigationRef.isReady()) return;
+            // The Home stack's copy, with HomeMain left underneath — the You
+            // stack registers Crossroads too, but sending somebody there from a
+            // banner would strand the You tab on an inner screen.
+            navigationRef.navigate('Tabs', {
+              screen: 'Home',
+              params: { screen: 'Crossroads', initial: false },
+            });
+          }}
+        />
         {/* first-run coach marks, dimming the real home screen behind them */}
         {profile.tutorialPending ? (
           <TutorialOverlay
@@ -672,7 +735,35 @@ function RootNavigator() {
   );
 }
 
+// Start the API container booting the moment PASER is on screen.
+//
+// The live backend spins down when nothing has called it, and the request that
+// wakes it waits for the whole boot — measured at 43 SECONDS. Until now the
+// only warm-up pings were on the sign-in screen and the run screen, so the
+// case that hurts most was the one nobody covered: a signed-in runner opening
+// the app, or coming back to it after lunch. Their first request IS the wake-up
+// call, and every screen sits on cached content behind it.
+//
+// This does not make the boot faster — nothing in the app can, and the real
+// fix is the instance type (see backend/render.yaml, which asks for `starter`
+// and is not what is running). What it does is stop the wait being serial: the
+// container starts while fonts load, art decodes and the cached UI paints, so
+// by the time anybody taps something the server has had a head start on it.
+//
+// Cheap enough to fire on every foreground: one unauthenticated GET that is
+// abandoned on a timeout and whose result is thrown away.
+function useBackendWarmUp() {
+  useEffect(() => {
+    warmUp();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') warmUp();
+    });
+    return () => sub.remove();
+  }, []);
+}
+
 function App() {
+  useBackendWarmUp();
   const [startupImagesReady, setStartupImagesReady] = useState(false);
   // The response cache is read from disk into memory ONCE, here, so that every
   // screen's first render can seed itself from it synchronously. Doing it later

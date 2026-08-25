@@ -127,12 +127,41 @@ describe('hand-drawn frame registry', () => {
   });
 
   test('no weight means the art at its own size', () => {
+    expect(weightScale('panel', false)).toBe(1);
     expect(weightScale('panel', 0)).toBe(1);
-    expect(weightScale('panel', undefined)).toBe(1);
     // An unknown frame cannot be measured, so it is left alone rather than
     // scaled to zero — a caller naming a frame that is not in the build should
     // draw nothing, not draw something wrong.
     expect(weightScale('not-a-frame', INK.base)).toBe(1);
+  });
+
+  // `undefined` used to be part of the case above, and that is exactly how a
+  // real bug stayed invisible: seven call sites asked for `INK.medium`, which
+  // was not on the scale, and an undefined lookup on a frozen object is silent.
+  // Every one of them landed in "no weight given" and drew the art at its own
+  // size — a 12 to 19pt stroke where 3.75 to 6.5 had been asked for.
+  //
+  // So saying "no weight" and saying nothing are now different. `false` and `0`
+  // are somebody stating an intention; `undefined` can only be a property that
+  // is not on the scale, so it takes the base line and complains in dev.
+  test('a weight that is not on the scale is a mistake, not a request', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(weightScale('panel', undefined)).toBeCloseTo(weightScale('panel', INK.base), 10);
+    expect(weightScale('panel', NaN)).toBeCloseTo(weightScale('panel', INK.base), 10);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  // Named because it was missing while being used. Every key the app asks for
+  // has to resolve to a number, or `weightScale` cannot do its job.
+  test('every ink weight the app asks for is on the scale', () => {
+    for (const [name, value] of Object.entries(INK)) {
+      expect(typeof value).toBe('number');
+      expect(Number.isFinite(value) && value > 0).toBe(true);
+      expect(name).toBeTruthy();
+    }
+    expect(INK.medium).toBeGreaterThan(INK.base);
+    expect(INK.medium).toBeLessThan(INK.bold);
   });
 
   test('heavier weights ask for bigger frames, in proportion', () => {

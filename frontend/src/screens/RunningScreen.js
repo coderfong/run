@@ -33,6 +33,7 @@ import {
   startBackgroundTrack,
   stopBackgroundTrack,
 } from '../run/backgroundTrack';
+import { createGpsFilter, DROP, filterPoints, haversineM, pathDistanceM } from '../run/gpsFilter';
 import { buildSimulatedRun, FALLBACK_ORIGIN } from '../run/simulatedRun';
 import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
@@ -69,24 +70,10 @@ function toRad(value) {
   return (value * Math.PI) / 180;
 }
 
-function distanceMeters(a, b) {
-  if (!a || !b) return Infinity;
-  const R = 6371000;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLon = toRad(b.longitude - a.longitude);
-  const lat1 = toRad(a.latitude);
-  const lat2 = toRad(b.latitude);
-  const x =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-}
-
-function totalDistanceMeters(points) {
-  let total = 0;
-  for (let i = 1; i < points.length; i++) total += distanceMeters(points[i - 1], points[i]);
-  return total;
-}
+// Same great-circle maths the filter measures steps with, so the screen and
+// the trail can never disagree about how far apart two points are.
+const distanceMeters = haversineM;
+const totalDistanceMeters = pathDistanceM;
 
 // Per-point sensor metadata rides along for server-side validation:
 // mocked (Android mock-provider flag; iOS has no equivalent -> false),
@@ -110,6 +97,45 @@ function formatDuration(ms) {
   const pad = (n) => String(n).padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
+
+// The elapsed clock, and nothing else.
+//
+// This used to be `elapsedMs` state on RunningScreen itself, set four times a
+// second. The screen that state sat on is also the one holding the live map —
+// the route trail, every nearby territory, a character portrait over each of
+// them — so a quarter-second tick rebuilt that whole subtree 240 times a
+// minute for the sake of one line of text, and the reconciliation competed
+// with the GPS fixes arriving underneath it. State that drives a readout
+// belongs inside the readout: this re-renders itself and nothing above it.
+//
+// `startedAtRef` is the screen's own reference rather than a number handed
+// down. It is shifted forward across a pause (see `resumeFromPause`) so that
+// elapsed time stays honest, and reading the ref is what keeps this from
+// disagreeing with the value the run is submitted with.
+const RunClock = React.memo(function RunClock({ startedAtRef, running, paused, style }) {
+  const [ms, setMs] = useState(0);
+
+  // STOPPING FREEZES, IT DOES NOT RESET. Both halves of that matter:
+  //
+  //   * Pausing has to hold the time it stopped at, which is what clearing the
+  //     interval and touching nothing else does.
+  //   * So does FINISHING. `finishRun` flips running off and then submits the
+  //     run, which is a round trip — zeroing here would leave 00:00 on screen
+  //     for the whole of it, and the last thing a runner sees before their
+  //     result would be a clock claiming they had run for no time at all.
+  //
+  // A new run zeroes it on its own: `startRun` sets `startedAtRef` before it
+  // flips running on, so the immediate tick below reads a few milliseconds.
+  useEffect(() => {
+    if (!running || paused) return undefined;
+    const tick = () => setMs(Date.now() - startedAtRef.current);
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [running, paused, startedAtRef]);
+
+  return <Text style={style}>{formatDuration(ms)}</Text>;
+});
 
 function formatArea(m2) {
   return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
@@ -267,6 +293,16 @@ export default function RunningScreen({ navigation }) {
   const pendingModeRef = useRef({ mode: null, count: 0 });
   const recentSpeedsRef = useRef([]);
   const restartingWatchRef = useRef(false);
+  // Everything the watcher emits goes through here before it can touch the
+  // trail: accuracy gate, Kalman smoothing, noise-scaled step gate, and the
+  // trailing window the pace readout is measured over. See run/gpsFilter.js.
+  const gpsFilterRef = useRef(null);
+  if (!gpsFilterRef.current) {
+    // The filter's own defaults cover the GPS side; the one thing it has to
+    // share with this screen is where "faster than a runner" sits, so a
+    // segment the vehicle gate would refuse can never reach the trail either.
+    gpsFilterRef.current = createGpsFilter({ maxSpeedMps: T.vehicleSpeedMps });
+  }
   // Pedometer: cumulative steps during the run, sent with /end-run so the
   // server can sanity-check stride length.
   const stepCountRef = useRef(0);
@@ -282,7 +318,19 @@ export default function RunningScreen({ navigation }) {
   const [path, setPath] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [distance, setDistance] = useState(0);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  // WHOLE SECONDS, not milliseconds, and not what the clock draws.
+  //
+  // Elapsed time is read by this screen for two things — `claimGateReason` and
+  // `runTier` — and both are threshold tests that cannot tell 12.25 seconds
+  // from 12. The displayed clock is a separate, finer thing that lives in
+  // RunClock. Holding the integer here means a tick only re-renders the screen
+  // (and the map subtree hanging off it) when the number it is used for
+  // actually moves.
+  const [elapsedS, setElapsedS] = useState(0);
+  // Rolling pace in seconds per km, already smoothed by the filter. Held as a
+  // whole number so the once-a-second refresh only re-renders when the shown
+  // value actually moves.
+  const [paceSPerKm, setPaceSPerKm] = useState(null);
   const [accuracyM, setAccuracyM] = useState(null);
   const [permDenied, setPermDenied] = useState(false);
   // Dev harness only (see simulateRun / DevRunSimulator); false in every build
@@ -360,22 +408,18 @@ export default function RunningScreen({ navigation }) {
     const pts = await drainBackgroundPoints();
     if (!pts.length || !runRef.current) return;
     const merged = [...pathRef.current, ...pts].sort((a, b) => a.timestamp - b.timestamp);
-    const out = [];
-    for (const p of merged) {
-      if (p.mocked) continue;
-      const prev = out[out.length - 1];
-      if (prev && (p.timestamp === prev.timestamp || distanceMeters(prev, p) < T.minStepM)) continue;
-      // Same vehicle gate as the live watcher: drop segments no runner covers.
-      if (prev) {
-        const v = distanceMeters(prev, p) / Math.max((p.timestamp - prev.timestamp) / 1000, 0.001);
-        if (v > T.vehicleSpeedMps) continue;
-      }
-      out.push(p);
-    }
+    // The background task writes raw fixes, so they get the same accuracy
+    // gate, smoothing and step gate the live watcher's do. Points that were
+    // already conditioned pass through untouched: re-smoothing them on every
+    // return to the foreground would shave a little off the total each time.
+    const { points: out, distanceM } = filterPoints(merged, {
+      maxSpeedMps: T.vehicleSpeedMps,
+    });
     if (out.length > pathRef.current.length) {
       pathRef.current = out;
       setPath(out);
-      setDistance(totalDistanceMeters(out));
+      setDistance(distanceM);
+      gpsFilterRef.current.seed(out, distanceM);
       persistActiveRun(out);
     }
   }
@@ -556,19 +600,19 @@ export default function RunningScreen({ navigation }) {
     gpsModeRef.current = 'high';
 
     const resumedDistance = totalDistanceMeters(saved.path);
+    gpsFilterRef.current.seed(saved.path, resumedDistance);
+    setPaceSPerKm(null);
     const resumedElapsed = Date.now() - startedAtRef.current;
     lastKmRef.current = Math.floor(resumedDistance / 1000);
     lastTierRef.current = runTier(resumedDistance, resumedElapsed / 1000);
     setPath(saved.path);
     setDistance(resumedDistance);
-    setElapsedMs(resumedElapsed);
+    setElapsedS(Math.max(0, Math.floor(resumedElapsed / 1000)));
     setIsRunning(true);
     isRunningRef.current = true;
     setRecording(true);
 
-    tickRef.current = setInterval(() => {
-      setElapsedMs(Date.now() - startedAtRef.current);
-    }, 250);
+    startClock();
     await startWatchingLocation('high');
     await startPedometer();
     startBackgroundTrack();
@@ -617,12 +661,14 @@ export default function RunningScreen({ navigation }) {
       // API returns { run_id, started_at }; older builds returned { id }.
       runRef.current = { id: createdRun.run_id || createdRun.id };
       pathRef.current = [];
+      gpsFilterRef.current.reset();
+      setPaceSPerKm(null);
       startedAtRef.current = Date.now();
       persistActiveRun([]); // a fresh snapshot replaces any stale orphan
 
       setPath([]);
       setDistance(0);
-      setElapsedMs(0);
+      setElapsedS(0);
       setPaused(false);
       setLocked(false);
       setIsRunning(true);
@@ -636,9 +682,7 @@ export default function RunningScreen({ navigation }) {
       currentRivalRef.current = null;
       setRunFxQueue([]);
 
-      tickRef.current = setInterval(() => {
-        setElapsedMs(Date.now() - startedAtRef.current);
-      }, 250);
+      startClock();
 
       await startWatchingLocation('high');
       await startPedometer();
@@ -716,7 +760,12 @@ export default function RunningScreen({ navigation }) {
             distanceInterval: T.gpsHigh.distanceIntervalM,
           }
         : {
-            accuracy: Location.Accuracy.High,
+            // Highest, not High. High is iOS's nearest-ten-metres class, and
+            // dropping to it mid-run changed the noise character of the whole
+            // stream: the trail visibly loosened and the pace stepped every
+            // time the mode flipped. Highest keeps the same grade of fix and
+            // saves battery through the sampling interval instead.
+            accuracy: Location.Accuracy.Highest,
             timeInterval: T.gpsRelaxed.timeIntervalMs,
             distanceInterval: T.gpsRelaxed.distanceIntervalM,
           };
@@ -724,56 +773,67 @@ export default function RunningScreen({ navigation }) {
   }
 
   async function handleLocation(location) {
-    const nextPoint = {
+    const reportedSpeed =
+      location.coords.speed != null && location.coords.speed >= 0 ? location.coords.speed : null;
+    const rawFix = {
       latitude: location.coords.latitude,
       longitude: location.coords.longitude,
-      timestamp: Date.now(),
+      // The fix's own timestamp, not the moment JS happened to receive it.
+      // iOS can hand over a small batch at once, and dating those by arrival
+      // collapses their spacing to milliseconds, which made every derived
+      // speed nonsense: phantom sprints for the vehicle gate to punish and a
+      // pace that lurched with the delivery schedule rather than the running.
+      timestamp: location.timestamp || Date.now(),
       // Android exposes the mock-provider flag as `mocked`; iOS never does.
       mocked: location.mocked ?? false,
       accuracyM: location.coords.accuracy ?? null,
-      speedMps:
-        location.coords.speed != null && location.coords.speed >= 0
-          ? location.coords.speed
-          : null,
+      speedMps: reportedSpeed,
       // Kept client-side only (the API points carry no altitude): the result
       // screen turns the series into elevation gain. Runs recorded before this
       // simply have no elevation, and the metric hides itself.
       altitude: location.coords.altitude ?? null,
     };
-    setCurrentLocation(nextPoint);
+    // The marker and the signal dot follow the raw stream, so the runner's
+    // dot never lags even while a fix is being rejected for the trail.
+    setCurrentLocation(rawFix);
     setAccuracyM(location.coords.accuracy ?? null);
 
     // Spoofed fixes (mock providers) never enter the trail.
-    if (nextPoint.mocked) return;
+    if (rawFix.mocked) return;
 
-    const oldPath = pathRef.current;
-    const previousPoint = oldPath[oldPath.length - 1];
-
-    // Vehicle gate: a fix faster than any runner is dropped; a streak of
-    // them means transport — auto-pause instead of logging the ride.
-    const gateSpeed =
-      nextPoint.speedMps != null
-        ? nextPoint.speedMps
-        : previousPoint
-        ? distanceMeters(previousPoint, nextPoint) /
-          Math.max((nextPoint.timestamp - previousPoint.timestamp) / 1000, 0.001)
-        : 0;
-    if (gateSpeed > T.vehicleSpeedMps) {
+    // Vehicle gate, first half: the OS's own speed estimate needs no path
+    // context, so it is judged before the fix can reach the trail at all.
+    if (reportedSpeed != null && reportedSpeed > T.vehicleSpeedMps) {
       fastPointsRef.current += 1;
       if (fastPointsRef.current >= T.vehicleFastPoints) vehiclePause();
       return;
     }
+
+    // Accuracy gate, Kalman smoothing and the noise-scaled step gate all live
+    // in the filter. A fix that is merely too small a step still updates the
+    // estimate; it just does not add distance yet, and the metres it did
+    // cover ride along into the next step that clears the gate.
+    const res = gpsFilterRef.current.accept(rawFix);
+
+    // Second half: platforms that report no speed of their own fall back to
+    // the filter's, which is measured between two estimates and so is the
+    // runner's speed rather than the error's. Deriving it from a raw fix
+    // against the trail is what used to pause honest runs under a bridge.
+    if (res.reason === DROP.TELEPORT) {
+      if (reportedSpeed == null) {
+        fastPointsRef.current += 1;
+        if (fastPointsRef.current >= T.vehicleFastPoints) vehiclePause();
+      }
+      return;
+    }
     fastPointsRef.current = 0;
+    if (!res.advanced) return;
 
-    // Sub-2m jitter filter.
-    if (previousPoint && distanceMeters(previousPoint, nextPoint) < T.minStepM) return;
-
-    const newPath = [...oldPath, nextPoint];
+    const nextPoint = res.point;
+    const newPath = [...pathRef.current, nextPoint];
     pathRef.current = newPath;
     setPath(newPath);
-
-    const newDistance = totalDistanceMeters(newPath);
-    setDistance(newDistance);
+    setDistance(res.distanceM);
 
     // Crash snapshot every N accepted points.
     if (newPath.length % T.persistEveryNPoints === 0) persistActiveRun(newPath);
@@ -781,13 +841,7 @@ export default function RunningScreen({ navigation }) {
     mapRef.current?.flyTo({ latitude: nextPoint.latitude, longitude: nextPoint.longitude }, undefined, 300);
 
     // Adaptive sampling decision.
-    const speedMps =
-      location.coords.speed != null && location.coords.speed >= 0
-        ? location.coords.speed
-        : previousPoint
-        ? distanceMeters(previousPoint, nextPoint) /
-          Math.max((nextPoint.timestamp - previousPoint.timestamp) / 1000, 0.001)
-        : null;
+    const speedMps = reportedSpeed != null ? reportedSpeed : res.speedMps;
     maybeSwitchGpsMode(decideGpsMode(newPath, nextPoint, speedMps));
 
     if (runRef.current && newPath.length % 5 === 0) {
@@ -810,6 +864,32 @@ export default function RunningScreen({ navigation }) {
       watchRef.current.remove();
       watchRef.current = null;
     }
+  }
+
+  // ---- run clock ----------------------------------------------------------
+  // ONCE A SECOND, not four times.
+  //
+  // This interval used to run at 250 ms because the elapsed readout wanted it
+  // that way, and it set screen-level state, so the whole screen — live map
+  // included — reconciled at 4 Hz for the length of every run. The readout has
+  // its own quarter-second clock now (RunClock), which redraws one line of
+  // text and nothing else. What is left here is the pair of values the SCREEN
+  // genuinely needs: whole elapsed seconds for the claim gate and the run
+  // tier, and the smoothed pace, both of which were already once-a-second.
+  //
+  // Both setters are written so an unchanged value is a no-op: React bails out
+  // of a re-render when the next state is identical, so a steady pace and a
+  // second that has not turned cost nothing at all.
+
+  function startClock() {
+    if (tickRef.current) clearInterval(tickRef.current);
+    tickRef.current = setInterval(() => {
+      const now = Date.now();
+      const secs = Math.max(0, Math.floor((now - startedAtRef.current) / 1000));
+      setElapsedS(secs);
+      const p = gpsFilterRef.current.paceSPerKm(now);
+      setPaceSPerKm(p == null ? null : Math.round(p));
+    }, 1000);
   }
 
   // ---- pause / resume -----------------------------------------------------
@@ -835,10 +915,13 @@ export default function RunningScreen({ navigation }) {
     if (!paused) return;
     const pausedFor = Date.now() - (pausedAtRef.current || Date.now());
     startedAtRef.current += pausedFor;
-    setElapsedMs(Date.now() - startedAtRef.current);
-    tickRef.current = setInterval(() => {
-      setElapsedMs(Date.now() - startedAtRef.current);
-    }, 250);
+    setElapsedS(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+    // The estimate goes cold across a pause: reseeding stops the time gap
+    // from reading as a teleport, and stops the stationary stretch from
+    // dragging the pace window down.
+    gpsFilterRef.current.resume();
+    setPaceSPerKm(null);
+    startClock();
     await startWatchingLocation(gpsModeRef.current);
     await startPedometer();
     startBackgroundTrack();
@@ -988,13 +1071,26 @@ export default function RunningScreen({ navigation }) {
             try {
               const result = await api.devRivalTakesMine();
               invalidateAfterLandLoss();
+              // Everything the endpoint returns, not a subset. The three
+              // fields this used to drop are the three the alert's cutscene
+              // is built out of: `territory_id` is the hash seed that
+              // resolves the SAME capture style the attacker's screen played,
+              // `territory_ring` is the ground the reveal traces (without it
+              // the alert falls back to a stand-in footprint), and
+              // `actor_rank_key` is the frame around the rival's portrait.
+              // The real push/inbox path has always carried all three, so
+              // dropping them here made the dev scenario quietly exercise a
+              // weaker alert than the one runners actually get.
               landCaptureAlert.show({
                 category: 'stolen',
                 capture_id: result.capture_id,
                 rival_id: result.rival_id,
                 rival_username: result.rival_username,
                 rival_avatar: result.rival_avatar,
+                actor_rank_key: result.rival_rank_key,
                 taken_m2: result.taken_m2,
+                territory_id: result.territory_id,
+                territory_ring: result.territory_ring,
                 lat: result.lat,
                 lon: result.lon,
                 title: 'Your land was captured',
@@ -1011,21 +1107,24 @@ export default function RunningScreen({ navigation }) {
     );
   }
 
-  const paceText =
-    distance > 50 && elapsedMs > 1000
-      ? (() => {
-          const minPerKm = elapsedMs / 1000 / 60 / (distance / 1000);
-          const m = Math.floor(minPerKm);
-          const s = Math.round((minPerKm - m) * 60);
-          return `${m}:${String(s).padStart(2, '0')} /km`;
-        })()
-      : '·';
+  // Pace comes off the filter's trailing window, not off total time over total
+  // distance. The cumulative reading inherited every jump the distance made
+  // and then took the rest of the run to forget it; the window one is
+  // measured over the last stretch actually run and smoothed on the way out.
+  // Nothing is shown until there is a real measurement, so the wild first
+  // hundred metres never appear.
+  const paceText = (() => {
+    if (paceSPerKm == null) return '·';
+    const m = Math.floor(paceSPerKm / 60);
+    const s = Math.round(paceSPerKm % 60);
+    const carry = s === 60;
+    return `${carry ? m + 1 : m}:${String(carry ? 0 : s).padStart(2, '0')} /km`;
+  })();
 
   // The land this run has earned so far, off the SAME function the server
   // settles with (src/config/economy.js). This used to be a local
   // `(d * d) / (4 * Math.PI)` — the retired circle model — which at 5 km
   // promised 1.99 km² against the 0.375 km² actually granted.
-  const elapsedS = elapsedMs / 1000;
   const claimArea = entitledAreaM2(dailyClaimDistanceM, distance);
   // Distance and duration only: distinct-ground needs the buffered-corridor
   // area, which is the server's to measure. So this is optimistic by design —
@@ -1118,7 +1217,10 @@ export default function RunningScreen({ navigation }) {
             <View style={styles.liveMarker}>
               {isRunning ? <GameLottie name="routeHead" size={62} style={styles.routeHeadFx} /> : null}
               <Pulse min={1} max={1.06} durationMs={1400}>
-                <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg="rgba(21,24,29,0.9)" />
+                {/* The one bust in the app whose PARENT scales it. The rig
+                    cannot see a Pulse above it, so the full-resolution decode
+                    is asked for by hand here. */}
+                <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg="rgba(21,24,29,0.9)" crisp />
               </Pulse>
             </View>
           </UserMarker>
@@ -1133,9 +1235,12 @@ export default function RunningScreen({ navigation }) {
             {accuracyM == null ? 'GPS' : `±${Math.round(accuracyM)}m`}
           </Text>
         </View>
-        <Text style={[styles.topTime, isRunning && { color: D.text }]}>
-          {formatDuration(elapsedMs)}
-        </Text>
+        <RunClock
+          startedAtRef={startedAtRef}
+          running={isRunning}
+          paused={paused}
+          style={[styles.topTime, isRunning && { color: D.text }]}
+        />
         <View style={styles.topItem}>
           <View
             style={[

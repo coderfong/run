@@ -85,10 +85,21 @@ export const INTRO_BEATS = [
 
 const plural = (n, one, many) => (Number(n) === 1 ? one : many);
 
-// The post-run headline, and the notification body. Counts only — no names.
+// The post-run headline. Counts only — no names.
 export function crossedPathsLine(count) {
   const n = Number(count) || 0;
   return `You crossed paths with ${n} ${plural(n, 'PASER', 'PASERs')} today.`;
+}
+
+// The notification body, in both the places it appears: the push Expo delivers
+// while the app is shut, and the banner CrossroadsAlert raises when that same
+// push lands with the app open. Mirrors `crossroads_waiting_line` in
+// backend/app/paserby.py exactly — one runner can see both wordings for the
+// same arrival, so they must not drift.
+export function crossroadsWaitingLine(count) {
+  const n = Number(count) || 0;
+  if (n <= 1) return 'A new PASER is waiting for you at the Crossroads.';
+  return `${n} new PASERs are waiting for you at the Crossroads.`;
 }
 
 // The line a repeat encounter earns. Reads as recognition, not as a stat.

@@ -34,7 +34,7 @@ import { useAccent } from '../hooks/useAccent';
 import usePro from '../hooks/usePro';
 import { useStoreAvailable } from '../pro/storeAvailable';
 import { finishPurchase, fetchProductPrices, restorePurchases, storeSubscribe } from '../iap';
-import { brand, NB, nbInk, nbRadius, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
+import { brand, NB, nbInk, nbRadius, radius, space, tintOn, useTheme, useThemedType } from '../theme';
 import { toast } from '../ui/toast';
 import AppIcon from './AppIcon';
 import { HardShadow, Row, Sheet } from './ui';
@@ -240,7 +240,17 @@ export default function BuyProSheet({
           // to be. Selection is told the same way a pressed button is told
           // apart from a flat field: the chosen plan is a RAISED block in the
           // accent (stroke + hard drop), the other sits flush with no drop.
-          const fill = on ? withAlpha(accent, scheme === 'dark' ? 0.22 : 0.14) : colors.card;
+          //
+          // OPAQUE, and that is the whole point of `tintOn` rather than
+          // `withAlpha` here. HardShadow paints its drop as a solid block the
+          // full size of the card and offsets it — so it is directly BEHIND
+          // the card, not only along two edges. A translucent fill let that
+          // near-black block through, and the selected plan (the monthly one,
+          // by default, on first open) rendered as a dark slab with unreadable
+          // text on it: the one plan the runner is being asked to read.
+          const fill = on
+            ? tintOn(colors.card, accent, scheme === 'dark' ? 0.22 : 0.14)
+            : colors.card;
           return (
             <HardShadow
               key={p.id}
