@@ -110,6 +110,11 @@ def clean_path(points: List[GpsPoint]) -> Optional[CleanedPath]:
     """Build a CleanedPath from raw GPS samples.
 
     Steps:
+      0. Drop samples whose reported accuracy is too coarse to say anything
+         about where the runner went. Current clients gate these before they
+         are ever sent (frontend/src/run/gpsFilter.js), but older binaries
+         submit everything, and one 50 m fix sitting between two good ones
+         reads as a sprint out and back.
       1. Drop duplicate timestamps (some phones double-emit).
       2. Drop samples that imply > max_speed_mps from the previous accepted
          sample — almost always a GPS glitch (urban canyons, indoors).
@@ -119,6 +124,17 @@ def clean_path(points: List[GpsPoint]) -> Optional[CleanedPath]:
     """
     if len(points) < 2:
         return None
+
+    # 0: accuracy gate. Points reporting no accuracy at all are kept (not
+    # every platform reports one), and the gate stands down entirely when it
+    # would eat most of the trace, since that means bad reception rather than
+    # bad points.
+    accurate = [
+        p for p in points
+        if p.accuracy_m is None or p.accuracy_m <= settings.max_accuracy_m
+    ]
+    if len(accurate) >= 2 and len(accurate) >= settings.min_accurate_share * len(points):
+        points = accurate
 
     # 1 + 2: temporal + speed filtering, in lat/lon space.
     accepted: List[GpsPoint] = [points[0]]

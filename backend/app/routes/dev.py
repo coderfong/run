@@ -18,7 +18,7 @@ from shapely.ops import unary_union
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, paserby, schemas
+from .. import models, paserby, ranks, schemas
 from ..database import get_db
 from ..devtools import is_dev_account
 from ..notifications import notify
@@ -216,6 +216,15 @@ def rival_takes_mine(
         _decimate_ring(territory.rings[0])
         if territory and territory.rings else None
     )
+    # The rival's tier, on the same terms every other payload that carries an
+    # avatar states it (see ranks.key_for): the alert draws the attacker's
+    # portrait frame from this, and a portrait with no tier renders bare.
+    # Read with raw SQL because the rank columns are deliberately NOT mapped on
+    # the User model — see the note beside `premium_pass` in models.py.
+    rank_row = db.execute(
+        text(f"SELECT {ranks.SELECT_COLS} FROM users u WHERE u.id = :u"), {"u": rival.id}
+    ).first()
+    rival_rank_key = ranks.key_for(rank_row[0], rank_row[1]) if rank_row else "wood"
     event_data = {
         "capture_id": capture_id,
         "taken_m2": taken_from_me,
@@ -224,6 +233,7 @@ def rival_takes_mine(
         "attacker_id": str(rival.id),
         "attacker_username": rival.username,
         "attacker_avatar": rival.avatar or {},
+        "attacker_rank_key": rival_rank_key,
         "territory_id": str(territory.id) if territory else None,
         **({"territory_ring": territory_ring} if territory_ring else {}),
     }
@@ -241,6 +251,7 @@ def rival_takes_mine(
         "rival_id": str(rival.id),
         "rival_username": rival.username,
         "rival_avatar": rival.avatar or {},
+        "rival_rank_key": rival_rank_key,
         "taken_m2": taken_from_me,
         "territory_id": str(territory.id) if territory else None,
         "territory_ring": territory_ring,
@@ -304,6 +315,7 @@ def _wipe_crossroads_bots(db: Session, user) -> int:
 
 @router.post("/paserby/seed")
 def seed_crossroads(
+    background: BackgroundTasks,
     payload: schemas.DevCrossroadsSeedIn | None = None,
     user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
@@ -412,6 +424,18 @@ def seed_crossroads(
 
     db.commit()
     summary = paserby.summary_for(db, user.id)
+    # The seed stands in for a real run's matching pass, so it fires the same
+    # notification that pass would — otherwise the only way to see the push and
+    # the in-app banner is to go outside and run past somebody.
+    if created:
+        background.add_task(
+            notify,
+            [str(user.id)],
+            "paserby",
+            "Crossroads",
+            paserby.crossroads_waiting_line(created),
+            {"kind": "paserby_arrival", "screen": "crossroads", "count": created},
+        )
     return {
         "ok": True,
         "created": created,

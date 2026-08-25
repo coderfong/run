@@ -25,6 +25,10 @@ the same submission.
 - Version: `2.1.0`
 - Privacy Policy URL: `https://www.gameablestudios.com/privacy`
 - Support URL: `https://www.gameablestudios.com/support`
+- Terms of Use (EULA): Apple's standard EULA,
+  `https://www.apple.com/legal/internet-services/itunes/dev/stdeula/`, linked as
+  plain text inside the Description (there is no separate URL field for it).
+  A custom EULA would instead go in App Information -> License Agreement
 - Regulated medical device declaration: **No**
 - Copyright: use the legal owner and current year
 
@@ -51,7 +55,31 @@ to defend it.
 - BE SOCIAL - comment on runs, chat with your club, and react to achievements.
 
 PASER records your route only during an active, user-started run.
+
+PASER PRO is an optional auto renewable subscription. SGD 4.98 per month or
+SGD 39.98 per year. Payment is charged to your Apple Account at confirmation of
+purchase. It renews automatically unless auto renew is turned off at least 24
+hours before the end of the current period. Manage or cancel your subscription
+in your Apple Account settings.
+
+Terms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+Privacy Policy: https://www.gameablestudios.com/privacy
 ```
+
+**The prices are SGD on purpose.** PASER is sold in Singapore only, so S$4.98
+and S$39.98 are the only prices any buyer can be charged, confirmed in App Store
+Connect on 2026-08-25. Never restore the US $4.99 / $39.99 tiers the products
+were planned at: nobody in the app's only market can be charged them, which
+makes them the same 3.1.2 problem as quoting no price at all.
+
+The last two lines are not optional. App Review rejected this submission on
+2026-08-24 because the product page carried no functional Terms of Use link,
+which every app that sells an auto-renewable subscription must show. The app
+uses Apple's standard EULA, so the link above is the one to paste; only replace
+it if a custom EULA is uploaded in App Store Connect instead (App Store Connect
+-> App Information -> License Agreement). Paste the URLs as plain text, because
+the Description field does not render links, and re-check them in the preview
+after saving.
 
 Keywords (100-character field; verify in App Store Connect after pasting):
 
@@ -78,14 +106,48 @@ Auto-renewable subscription — one subscription group ("PASER PRO"):
 
 | Product ID | Reference name | Duration | Price tier |
 | --- | --- | --- | --- |
-| `paser_pro_monthly` | PASER PRO Monthly | 1 month | $4.99 |
-| `paser_pro_annual` | PASER PRO Yearly | 1 year | $39.99 |
+| Product ID | Reference name | Duration | Singapore price |
+| --- | --- | --- | --- |
+| `paser_pro_monthly` | PASER PRO Monthly | 1 month | S$4.98 |
+| `paser_pro_annual` | PASER PRO Yearly | 1 year | S$39.98 |
+
+**PASER SELLS IN SINGAPORE ONLY, SO THE PRICE IS SGD.** Availability is one
+region by design (`1 of 175 countries or regions selected`), and the only row of
+Apple's worldwide price table that anybody can be charged from is
+`Singapore (SGD) $4.98`, proceeds `$4.29`, confirmed 2026-08-25. Every other row
+of that table describes a storefront PASER is not sold in. S$4.98 is Apple's
+nearest SGD price point to the $4.99 the product was planned at, which is why
+the two do not match to the cent.
+
+This trips up device testing, and did on 2026-08-25: a phone signed into a **US**
+Apple Account opened the paywall and showed `$2.99` / `$29.99`. StoreKit answers
+in the storefront the ACCOUNT is signed into, not the region the app is sold in,
+so those were the US rows of the same table. That is correct behaviour, not a
+pricing bug, and it is why the US column is worth nothing here. **Test the
+paywall on an Apple Account whose storefront is Singapore**, or the number on
+screen is answering a question nobody asked.
+
+Two things follow for the metadata. The Description must quote the **SGD**
+price, because that is the only price any buyer of this app can see. And the
+hardcoded fallbacks in `config/pro.js` and `BuyEnergySheet.js` are US dollar
+tiers: shown to a Singapore buyer whose store lookup fails, beside a `$` that
+reads as SGD, they advertise a price Apple does not charge. Bring them to the
+SGD prices, or the fallback is a false claim rather than a safety net.
+
+The consumable prices are in the same position and have never been checked
+against the live store at all.
 
 Both plans MUST be in the SAME subscription group, or a runner switching plans
 is billed for both. Each needs a localized display name, description, and a
 review screenshot of the paywall. The app's own paywall (`BuyProSheet`) already
 carries the 3.1.2 disclosures: price per period, auto-renew and cancellation
-terms, and links to the Apple standard EULA and the privacy policy.
+terms, and links to the Apple standard EULA and the privacy policy. That is why
+the 2026-08-24 rejection cited only the product page and not the app itself.
+
+One loose end that iOS review will not catch: `BuyProSheet` links Apple's EULA
+only on iOS, and everywhere else it links `https://www.gameablestudios.com/terms`,
+which returns **404** (checked 2026-08-24). Publish that page before any Android
+or Play release, or point the non-iOS branch at a terms page that exists.
 
 Consumables (no subscription group, `restore` not required):
 
@@ -98,6 +160,37 @@ Consumables (no subscription group, `restore` not required):
 | `coins_sack` | 1200 coins | $1.99 |
 | `coins_chest` | 3000 coins | $4.99 |
 | `coins_vault` | 6500 coins | $9.99 |
+
+### When the paywall price disagrees with App Store Connect
+
+Both sheets ask the store for the real, storefront-localized price when they
+open and fall back to a hardcoded string when that answer is empty
+(`fallbackPrice` in `config/pro.js`, `price` in `BuyEnergySheet.js`). Those
+fallbacks are US dollar tiers while the app sells only in Singapore, so today
+they are **wrong for every buyer** the moment a lookup fails — see the SGD note
+above. Whatever they are set to, they only agree with the store by maintenance:
+change a price in App Store Connect and the fallback is a lie until it is
+changed here too, and in the Description.
+
+An empty answer looks exactly like a working one on screen, so diagnose it
+rather than guessing:
+
+- **On a dev client on a real device**, signed into a Sandbox Apple Account,
+  open the paywall and read the console. `fetchProductPrices` logs every id the
+  store returned with its price and currency, and warns with the likely causes
+  for any it did not. The simulator has no store and always falls back.
+- **On TestFlight**, where there is no console, tap the plan and read Apple's
+  own purchase sheet. That sheet is the truth: if its price differs from the
+  card above it, the card was showing the fallback.
+- **Ordered causes of an empty answer**: the Paid Apps agreement is not active
+  in Agreements, Tax, and Banking (this alone returns nothing, however correct
+  everything else is); the product is still in Missing Metadata; the id differs
+  from the one in the source (case sensitive); or a subscription is being asked
+  for as an in-app product.
+- **A price in the right shape but the wrong currency is not a bug.** The store
+  answers in the storefront the Apple Account is signed into, not the region of
+  the price you typed in App Store Connect. Check Settings -> Media & Purchases
+  before treating it as one.
 
 Energy is a claim-pacing consumable; coins buy cosmetics only. Neither is a
 randomized draw, so the loot-box answer stays No. The description need not list
@@ -218,6 +311,31 @@ make sure every screenshot reflects the submitted binary.
 
 ## Before submission
 
+- [ ] **Terms of Use link in the App Description (owner-only, App Store Connect;
+      this is what the 2026-08-24 rejection asked for).** The submission was
+      returned without a full review: an app that sells an auto-renewable
+      subscription must carry a functional Terms of Use (EULA) link in the
+      metadata on its product page, and the Description had none. Paste the
+      Description exactly as written above, including the subscription
+      disclosure and the two URL lines, save, and reply to App Review saying
+      the link is now in the Description. Nothing in the binary changes, so no
+      new build is needed for this: the same build can be resubmitted once the
+      metadata is saved. The paywall itself was already compliant, which is why
+      only the product page was cited.
+- [x] Subscription availability is deliberately **Singapore only** (`1 of 175
+      countries or regions selected`, both products). Nothing to change; it is
+      recorded because it decides which price is the real one everywhere else
+      in this file.
+- [x] Both subscription prices read off App Store Connect in **SGD**, the only
+      currency this app sells in: S$4.98 monthly, S$39.98 yearly (2026-08-25).
+      The Description above and `config/pro.js` both carry those figures. The US
+      $4.99 / $39.99 the products were planned at appear nowhere any more.
+- [ ] **The seven consumables' fallback prices are still US tiers**
+      (`price` in `BuyEnergySheet.js`). Read their Singapore rows in App Store
+      Connect and correct them, the way the subscription just was. A Singapore
+      buyer whose store lookup fails is shown a US price under a `$` that reads
+      as SGD. Ships with the next build, so it does not block the metadata
+      resubmission.
 - [x] Backend deployed. Commit `b5170cf` pushed 2026-08-12 and live on Render:
       `GET /version` reports `2.1.0` / commit `b5170cf`, `GET /health` reports
       `{"ok": true, "db": true}`, and `/me/reports`, `/me/blocks` and

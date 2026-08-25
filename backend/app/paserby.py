@@ -67,7 +67,7 @@ def familiarity_for(times: int):
 
 
 def crossed_paths_line(count: int) -> str:
-    """The one sentence this feature is allowed to push.
+    """The one sentence the post-run reveal is allowed to say.
 
     A count. No name, no place, no time — mirrored on the client in
     frontend/src/config/paserby.js so the notification and the reveal say the
@@ -75,6 +75,20 @@ def crossed_paths_line(count: int) -> str:
     """
     n = int(count or 0)
     return f"You crossed paths with {n} {'PASER' if n == 1 else 'PASERs'} today."
+
+
+def crossroads_waiting_line(count: int) -> str:
+    """The push, and the in-app banner that mirrors it.
+
+    Same privacy rule as `crossed_paths_line` — a count and nothing else — but
+    it names the PLACE rather than the event. The push exists to bring somebody
+    back to the plaza, and "you crossed paths with 1 PASER today" was a fact
+    with no door on it. Mirrored in frontend/src/config/paserby.js.
+    """
+    n = int(count or 0)
+    if n <= 1:
+        return "A new PASER is waiting for you at the Crossroads."
+    return f"{n} new PASERs are waiting for you at the Crossroads."
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +467,13 @@ def process_run_task(run_id) -> None:
         db.close()
 
     for uid in {row[0] for row in others}:
-        notify([uid], "paserby", "Crossed paths", crossed_paths_line(1))
+        # `kind` is what the foreground client keys on to raise its own banner
+        # (frontend/src/components/CrossroadsAlert.js) rather than letting the
+        # push slide past behind the app, and `screen` is where a tap goes.
+        notify(
+            [uid], "paserby", "Crossroads", crossroads_waiting_line(1),
+            {"kind": "paserby_arrival", "screen": "crossroads", "count": 1},
+        )
 
 
 def ensure_processed(db, run_id) -> int:

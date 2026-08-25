@@ -60,6 +60,15 @@ class Settings(BaseSettings):
                                        # segment, we treat it as a loop closure
     simplify_tolerance_m: float = 1.5  # douglas-peucker tolerance for cleanup
     max_speed_mps: float = 12.0        # ~43 km/h, drop GPS points exceeding this
+    # A fix this coarse says nothing about where a runner moving 3 m/s went,
+    # and stringing such fixes together invents distance out of pure error.
+    # Mirrors the client's live gate (frontend/src/run/gpsFilter.js) so the
+    # number a runner watches and the number they are paid for agree.
+    max_accuracy_m: float = 35.0
+    # ...unless the whole trace is that coarse, in which case the run happened
+    # somewhere with genuinely bad reception and dropping most of it would be
+    # worse than keeping it. Below this surviving share, the gate stands down.
+    min_accurate_share: float = 0.34
 
     # ---- what counts as a run --------------------------------------------
     # Two thresholds, because "worth rewarding" and "worth a piece of the map"

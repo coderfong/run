@@ -14,8 +14,8 @@ Strava-shaped flow:
 
    A 1:1 "Post" sat beside it until **2026-08-17**, and it went on the user's
    call: this card exists to land in a story as a sticker. The square was never
-   the same picture at a different crop either — the safe areas, the route band
-   and the two-up stat grid are all measured against the story's height, so the
+   the same picture at a different crop either — the safe areas, the route
+   column and the stat block are all measured against the story's height, so the
    square quietly re-cut every one of them and shipped a second layout nobody
    was tuning. `SHARE_FORMATS` is a single `SHARE_FORMAT` now, and every other
    destination (Save, Copy, More) gets that same story-shaped PNG.
@@ -33,12 +33,20 @@ Strava-shaped flow:
 
    The preview sits on a **checkerboard** with a `TRANSPARENT` badge on it,
    because "transparent" and "dark grey" look identical against a dark screen.
-3. **Customise it** — under the preview:
-   * **Accent** — the clan colour first, then eight swatches (including ink,
-     for a bright story). Drives the territory number, the route's end dot and
-     the trail decorations.
-   * **Text** — Left / Centre / Right, applied to the headline, the stat grid
-     and the signature together.
+3. **Customise it** — under the preview. **The three that change how the card
+   LOOKS are PASER PRO** (2026-08-24): Accent, Placement and Stats each carry
+   the gold padlock, dim to 0.4 and open the paywall on a tap. What is on the
+   card — the route, the runner, the flip — stays free, and so does previewing
+   any of it. See "What PRO buys" below.
+   * **Accent** *(PRO)* — the clan colour first, then eight swatches (including
+     ink, for a bright story). Drives the territory number, the route's end dot,
+     the wordmark badge and the trail decorations.
+   * **Placement** *(PRO)* — Left / Centre / Right, and on the rebuilt card it
+     is the LAYOUT rather than the rag. Left and right stand the numbers down
+     that side with the route and the runner in the column opposite; centre is
+     the older stacked shape, route in a band across the top with the numbers
+     under it. Which side matters on a story: the runner puts the numbers where
+     their own face is not.
 
      The type itself is **WHITE and only white**. There used to be a Light /
      Dark switch here, and it was **cut on 2026-08-16**: ink type on a card with
@@ -85,16 +93,24 @@ Strava-shaped flow:
      as a flower, an entirely pink one reads as a smudge. Every piece carries its
      own dark edge for the same reason the route carries its under stroke. The
      row hides itself when Route is switched off.
-   * **Runner** — the PASER mark wearing the player's head, feet on the end dot
-     of their own route (the one point on the card that means something),
-     clamped so a run that finished high or low doesn't put it through the
-     headline or the numbers. **On by default** since 2026-08-17. On/Off and
-     Flip. See "The runner on the route".
-   * **Stats** — chips for every metric the run actually has (Distance, Pace,
-     Time, Elev gain, Best km, Avg speed, Territory), plus a Route toggle.
-     Bounded at one minimum and six maximum: zero leaves a hole the runner
-     cannot see, and seven is three rows of numbers with nowhere left to draw
+   * **On the card** *(free)* — Route, Runner, Flip, in one row because they are
+     one question and none of them is a look. The runner is the PASER mark
+     wearing the player's head, feet on the end dot of their own route (the one
+     point on the card that means something), clamped so a run that finished
+     high or low doesn't put it through the numbers; with Route off it stands
+     centred in the space the route would have had. **On by default** since
+     2026-08-17. See "The runner on the route".
+
+     Route used to be a chip inside the Stats row. It was moved out on
+     2026-08-24 for one reason: the moment the metrics went PRO, the padlock
+     over that row took the route and the runner with it, and "you cannot take
+     your own avatar off your own card" is not a thing worth selling.
+   * **Stats** *(PRO)* — chips for every metric the run actually has (Distance,
+     Pace, Time, Elev gain, Best km, Avg speed, Territory). Bounded at one
+     minimum and six maximum: zero leaves a hole the runner cannot see, and
+     seven is more rows than the type can shrink for with anywhere left to draw
      the route.
+
 4. **See the real card** — the preview *is* the component that gets captured
    (`RunShareCard`), so there is no gap between preview and post.
 5. **Send it** — a "Share to" row of round destinations, the shape every share
@@ -136,37 +152,89 @@ Strava-shaped flow:
   and a feed row knows nothing about elevation, best km or average speed, so an
   old run offers fewer stat chips than a fresh one.
 
+### What PRO buys
+
+**Free gets a finished card.** Three numbers — distance, pace, time — the route,
+the runner, the clan's own colour, and every destination. Nothing about it is
+crippled and most runners will post it untouched. What PASER PRO buys is making
+it *yours*: **your colour** (Accent), **your side of the story** (Placement),
+**your numbers** (Stats).
+
+The line moved here on 2026-08-24. It was Accent and Placement only, with the
+metrics free; the card's redesign is what moved it, because the default card
+became good enough to give away whole.
+
+Not gated, and deliberately: **the route and the runner** (they decide what the
+card *shows*, not how it looks), and **previewing anything** — including the PRO
+*styles*, which are gated on EXPORT instead, in one place, in `perform()`. A
+paywall sprung at the moment of posting would be the worst possible place for
+one, so the sheet says so in a line under the Style row rather than leaving
+somebody to find out at the last step.
+
+Mechanically it is the `Row` component's `locked` / `onLockedPress` pair — the
+AvatarStudio padlock pattern: a gold `Lock` and a PRO tag on the label, controls
+dimmed to 0.4 behind `pointerEvents="none"`, and one full-row `Pressable` over
+the top that opens `openPaywall('share')`. The gate is `!isPro && canShowPro`,
+so subscribers and builds with no store see **no dead padlocks at all**.
+`__tests__/shareProGating.test.js` pins exactly which rows are locked, because
+adding a control to the wrong row silently either gives away something meant to
+be sold or, much worse, locks something meant to be free.
+
+
 ### The card
 
-**Three things: a route, four numbers, the wordmark.** Layout, top to bottom:
-the route in a capped band, then Distance / Time / Elev gain / Territory as
-**two above and two below**, then **PASER on its own** — no brand mark beside
-it. Everything is sized off `u = width / 360`, so one component serves the small
-preview and the 1080-wide export.
+**Three things: numbers, route, wordmark — side by side.** The numbers stack
+one per line down one column at poster size; the route and the runner stand in
+the column opposite, overlapping them vertically; the wordmark badge sits under
+the numbers. Everything is sized off `u = width / 360`, so one component serves
+the small preview and the 1080-wide export.
 
-**Simplified 2026-08-16** to that Strava shape. What changed and why:
+**Rebuilt 2026-08-24** to the reference card the user brought: three enormous
+figures down one side, the run's own graphic beside them. What changed and why:
 
-* **The territory headline came off** — an eyebrow (`TERRITORY CLAIMED`) over a
-  44pt km². Area is one of the four numbers now, so the ground is said once
-  instead of twice, and losing that block is most of what makes the card read as
-  simple.
-* **The route stopped owning the card.** It used to take every pixel the fixed
-  furniture did not; it now gets a band capped at `ROUTE_SHARE` (30% of the
-  card) and centred in the space between the safe area and the numbers.
-  Whatever is left over stays empty, which on a sticker is not waste —
-  it is the runner's own story showing through.
-* **Each pair of numbers gets its own line.** `STAT_ROW_U` went 46 → 62: at 46
-  the first row's digits ran into the second row's label and the four read as
-  one block of text. The extra row height IS the gap, so the cells stay
-  top-aligned and the space falls between the rows.
-* **The brand mark came off the signature**, leaving the wordmark alone.
-* **Pace is off by default**, because four numbers is a 2×2 block and five is a
-  block with a gap in it. It is still a chip.
-* **The runner figure started off**, and was **turned back on 2026-08-17**:
-  off by default meant the one part of the card that is the runner rather than
-  the run almost never left the app. See "The runner on the route".
-* The accent moved with the headline: it now colours the **Territory** value,
-  the one number Strava does not have, so the swatches still drive something.
+* **The labels came off the numbers.** A 12pt `DISTANCE` over every figure was
+  the last caption-shaped furniture on the card and it carried no information —
+  `18.23 KM` is not mistakable for a duration. It cost a third of the height of
+  every row and put a second type size on a card whose whole idea is one
+  enormous one. The **unit** says what the number is, raised at the shoulder
+  like a superscript (`UNIT_RATIO`, `UNIT_RISE`). `bestKm`'s unit became
+  `best/km` in the same pass, because a bare `/km` under a pace of `/km` is two
+  numbers claiming to be the same thing.
+* **The 2×2 grid became one column.** A pair of poster-sized figures sharing a
+  line is two numbers neither of which is readable, so `perRow` is gone and
+  `stats.length` is the row count.
+* **ONE SIZE for every number**, chosen so the widest string fits the column:
+  `VALUE_FOR_ROWS[n]` is the ceiling and `typeW / widestEm` is what the column
+  can actually take. `fit` is still on underneath as the backstop, but it is no
+  longer the mechanism — letting each number shrink on its own drew a card with
+  three different type sizes in one column, which is the one thing the poster
+  layout must not do. `emWidth` is a rough per-glyph table for Anton; it only
+  has to be about right.
+* **The route moved beside the numbers.** `ART_COL` (46% of the inner width) ×
+  `ART_ASPECT`, sat at `ART_RISE` of the band so the two columns OVERLAP
+  vertically — without that overlap the card reads as two unrelated things on a
+  diagonal. `projectGroups` now runs against the column's box, so `route.end` is
+  in the column's pixels and the runner's `left` has to add `artLeft` back in.
+  Centre keeps the old full-width band capped at `ROUTE_SHARE`.
+* **Default stats went to distance / pace / time.** Pace was off by default when
+  four numbers meant a 2×2 block; stacked at poster size, four is a column that
+  runs into the route, and elevation is the least interesting thing anybody ran.
+  Territory is a chip rather than a default.
+* **The wordmark matches the numbers.** Same face (Anton) as before, but 15u
+  tracked out to 2.6u read as a wider typeface under a column of condensed
+  figures — letterspacing that heavy un-condenses a narrow poster face. 18u at
+  1.2u instead, and `signatureH` was re-measured to 46u to match. Keep the two
+  in step.
+* **The runner no longer needs a route.** With the route off it stands centred
+  in the space the route would have had, at `width * 0.42`. It used to keep
+  standing where the INVISIBLE line ended, which is why the "Character
+  showcase" preset — `showRoute: false, showCharacter: true` — rendered no
+  character at all.
+
+Kept from the 2026-08-16 simplification: no territory headline (area is a
+number, not an eyebrow over a 44pt km²), no brand mark beside the wordmark, the
+route capped rather than owning the card, and the accent colouring the
+**Territory** value — the one number Strava does not have.
 
 No handle, no clan, no date, no "took N km² from X". On somebody's own story the
 handle is already at the top of the screen, the date is today, and the steal
@@ -246,7 +314,10 @@ The card anchored the figure by the middle of its box until **2026-08-17**,
 which stood the runner a clear stride to the RIGHT of wherever the run actually
 ended — the complaint was that the mascot was not on the route, and it was not.
 It anchors on `MARK_FOOT` now, mirrored when **Flip** is on because flip mirrors
-the whole box.
+the whole box. Since 2026-08-24 the route is drawn in its own COLUMN rather than
+across the card, so `route.end` is in the column's pixels and `artLeft` has to
+be added back on — leave it out and the figure stands one column's width away
+from its own line, which is the same bug in a new place.
 
 Both fractions were measured off the asset's own alpha channel (the contact
 patch centroid is stable from the bottom 1% to the bottom 5% of the image).
@@ -260,13 +331,15 @@ holding the figure to the line.
   `CARD_INK` is still handed to Instagram as the canvas colour behind the
   sticker, until the runner picks their own background.
 * **Type carries its own legibility.** There is no scrim to hide behind: the
-  labels are fully opaque and the shadow is tight enough to read as an outline
-  (`TONE`), because a translucent label vanishes on a pale sky or a white
-  t-shirt.
-* **Measured, not hand-tuned.** The route band takes the height the headline,
-  stats, brag line and signature do not — that is what stops a long route being
-  drawn straight through the numbers. The stat grid is two-up because a single
-  row of four collided the moment a pace and a duration sat side by side.
+  numbers wear a real ink OUTLINE (`OutlinedText`, eight offset copies) and the
+  small units a hard zero-blur drop, because a translucent mark vanishes on a
+  pale sky or a white t-shirt. Everything is fully opaque (`TONE`).
+* **Measured, not hand-tuned.** The stat block is sized from its own type
+  (`stats.length × lineH`), the wordmark from a hand-measured `signatureH`, and
+  the route column gets what those two leave — which is what stops a long route
+  being drawn straight through the numbers. The type in turn is sized from the
+  column: one `valueSize` for the whole block, taken from the widest string in
+  it.
 * Story content stays inside Instagram's chrome (top 11%, bottom 15%).
 
 ## 1. A new native build is required — **YOU**
@@ -336,7 +409,10 @@ No Meta SDK, no login, nothing else to configure.
 | No Instagram button at all | Instagram not installed, or a binary built before `react-native-share` |
 | "Opening the share sheet instead…" | Instagram refused the story — usually the app id, or an Android intent knocked back |
 | Blank/black exported image | Something non-static got into `RunShareCard` (map, `expo-image`, animation) |
-| Card content clipped | A text block grew past its estimate in `RunShareCard` (`headH` / `statsH` / `signatureH`) |
+| Card content clipped | A block grew past its estimate in `RunShareCard` (`statsH` / `signatureH`) — `signatureH` is a hand-measured constant, so it goes stale whenever the wordmark's size or padding changes |
+| The runner stands beside its own route | `artLeft` missing from the runner's `left` — `route.end` is in the art column's pixels, not the card's |
+| Numbers at different sizes down the column | `valueSize` is meant to be one number for the whole block; per-string `fit` shrinking means the block was not sized to its widest member |
+| A padlock on a control that should be free | Check `__tests__/shareProGating.test.js` — free is route, runner, flip; PRO is accent, placement, stats |
 | A metric has no chip | `availableStats` dropped it — the run has no honest number for it (elevation needs altitude, which only runs recorded after 2026-08-06 carry) |
 | An old run offers fewer stats than a fresh one | The feed ships distance, duration and area and nothing else — elevation, best km and average speed exist only on the post-run path |
 | No Trail row on the sheet | Expected — `TRAIL_DECORATIONS_ENABLED` is false. That is the switch, not a bug |
