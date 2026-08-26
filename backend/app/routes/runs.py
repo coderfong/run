@@ -2217,24 +2217,46 @@ def _claim_territory(
             },
         ).fetchone()
     else:
+        # Repaired on the way in, exactly as the union branch above does it.
+        #
+        # This branch used to insert `new_geom_wkt` raw. That WKT is what is
+        # left of the claim after every rival's ground has been differenced
+        # out of it, and a difference against a neighbour can shave off a
+        # hair-thin sliver whose ring collapses to fewer than four points
+        # once it has been through ST_AsText. The result is a MultiPolygon
+        # with one degenerate component: ST_IsValidReason says "Too few
+        # points in geometry component", `territories_polygon_valid` rejects
+        # it, and the claim fails outright.
+        #
+        # It takes tightly packed contested neighbours to reach, which is why
+        # it went unseen — but nothing about it is specific to simulated
+        # players, and a busy real map arrives at the same state. ST_MakeValid
+        # is a no-op on geometry that is already valid, so this cannot change
+        # any claim that succeeds today; CollectionExtract(3) drops the
+        # collapsed pieces and keeps the polygons.
         new_row = db.execute(
             text(
                 """
+                WITH cleaned AS (
+                    SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(
+                        ST_GeomFromText(:wkt, 4326)
+                    ), 3)) AS g
+                )
                 INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at,
                                          verified, clan_id, strength, reinforcements, expires_at)
-                VALUES (
+                SELECT
                     gen_random_uuid(),
                     :uid,
                     :rid,
-                    ST_Multi(ST_GeomFromText(:wkt, 4326)),
-                    ST_Area(ST_GeomFromText(:wkt, 4326)::geography),
+                    g,
+                    ST_Area(g::geography),
                     now(),
                     true,
                     :clan_id,
                     :strength,
                     0,
                     now() + make_interval(secs => :life_secs)
-                )
+                FROM cleaned
                 RETURNING id, area_m2, created_at
                 """
             ),
