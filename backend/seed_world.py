@@ -408,6 +408,34 @@ def main() -> int:
         if args.reset:
             _wipe_bots(db)
 
+        # Clear seeded clubs that ended up with nobody in them.
+        #
+        # The club rows are all INSERTed up front and the first per-club
+        # commit commits every one of them, so a run that dies partway leaves
+        # clubs that exist and have no members. They are invisible to the
+        # "which clubs are seeded" query below, which counts membership — so
+        # a resume hands their names out a second time and dies on
+        # clans_name_key instead. Deleting them frees the name and loses
+        # nothing, since an empty club is not a club.
+        #
+        # Scoped to created_by IS NULL, which is what marks a seeded club. A
+        # club a real person made is never touched, even if it is empty.
+        orphans = db.execute(
+            text(
+                """
+                DELETE FROM clans
+                WHERE created_by IS NULL
+                  AND id NOT IN (
+                        SELECT clan_id FROM users WHERE clan_id IS NOT NULL
+                  )
+                RETURNING name
+                """
+            )
+        ).fetchall()
+        if orphans:
+            db.commit()
+            print(f"cleared {len(orphans)} empty club(s) left by an interrupted run")
+
         # Clubs that already have seeded members, so --resume knows where it
         # got to and which names are spoken for.
         seeded_names = {
@@ -442,6 +470,12 @@ def main() -> int:
 
         avoid_geom = _target_avoid_geom(db)
         taken_usernames = _existing_usernames(db)
+        # Every club name in the table, not just the seeded ones. clans.name
+        # is UNIQUE across the whole table, so a club a real player happened
+        # to call "Slow Group" would collide just as hard as a leftover.
+        existing_club_names = {
+            r[0] for r in db.execute(text("SELECT name FROM clans")).fetchall() if r[0]
+        }
         total_bots = to_create * per_clan
         usernames = bot_world.allocate_usernames(rng, total_bots, taken_usernames)
         rank_points = bot_world.rank_points_pyramid(rng, total_bots)
@@ -462,10 +496,10 @@ def main() -> int:
         # which is what lets a region with few named landmarks still fill up.
         name_queues = {}
         for key, names in CLUB_NAMES_BY_REGION.items():
-            pool = [n for n in names if n not in seeded_names]
+            pool = [n for n in names if n not in existing_club_names]
             rng.shuffle(pool)
             name_queues[key] = pool
-        any_queue = [n for n in CLUB_NAMES_ANY if n not in seeded_names]
+        any_queue = [n for n in CLUB_NAMES_ANY if n not in existing_club_names]
         rng.shuffle(any_queue)
 
         taken_tags = {
