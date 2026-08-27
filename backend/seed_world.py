@@ -81,47 +81,93 @@ HOME_SPREAD_M = 700.0
 
 REGION_FILE = os.path.join(os.path.dirname(__file__), "sg_regions.json")
 
-# Club names, KEYED BY THE REGION THEY ARE ACTUALLY IN.
+# CLUB NAMES.
 #
-# This used to be one flat list, shuffled, with regions handed out by a
-# separate round robin — so "Bedok Blitz, running out of West Singapore" and
-# "Jurong Jaguars, running out of South Singapore" both shipped. Every name
-# here is a real Singapore estate, which means anybody who lives here reads
-# the mismatch instantly and the whole world stops being believable. The
-# geography has to be right for the same reason the usernames do.
+# These used to be alliterative mascot names — Marina Milers, Bishan Blazers,
+# Tampines Thunder. That is what a game studio invents and not at all what a
+# running group calls itself. Real ones are named after the thing that
+# actually distinguishes them: when they meet, where they meet, how far they
+# go, or a flat joke about how slow they are. "7PM Club" and "Nothing
+# Serious" are believable in a way "Jurong Jaguars" never was.
 #
-# Region keys and their centroids come from sg_regions.json: north is the
-# Woodlands/Yishun/Punggol belt, south is the southwest coast from Queenstown
-# out to Pasir Panjang, east is Tampines/Bedok/Changi, west is
-# Jurong/Bukit Batok/Choa Chu Kang, central is Bishan/Novena/Kallang/Marina.
-CLAN_NAMES_BY_REGION = {
+# Split by whether the name commits to a place. A name that says Bedok has to
+# be seeded in the east or it contradicts itself, exactly like the club
+# descriptions did before. Everything else travels: "Slow Group" belongs
+# anywhere, so those fill out whichever region runs short.
+CLUB_NAMES_BY_REGION = {
     "north": [
-        ("Yishun Yetis", "YSHN"), ("Woodlands Wolves", "WDLD"), ("Punggol Pacers", "PNGL"),
-        ("Sengkang Sprinters", "SNKG"), ("Hougang Hawks", "HGNG"), ("Serangoon Strays", "SRGN"),
-        ("Sembawang Swifts", "SMBW"), ("Admiralty Arrows", "ADMR"),
+        "Punggol Run Club", "Northside", "Hougang Runners", "Serangoon",
+        "North East", "Punggol Sundays", "North East 10",
     ],
     "south": [
-        ("Queenstown Quick", "QNST"), ("Redhill Runners", "RDHL"), ("Tiong Bahru Tigers", "TBHR"),
-        ("Telok Blangah Trailers", "TLKB"), ("Dover Dashers", "DOVR"),
-        ("Pasir Panjang Pacers", "PSRP"), ("West Coast Waves", "WSTC"),
-        ("Harbourfront Harriers", "HRBR"),
+        "Southside", "Harbourfront Run", "Telok Blangah Hill", "West Coast Park",
     ],
     "east": [
-        ("Tampines Thunder", "TMPN"), ("Bedok Blitz", "BDOK"), ("Pasir Ris Panthers", "PSRR"),
-        ("Changi Chasers", "CHNG"), ("Simei Striders", "SIME"), ("Katong Coasters", "KTNG"),
-        ("Eunos Eagles", "EUNO"), ("Siglap Sprinters", "SGLP"),
+        "East Side", "Bedok Boys", "Tampines Track", "East Coast",
+        "Bedok Reservoir", "ECP Sundays", "East Coast Crew", "Tampines 5K",
+        "East Side 5",
     ],
     "west": [
-        ("Jurong Jaguars", "JRNG"), ("Clementi Comets", "CLMT"), ("Bukit Batok Bolts", "BKBT"),
-        ("Choa Chu Kang Cheetahs", "CCKG"), ("Boon Lay Bolts", "BNLY"),
-        ("Bukit Gombak Gliders", "BKGB"), ("Pioneer Pacers", "PNER"), ("Tuas Trailblazers", "TUAS"),
+        "Westies", "Jurong Lake", "Clementi Run", "West Side Run",
     ],
     "central": [
-        ("Marina Milers", "MRNA"), ("Bishan Blazers", "BISH"), ("Toa Payoh Titans", "TPYH"),
-        ("Kallang Kites", "KLNG"), ("Novena Nomads", "NOVA"), ("Ang Mo Kio Arrows", "AMKO"),
-        ("Balestier Blazers", "BLST"), ("Bukit Timah Trailers", "BKTM"),
+        "AMK Track", "Kallang Crew", "Bishan Run", "Central Run",
+        "Bishan Tuesdays", "Marina Run", "CBD Run Club", "Stadium Crew",
     ],
 }
+
+CLUB_NAMES_ANY = [
+    "7PM Club", "After Work", "8:30", "Run First", "Tuesday Club", "5K Only",
+    "Just Running", "6AM", "Sunday People", "The Usual", "Slow Group",
+    "Fast Group", "Thursday Night", "10K Gang", "Run Lah", "downstairs",
+    "630pm", "Last Minute", "Meet @ 7", "Macs After", "5:45 Club",
+    "Weekend Run", "After Office", "Track Tuesdays", "Run Then Eat",
+    "Saturday 7AM", "The Running Group", "Casual 5K", "Pace 6", "6:30 Crew",
+    "MRT Exit A", "Wednesday Run", "Loop Club", "10 Klicks", "Running Dept",
+    "5K Dept", "Run Unit", "Pace Dept", "Morning Shift", "Night Shift",
+    "0600", "1930", "RC01", "Run Group 03", "Group B", "The 7PM",
+    "Lunch Run", "After Hours", "Weeknight", "Saturday Club", "Easy Pace",
+    "Tempo Boys", "The Joggers", "Jog Club", "Nothing Serious", "Not Fast",
+    "Probably 5K", "Maybe 10K", "Again Tomorrow", "Same Route", "Normal Pace",
+    "Start Here", "Just 5", "One Round", "Another Round", "Run Group",
+    "Running People", "People Who Run", "Out Running", "Outside Club",
+    "Meet Outside", "Downstairs Club", "Void Deck Run Club", "Kopi After",
+    "Milo After", "Run First Eat Later", "5K Then Kopi", "Block Runners",
+    "Neighbourhood Run", "Sunday Jog", "Tuesday Jog",
+]
+
+
+def _derive_tag(name: str, taken: set) -> str:
+    """A 2 to 5 character tag for a club, from its name.
+
+    Derived rather than hand written because the names are now ordinary
+    phrases and there are a hundred of them. The column is UNIQUE and
+    CHECK (char_length BETWEEN 2 AND 5), so both bounds have to hold and
+    collisions have to be resolved: "Bishan Run" and "Block Runners" both
+    reduce to BR on initials alone.
+    """
+    words = [w for w in "".join(c if c.isalnum() else " " for c in name).split() if w]
+    candidates = []
+    if len(words) > 1:
+        candidates.append("".join(w[0] for w in words).upper())
+        candidates.append((words[0][:3] + words[1][0]).upper())
+    if words:
+        candidates.append(words[0][:4].upper())
+        candidates.append("".join(words)[:5].upper())
+
+    for c in candidates:
+        c = "".join(ch for ch in c if ch.isalnum())[:5]
+        if 2 <= len(c) <= 5 and c not in taken:
+            taken.add(c)
+            return c
+    # Everything collided: number the best candidate until it does not.
+    base = ("".join(ch for ch in (candidates[0] if candidates else "RC") if ch.isalnum()))[:4] or "RC"
+    for n in range(2, 100):
+        c = f"{base[:5 - len(str(n))]}{n}"
+        if c not in taken:
+            taken.add(c)
+            return c
+    raise RuntimeError(f"could not derive a unique tag for {name!r}")
 
 
 def _load_regions() -> list[dict]:
@@ -394,25 +440,38 @@ def main() -> int:
         rng.shuffle(color_keys)
         badge_keys = list(CLAN_BADGES)
         rng.shuffle(badge_keys)
-        # One shuffled queue of names PER REGION, so which club appears is
-        # still random but where it says it runs is never wrong.
+        # One shuffled queue of place-committed names PER REGION, plus one
+        # shared queue of names that could belong anywhere. A club named after
+        # an estate has to be seeded in that estate; everything else travels,
+        # which is what lets a region with few named landmarks still fill up.
         name_queues = {}
-        for key, names in CLAN_NAMES_BY_REGION.items():
-            pool = [n for n in names if n[0] not in seeded_names]
+        for key, names in CLUB_NAMES_BY_REGION.items():
+            pool = [n for n in names if n not in seeded_names]
             rng.shuffle(pool)
             name_queues[key] = pool
+        any_queue = [n for n in CLUB_NAMES_ANY if n not in seeded_names]
+        rng.shuffle(any_queue)
+
+        taken_tags = {
+            r[0] for r in db.execute(text("SELECT tag FROM clans")).fetchall() if r[0]
+        }
 
         clan_ids: list[tuple[str, dict, str]] = []  # (clan_id, region, name)
         for i in range(to_create):
             region_key = region_cycle[i]["key"]
             queue = name_queues.get(region_key) or []
-            if queue:
-                name, tag = queue.pop()
+            # Lean toward a local name where one is left, but not always —
+            # a map where every single club is named after its own estate is
+            # its own kind of too tidy.
+            if queue and (rng.random() < 0.55 or not any_queue):
+                name = queue.pop()
+            elif any_queue:
+                name = any_queue.pop()
+            elif queue:
+                name = queue.pop()
             else:
-                # More clubs than this region has names for. Reuse one and
-                # number it rather than borrowing another region's estate.
-                name, tag = CLAN_NAMES_BY_REGION[region_key][i % len(CLAN_NAMES_BY_REGION[region_key])]
-                name, tag = f"{name} II", f"{tag[:3]}{i}"
+                name = f"Run Group {i + 1:02d}"
+            tag = _derive_tag(name, taken_tags)
             clan_id = str(uuid.uuid4())
             db.execute(
                 text(
