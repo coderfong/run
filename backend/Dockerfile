@@ -30,6 +30,20 @@ COPY alembic ./alembic
 COPY alembic.ini ./
 COPY schema.sql migrations ./
 
+# The scheduled jobs. render.yaml declares two crons that run these by name
+# (`python sweep.py`, `python bot_activity.py`) and the image did not contain
+# either file, so both could only ever have died on "can't open file". They
+# talk to the database directly rather than going through the API, which is
+# what lets them keep working when the web service is down — but it also means
+# nothing about the web service's own startup would ever have surfaced the
+# omission.
+#
+# sg_regions.json comes too: bot_activity reads it to keep synthesised running
+# routes on land. Its absence is survivable (the loader falls back to
+# unconstrained routes) which is exactly why it needs saying out loud, or the
+# bots quietly start running out to sea.
+COPY sweep.py bot_activity.py bot_world.py seed_world.py sg_regions.json ./
+
 # Render/Fly inject $PORT; default to 8000 for local docker run. PYTHONPATH so
 # alembic's env.py can import the app package from WORKDIR.
 ENV PORT=8000 \
