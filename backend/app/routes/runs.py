@@ -2114,17 +2114,46 @@ def _claim_territory(
     )
 
     # Land that successfully DEFENDED gets carved out of the new claim.
+    #
+    # Each pass feeds its own output back in as the next pass's input, via
+    # WKT, so anything degenerate that survives one subtraction becomes the
+    # next one's problem. ST_MakeValid and CollectionExtract are not enough on
+    # their own: subtracting a neighbour along a shared edge leaves hairline
+    # rings of no area, they survive as typed polygons, and the NEXT
+    # ST_Difference throws outright — "GEOS Error: TopologyException: Input
+    # geom 0 is invalid: Too few points in geometry component" — rather than
+    # returning something wrong. That aborts the whole claim.
+    #
+    # So each pass is dumped to parts and anything under a square metre is
+    # discarded, which is the same threshold the sliver deletes above already
+    # use. A fragment that small is not land anybody ran, and carrying it
+    # forward can only break the next operation.
+    #
+    # COALESCE to an explicit empty geometry matters too: when nothing
+    # survives, the claim really was fully defended, and the area check below
+    # has to see zero and raise. The previous `if carved:` treated a null as
+    # "leave the claim as it was", which silently skipped carving out the
+    # ground that had just successfully defended itself.
     for rid in defended_ids:
         carved = db.execute(
             text(
                 """
-                SELECT ST_AsText(ST_CollectionExtract(ST_MakeValid(
-                    ST_Difference(ST_GeomFromText(:wkt, 4326), polygon)
-                ), 3))
-                FROM territories WHERE id = :rid
+                WITH src AS (
+                    SELECT ST_CollectionExtract(ST_MakeValid(
+                        ST_Difference(ST_GeomFromText(:wkt, 4326), polygon)
+                    ), 3) AS g
+                    FROM territories WHERE id = :rid
+                ),
+                parts AS (SELECT (ST_Dump(g)).geom AS geom FROM src)
+                SELECT ST_AsText(COALESCE(
+                    ST_Multi(ST_Collect(geom)),
+                    ST_GeomFromText('MULTIPOLYGON EMPTY', 4326)
+                ))
+                FROM parts
+                WHERE ST_Area(geom::geography) >= :min_area
                 """
             ),
-            {"wkt": new_geom_wkt, "rid": rid},
+            {"wkt": new_geom_wkt, "rid": rid, "min_area": 1.0},
         ).scalar()
         if carved:
             new_geom_wkt = carved
