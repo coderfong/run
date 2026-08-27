@@ -43,45 +43,138 @@ SEED_USERNAMES: List[str] = [
     "nicoleongg", "danieltan97", "cheryl_lim", "bryanlee_", "javierkoh",
     "amandatyy", "keith.ng", "darrenloww", "rachelchua", "ethanlim23",
     "jonathankoh_", "melissayap", "zaccheong", "alyssatanx", "samuelgoh_",
+    "alex.tay", "joelngg", "melvinkoh_", "shermainelee", "darylchua",
+    "isaacyeo", "valerie.tan", "nathangohh", "clarissalim", "benjaminloh_",
+    "kevinchew", "jasmineong", "brandontoh", "eileenlow", "matthewtan_",
+    "deniseyap", "lucaslimm", "felicia.ng", "andrewyong", "chloeteo_",
+    "arjun.nair", "nuraisyah_", "danielkohh", "syafiqrahman", "priya.r",
+    "ethanong_", "hannahlim", "hafizazman", "jeremyfernandez", "kavya.naidu",
+    "shawnchew", "nurulhuda_", "adriantan", "rachelraj", "irfanhakim",
+    "marcusgohh", "melissadevi", "danish.ali", "jonathanlee_", "shalini.k",
 ]
 
-FIRST_NAMES: List[str] = [
-    "joshua", "marcus", "ryan", "jeremy", "sean", "nicole", "daniel", "cheryl",
-    "bryan", "javier", "amanda", "keith", "darren", "rachel", "ethan",
-    "jonathan", "melissa", "zac", "alyssa", "samuel", "aaron", "benjamin",
-    "brandon", "calvin", "clarissa", "denise", "dominic", "edwin", "elaine",
-    "felicia", "gerald", "gwen", "hazel", "ivan", "jamie", "jasmine", "jerome",
-    "joanne", "jolene", "kelvin", "kenneth", "lionel", "matthias", "natalie",
-    "nigel", "pamela", "priscilla", "rebecca", "russell", "shannon", "sophia",
-    "terence", "valerie", "vernon", "wayne", "yvonne", "zachary", "adeline",
-    "benedict", "charmaine", "clement", "dawn", "desmond", "eugene", "evelyn",
-    "gabriel", "geraldine", "isaac", "jared", "joel", "kelly", "lydia",
-    "marvin", "melvin", "nicholas", "olivia", "patrick", "shawn", "sheryl",
-    "stefanie", "timothy", "trevor", "wendy", "xavier", "andre", "bernice",
-    "colin", "delphine", "ernest", "fiona", "glenn", "hannah", "ian", "janice",
-    # Malay, Indian and Eurasian given names, because a Singapore map with
-    # only Chinese handles on it is its own kind of obviously synthetic.
-    "aisyah", "farhan", "hafiz", "nurul", "siti", "irfan", "amirah", "syafiq",
-    "haziq", "nabilah", "rizwan", "shahrul", "aravind", "deepa", "kavitha",
-    "praveen", "shanti", "vikram", "divya", "rahul", "meera", "sanjay",
+# HOW NAMES PAIR, AND WHY IT IS NOT SYMMETRIC.
+#
+# A first attempt drew given name and surname from one flat pool each and
+# produced `aisyahkoh05` and `elainehassan_`. A second attempt fixed that by
+# forbidding any crossing at all — which is also wrong, because it rules out
+# `rachelraj`, `melissadevi` and `jeremyfernandez`, all of them ordinary
+# Singaporean names.
+#
+# The real rule is one-directional. ENGLISH given names cross freely onto
+# Chinese, Indian and Eurasian surnames, because Indian and Eurasian
+# Singaporeans commonly have them and Chinese Singaporeans almost always do.
+# Malay and Indian given names do NOT cross onto a Chinese surname. So the
+# surname is chosen first and it decides which given-name pools are open to
+# it.
+GIVEN_NAMES = {
+    "english": [
+        "alex", "joel", "melvin", "shermaine", "daryl", "isaac", "valerie",
+        "nathan", "clarissa", "benjamin", "kevin", "jasmine", "brandon",
+        "eileen", "matthew", "denise", "lucas", "felicia", "andrew", "chloe",
+        "joshua", "marcus", "ryan", "jeremy", "sean", "nicole", "daniel",
+        "cheryl", "bryan", "javier", "amanda", "keith", "darren", "rachel",
+        "ethan", "jonathan", "melissa", "zac", "alyssa", "samuel", "aaron",
+        "calvin", "clarence", "dominic", "edwin", "elaine", "gerald", "gwen",
+        "hazel", "ivan", "jamie", "jerome", "joanne", "jolene", "kelvin",
+        "kenneth", "lionel", "natalie", "nigel", "pamela", "priscilla",
+        "rebecca", "russell", "shannon", "sophia", "terence", "vernon",
+        "wayne", "yvonne", "zachary", "adeline", "benedict", "charmaine",
+        "clement", "dawn", "desmond", "eugene", "evelyn", "gabriel",
+        "geraldine", "jared", "kelly", "lydia", "marvin", "nicholas",
+        "olivia", "patrick", "shawn", "sheryl", "stefanie", "timothy",
+        "trevor", "wendy", "xavier", "bernice", "colin", "ernest", "fiona",
+        "glenn", "hannah", "ian", "janice", "jocelyn", "jonas", "keane",
+        "larissa", "sherwin", "tricia", "wesley", "gerard", "adrian",
+        "michelle", "mark", "clare", "bernard", "theresa", "vincent",
+        "monica", "leonard", "audrey", "germaine", "sandra", "raymond",
+    ],
+    # Pinyin given names, which only ever sit on a Chinese surname.
+    "pinyin": [
+        "huiling", "weiming", "jiaqi", "xinyi", "zhiwei", "peiling", "yiling",
+        "junjie", "shuting", "kaiwen", "meiling", "wenjie", "siying",
+        "jiahui", "yixuan", "zhenyu", "minghui", "shuyi", "weijie", "lixin",
+    ],
+    "malay": [
+        "aisyah", "farhan", "hafiz", "nurul", "siti", "irfan", "amirah",
+        "syafiq", "haziq", "nabilah", "rizwan", "shahrul", "khairul",
+        "zulaikha", "aiman", "danial", "fatimah", "hidayah", "iskandar",
+        "marissa", "faizal", "hakim", "izzati", "nadiah", "ridhwan",
+        "shafiq", "yusrina", "zainal", "adlina", "hafizah", "danish",
+        "amirul", "syazwan", "athirah", "haikal", "sofea", "zulhilmi",
+        # Nur and Nurul compounds, which is how a great many Malay women's
+        # names are actually written as one word in a handle.
+        "nuraisyah", "nurulhuda", "nurhaliza", "nurizzah", "nursyafiqah",
+        "nuratiqah", "nurulain", "nurfarhana",
+    ],
+    "indian": [
+        "aravind", "deepa", "kavitha", "praveen", "shanti", "vikram", "divya",
+        "rahul", "meera", "sanjay", "arjun", "lakshmi", "nithya", "ramesh",
+        "sunita", "vijay", "anand", "priya", "karthik", "sujatha", "harish",
+        "revathi", "naveen", "shalini", "kavya", "dinesh", "geetha",
+        "mohan", "padma", "suresh", "usha", "vimala", "ganesh", "indira",
+    ],
+}
+
+SURNAMES = {
+    "chinese": [
+        "tan", "lim", "lee", "ng", "wong", "chua", "koh", "teo", "goh", "ong",
+        "cheong", "yap", "sim", "chan", "low", "loh", "chia", "seah", "toh",
+        "quek", "tay", "heng", "neo", "foo", "kwek", "chew", "soh", "wee",
+        "yeo", "ho", "khoo", "phua", "leong", "chong", "lau", "yong", "sng",
+        "boey", "tham", "poh", "ang", "gan", "kang", "mok", "pang", "see",
+        "sia", "tng", "chin", "chow", "fong", "liew", "lum", "mah", "kwa",
+        "hoon", "teoh", "yip", "aw", "chee", "eng", "han", "hew", "kok",
+    ],
+    "malay": [
+        "rahman", "ismail", "hassan", "yusof", "kamal", "aziz", "salleh",
+        "othman", "karim", "latif", "rashid", "samad", "jalil", "hamzah",
+        "bakar", "shariff", "noor", "osman", "azman", "ali", "ibrahim",
+        "hussin", "zainuddin", "saad", "yaacob", "sulaiman",
+    ],
+    "indian": [
+        "kumar", "raj", "nair", "menon", "pillai", "das", "subramaniam",
+        "krishnan", "rao", "iyer", "shetty", "reddy", "prakash", "murthy",
+        "naidu", "devi", "rajah", "muthu", "selvam", "arumugam", "gopal",
+        "balan", "chandran", "maniam",
+    ],
+    "eurasian": [
+        "fernandez", "pereira", "dsouza", "rozario", "sequeira", "gomes",
+        "desouza", "theseira", "scully", "danker", "aeria", "minjoot",
+    ],
+}
+
+# Rough nod to the actual mix rather than a census. What matters is that a
+# scroll down the leaderboard looks like Singapore.
+NAME_GROUPS = [
+    ("chinese", 72),
+    ("malay", 14),
+    ("indian", 10),
+    ("eurasian", 4),
 ]
 
-LAST_NAMES: List[str] = [
-    "tan", "lim", "lee", "ng", "wong", "chua", "koh", "teo", "goh", "ong",
-    "cheong", "yap", "sim", "chan", "low", "loh", "chia", "seah", "toh",
-    "quek", "tay", "heng", "neo", "foo", "kwek", "chew", "soh", "wee", "yeo",
-    "ho", "khoo", "phua", "leong", "chong", "lau", "yong", "sng", "boey",
-    "rahman", "ismail", "hassan", "yusof", "kamal", "aziz", "salleh",
-    "kumar", "raj", "nair", "menon", "pillai", "das",
-    "fernandez", "pereira", "dsouza",
-]
+# Which given-name pools each surname group accepts, and how often.
+GIVEN_SOURCES = {
+    "chinese": [("english", 78), ("pinyin", 22)],
+    "malay": [("malay", 93), ("english", 7)],
+    "indian": [("indian", 58), ("english", 42)],
+    "eurasian": [("english", 100)],
+}
 
 
 def _initials(rng: random.Random) -> str:
     """A short consonant tail like the `lwx` in seanlwx or the `tyy` in
-    amandatyy — initials of a full Chinese name, which is why they read as
-    real even though they are not words."""
-    pool = "bcdfghjklmnpqrstvwxyz"
+    amandatyy — the initials of a full Chinese name, which is why they read as
+    real even though they are not words.
+
+    Drawn from the letters pinyin syllables actually start with, weighted
+    toward the common ones. A flat draw over the whole consonant alphabet
+    produced `nataliegfp` and `jonathanfdr`: no Chinese name begins gf or fd,
+    so they read as noise rather than as somebody's initials.
+    """
+    common = "lwxyjhkszmct"      # wei, xin, yi, jia, hui, kai, shu, zhi, ming, chen, tian
+    rest = "bdfgnpqr"
+    pool = common * 3 + rest
     return "".join(rng.choice(pool) for _ in range(rng.randint(2, 3)))
 
 
@@ -93,16 +186,28 @@ def make_username(rng: random.Random, taken: set) -> str:
     so they are the minority exactly as they are in a real user table.
     """
     shapes = [
-        ("plain", 30), ("dot", 12), ("underscore", 10), ("trail_us", 12),
-        ("year", 14), ("number", 8), ("doubled", 7), ("initials", 5),
-        ("trail_x", 2),
+        ("plain", 29), ("dot", 12), ("underscore", 10), ("trail_us", 12),
+        ("year", 13), ("number", 8), ("doubled", 7), ("initials", 5),
+        ("dot_initial", 4), ("trail_x", 2),
     ]
     forms = [s for s, _w in shapes]
     weights = [w for _s, w in shapes]
 
+    groups = [g for g, _w in NAME_GROUPS]
+    group_weights = [w for _g, w in NAME_GROUPS]
+
     for _ in range(400):
-        first = rng.choice(FIRST_NAMES)
-        last = rng.choice(LAST_NAMES)
+        # SURNAME FIRST. It is the half that constrains the other: a Chinese
+        # surname will take an English or a pinyin given name and nothing
+        # else, while an Indian one takes an Indian or an English one. Picking
+        # the given name first would mean rejecting most of the pairs after
+        # the fact.
+        group = rng.choices(groups, weights=group_weights, k=1)[0]
+        sources = GIVEN_SOURCES[group]
+        pool = rng.choices([p for p, _w in sources],
+                           weights=[w for _p, w in sources], k=1)[0]
+        first = rng.choice(GIVEN_NAMES[pool])
+        last = rng.choice(SURNAMES[group])
         form = rng.choices(forms, weights=weights, k=1)[0]
 
         if form == "plain":
@@ -122,16 +227,46 @@ def make_username(rng: random.Random, taken: set) -> str:
         elif form == "number":
             name = f"{first}{last}{rng.randint(2, 99)}"
         elif form == "doubled":
+            # limm, gohh, ngg, ongg, loww. On a long surname this just looks
+            # like a typo (fernandezz), so it stays with the short ones, and
+            # a surname already ending in a doubled letter is skipped or
+            # `wee` comes out as `weee`.
+            if len(last) > 4 or last[-1] == last[-2]:
+                continue
             name = f"{first}{last}{last[-1]}"
         elif form == "initials":
+            # seanlwx, amandatyy: the tail is the initials of a full Chinese
+            # name, so it does not belong on any other kind of surname.
+            if group != "chinese":
+                continue
             name = f"{first}{_initials(rng)}"
+        elif form == "dot_initial":
+            # priya.r, shalini.k — the surname reduced to one letter. This is
+            # how an Indian Singaporean handle very often reads, because the
+            # legal name is a patronymic rather than a family name and the
+            # initial is what gets used. It does not belong on a Chinese
+            # surname, which is a family name and gets written out.
+            if group not in ("indian", "malay"):
+                continue
+            name = f"{first}.{last[0]}"
         else:
             name = f"{first}{last}x"
+
+        # No letter three times in a row, whatever produced it. The doubling
+        # shape guards its own case, but plain concatenation reaches the same
+        # place on its own: glenn + ng is `glennng`, and nobody's handle has
+        # ever looked like that.
+        if _has_triple(name):
+            continue
 
         if name not in taken and 3 <= len(name) <= 32:
             taken.add(name)
             return name
     raise RuntimeError("could not generate a unique username")
+
+
+def _has_triple(name: str) -> bool:
+    return any(name[i] == name[i + 1] == name[i + 2] for i in range(len(name) - 2))
 
 
 def allocate_usernames(rng: random.Random, count: int, taken: set) -> List[str]:
