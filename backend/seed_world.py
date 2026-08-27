@@ -296,6 +296,8 @@ def main() -> int:
     ap.add_argument("--clans", type=int, default=N_CLANS, help=f"number of clubs (default {N_CLANS})")
     ap.add_argument("--per-clan", type=int, default=BOTS_PER_CLAN,
                     help=f"players per club (default {BOTS_PER_CLAN})")
+    ap.add_argument("--check", action="store_true",
+                    help="connect, report what is there, change nothing")
     args = ap.parse_args()
 
     n_clans = max(1, args.clans)
@@ -303,9 +305,36 @@ def main() -> int:
 
     db_url = os.environ.get("DATABASE_URL", "")
     host = db_url.split("@")[-1].split("/")[0] if "@" in db_url else "(default local)"
+
+    if args.check:
+        # Read-only preflight. `--reset` against the wrong DATABASE_URL is the
+        # one mistake here that cannot be undone, and the shape of the two
+        # databases is nearly identical from the command line, so the only
+        # honest way to tell them apart is to look at what is inside.
+        db = SessionLocal()
+        try:
+            one = lambda q: db.execute(text(q)).scalar()
+            print(f"host              {host}")
+            print(f"alembic head      {one('SELECT version_num FROM alembic_version')}")
+            print(f"real accounts     {one('SELECT count(*) FROM users WHERE NOT is_bot')}")
+            print(f"bot accounts      {one('SELECT count(*) FROM users WHERE is_bot')}"
+                  "   <- --reset deletes exactly these")
+            print(f"clubs             {one('SELECT count(*) FROM clans')}")
+            print(f"live territory    {one('SELECT count(*) FROM territories WHERE expires_at IS NULL OR expires_at > now()')}"
+                  f"  ({one('SELECT count(*) FROM territories t JOIN users u ON u.id=t.user_id WHERE u.is_bot')} of it bot owned)")
+            mine = one(
+                "SELECT count(*) FROM territories t JOIN users u ON u.id=t.user_id "
+                f"WHERE u.username = '{TARGET_USERNAME}'"
+            )
+            print(f"{TARGET_USERNAME + ' territory':<17} {mine}   <- never touched, and seeded claims avoid it")
+            print(f"\nwould seed        {n_clans} clubs / {n_clans * per_clan} players")
+        finally:
+            db.close()
+        return 0
+
     if not args.yes:
         print(f"This will seed {n_clans} clubs / {n_clans * per_clan} bot players into: {host}")
-        print("Re-run with --yes to proceed.")
+        print("Run --check first to see what is already there, then re-run with --yes.")
         return 1
 
     rng = random.Random(args.seed)
@@ -342,7 +371,7 @@ def main() -> int:
             rng.shuffle(pool)
             name_queues[key] = pool
 
-        clan_ids: list[tuple[str, dict]] = []  # (clan_id, region)
+        clan_ids: list[tuple[str, dict, str]] = []  # (clan_id, region, name)
         for i in range(n_clans):
             region_key = region_cycle[i]["key"]
             queue = name_queues.get(region_key) or []
@@ -369,14 +398,14 @@ def main() -> int:
                     "ck": color_keys[i % len(color_keys)], "b": badge_keys[i % len(badge_keys)],
                 },
             )
-            clan_ids.append((clan_id, region_cycle[i]))
+            clan_ids.append((clan_id, region_cycle[i], name))
         db.flush()
         print(f"created {len(clan_ids)} clubs")
 
         cursor = 0
         total_attackers = 0
         total_runs = 0
-        for clan_id, region in clan_ids:
+        for clan_id, region, name_of_clan in clan_ids:
             leader_set = False
             clan_hubs = hubs[region["key"]]
             for _ in range(per_clan):
@@ -440,8 +469,15 @@ def main() -> int:
                 bot_world.apply_rank_points(db, user_id, points, rng)
 
                 total_attackers += 1 if is_attacker else 0
-            db.flush()
-            print(f"  {region['name']:<10} club seeded ({cursor}/{total_bots} players)")
+            # Commit per club, not once at the end. A full seed is ~1300
+            # claims, and against a remote database that is the better part of
+            # an hour inside a single transaction — long enough for a dropped
+            # connection or an idle timeout to throw the whole thing away, and
+            # long enough to be holding locks nobody wants held that long. Per
+            # club, a failure costs the club in flight instead of the night.
+            db.commit()
+            print(f"  {region['name']:<10} {name_of_clan:<24} seeded "
+                  f"({cursor}/{total_bots} players)", flush=True)
 
         db.commit()
         print(f"created {cursor} bot players, {total_runs} runs "
