@@ -41,6 +41,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+from fastapi import HTTPException  # noqa: E402
 from shapely.geometry import Polygon, MultiPolygon, Point  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
@@ -301,17 +302,32 @@ def _seed_one_run(db, *, user_id, clan_id, home_lat, home_lon, land, started_at,
     duration_s = distance_m / 1000.0 * pace_s_per_km
     run_id = bot_world.record_run(db, user_id, path, distance_m, duration_s, started_at)
 
-    territory_out, *_rest = _claim_territory(
-        db=db,
-        user_id=user_id,
-        run_id=run_id,
-        polygon_wgs=poly,
-        initial_area_m2=claim_area_m2(distance_m),
-        strength=claim_strength(distance_m, duration_s),
-        verified=True,
-        clan_id=clan_id,
-        lifetime_for=lambda r, d=distance_m, du=duration_s: claim_lifetime_days(d, du, r),
-    )
+    # A claim that lands entirely on ground too strongly defended to take
+    # raises 409 — the message a human sees when their claim bounces. For a
+    # simulated run that is an ordinary outcome, not an error, and it gets
+    # commoner as the world fills up: the denser the map, the likelier a bot
+    # picks a route over a neighbour's fortified block. Uncaught, it killed
+    # the whole seed at club six.
+    #
+    # The run stays on the books. Somebody who went running and failed to
+    # take any ground still went running, and the 409 is raised before any
+    # mutation, so there is nothing half-written to undo.
+    try:
+        territory_out, *_rest = _claim_territory(
+            db=db,
+            user_id=user_id,
+            run_id=run_id,
+            polygon_wgs=poly,
+            initial_area_m2=claim_area_m2(distance_m),
+            strength=claim_strength(distance_m, duration_s),
+            verified=True,
+            clan_id=clan_id,
+            lifetime_for=lambda r, d=distance_m, du=duration_s: claim_lifetime_days(d, du, r),
+        )
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        return distance_m
 
     # Age the territory to match the run that earned it, so a bot's oldest
     # claim is genuinely its oldest and the decay clock is already ticking.

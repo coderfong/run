@@ -37,6 +37,7 @@ import random
 import sys
 from datetime import datetime, timedelta
 
+from fastapi import HTTPException
 from shapely.geometry import MultiPolygon, Polygon
 from sqlalchemy import text
 
@@ -215,17 +216,34 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     run_id = bot_world.record_run(db, user_id, path, distance_m, duration_s, started_at)
     poly = bot_world.claim_polygon(path, distance_m, start_lat, start_lon)
 
-    territory_out, _stolen_m2, _stolen_from, steal_events, ground = _claim_territory(
-        db=db,
-        user_id=user_id,
-        run_id=run_id,
-        polygon_wgs=poly,
-        initial_area_m2=claim_area_m2(distance_m),
-        strength=claim_strength(distance_m, duration_s),
-        verified=True,
-        clan_id=clan_id,
-        lifetime_for=lambda r: claim_lifetime_days(distance_m, duration_s, r),
-    )
+    # A raid that lands entirely on ground too strongly defended to take
+    # raises 409 — what a human sees when their claim bounces off a fortified
+    # block. For a bot it is an ordinary outcome and a likely one, since
+    # RIVAL_CHANCE deliberately sends it at a neighbour's territory.
+    #
+    # It has to be caught HERE rather than left to the per-bot handler in
+    # main(). That handler rolls back, which also discards the `next_run_at`
+    # update at the end of this function — so a bot boxed in by a strong
+    # neighbour would come up due on every tick forever, fail every time, and
+    # eat a slot in the batch while never running again.
+    bounced = False
+    try:
+        territory_out, _stolen_m2, _stolen_from, steal_events, ground = _claim_territory(
+            db=db,
+            user_id=user_id,
+            run_id=run_id,
+            polygon_wgs=poly,
+            initial_area_m2=claim_area_m2(distance_m),
+            strength=claim_strength(distance_m, duration_s),
+            verified=True,
+            clan_id=clan_id,
+            lifetime_for=lambda r: claim_lifetime_days(distance_m, duration_s, r),
+        )
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        bounced = True
+        territory_out, steal_events, ground = None, [], {}
 
     # XP, the same rule /end-run applies to a human run.
     db.execute(
@@ -252,6 +270,12 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     # award for a human. Approximating it as "uncontested" rationed the bots
     # for the commonest thing they do and left them earning less than a person
     # doing the identical run.
+    #
+    # A bounced claim earns nothing. Without this guard it would earn the
+    # FULL award: with no steal events and no ground, `claim_action` sees
+    # zero contested and zero area, reads `mine >= area * 0.5` as 0 >= 0, and
+    # returns REINFORCE — the uncapped case. An attack that failed would pay
+    # better than the quiet expansion that worked.
     enemy_m2 = sum(ev["area_m2"] for ev in steal_events if not ev["defended"])
     defended_m2 = sum(ev["area_m2"] for ev in steal_events if ev["defended"])
     action = economy.claim_action(
@@ -260,8 +284,8 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
         defended_m2,
         (ground or {}).get("reinforced_m2", 0.0),
     )
-    claim_points = ranks.POINTS_CLAIM
-    if action == economy.ACTION_EMPTY:
+    claim_points = 0 if bounced else ranks.POINTS_CLAIM
+    if not bounced and action == economy.ACTION_EMPTY:
         claim_points = min(claim_points, economy.neutral_rank_allowance(db, user_id))
         if claim_points > 0:
             economy.claim_grant(db, user_id, run_id, economy.KIND_NEUTRAL_RANK, claim_points)
