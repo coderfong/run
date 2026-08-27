@@ -296,6 +296,8 @@ def main() -> int:
     ap.add_argument("--clans", type=int, default=N_CLANS, help=f"number of clubs (default {N_CLANS})")
     ap.add_argument("--per-clan", type=int, default=BOTS_PER_CLAN,
                     help=f"players per club (default {BOTS_PER_CLAN})")
+    ap.add_argument("--resume", action="store_true",
+                    help="add clubs to an existing seeded world instead of refusing")
     ap.add_argument("--check", action="store_true",
                     help="connect, report what is there, change nothing")
     args = ap.parse_args()
@@ -344,20 +346,49 @@ def main() -> int:
         if args.reset:
             _wipe_bots(db)
 
+        # Clubs that already have seeded members, so --resume knows where it
+        # got to and which names are spoken for.
+        seeded_names = {
+            r[0] for r in db.execute(
+                text(
+                    "SELECT c.name FROM clans c JOIN users u ON u.clan_id = c.id "
+                    "WHERE u.is_bot GROUP BY c.name"
+                )
+            ).fetchall()
+        }
+        done_clubs = len(seeded_names)
+
         already = db.execute(text("SELECT count(*) FROM users WHERE is_bot")).scalar()
-        if already:
-            print(f"{already} bot accounts already exist — nothing to do (use --reset to redo).")
+        if already and not args.resume:
+            print(f"{already} bot accounts already exist — nothing to do "
+                  "(--reset to redo, --resume to carry on adding clubs).")
             return 0
+        if args.resume and done_clubs >= n_clans:
+            print(f"{done_clubs} clubs already seeded, target is {n_clans} — nothing left to do.")
+            return 0
+
+        # RESUME EXISTS BECAUSE THE SEED IS SLOW WHERE IT MATTERS. Against a
+        # local database the whole thing is a couple of minutes; against the
+        # real one it is an hour, because every claim is a dozen round trips
+        # and the database is a continent away from whoever is running this.
+        # An hour is long enough that "it died at club 19" has to cost the
+        # club, not the hour. Combined with the per club commit, --resume
+        # picks up at the next unseeded club.
+        to_create = n_clans - done_clubs if args.resume else n_clans
+        if args.resume:
+            print(f"resuming: {done_clubs} clubs already seeded, adding {to_create} more")
 
         avoid_geom = _target_avoid_geom(db)
         taken_usernames = _existing_usernames(db)
-        total_bots = n_clans * per_clan
+        total_bots = to_create * per_clan
         usernames = bot_world.allocate_usernames(rng, total_bots, taken_usernames)
         rank_points = bot_world.rank_points_pyramid(rng, total_bots)
 
         # Round-robin clubs across the 5 regions so no single neighbourhood
         # gets every club's home turf, and pre-pick each region's estate hubs.
-        region_cycle = [regions[i % len(regions)] for i in range(n_clans)]
+        # Offset by what is already there so a resumed run keeps the rotation
+        # going rather than starting over at north every time.
+        region_cycle = [regions[(done_clubs + i) % len(regions)] for i in range(to_create)]
         hubs = {r["key"]: _region_hubs(r, rng) for r in regions}
         color_keys = list(CLAN_COLORS.keys())
         rng.shuffle(color_keys)
@@ -367,12 +398,12 @@ def main() -> int:
         # still random but where it says it runs is never wrong.
         name_queues = {}
         for key, names in CLAN_NAMES_BY_REGION.items():
-            pool = list(names)
+            pool = [n for n in names if n[0] not in seeded_names]
             rng.shuffle(pool)
             name_queues[key] = pool
 
         clan_ids: list[tuple[str, dict, str]] = []  # (clan_id, region, name)
-        for i in range(n_clans):
+        for i in range(to_create):
             region_key = region_cycle[i]["key"]
             queue = name_queues.get(region_key) or []
             if queue:
