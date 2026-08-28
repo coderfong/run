@@ -3,15 +3,19 @@
 // maxBounds + min/max zoom from here). Adding a city later is a data change,
 // not a code change.
 //
-// bounds: [[west, south], [east, north]] in lon/lat (Mapbox order).
+// bounds: [[west, south], [east, north]] in lon/lat (Mapbox order). Mapbox
+// clamps the camera CENTRE to this box, so it is padded well past the
+// coastline on every side; without that, the edges of the island (Woodlands
+// and the causeway in the north, the southern islands) can never be pulled
+// away from the screen edge.
 
 export const CITIES = {
   SGP: {
     key: 'SGP',
     label: 'Singapore',
     bounds: [
-      [103.55, 1.13], // south-west
-      [104.12, 1.5], // north-east
+      [103.55, 1.09], // south-west
+      [104.12, 1.58], // north-east
     ],
     center: [103.8198, 1.3521], // lon, lat
     minZoom: 10.5,
