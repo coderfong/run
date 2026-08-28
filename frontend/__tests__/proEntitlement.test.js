@@ -115,7 +115,7 @@ describe('activeSubscriptions', () => {
   it('drops one with no token, which cannot be verified anyway', async () => {
     const { iap, store } = load('ios');
     store.getActiveSubscriptions.mockResolvedValue([
-      { productId: 'paser_pro_annual', purchaseToken: null, isActive: true },
+      { productId: 'paser_pro_yearly', purchaseToken: null, isActive: true },
     ]);
     await expect(iap.activeSubscriptions()).resolves.toEqual([]);
   });
@@ -156,21 +156,21 @@ describe('storeSubscribe', () => {
     const { iap, store } = load('android');
     store.fetchProducts.mockResolvedValue([
       {
-        id: 'paser_pro_annual',
+        id: 'paser_pro_yearly',
         subscriptionOffers: [
           { offerToken: 'intro-offer' },
           { offerToken: 'base-plan' },
         ],
       },
     ]);
-    deliverPurchase(store, { productId: 'paser_pro_annual', purchaseToken: 'tok' });
-    await iap.storeSubscribe('paser_pro_annual');
+    deliverPurchase(store, { productId: 'paser_pro_yearly', purchaseToken: 'tok' });
+    await iap.storeSubscribe('paser_pro_yearly');
     expect(store.fetchProducts).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'subs' }),
     );
     const args = store.requestPurchase.mock.calls.at(-1)[0];
     expect(args.request.google.subscriptionOffers).toEqual([
-      { sku: 'paser_pro_annual', offerToken: 'base-plan' },
+      { sku: 'paser_pro_yearly', offerToken: 'base-plan' },
     ]);
   });
 

@@ -109,7 +109,7 @@ Auto-renewable subscription — one subscription group ("PASER PRO"):
 | Product ID | Reference name | Duration | Singapore price |
 | --- | --- | --- | --- |
 | `paser_pro_monthly` | PASER PRO Monthly | 1 month | S$4.98 |
-| `paser_pro_annual` | PASER PRO Yearly | 1 year | S$39.98 |
+| `paser_pro_yearly` | PASER PRO Yearly | 1 year | S$39.98 |
 
 **PASER SELLS IN SINGAPORE ONLY, SO THE PRICE IS SGD.** Availability is one
 region by design (`1 of 175 countries or regions selected`), and the only row of

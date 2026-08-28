@@ -17,7 +17,7 @@
 // across two groups a runner switching plans would be billed for both.
 
 export const PRO_MONTHLY = 'paser_pro_monthly';
-export const PRO_ANNUAL = 'paser_pro_annual';
+export const PRO_ANNUAL = 'paser_pro_yearly';
 
 // PRO's colour wherever it is named: the gold reward track, the pitch card's
 // frame tint, the paywall. Lives here rather than in a component so a screen

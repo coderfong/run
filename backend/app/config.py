@@ -412,7 +412,7 @@ class Settings(BaseSettings):
     # SAME subscription group in App Store Connect / the Play Console, or
     # switching plans starts a second parallel subscription instead of
     # replacing the first.
-    pro_products: tuple[str, ...] = ("paser_pro_monthly", "paser_pro_annual")
+    pro_products: tuple[str, ...] = ("paser_pro_monthly", "paser_pro_yearly")
     # How long PRO survives past its expiry, covering a store-side billing
     # retry. Short on purpose: cover for a failed charge, not a free period.
     # Set to 0 to cut entitlement off exactly at expiry.
