@@ -628,6 +628,14 @@ class SeasonLeaderboardEntry(BaseModel):
 
     user_id: Optional[str] = None
     username: Optional[str] = None
+    # The runner's equipped cosmetics, so a solo row draws their character
+    # portrait rather than two initials in a disc (null → the client falls
+    # back to initials). Club rows carry a club badge instead and leave both
+    # of these unset.
+    avatar: Optional[dict] = None
+    # Their territorial rank — the portrait's frame is drawn from it. Ships
+    # with every avatar so a portrait is never shown without its border.
+    rank_key: Optional[str] = None
     clan_id: Optional[str] = None
     name: Optional[str] = None
     tag: Optional[str] = None

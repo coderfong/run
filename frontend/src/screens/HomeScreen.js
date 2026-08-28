@@ -123,18 +123,19 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
 
 // Swipeable hero: Season → Clubs → Solo → PRO, each deep-linking somewhere.
 //
-// THREE CARDS, THREE DESTINATIONS. Season and Clubs used to open the SAME
-// screen in the SAME state — `Season` with no params already opens on the club
-// board — so two thirds of the carousel was one page wearing two coats, and
-// swiping to the second card was work with no payoff. The split now is by
-// QUESTION, not by scope chip:
+// THE CARDS ARE THE SCOPE PICKER. Season standings ranks either clubs or solo
+// runners, and the choice used to be made TWICE: once here, by picking a card,
+// and again on the board itself, by a pair of chips on its header. Two controls
+// for one axis meant the card you tapped could be contradicted by the chip you
+// landed on. The chips are gone (see SeasonScreen) and these cards own the
+// choice outright:
 //
-//   Season  where the season stands   → the standings board
-//   Clubs   where YOUR club stands    → the club tab (or how to find one)
+//   Season  where the season stands   → the standings board, clubs scope
+//   Clubs   where the clubs stand     → the standings board, clubs scope
 //   Solo    where YOU stand           → the standings board, solo scope
 //
-// The clubs board itself did not disappear with the card that pointed at it —
-// it is the board Season opens on, and the Clubs chip on that header.
+// Season and Clubs land on the same board on purpose: `clans` is the board the
+// season opens on, and the card that names it is the one a runner reaches for.
 //
 // THE PRO SLIDE IS LAST, AND IT IS A SLIDE. Home's other PRO surface (the card
 // partway down the feed) only appears after three finished runs, which left a
@@ -151,7 +152,6 @@ function HeroCarousel({ navigation }) {
   const cardW = width - space.gutter * 2;
   const [page, setPage] = useState(0);
   const warmSeason = () => preloadScreenImages('Season');
-  const warmClub = () => preloadScreenImages('Club');
   const { isPro, canShowPro, openPaywall } = useProEntitlement();
   const showPro = canShowPro && !isPro;
   const pages = showPro ? 4 : 3;
@@ -198,14 +198,14 @@ function HeroCarousel({ navigation }) {
           bg={brand.purple}
           art={require('../../assets/art/card-clubs.png')}
           artWidth="69%"
-          eyebrow="YOUR CLUB"
+          eyebrow="LEAGUE"
           title="CLUBS"
-          sub="Members, league and chat"
-          cta="Open your club"
-          onPressIn={warmClub}
-          // The tab, not the board. A runner with no club lands on the find and
-          // create screen, which is the answer this card should give them.
-          onPress={() => navigation.navigate('Club')}
+          sub="Every club, ranked"
+          cta="View the club board"
+          onPressIn={warmSeason}
+          // The board scoped to clubs. Your own club is a tab of its own; this
+          // card asks where the clubs stand, which is a standings question.
+          onPress={() => navigation.navigate('Season', { mode: 'clans' })}
         />
         <HeroCard
           width={cardW}

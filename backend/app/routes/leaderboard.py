@@ -388,7 +388,12 @@ def season_leaderboard(
                    COALESCE(q.claim_count, 0) AS claim_count,
                    COALESCE(capture.capture_count, 0) AS capture_count,
                    COALESCE(defense.defense_count, 0) AS defense_count,
-                   COALESCE(distance.distance_m, 0) AS distance_m
+                   COALESCE(distance.distance_m, 0) AS distance_m,
+                   -- Identity, so a row can draw the runner the way every
+                   -- other player surface draws them: their portrait inside
+                   -- their rank frame. Selected alongside rather than looked
+                   -- up per row — a board is fifty different runners.
+                   u.avatar, {ranks.SELECT_COLS}
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN land l ON l.user_id = u.id
@@ -413,6 +418,8 @@ def season_leaderboard(
             capture_count=int(r[5] or 0),
             defense_count=int(r[6] or 0),
             distance_m=float(r[7] or 0),
+            avatar=r[8],
+            rank_key=ranks.key_for(r[9], r[10]),
         )
         for r in rows
     ]

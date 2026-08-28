@@ -1,8 +1,16 @@
-// Season standings — reached from the Home season banner. Two scopes:
+// Season standings — reached from the Home hero cards. Two scopes:
 //   Clubs — collective club performance.
 //   Solo  — players who are not currently in a club.
 // Each scope can be ranked by land, claims, captures, defenses, or distance.
 // Tap a club row to open its profile; solo rows aren't tappable (no profile).
+//
+// THE SCOPE IS CHOSEN BEFORE YOU GET HERE. `route.params.mode` decides which
+// board this is, and there is no control on the page to change it: Home's
+// carousel has a Clubs card and a Solo card, so the choice is already made by
+// the card that was tapped. A pair of chips up here would be a second control
+// for the same axis, able to contradict the card that opened the screen — and
+// on the club board they also sat above rows that are clubs, offering to turn
+// them into runners. Coming back to the other board is a back-swipe away.
 //
 // THE HEADER IS CHROME, NOT THE PAGE. It used to carry FIFTEEN chips in three
 // wrapped rows — two scopes, five categories, four windows, four fields — under
@@ -11,17 +19,18 @@
 // entire job is to show a ranked list: the first standing was below the fold on
 // every board. The picker now reads
 //
-//     compact panel header · Clubs/Solo · one summary bar
+//     compact panel header · one summary bar
 //
-// and the other twelve chips live in a sheet behind that bar. The bar states
-// the whole board in words ("Land held · Season · Everyone"), so nothing is
-// hidden — the sentence that used to be the header's subtitle IS the control
+// and the twelve remaining chips live in a sheet behind that bar. The bar
+// states the whole board in words ("Land held · Season · Everyone"), so nothing
+// is hidden — the sentence that used to be the header's subtitle IS the control
 // now, which is why the subtitle went away rather than being shortened.
 //
 // The panel keeps its per-board illustration and colour: whichever board was
-// chosen last owns the header art, chosen from the scope row or from inside the
-// sheet. `compact` + `stableArt` means swapping between a wide illustration and
-// a tall one can't resize the header underneath the reader's thumb.
+// chosen last owns the header art — the scope this screen was opened on, or a
+// category chosen inside the sheet. `compact` + `stableArt` means swapping
+// between a wide illustration and a tall one can't resize the header underneath
+// the reader's thumb.
 
 import React, { useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -41,7 +50,7 @@ import {
   radius,
   space,
   toon,
-  withAlpha,
+  tintOn,
   useTheme,
   useThemedStyles,
   useThemedType,
@@ -59,15 +68,26 @@ import {
   ToonHeader,
 } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
+import PortraitBorder from '../components/PortraitBorder';
+import { CharacterBust } from '../components/character/CharacterRig';
+import { useAvatar } from '../state/avatar';
 import { Arrival, PressableScale, useArrival } from '../ui/motion';
 import { SEASON_CATEGORY_ART, SEASON_SCOPE_ART } from '../config/seasonArt';
 
 const km2 = (m) => (m / 1e6).toFixed(2);
+// Matched to the club board's badge beside it, so the two scopes' rows line up
+// at the same height. The frame drawn around it can be wider — see
+// RunnerPortrait — which is why nothing here is a fixed 40pt box.
+const PORTRAIT = 40;
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
+// Not a picker any more — the scope arrives as a route param from Home. This
+// still owns the two boards' art and the words the page uses for them, so the
+// header can name the board it is showing.
 const SCOPE_OPTIONS = [
-  { key: 'clans', label: 'Clubs', art: SEASON_SCOPE_ART.clans },
-  { key: 'solo', label: 'Solo', art: SEASON_SCOPE_ART.solo },
+  { key: 'clans', label: 'Clubs', title: 'Club standings', art: SEASON_SCOPE_ART.clans },
+  { key: 'solo', label: 'Solo', title: 'Solo standings', art: SEASON_SCOPE_ART.solo },
 ];
+const SCOPE_BY_KEY = Object.fromEntries(SCOPE_OPTIONS.map((item) => [item.key, item]));
 const CATEGORY_OPTIONS = [
   { key: 'land', label: 'Land held', shortLabel: 'Land', description: 'land held', art: SEASON_CATEGORY_ART.land },
   { key: 'claims', label: 'Claims completed', shortLabel: 'Claims', description: 'claims completed', art: SEASON_CATEGORY_ART.claims },
@@ -239,12 +259,18 @@ function metricAmount(item, category) {
 }
 
 export default function SeasonScreen({ navigation, route }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [mode, setMode] = useState(route.params?.mode || 'clans');
+  // Your own portrait, for your own row on the solo board.
+  const { equipped: myEquipped, rankKey: myRankKey } = useAvatar();
+  // Fixed for the life of the screen — the Home card that opened it chose the
+  // scope, and nothing on this page changes it. Not state: a `useState` seeded
+  // from a param that no setter is left to call is a value pretending to be a
+  // control, and the next reader would go looking for the missing chips.
+  const mode = SCOPE_BY_KEY[route.params?.mode] ? route.params.mode : 'clans';
   const [category, setCategory] = useState(
     CATEGORY_BY_KEY[route.params?.category] ? route.params.category : DEFAULTS.category
   );
@@ -302,11 +328,6 @@ export default function SeasonScreen({ navigation, route }) {
     setBannerKey(key);
   };
 
-  const selectScope = (key) => {
-    setMode(key);
-    setBannerKey(key);
-  };
-
   const reset = () => {
     setCategory(DEFAULTS.category);
     setWindow(DEFAULTS.window);
@@ -316,7 +337,8 @@ export default function SeasonScreen({ navigation, route }) {
 
   const art = ART_BY_KEY[bannerKey] || CATEGORY_BY_KEY[DEFAULTS.category].art;
   // What the summary bar says, and what the sheet's Reset appears for. Scope is
-  // not counted: it has its own chips on the header and is never inside.
+  // not counted: it is fixed by the card that opened the screen, and nothing on
+  // this page — bar or sheet — can move it.
   const changed =
     (category !== DEFAULTS.category ? 1 : 0) +
     (window_ !== DEFAULTS.window ? 1 : 0) +
@@ -328,7 +350,10 @@ export default function SeasonScreen({ navigation, route }) {
       panel
       compact
       eyebrow="Season"
-      title="Season standings"
+      // The board names itself. With the scope chips gone this title is the
+      // only thing on the page that says whether these rows are clubs or
+      // runners, so it says it rather than settling for "Season standings".
+      title={SCOPE_BY_KEY[mode].title}
       // Home's hero-card format: the selected board's characters as a cut-out
       // on the right of a flat panel in that board's colour, black copy on the
       // left. `compact` shrinks the cut-out and moves the back chevron inline
@@ -345,32 +370,6 @@ export default function SeasonScreen({ navigation, route }) {
       onBack={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('HomeMain'))}
       style={{ marginBottom: space.md }}
     >
-      {/* WHO IS RANKED — the one axis that stays on the header, because it is
-          the axis that changes what the rows ARE (clubs or runners) rather
-          than how they are sorted. Two chips, one line, never wraps. */}
-      <View style={styles.scopeRow}>
-        {SCOPE_OPTIONS.map((option) => {
-          const active = option.key === mode;
-          return (
-            <PressableScale
-              key={option.key}
-              onPress={() => selectScope(option.key)}
-              style={[styles.chip, active && styles.chipActive]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`${option.label} standings`}
-            >
-              <Text
-                style={[type.bodySmBold, styles.chipLabel, active && styles.chipLabelActive]}
-                numberOfLines={1}
-              >
-                {option.label}
-              </Text>
-            </PressableScale>
-          );
-        })}
-      </View>
-
       {/* RANKED BY WHAT, WHEN, AMONG WHOM — twelve chips stated as one line of
           copy. The bar is the control: it reads as a sentence when you are not
           looking at it and opens the sheet when you are. */}
@@ -435,15 +434,31 @@ export default function SeasonScreen({ navigation, route }) {
     const c = NEUTRAL;
     const amount = metricAmount(item, category);
     return (
-      <Card style={[{ marginBottom: space.sm }, isMe && { backgroundColor: withAlpha(c.stroke, 0.1) }]}>
+      // Your own row is tinted with `fill`, not a translucent `backgroundColor`:
+      // an unframed Card has a solid hard drop painted behind it, so a 10%
+      // wash lets that block through and the row comes out near-black with the
+      // card's own dark ink still on it. `tintOn` resolves the same tint
+      // against the card surface, and `fill` is what the stroke and the drop
+      // are judged against. See `tintOn` in theme/tokens.
+      <Card
+        fill={isMe ? tintOn(colors.card, c.stroke, scheme === 'dark' ? 0.22 : 0.12) : undefined}
+        style={{ marginBottom: space.sm }}
+      >
         <Row between>
           <Row gap={12} style={{ flex: 1 }}>
             <RankCol rank={rank} top={top} />
-            <View style={[styles.avatar, { backgroundColor: c.fill, borderColor: c.stroke }]}>
-              <Text style={[type.bodySmBold, { color: c.stroke }]}>
-                {(item.username || '?').slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
+            <RunnerPortrait
+              username={item.username}
+              // Your own row is drawn from the avatar context rather than from
+              // the board's copy of it, the same rule FeedCard follows: the
+              // context is what the You page draws from, so a costume change
+              // can't leave the standings showing yesterday's runner.
+              avatar={isMe ? myEquipped : item.avatar}
+              rankKey={isMe ? myRankKey : item.rank_key}
+              color={c}
+              styles={styles}
+              type={type}
+            />
             <View style={{ flex: 1 }}>
               <Text style={type.bodyBold} numberOfLines={1}>{item.username}{isMe ? ' · you' : ''}</Text>
               <Text style={type.caption}>
@@ -551,6 +566,32 @@ export default function SeasonScreen({ navigation, route }) {
   );
 }
 
+// A solo row's runner: their character portrait inside their rank frame, the
+// way every other player surface in the app draws them (FeedCard, PasersScreen,
+// RivalCard). Initials only when the account has no avatar yet.
+//
+// PortraitBorder sizes itself to the RING, which on an ornate tier is wider
+// than the portrait inside it — so there is no fixed box around it here. A
+// 40pt clipping wrapper would shear the frame's crown off, and that is exactly
+// the detail the tier is for.
+function RunnerPortrait({ username, avatar, rankKey, color, styles, type }) {
+  const { colors } = useTheme();
+  if (!avatar) {
+    return (
+      <View style={[styles.avatar, { backgroundColor: color.fill, borderColor: color.stroke }]}>
+        <Text style={[type.bodySmBold, { color: color.stroke }]}>
+          {(username || '?').slice(0, 2).toUpperCase()}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <PortraitBorder borderKey={rankKey || 'wood'} size={PORTRAIT}>
+      <CharacterBust equipped={avatar} size={PORTRAIT} bg={colors.cardAlt} />
+    </PortraitBorder>
+  );
+}
+
 function RankCol({ rank, top }) {
   const { colors } = useTheme();
   const type = useThemedType();
@@ -574,39 +615,27 @@ function Amount({ value, unit, color }) {
 
 const makeStyles = (colors, scheme) => StyleSheet.create({
   rankCol: { width: 24, alignItems: 'center' },
-  avatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  // The initials fallback for a runner with no avatar yet. Sized to PORTRAIT,
+  // which is also the diameter RunnerPortrait draws a real bust at, so a board
+  // of mixed accounts has one row height.
+  avatar: {
+    width: PORTRAIT,
+    height: PORTRAIT,
+    borderRadius: PORTRAIT / 2,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // --- header controls ---
-  // Two chips and one bar, both single-line by construction. Nothing here
-  // wraps, so the header's height is fixed on all ten boards.
-  scopeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    marginTop: space.md,
-  },
-  // These sit on a bright flat panel, not on a scrimmed illustration, so the
-  // whole set is ink-on-light rather than white-on-dark.
-  chip: {
-    paddingHorizontal: space.md,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: 'rgba(20,20,20,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.28)',
-  },
-  chipActive: { backgroundColor: '#fff', borderColor: toon.ink },
-  chipLabel: { color: PANEL_INK, opacity: 0.8 },
-  chipLabelActive: { color: toon.ink, opacity: 1 },
-
-  // The summary bar. Whiter than an inactive chip and full width, so it reads
-  // as the header's one button rather than as a third chip that happens to be
-  // long — and so the sentence inside it has room to be a sentence.
+  // The summary bar, and nothing else: the scope chips that used to sit above
+  // it went with the scope picker. Single-line by construction, so the
+  // header's height is fixed on all ten boards.
   summaryBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    marginTop: space.sm,
+    marginTop: space.md,
     paddingHorizontal: space.md,
     paddingVertical: 10,
     borderRadius: radius.pill,
