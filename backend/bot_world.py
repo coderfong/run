@@ -765,3 +765,76 @@ def _repair(poly):
     if poly.geom_type != "Polygon" or not poly.is_valid or poly.area <= 0:
         return None
     return poly
+
+
+# ---------------------------------------------------------------------------
+# What they are wearing
+# ---------------------------------------------------------------------------
+#
+# Seeded players used to be inserted with `avatar = '{}'`, which the rig reads
+# as DEFAULT_EQUIPPED: 384 runners in the same hair, the same striped tee and
+# the same navy trousers. On a leaderboard that is a column of identical
+# thumbnails, and it undoes the naming work — a roster of plausible handles
+# attached to one repeated body reads worse than either problem alone.
+#
+# Rarity drives the draw so the world looks like people who have been playing
+# a while rather than people who raided the shop: mostly common, a fair amount
+# of rare, epic occasionally, legendary rarely enough to be worth spotting.
+_RARITY_WEIGHT = {"common": 60, "rare": 27, "epic": 11, "legendary": 2}
+
+# Not everyone wears everything. A hat on every single runner is its own
+# uniform, and the empty slots are what let the filled ones read as choices.
+_SLOT_CHANCE = {
+    "headwear": 0.55,
+    "glasses": 0.28,
+    "accessory": 0.33,
+    "footwear": 0.72,
+}
+
+# Palettes are 10 long on both the hair and cloth sides (HAIR_COLORS and
+# CLOTH_COLORS in cosmetics.js). The colour keys the client writes are these.
+_COLOR_KEYS = {
+    "hair": "hairColor",
+    "headwear": "headwearColor",
+    "glasses": "glassesColor",
+    "top": "topColor",
+    "bottom": "bottomColor",
+}
+_PALETTE_SIZE = 10
+
+
+def _pick_item(rng: random.Random, slot: str) -> Optional[str]:
+    from bot_cosmetics import SLOT_ITEMS
+
+    rows = SLOT_ITEMS.get(slot) or []
+    if not rows:
+        return None
+    ids = [i for i, _r in rows]
+    weights = [_RARITY_WEIGHT.get(r, 10) for _i, r in rows]
+    return rng.choices(ids, weights=weights, k=1)[0]
+
+
+def make_avatar(rng: random.Random) -> dict:
+    """One equipped loadout, in the shape the client writes and reads.
+
+    Key names and the `'none'` sentinel match what a real saved avatar looks
+    like — see any row of users.avatar — because the rig, the portrait and the
+    share card all read this dictionary directly. An unknown key is ignored;
+    a missing one falls back to the default, which is the state being fixed.
+    """
+    avatar: dict = {}
+
+    # Always dressed: a runner with no face, hair or clothes is not a style.
+    for slot in ("face", "hair", "top", "bottom"):
+        item = _pick_item(rng, slot)
+        if item:
+            avatar[slot] = item
+
+    # Optional layers.
+    for slot, chance in _SLOT_CHANCE.items():
+        avatar[slot] = _pick_item(rng, slot) if rng.random() < chance else "none"
+
+    for slot, key in _COLOR_KEYS.items():
+        avatar[key] = rng.randrange(_PALETTE_SIZE)
+
+    return avatar

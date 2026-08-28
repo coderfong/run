@@ -364,6 +364,8 @@ def main() -> int:
                     help="connect, report what is there, change nothing")
     ap.add_argument("--rerank", action="store_true",
                     help="redeal rank points across existing bots, nothing else")
+    ap.add_argument("--redress", action="store_true",
+                    help="redeal cosmetics across existing bots, nothing else")
     args = ap.parse_args()
 
     n_clans = max(1, args.clans)
@@ -371,6 +373,52 @@ def main() -> int:
 
     db_url = os.environ.get("DATABASE_URL", "")
     host = db_url.split("@")[-1].split("/")[0] if "@" in db_url else "(default local)"
+
+    if args.redress:
+        # Dress the bots already in the world. Same reasoning as --rerank:
+        # a wardrobe change should not cost an hour and a half of re-seeding
+        # when it only rewrites one column.
+        rng = random.Random(args.seed)
+        db = SessionLocal()
+        try:
+            ids = [r[0] for r in db.execute(
+                text("SELECT id::text FROM users WHERE is_bot")).fetchall()]
+            if not ids:
+                print("no bot accounts to dress.")
+                return 0
+            looks = [json.dumps(bot_world.make_avatar(rng)) for _ in ids]
+            db.execute(
+                text(
+                    """
+                    UPDATE users u
+                    SET avatar = d.look::jsonb
+                    FROM (
+                        SELECT unnest(CAST(:ids AS uuid[]))  AS id,
+                               unnest(CAST(:looks AS text[])) AS look
+                    ) d
+                    WHERE u.id = d.id
+                    """
+                ),
+                {"ids": ids, "looks": looks},
+            )
+            db.commit()
+            import collections
+            worn = collections.Counter()
+            for raw in looks:
+                a = json.loads(raw)
+                for slot in ("headwear", "glasses", "accessory", "footwear"):
+                    if a.get(slot, "none") != "none":
+                        worn[slot] += 1
+            print(f"dressed {len(ids)} bots in: {host}")
+            print("  distinct loadouts:", len(set(looks)))
+            for slot in ("headwear", "glasses", "accessory", "footwear"):
+                print(f"  wearing {slot:<10} {worn[slot]} ({worn[slot]/len(ids):.0%})")
+            return 0
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     if args.rerank:
         # Redeal standing over the bots already in the world.
@@ -616,10 +664,11 @@ def main() -> int:
                     text(
                         """
                         INSERT INTO users (id, username, password_hash, created_at, clan_id, avatar, is_bot)
-                        VALUES (:id, :u, NULL, now() - (:age_days || ' days')::interval, :cid, '{}'::jsonb, true)
+                        VALUES (:id, :u, NULL, now() - (:age_days || ' days')::interval, :cid, CAST(:avatar AS jsonb), true)
                         """
                     ),
-                    {"id": user_id, "u": username, "cid": clan_id, "age_days": rng.uniform(3, 200)},
+                    {"id": user_id, "u": username, "cid": clan_id, "age_days": rng.uniform(3, 200),
+                     "avatar": json.dumps(bot_world.make_avatar(rng))},
                 )
                 db.execute(
                     text(
