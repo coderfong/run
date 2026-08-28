@@ -213,6 +213,80 @@ def _home_near(hub: tuple[float, float], region: dict, rng: random.Random) -> tu
     return hub
 
 
+def rebuild_clan_season_stats(db) -> int:
+    """Recompute `clan_season_stats` for the live season from what exists.
+
+    The club leaderboard ranks on this table, and NOTHING was writing it for
+    seeded play: the rows are produced by `record_clan_activity`, which the
+    /claim route calls after `_claim_territory`, and both the seeder and the
+    cron call `_claim_territory` directly. So 24 clubs held 700 territories
+    between them and the club board was empty.
+
+    Rebuilt from the underlying rows rather than accumulated, which makes it
+    safe to re-run and self-correcting after any interrupted seed:
+
+      area_current  live verified territory carrying the club's id
+      area_peak     ratcheted, never lowered — it is a high-water mark
+      steals        successful takes by the club's members this season
+      distance_sum  distance its members have run this season
+
+    Returns the number of clubs written.
+    """
+    season = db.execute(
+        text("SELECT id::text FROM seasons WHERE now() BETWEEN starts_at AND ends_at "
+             "ORDER BY starts_at DESC LIMIT 1")
+    ).scalar()
+    if not season:
+        print("no season is running — club stats not rebuilt.")
+        return 0
+
+    rows = db.execute(
+        text(
+            """
+            WITH live AS (
+                SELECT clan_id, COALESCE(SUM(area_m2), 0) AS area
+                FROM territories
+                WHERE clan_id IS NOT NULL AND verified
+                  AND now() < COALESCE(expires_at, created_at
+                        + make_interval(secs => GREATEST(strength, 0.1) * :life_per * 86400))
+                GROUP BY clan_id
+            ),
+            took AS (
+                SELECT u.clan_id, COUNT(*) AS steals
+                FROM territory_steals ts JOIN users u ON u.id = ts.attacker_id
+                WHERE u.clan_id IS NOT NULL AND NOT ts.defended
+                  AND ts.created_at >= (SELECT starts_at FROM seasons WHERE id = :sid)
+                GROUP BY u.clan_id
+            ),
+            ran AS (
+                SELECT u.clan_id, COALESCE(SUM(r.distance_m), 0) AS dist
+                FROM runs r JOIN users u ON u.id = r.user_id
+                WHERE u.clan_id IS NOT NULL
+                  AND r.started_at >= (SELECT starts_at FROM seasons WHERE id = :sid)
+                GROUP BY u.clan_id
+            )
+            INSERT INTO clan_season_stats (season_id, clan_id, area_current, area_peak,
+                                           steals, distance_sum)
+            SELECT :sid, c.id,
+                   COALESCE(live.area, 0), COALESCE(live.area, 0),
+                   COALESCE(took.steals, 0), COALESCE(ran.dist, 0)
+            FROM clans c
+            LEFT JOIN live ON live.clan_id = c.id
+            LEFT JOIN took ON took.clan_id = c.id
+            LEFT JOIN ran  ON ran.clan_id  = c.id
+            ON CONFLICT (season_id, clan_id) DO UPDATE
+                SET area_current = EXCLUDED.area_current,
+                    area_peak    = GREATEST(clan_season_stats.area_peak,
+                                            EXCLUDED.area_current),
+                    steals       = EXCLUDED.steals,
+                    distance_sum = EXCLUDED.distance_sum
+            """
+        ),
+        {"sid": season, "life_per": settings.territory_life_days_per_strength},
+    )
+    return rows.rowcount or 0
+
+
 def _existing_usernames(db) -> set[str]:
     return {r[0] for r in db.execute(text("SELECT username FROM users")).fetchall()}
 
@@ -366,6 +440,10 @@ def main() -> int:
                     help="redeal rank points across existing bots, nothing else")
     ap.add_argument("--redress", action="store_true",
                     help="redeal cosmetics across existing bots, nothing else")
+    ap.add_argument("--clubstats", action="store_true",
+                    help="rebuild clan_season_stats from live territory, nothing else")
+    ap.add_argument("--unclub", type=float, default=None, metavar="FRAC",
+                    help="move this fraction of bots out of their clubs (e.g. 0.22)")
     args = ap.parse_args()
 
     n_clans = max(1, args.clans)
@@ -373,6 +451,59 @@ def main() -> int:
 
     db_url = os.environ.get("DATABASE_URL", "")
     host = db_url.split("@")[-1].split("/")[0] if "@" in db_url else "(default local)"
+
+    if args.clubstats:
+        db = SessionLocal()
+        try:
+            n = rebuild_clan_season_stats(db)
+            db.commit()
+            print(f"rebuilt club season stats for {n} clubs in: {host}")
+            for name, area, steals in db.execute(text(
+                """SELECT c.name, s.area_current, s.steals
+                   FROM clan_season_stats s JOIN clans c ON c.id = s.clan_id
+                   WHERE s.area_current > 0
+                   ORDER BY s.area_current DESC LIMIT 10""")).fetchall():
+                print(f"   {name:<24} {area/1e6:>6.2f} km2   {steals} steals")
+            return 0
+        finally:
+            db.close()
+
+    if args.unclub is not None:
+        # Leave some runners clubless.
+        #
+        # The solo board is defined as players with no club membership, so a
+        # world where every seeded runner joined one leaves it holding nobody
+        # but the real accounts — the same empty-surface problem the rank
+        # filter had. Plenty of real runners are in no club, so this is what
+        # the world should have looked like anyway.
+        frac = max(0.0, min(1.0, args.unclub))
+        rng = random.Random(args.seed)
+        db = SessionLocal()
+        try:
+            ids = [r[0] for r in db.execute(
+                text("SELECT id::text FROM users WHERE is_bot AND clan_id IS NOT NULL")
+            ).fetchall()]
+            n = int(len(ids) * frac)
+            picked = rng.sample(ids, n) if n else []
+            if picked:
+                # Territory carries the club id for defence stacking, so it
+                # has to let go too or a clubless runner keeps club-stacked
+                # land they are no longer part of.
+                db.execute(text("UPDATE territories SET clan_id = NULL "
+                                "WHERE user_id = ANY(CAST(:ids AS uuid[]))"), {"ids": picked})
+                db.execute(text("DELETE FROM clan_members "
+                                "WHERE user_id = ANY(CAST(:ids AS uuid[]))"), {"ids": picked})
+                db.execute(text("UPDATE users SET clan_id = NULL "
+                                "WHERE id = ANY(CAST(:ids AS uuid[]))"), {"ids": picked})
+                rebuild_clan_season_stats(db)
+                db.commit()
+            print(f"moved {len(picked)} of {len(ids)} bots out of their clubs in: {host}")
+            return 0
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     if args.redress:
         # Dress the bots already in the world. Same reasoning as --rerank:
@@ -725,6 +856,10 @@ def main() -> int:
             print(f"  {region['name']:<10} {name_of_clan:<24} seeded "
                   f"({cursor}/{total_bots} players)", flush=True)
 
+        # The club board ranks on clan_season_stats and _claim_territory does
+        # not write it, so a seed that skipped this leaves 24 clubs holding
+        # territory and an empty leaderboard.
+        rebuild_clan_season_stats(db)
         db.commit()
         print(f"created {cursor} bot players, {total_runs} runs "
               f"({total_attackers} eligible to raid {TARGET_USERNAME})")

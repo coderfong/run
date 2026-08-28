@@ -36,6 +36,7 @@ import os
 import random
 import sys
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 from fastapi import HTTPException
 from shapely.geometry import MultiPolygon, Polygon
@@ -47,6 +48,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.geospatial import claim_area_m2
 from app.notifications import notify
+from app.routes.clans import record_clan_activity
 from app.routes.runs import STEAL_LEDGER_MIN_M2, _claim_territory, claim_lifetime_days, claim_strength
 
 TARGET_USERNAME = "jonfong78"
@@ -250,6 +252,23 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
         text("UPDATE users SET xp = COALESCE(xp, 0) + :g WHERE id = :u"),
         {"g": round(distance_m / 1000.0 * settings.xp_per_km), "u": user_id},
     )
+
+    # Club season stats and the weekly goal, which /end-run advances and this
+    # never did. The club leaderboard ranks on `clan_season_stats.area_current`,
+    # and nothing was writing it for simulated play — 24 clubs held 700
+    # territories between them and the board was empty. Seeding can backfill
+    # it once, but only this keeps it true as bots take and lose ground.
+    #
+    # Takes a stub rather than a User row because it only reads `.id`, and
+    # loading the ORM object per bot per tick is a query for nothing.
+    if not bounced and clan_id:
+        try:
+            record_clan_activity(
+                db, SimpleNamespace(id=user_id),
+                distance_m=distance_m, closed_loop=True, stolen=_stolen_m2 or 0.0,
+            )
+        except Exception as exc:  # noqa: BLE001 — club bookkeeping must not sink a run
+            print(f"clan activity FAILED for {username}: {exc}", file=sys.stderr)
 
     # Rank points, mirroring the block in routes/runs.py. This was missing
     # entirely, and its absence was not just a gap in the bots' own standing:
