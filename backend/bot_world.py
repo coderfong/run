@@ -568,11 +568,22 @@ def recent_run_times(rng: random.Random, count: int, now: Optional[datetime] = N
 # returned an empty map and read as a broken feature rather than an empty
 # bracket. Every tier now has residents.
 #
-# Shaped as a pyramid rather than spread evenly, because a ladder where the
-# top tier is as crowded as the bottom is not a ladder. The weights below put
-# most of the roster in Wood through Silver and leave Mythic to a couple of
-# accounts, which is also what makes reaching Gold feel like anything.
-_TIER_WEIGHTS = [26, 22, 17, 12, 8, 6, 4, 3, 1.5, 0.5]
+# Nearly flat, on purpose, and NOT the shape a live ladder settles into.
+#
+# The first cut was a steep pyramid: 26 down to 0.5, most of the roster in
+# Wood through Silver, Mythic left to a couple of accounts. That is what a
+# real population looks like, and on this map it was a mistake, because the
+# rank filter is a BROWSING surface. Filter to Mythic on a steep pyramid and
+# you get six territories on an empty island — indistinguishable from a
+# broken filter, which is the same failure the all-Wood world had, just
+# further up.
+#
+# So every tier is populated enough to look like somewhere people run. The
+# cost is real and worth naming: the tier a player is in stops telling them
+# much about how rare that is, because the world's shape no longer reflects
+# scarcity. That trade is the owner's call and this is the side they picked.
+# Steepen these back toward the old curve if the top tiers should feel thin.
+_TIER_WEIGHTS = [12, 12, 11, 11, 10, 10, 9, 9, 8, 8]
 
 
 def rank_points_pyramid(rng: random.Random, count: int) -> List[int]:

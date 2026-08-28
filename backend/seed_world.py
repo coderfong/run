@@ -362,6 +362,8 @@ def main() -> int:
                     help="add clubs to an existing seeded world instead of refusing")
     ap.add_argument("--check", action="store_true",
                     help="connect, report what is there, change nothing")
+    ap.add_argument("--rerank", action="store_true",
+                    help="redeal rank points across existing bots, nothing else")
     args = ap.parse_args()
 
     n_clans = max(1, args.clans)
@@ -369,6 +371,61 @@ def main() -> int:
 
     db_url = os.environ.get("DATABASE_URL", "")
     host = db_url.split("@")[-1].split("/")[0] if "@" in db_url else "(default local)"
+
+    if args.rerank:
+        # Redeal standing over the bots already in the world.
+        #
+        # Retuning _TIER_WEIGHTS otherwise means re-seeding, and a full seed
+        # is an hour and a half against the real database — far too much to
+        # pay for a number that lives in one column. Nothing else is touched:
+        # same accounts, same clubs, same runs, same territory.
+        #
+        # One statement rather than 384. Per-row updates at ~190ms each is
+        # over a minute of pure latency for work the database can do in a
+        # single pass.
+        rng = random.Random(args.seed)
+        db = SessionLocal()
+        try:
+            ids = [r[0] for r in db.execute(
+                text("SELECT id::text FROM users WHERE is_bot")).fetchall()]
+            if not ids:
+                print("no bot accounts to rerank.")
+                return 0
+            pts = bot_world.rank_points_pyramid(rng, len(ids))
+            from app.ranks import rank_for_points
+            tiers = [rank_for_points(p)["tier"] for p in pts]
+            ages = [rng.uniform(0, 200) for _ in ids]
+            db.execute(
+                text(
+                    """
+                    UPDATE users u
+                    SET rank_points = d.pts,
+                        rank_points_at = timezone('utc', now())
+                                         - make_interval(secs => d.age * 3600),
+                        rank_best = GREATEST(COALESCE(u.rank_best, 0), d.tier)
+                    FROM (
+                        SELECT unnest(CAST(:ids AS uuid[]))  AS id,
+                               unnest(CAST(:pts AS int[]))   AS pts,
+                               unnest(CAST(:tiers AS int[])) AS tier,
+                               unnest(CAST(:ages AS float[])) AS age
+                    ) d
+                    WHERE u.id = d.id
+                    """
+                ),
+                {"ids": ids, "pts": pts, "tiers": tiers, "ages": ages},
+            )
+            db.commit()
+            import collections
+            spread = collections.Counter(rank_for_points(p)["label"] for p in pts)
+            print(f"reranked {len(ids)} bots into: {host}\n")
+            for _need, _key, label in __import__("app.ranks", fromlist=["x"]).RANK_TIERS:
+                print(f"   {label:<10} {spread.get(label, 0)}")
+            return 0
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
     if args.check:
         # Read-only preflight. `--reset` against the wrong DATABASE_URL is the
