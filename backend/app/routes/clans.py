@@ -257,6 +257,80 @@ def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool
     return (bool(now_reached) and not was_reached, clan_id)
 
 
+def rebuild_clan_season_stats(db) -> int:
+    """Recompute `clan_season_stats` for the live season from what exists.
+
+    The club leaderboard ranks on this table, and NOTHING was writing it for
+    seeded play: the rows are produced by `record_clan_activity`, which the
+    /claim route calls after `_claim_territory`, and both the seeder and the
+    cron call `_claim_territory` directly. So 24 clubs held 700 territories
+    between them and the club board was empty.
+
+    Rebuilt from the underlying rows rather than accumulated, which makes it
+    safe to re-run and self-correcting after any interrupted seed:
+
+      area_current  live verified territory carrying the club's id
+      area_peak     ratcheted, never lowered — it is a high-water mark
+      steals        successful takes by the club's members this season
+      distance_sum  distance its members have run this season
+
+    Returns the number of clubs written.
+    """
+    season = db.execute(
+        text("SELECT id::text FROM seasons WHERE now() BETWEEN starts_at AND ends_at "
+             "ORDER BY starts_at DESC LIMIT 1")
+    ).scalar()
+    if not season:
+        print("no season is running — club stats not rebuilt.")
+        return 0
+
+    rows = db.execute(
+        text(
+            """
+            WITH live AS (
+                SELECT clan_id, COALESCE(SUM(area_m2), 0) AS area
+                FROM territories
+                WHERE clan_id IS NOT NULL AND verified
+                  AND now() < COALESCE(expires_at, created_at
+                        + make_interval(secs => GREATEST(strength, 0.1) * :life_per * 86400))
+                GROUP BY clan_id
+            ),
+            took AS (
+                SELECT u.clan_id, COUNT(*) AS steals
+                FROM territory_steals ts JOIN users u ON u.id = ts.attacker_id
+                WHERE u.clan_id IS NOT NULL AND NOT ts.defended
+                  AND ts.created_at >= (SELECT starts_at FROM seasons WHERE id = :sid)
+                GROUP BY u.clan_id
+            ),
+            ran AS (
+                SELECT u.clan_id, COALESCE(SUM(r.distance_m), 0) AS dist
+                FROM runs r JOIN users u ON u.id = r.user_id
+                WHERE u.clan_id IS NOT NULL
+                  AND r.started_at >= (SELECT starts_at FROM seasons WHERE id = :sid)
+                GROUP BY u.clan_id
+            )
+            INSERT INTO clan_season_stats (season_id, clan_id, area_current, area_peak,
+                                           steals, distance_sum)
+            SELECT :sid, c.id,
+                   COALESCE(live.area, 0), COALESCE(live.area, 0),
+                   COALESCE(took.steals, 0), COALESCE(ran.dist, 0)
+            FROM clans c
+            LEFT JOIN live ON live.clan_id = c.id
+            LEFT JOIN took ON took.clan_id = c.id
+            LEFT JOIN ran  ON ran.clan_id  = c.id
+            ON CONFLICT (season_id, clan_id) DO UPDATE
+                SET area_current = EXCLUDED.area_current,
+                    area_peak    = GREATEST(clan_season_stats.area_peak,
+                                            EXCLUDED.area_current),
+                    steals       = EXCLUDED.steals,
+                    distance_sum = EXCLUDED.distance_sum
+            """
+        ),
+        {"sid": season, "life_per": settings.territory_life_days_per_strength},
+    )
+    return rows.rowcount or 0
+
+
 def clan_member_ids(db: Session, clan_id: str, exclude=None):
     rows = db.execute(text("SELECT user_id::text FROM clan_members WHERE clan_id = :c"), {"c": clan_id}).fetchall()
     return [r[0] for r in rows if r[0] != exclude]
