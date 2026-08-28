@@ -615,24 +615,27 @@ export const DEFAULT_EQUIPPED = {
 // The handful of layers needed to draw one complete runner. Preloading only
 // the equipped loadout keeps profile/feed portraits instant without decoding
 // the whole (very large) cosmetics catalogue into memory.
-export function equippedImageSources(equipped = DEFAULT_EQUIPPED) {
+export function equippedImageSources(equipped) {
+  // `?? DEFAULT_EQUIPPED` rather than a default parameter: a runner who never
+  // opened the studio has `avatar: null`, and a default only covers undefined.
+  const worn = equipped || DEFAULT_EQUIPPED;
   const selected = Object.fromEntries(
-    SLOTS.map(({ key }) => [key, getItem(key, equipped[key])])
+    SLOTS.map(({ key }) => [key, getItem(key, worn[key])])
   );
 
   return [
     BODY_IMG,
     HEAD_IMG,
-    itemBackImage('accessory', selected.accessory, equipped),
-    itemBackImage('headwear', selected.headwear, equipped),
-    itemImage('bottom', selected.bottom, equipped),
-    itemImage('footwear', selected.footwear, equipped),
-    itemImage('top', selected.top, equipped),
-    itemImage('accessory', selected.accessory, equipped),
-    itemImage('face', selected.face, equipped),
-    itemImage('hair', selected.hair, equipped),
-    itemImage('glasses', selected.glasses, equipped),
-    itemImage('headwear', selected.headwear, equipped),
+    itemBackImage('accessory', selected.accessory, worn),
+    itemBackImage('headwear', selected.headwear, worn),
+    itemImage('bottom', selected.bottom, worn),
+    itemImage('footwear', selected.footwear, worn),
+    itemImage('top', selected.top, worn),
+    itemImage('accessory', selected.accessory, worn),
+    itemImage('face', selected.face, worn),
+    itemImage('hair', selected.hair, worn),
+    itemImage('glasses', selected.glasses, worn),
+    itemImage('headwear', selected.headwear, worn),
   ].filter(Boolean);
 }
 

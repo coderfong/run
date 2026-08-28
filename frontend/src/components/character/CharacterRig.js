@@ -24,7 +24,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { BODY_IMG, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
+import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
 import { useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
 
@@ -274,7 +274,12 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, captureSafe = false,
 // today's always-re-render behaviour, never worse.
 const CharacterRig = React.memo(forwardRef(function CharacterRig(
   {
-    equipped,
+    // A DEFAULT PARAMETER IS NOT ENOUGH HERE. `users.avatar` is nullable, so
+    // every payload that carries a runner can carry `avatar: null` — a runner
+    // who never opened the studio. A default only fires on `undefined`, so
+    // `equipped={runner.avatar}` handed this a null and the loadout read below
+    // took the whole screen down. Normalised in the body instead.
+    equipped: equippedProp,
     size = 120,
     animate = false,
     animateSwaps = false,
@@ -314,6 +319,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
   },
   ref
 ) {
+  const equipped = equippedProp || DEFAULT_EQUIPPED;
   const reduced = useReduceMotion();
   const bodyW = size;
   const bodyH = size * BODY_RATIO;
