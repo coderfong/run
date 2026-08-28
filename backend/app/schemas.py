@@ -528,7 +528,9 @@ class LeaderboardEntry(BaseModel):
     territory_count: int
     clan_tag: Optional[str] = None
     clan_color: Optional[ClanColor] = None
-    # Populated on the rank board; null on the land board.
+    # Populated on both boards now. The rank board ORDERS by this;
+    # the land board orders by area and carries it as context, so a
+    # row can show the same badge every other player surface shows.
     rank_points: Optional[int] = None
     rank_key: Optional[str] = None
     rank_label: Optional[str] = None

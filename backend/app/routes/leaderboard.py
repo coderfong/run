@@ -568,7 +568,14 @@ def leaderboard(
             SELECT u.id::text, u.username,
                    COALESCE(SUM(t.area_m2), 0) AS total_area,
                    COUNT(t.id) AS territory_count,
-                   c.tag, c.color_key
+                   c.tag, c.color_key,
+                   -- Standing carried as CONTEXT on the land board. The
+                   -- ordering is still area — this is not a second rank
+                   -- board — it just lets a row show the badge that every
+                   -- other surface displaying a player already shows.
+                   -- DECAYED, not the stored number, so somebody who has
+                   -- gone quiet reads the same here as everywhere else.
+                   ({ranks.DECAY_SQL}) AS rank_pts
             FROM users u
             LEFT JOIN territories t
               ON t.user_id = u.id
@@ -577,7 +584,11 @@ def leaderboard(
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
             {solo_clause}
-            GROUP BY u.id, u.username, c.tag, c.color_key
+            -- rank_points and rank_points_at join the grouping because
+            -- DECAY_SQL reads them at row scope; they are per-user columns,
+            -- so this cannot split a user across two rows.
+            GROUP BY u.id, u.username, c.tag, c.color_key,
+                     u.rank_points, u.rank_points_at
             HAVING COALESCE(SUM(t.area_m2), 0) > 0
             ORDER BY total_area DESC
             LIMIT :limit
@@ -587,14 +598,21 @@ def leaderboard(
          "life_per": settings.territory_life_days_per_strength},
     ).fetchall()
 
-    return [
-        schemas.LeaderboardEntry(
-            user_id=r[0],
-            username=r[1],
-            total_area_m2=float(r[2]),
-            territory_count=int(r[3]),
-            clan_tag=r[4],
-            clan_color=schemas.ClanColor(**color_triple(r[5])) if r[5] else None,
+    out = []
+    for r in rows:
+        pts = int(r[6] or 0)
+        info = ranks.rank_for_points(pts)
+        out.append(
+            schemas.LeaderboardEntry(
+                user_id=r[0],
+                username=r[1],
+                total_area_m2=float(r[2]),
+                territory_count=int(r[3]),
+                clan_tag=r[4],
+                clan_color=schemas.ClanColor(**color_triple(r[5])) if r[5] else None,
+                rank_points=pts,
+                rank_key=info["key"],
+                rank_label=info["label"],
+            )
         )
-        for r in rows
-    ]
+    return out
