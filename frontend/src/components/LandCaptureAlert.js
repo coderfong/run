@@ -57,6 +57,7 @@ import {
   normaliseLandCaptureAlert,
 } from '../utils/landCaptureAlerts';
 import { fitRingToBox } from '../utils/staticMercator';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
 import useCaptureStage from '../effects/useCaptureStage';
@@ -65,7 +66,7 @@ import { CAPTURE_LAYER } from '../effects/layers';
 import { pickCaptureStyle } from '../effects/captureStyles';
 import { borderByKey } from '../config/progression';
 import { fmtArea } from './RivalCard';
-import { OutlinedText, ToonButton, ToonGhostButton } from './ui';
+import { Framed, OutlinedText, ToonButton, ToonGhostButton } from './ui';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import CutsceneBackdrop from './claim/CutsceneBackdrop';
@@ -603,10 +604,20 @@ export function LandCaptureAlertHost({ onViewLand }) {
           <HazardRail style={styles.hazardBottom} />
 
           <Animated.View style={[styles.card, { width: stageWidth, backgroundColor: colors.card }, entranceStyle]}>
-            <View style={styles.alertChip}>
+            <Framed
+              frame={frameVariant('chip', 'capture-alert')}
+              fill="#D91F45"
+              on="#D91F45"
+              tint="#fff"
+              weight={INK.thin}
+              pose={framePose('capture-alert')}
+              inset={3}
+              style={styles.alertChip}
+              contentStyle={styles.alertChipInner}
+            >
               <TriangleAlert size={16} color="#fff" strokeWidth={3} />
-              <Text style={styles.alertChipText}>LIVE TERRITORY ALERT</Text>
-            </View>
+              <Text style={[styles.alertChipText, { paddingHorizontal: space.xs }]}>LIVE TERRITORY ALERT</Text>
+            </Framed>
 
             <OutlinedText style={styles.headline} outline={toon.ink} width={3} fit>
               LAND CAPTURED
@@ -760,10 +771,20 @@ export function LandCaptureAlertHost({ onViewLand }) {
               it has. Both sit outside the stage transform so a camera shake
               never rattles the furniture. */}
           <View style={[styles.cutsceneTop, { paddingTop: insets.top + 10 }]} pointerEvents="box-none">
-            <View style={styles.alertChip}>
+            <Framed
+              frame={frameVariant('chip', 'capture-alert')}
+              fill="#D91F45"
+              on="#D91F45"
+              tint="#fff"
+              weight={INK.thin}
+              pose={framePose('capture-alert')}
+              inset={3}
+              style={styles.alertChip}
+              contentStyle={styles.alertChipInner}
+            >
               <TriangleAlert size={16} color="#fff" strokeWidth={3} />
-              <Text style={styles.alertChipText}>LIVE TERRITORY ALERT</Text>
-            </View>
+              <Text style={[styles.alertChipText, { paddingHorizontal: space.xs }]}>LIVE TERRITORY ALERT</Text>
+            </Framed>
             {!settled && (
               <View style={styles.stageLabel}>
                 <ShieldAlert size={15} color="#fff" />
@@ -869,18 +890,8 @@ const styles = StyleSheet.create({
     elevation: 18,
     overflow: 'hidden',
   },
-  alertChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: '#D91F45',
-    borderWidth: 2,
-    borderColor: toon.ink,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginBottom: 8,
-  },
+  alertChip: { marginBottom: 8 },
+  alertChipInner: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   alertChipText: { ...toonType.sub, color: '#fff', fontSize: 12 },
   headline: { ...toonType.hero, color: '#FF4967', fontSize: 34, lineHeight: 40 },
   detail: { textAlign: 'center', marginTop: 2, marginBottom: 10, paddingHorizontal: 10 },

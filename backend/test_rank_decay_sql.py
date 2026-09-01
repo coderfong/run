@@ -34,6 +34,10 @@ CASES = [
     (1000, 8), (1000, 13.9), (1000, 14), (1000, 14.1),
     (1000, 21), (1000, 60), (1000, 365),
     (1, 400), (7, 90), (30000, 200), (12345, 45.5),
+    # The high-decay tier boundary (DECAY_HIGH_TIER_FLOOR, Diamond): one point
+    # either side of it must pick a different rate on both sides alike.
+    (ranks.DECAY_HIGH_TIER_FLOOR - 1, 14), (ranks.DECAY_HIGH_TIER_FLOOR, 14),
+    (ranks.DECAY_HIGH_TIER_FLOOR + 1, 14),
 ]
 
 

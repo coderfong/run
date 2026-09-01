@@ -22,7 +22,7 @@ The flow itself:
 | 3–7 | Face · Hair · Top · Bottoms · Hat | `onboarding/steps/CharacterStep.js` | `stage` + the character rig |
 | 8 | PASER PRO | `onboarding/steps/ProStep.js` | `proHero` |
 | 9 | Ready | `onboarding/steps/ReadyStep.js` | `thumbReady` |
-| — | Coach marks over the live app | `onboarding/TutorialOverlay.js` | `welcome, claim, energy, clans, safety, pasers` |
+| — | Coach marks over the live app | `onboarding/TutorialOverlay.js` | `welcome, claim, energy, clans` (defend card), `safety`; final card is icon-only |
 
 ---
 
@@ -66,13 +66,14 @@ The three shipped panels are **square (1254²)** and their cards already pass
 | `clans` | *(reusing `art/onboarding-clans.png`)* | ✅ | — |
 | `safety` | *(reusing `art/onboarding-safety.png`)* | ✅ | — |
 | `energy` | `onboarding/energy.png` | ❌ **generate** | Purple `#2B1636`: a runner mid-stride grabbing a glowing pink lightning bolt out of the air, sparks trailing; a second bolt already stuffed in their pocket. Speech bubble empty/none. |
-| `pasers` | `onboarding/pasers.png` | ❌ **generate** | Deep blue `#13294B`: two runners high-fiving mid-run at speed, motion lines, a third catching up behind. Warm rim light on both. |
+| `run` | `onboarding/run.png` | ⭕ optional | Final card ("Go claim your first patch"). Falls back to the `Flag` icon. Teal/green: a runner setting off from a start line with a claim flag under one arm, a loop of dashed path curving away ahead of them. |
+| `pasers` | `onboarding/pasers.png` | 🗄 unused | Deep blue `#13294B`: two runners high-fiving mid-run. Kept wired for the day the pasers card returns, but the tutorial no longer shows it (the `pasers` card was dropped 2026-09-01 when the flow went to 6 cards ending on the first run). |
 | `rewards` | `onboarding/rewards.png` | ⭕ optional | Warm brown `#3A1D0B`: a runner popping open a lootbox, light rays and cosmetics (cap, shades, cape) flying out. |
 | `leaderboard` | `onboarding/leaderboard.png` | ⭕ optional | Teal `#0B322A`: three runners on a chunky hand-drawn podium, the 1st-place one flexing. |
 
 > The four ✅ rows already ship — the tutorial is usable **today** with zero new
-> art. Generate `energy` and `pasers` first; those two cards currently fall back
-> to an icon.
+> art. Generate `energy` first; it is the only shipping card still on an icon
+> fallback.
 
 ---
 
@@ -259,8 +260,8 @@ enforces both inventories and verifies that neither leaks into the shop.
    both gaps are visible on every tier.
 2. **`getstarted-left/right` + `header-pasers`** (§5) — biggest visible change
    per file; they land on the two screens a new player sees first.
-3. `energy` + `pasers` story panels (§1) — the only two coach-mark cards still
-   on icon fallbacks.
+3. `energy` story panel (§1) — the only shipping coach-mark card still on an
+   icon fallback. (`run` is an optional nice-to-have; `pasers` is now unused.)
 4. The three step thumbnails (§2) — cheapest polish in the whole flow.
 5. `profile-banner` + `badge-1st/2nd/3rd` (§5) — makes You and the leaderboard
    feel like a game.
@@ -316,7 +317,12 @@ with `ART_BG` in `src/config/onboardingArt.js`.
 > air, sparks trailing off it; a second bolt is already stuffed in their
 > shorts pocket. The bolt is the brightest thing in the frame.
 
-**`pasers.png`** — background `#13294B`
+**`run.png`** *(optional)* — background `#0F3D33`
+> A runner setting off from a thick painted start line with a claim flag tucked
+> under one arm, a loop of dashed path curving away ahead of them. Eyes forward,
+> weight already moving.
+
+**`pasers.png`** *(unused — kept for a future pasers card)* — background `#13294B`
 > Two runners high-fiving at full speed as they pass each other, motion lines
 > behind both, a third runner catching up in the background. Warm rim light on
 > all three.

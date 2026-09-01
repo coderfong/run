@@ -33,7 +33,6 @@ export { default as ToonButton, ToonGhostButton } from './ToonButton';
 export {
   ToonCard,
   ToonHeader,
-  ToonChip,
   ToonRow,
   ToonRowGroup,
   ProgressTrack,

@@ -267,3 +267,58 @@ All in `src/components/claim/ChooseAttack.js` (plus a stale comment in `ResultSc
       Verified: `npx jest` (782 pass; the 1 `landCaptureAlert` "boxes the real ring"
       fail is Chunk 5's unverified backend-payload feature, not this copy pass) +
       `npm run check` green.
+
+## Chunk 10 — Pill / soft-surface finish  ✅ DONE (2026-09-02)
+The "all pills use the frame assets, every page is neo-brutalist" closeout.
+Two full audits (a screen-by-screen NB compliance pass and a pill/chip
+inventory) found the gameplay screens ~70% done; this closes the rest.
+Scope, by explicit user choice: gameplay screens + shared components only —
+dev screens/panels, `AuthScreen`, `LocationPermissionScreen` and the dead
+`OnboardingScreen` were left alone.
+- [x] Hand-rolled pills → `Framed`/`Pill`: `ShopScreen` restock timer +
+      double-stroked `SelectedProductPanel`/`panelGlow`; `SeasonScreen`
+      summary bar, filter-count bubble, filter-sheet chips, and the top-rank
+      `Card`'s stacked border (now `accent`/`accentDrop`); `ClubScreen` Chat/
+      Invite actions (now framed pressable chips) and its two translucent
+      header/rankHero panels (now `<Card>`); `ClubDetailScreen` header panel;
+      `RivalDetailScreen` "HEAD TO HEAD" panel; `BuyEnergySheet` rows (now
+      `<Card onPress>`) and price tag (now `<Pill>`); `TerritoryPlanner`'s
+      floating panel (now `<Card>`) and draw/tap mode chip; `RunShareSheet`'s
+      option chips, PRO tag and TRANSPARENT badge; `ProgressionScreen`'s
+      reward-tier status chip; `LeaderboardTransition`'s rank-delta chip;
+      `TerritoryInsights`' "Biggest claim yet" tag (now reuses `<Pill>`);
+      `LandCaptureAlert`'s "LIVE TERRITORY ALERT" chip (both the alert view and
+      its reuse in the cutscene chrome — the cutscene's OWN `stageLabel`/
+      `stolenBanner` were left as the drama exception).
+- [x] Gradients → flat fills (no gradient anywhere is an NB rule): `XpProgress`
+      bar fill, `RivalCard`'s `VersusBar` (both halves).
+- [x] Soft cards → NB stroke: `NotificationsScreen` rows (thin stroke, no
+      drop — same stacked-list call as `LeaderboardView`); `ResultScreen`
+      `takeCard` (now matches the `gateCard` idiom, team-glow kept as the left
+      accent); `ProfileScreen` trophy tiles (now `<Card>`) and its delete-
+      confirm card's stacked hairline (now `accent={colors.danger}`).
+- [x] `HomeScreen` bell drop moved off the iOS-only `hardShadow()` style spread
+      onto the `<HardShadow>` component, so it renders on Android too.
+- [x] `GlobalMapScreen`'s floating chrome (`actionsTrigger`/`actionsPanel`/
+      `locateBtn`/`noticePill`/`actionRow`) got NB strokes + squared radii —
+      SMALLEST POSSIBLE DIFF only (style-object additions, no JSX
+      restructuring), because this file was mid-edit by concurrent work the
+      whole time. The hard offset drop (Android needs a real `HardShadow`
+      wrapper, not `shadow.raised` which is empty) is NOT done — left for
+      whoever next touches this file's JSX tree, to avoid conflicting with
+      the in-flight edits.
+- [x] Dead code: removed `ToonChip` (zero call sites) from `toon.js` and its
+      `ui/index.js` export.
+- Deliberately NOT converted (same class as the exempted corner badges — a
+  3.75pt frame line is illegible under ~20px): `ProgressionScreen`'s tiny
+  icon-only reward-tier chip, `SeasonScreen`'s 20×20 filter-count bubble.
+- Deliberately left as-is per the user's explicit call: `RunningScreen` HUD
+  bars, `ClubChatScreen` bubbles + round send button, `RunShareSheet`
+  destination discs, `Segmented`, and every progress/XP/slider track fill.
+- Verified: `CI=1 npx jest --ci --runInBand` 870/870 pass (run twice, before
+  and after concurrent in-flight work landed more files) + `npm run check`
+  green (including `check:undefined`, which would catch a stray import left
+  behind by any of the above). No RN/Expo browser preview available — every
+  converted screen was re-read end to end for JSX/prop correctness since most
+  of them (Shop/Season/Club/ClubDetail/RivalDetail/BuyEnergySheet/
+  TerritoryPlanner) have no dedicated render test.

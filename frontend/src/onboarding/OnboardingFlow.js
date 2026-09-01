@@ -100,6 +100,10 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
   });
   const [gender, setGender] = useState(profile.gender || '');
   const [finishing, setFinishing] = useState(false);
+  // The wheel always has a date under it, so "what is showing" cannot answer
+  // "did they tell us". This does. Nothing is written unless it is true, which
+  // is what keeps the birthday OPTIONAL rather than merely pre-filled.
+  const [gaveBirthday, setGaveBirthday] = useState(!!profile.birthday);
 
   // Whether there is a subscription to mention at all. Same answer as every
   // other PRO surface in the app — see src/pro/storeAvailable.js.
@@ -116,8 +120,14 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
     if (mode === 'character') return [...character, { key: 'ready', kind: 'ready' }];
     return [
       { key: 'name', kind: 'name' },
-      { key: 'birthday', kind: 'birthday' },
-      { key: 'gender', kind: 'gender' },
+      // Birthday and gender are both SKIPPABLE. Neither is needed to run, claim
+      // ground or hold an account: the birthday only raises the privacy floor
+      // on a young account (backend app/privacy.py, is_minor), and the gender
+      // only seeds an opening hairstyle you change on the very next step. App
+      // Review reads either one as required personal information the moment a
+      // runner cannot get past the step without answering it.
+      { key: 'birthday', kind: 'birthday', optional: true },
+      { key: 'gender', kind: 'gender', optional: true },
       ...character,
       ...(canShowPro ? [{ key: 'pro', kind: 'pro', optional: true }] : []),
       { key: 'ready', kind: 'ready' },
@@ -136,7 +146,7 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
         await saveProfile({
           firstName: name.firstName.trim(),
           lastName: name.lastName.trim(),
-          birthday: iso(birthday),
+          birthday: gaveBirthday ? iso(birthday) : null,
           gender,
         });
         await completeIntro();
@@ -147,13 +157,25 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
     } finally {
       onDone?.();
     }
-  }, [finishing, saveAvatar, saveProfile, completeIntro, name, birthday, gender, mode, onDone]);
+  }, [
+    finishing, saveAvatar, saveProfile, completeIntro,
+    name, birthday, gaveBirthday, gender, mode, onDone,
+  ]);
 
   const next = useCallback(() => {
     if (last) return finish();
     setStep((s) => Math.min(s + 1, steps.length - 1));
     return undefined;
   }, [last, finish, steps.length]);
+
+  // Skipping is not just "go forward": it has to CLEAR whatever the step was
+  // holding, or the pre-filled wheel would be saved as an answer the runner
+  // deliberately declined to give.
+  const skip = useCallback(() => {
+    if (current?.kind === 'birthday') setGaveBirthday(false);
+    if (current?.kind === 'gender') setGender('');
+    next();
+  }, [current, next]);
 
   const back = step > 0 ? () => setStep((s) => Math.max(0, s - 1)) : null;
 
@@ -171,14 +193,15 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
     body = (
       <BirthdayStep
         value={birthday}
-        onChange={setBirthday}
+        onChange={(v) => { setBirthday(v); setGaveBirthday(true); }}
         onContinue={next}
+        onSkip={skip}
         bottomInset={bottomInset}
       />
     );
   } else if (current.kind === 'gender') {
     body = (
-      <GenderStep value={gender} onChange={setGender} onContinue={next} />
+      <GenderStep value={gender} onChange={setGender} onContinue={next} onSkip={skip} />
     );
   } else if (current.kind === 'character') {
     body = (
@@ -208,7 +231,7 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
           step={step}
           total={steps.length}
           onBack={back}
-          onSkip={current.optional ? next : null}
+          onSkip={current.optional ? skip : null}
           top={insets.top}
         />
         <Animated.View

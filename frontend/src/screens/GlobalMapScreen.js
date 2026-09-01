@@ -5,7 +5,7 @@ import Svg, { Polyline } from 'react-native-svg';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { ChevronDown, ChevronLeft, ChevronRight, Flame, Lock, MoreHorizontal, Users, X } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, ChevronRight, Lock, MoreHorizontal, Users, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
 import { BORDER_TIERS } from '../config/progression';
@@ -19,6 +19,7 @@ import { cityBbox } from '../config/cities';
 import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
+import { useProfile } from '../state/profile';
 import { useAccent } from '../hooks/useAccent';
 import { Pop, ScreenIn, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
@@ -91,6 +92,12 @@ const RAIL = 0.085;
 // old tool rail lived, but opens wide enough for labels and the rank stepper so
 // the map never asks the runner to decode five unrelated floating icons.
 const ACTIONS_W = 238;
+
+// The standalone locate button, bottom right. Centring the map on yourself is
+// the one map action you reach for mid-thought and often twice in a row, so it
+// is a button on the board rather than a row two taps deep in the menu, and it
+// sits under the thumb, at the opposite corner from the menu it left.
+const LOCATE_SIZE = 52;
 
 function RankMark({ tier }) {
   const art = BORDER_ART[tier.key];
@@ -213,6 +220,12 @@ function bboxContains(outer, inner) {
   );
 }
 
+// How the contested outline breathes. The band is narrow on purpose, see the
+// note on HeatOutline.
+const PULSE_LOW = 0.55;
+const PULSE_HIGH = 0.9;
+const PULSE_MS = 1100;
+
 // The contested outline, doing its own breathing.
 //
 // The pulse used to be `pulse` state on GlobalMapScreen, stepped by an
@@ -229,12 +242,22 @@ function bboxContains(outer, inner) {
 // Here, the re-render is one Mapbox layer, and it stops when the tab is not
 // being looked at. Mounted only while heat is on, so the timer does not exist
 // the rest of the time.
+//
+// A SLIGHT pulse, and a smooth one. Contested land used to be something you
+// switched on to go looking for a fight, so its outline snapped between 0.35
+// and 0.9 twice a second: a flash, which is right for a thing you just asked to
+// be shown and wrong for a thing that is simply always on the board. It
+// breathes across a narrow band now, and the step is handed to Mapbox's own
+// opacity transition so the layer glides between the two instead of blinking.
 function HeatOutline({ featureCollection, reduce, focused }) {
-  const [pulse, setPulse] = useState(0.85);
+  const [pulse, setPulse] = useState(PULSE_HIGH);
 
   useEffect(() => {
     if (reduce || !focused) return undefined;
-    const id = setInterval(() => setPulse((p) => (p > 0.6 ? 0.35 : 0.9)), 650);
+    const id = setInterval(
+      () => setPulse((p) => (p > (PULSE_LOW + PULSE_HIGH) / 2 ? PULSE_LOW : PULSE_HIGH)),
+      PULSE_MS
+    );
     return () => clearInterval(id);
   }, [reduce, focused]);
 
@@ -242,6 +265,9 @@ function HeatOutline({ featureCollection, reduce, focused }) {
     <ContestedOutline
       featureCollection={featureCollection}
       opacity={reduce ? 0.8 : pulse}
+      // Matched to the interval: the layer is always mid glide, never sitting
+      // at an endpoint waiting for the next step.
+      transition={reduce ? 0 : PULSE_MS}
     />
   );
 }
@@ -254,6 +280,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   const { width: screenW } = useWindowDimensions();
   const { user } = useAuth();
   const { equipped, rankKey } = useAvatar();
+  const { profile, loading: profileLoading, completeRankGuide } = useProfile();
   const accent = useAccent();
   const reduce = useReduceMotion();
   // The board's entrance is keyed to arriving on the tab, not to mounting:
@@ -278,7 +305,10 @@ export default function GlobalMapScreen({ route, navigation }) {
   // Mirrors `zoom` so onIdle can read a fallback value without depending on
   // the `zoom` state itself — see the note on onIdle below.
   const zoomRef = useRef(12);
-  const [heatOn, setHeatOn] = useState(false);
+  // Contested land is ALWAYS outlined. It used to be a menu toggle defaulting
+  // to off, which meant the one thing on the board saying "there is a fight
+  // here" was invisible unless you already knew to go looking for it. The pulse
+  // it draws with is slight enough to live under permanently.
   // Mapbox has parsed the style and drawn a frame. Half of the board's
   // entrance (see the ScreenIn below); the other half is the land itself.
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -323,6 +353,17 @@ export default function GlobalMapScreen({ route, navigation }) {
   useEffect(() => {
     viewRankRef.current = viewRankTier;
   }, [viewRankTier]);
+
+  // The rank explainer used to be tap-to-open only (the little "?" by the
+  // pill), which meant almost nobody who needed it ever found it — rank and
+  // level are two different ladders and nothing else on this screen says so.
+  // Open it once, the first time this screen is actually looked at, the same
+  // way CrossroadsScreen opens its own intro: gated on the profile flag
+  // having loaded, so a not-yet-hydrated `false` never flashes the sheet at
+  // someone who has already read it.
+  useEffect(() => {
+    if (focused && !profileLoading && !profile.rankGuideSeen) setRankInfoOpen(true);
+  }, [focused, profileLoading, profile.rankGuideSeen]);
 
   // --- Territory Planner -------------------------------------------------
   const { isPro, openPaywall, plannerPreviewsLeft, spendPlannerPreview } = useProEntitlement();
@@ -811,14 +852,20 @@ export default function GlobalMapScreen({ route, navigation }) {
   // view has no tier, and it still gets a key of its own so stepping onto it
   // transitions like every other step.
   const frameKey = viewedTier ? viewedTier.key : 'clubs';
-  // The board is the WHOLE screen now, minus only the top inset so the top
-  // rail clears the notch and the clock. It used to be inset by a gutter on
-  // all four sides, which cost the map a band of itself twice over: once to
-  // the gutter and again to the frame drawn inside it.
-  const boardTop = insets.top;
+  // The board is the WHOLE screen, top edge included. It kept the safe area
+  // inset off the top, which left the rank's frame floating in a band of bare
+  // screen and open along its top rail, the one edge where a frame reads as
+  // broken rather than as a margin. The frame runs to 0 now and holds the map
+  // on all four sides. (Before that it was inset by a gutter on every side,
+  // which cost the map a band of itself twice over: once to the gutter and
+  // again to the frame drawn inside it.)
+  const boardTop = 0;
   // Everything the frame would otherwise cover gets pushed in past the rail.
   const rail = Math.round(screenW * RAIL);
-  const railTop = boardTop + rail + space.xs;
+  // The top controls clear the rail AND the notch. With the frame on the top
+  // edge the rail alone no longer clears the clock, so the deeper of the two
+  // wins.
+  const railTop = Math.max(insets.top, rail) + space.xs;
   const viewColor = (viewedTier && rankColor(viewedTier)) || CLUB_INK;
   const viewLabel = viewedTier ? viewedTier.label : 'Clubs';
   const rankLocked = !isClubView && viewRankTier > ownTier;
@@ -857,9 +904,7 @@ export default function GlobalMapScreen({ route, navigation }) {
               mode is where a blurred neon outline actually reads as vivid
               rather than muddy against a light basemap. */}
           <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} dark={scheme === 'dark'} />
-          {heatOn && (
-            <HeatOutline featureCollection={contestedFC} reduce={reduce} focused={focused} />
-          )}
+          <HeatOutline featureCollection={contestedFC} reduce={reduce} focused={focused} />
           {/* The intelligence overlay, drawn ON TOP of the unchanged board.
               Every claim stays exactly as visible as it was — a layer adds a
               reading, it never takes the map away. */}
@@ -1000,6 +1045,25 @@ export default function GlobalMapScreen({ route, navigation }) {
             the same predictable place, and the open panel gives each one a
             name. Rank remains a stepper rather than being buried in an
             explainer: lower and higher tiers are still one tap away. */}
+        {/* MY LOCATION. Bottom right, inside the frame's rail, diagonally
+            opposite the actions menu: the two things you reach for on this
+            screen, each in its own corner, neither hiding the other.
+
+            It stands down for the two things that own the bottom of the board
+            outright, the planner and the tapped territory card, rather than
+            floating on top of them. */}
+        {!planning && !selected ? (
+          <TouchableOpacity
+            style={[styles.locateBtn, { bottom: rail + space.xs, right: rail + space.xs }]}
+            onPress={locateMe}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Center map on my location"
+          >
+            <AppIcon name="locate" size={28} />
+          </TouchableOpacity>
+        ) : null}
+
         {actionsOpen ? (
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
@@ -1080,22 +1144,6 @@ export default function GlobalMapScreen({ route, navigation }) {
               <View style={[styles.actionDivider, { backgroundColor: colors.border }]} />
 
               <TouchableOpacity
-                style={[styles.actionRow, heatOn && { backgroundColor: colors.warn }]}
-                onPress={() => {
-                  setHeatOn((value) => !value);
-                  setActionsOpen(false);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Toggle contested zones"
-              >
-                <View style={styles.actionIcon}>
-                  <Flame size={20} color={heatOn ? '#fff' : colors.text} strokeWidth={2.4} />
-                </View>
-                <Text style={[type.bodySmBold, { color: heatOn ? '#fff' : colors.text }]}>Contested zones</Text>
-                {heatOn ? <Text style={[type.labelSm, styles.actionState, { color: '#fff' }]}>On</Text> : null}
-              </TouchableOpacity>
-
-              <TouchableOpacity
                 style={styles.actionRow}
                 onPress={() => {
                   setActionsOpen(false);
@@ -1124,20 +1172,6 @@ export default function GlobalMapScreen({ route, navigation }) {
                 <Text style={[type.bodySmBold, { color: planning ? '#0B0B0F' : colors.text }]}>
                   {planning ? 'Close planner' : 'Plan a run'}
                 </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionRow}
-                onPress={() => {
-                  setActionsOpen(false);
-                  locateMe();
-                }}
-                activeOpacity={0.85}
-                accessibilityRole="button"
-                accessibilityLabel="Center map on my location"
-              >
-                <View style={styles.actionIcon}><AppIcon name="locate" size={27} /></View>
-                <Text style={[type.bodySmBold, { color: colors.text }]}>My location</Text>
               </TouchableOpacity>
             </View>
           ) : null}
@@ -1176,8 +1210,23 @@ export default function GlobalMapScreen({ route, navigation }) {
           </View>
         ) : null}
 
+        {/* Nothing claimed here yet. It sat at the TOP, directly under the
+            actions menu, where it read as a panel the menu had opened. The
+            bottom is where this screen already puts what it has to say about
+            the land (the tapped territory card lives there), and it leaves the
+            board itself, the empty thing being described, in full view. */}
         {showEmpty && (
-          <View style={[styles.noticePill, { top: insets.top + space.md + 52 }]}>
+          <View
+            style={[
+              styles.noticePill,
+              {
+                bottom: rail + space.xs,
+                left: rail + space.xs,
+                // Clear of the locate button in the same corner.
+                right: rail + space.xs + LOCATE_SIZE + space.sm,
+              },
+            ]}
+          >
             <Text style={type.heading}>Unclaimed. Be first.</Text>
             <Text style={[type.caption, { marginTop: 2 }]}>Close a loop here to claim the first land.</Text>
           </View>
@@ -1295,8 +1344,17 @@ export default function GlobalMapScreen({ route, navigation }) {
         )}
       </Sheet>
 
-      {/* Explainer: why the board only shows one rank at a time. */}
-      <Sheet visible={rankInfoOpen} onClose={() => setRankInfoOpen(false)}>
+      {/* Explainer: why the board only shows one rank at a time, and what
+          actually moves your rank. Opens itself once (see the effect near
+          `rankInfoOpen` above); after that it is tap-to-reopen from the pill's
+          "?" the way it always was. */}
+      <Sheet
+        visible={rankInfoOpen}
+        onClose={() => {
+          setRankInfoOpen(false);
+          completeRankGuide();
+        }}
+      >
         <View style={styles.rankInfoHead}>
           {/* The same mark the pill wears, so the explainer opens on the thing
               that was tapped rather than on a chip of its colour. */}
@@ -1314,19 +1372,28 @@ export default function GlobalMapScreen({ route, navigation }) {
           tier, {ownTierLabel}, so the map fills with the rivals you are actually
           racing rather than the whole world.
         </Text>
+        {/* The number a runner actually needed: rank is not level. Level only
+            climbs, from distance; rank climbs AND falls, from what you hold
+            right now — the same values ChooseAttack shows per move. */}
         <Text style={[type.body, { color: colors.textDim, marginTop: space.md }]}>
-          Take ground and hold it to climb the ladder. Use the arrows to scout
-          another tier: ranks above yours stay locked until you reach them, so you
-          can see what waits ahead but you compete on your own.
+          Rank is not your level. Level only goes up, from how far you run.
+          Rank goes up and down, from what you hold: +25 for stealing ground,
+          +15 for defending it, +3 for claiming empty ground, −10 when someone
+          takes yours. Go quiet for a week and it starts to decay.
         </Text>
         <Text style={[type.body, { color: colors.textDim, marginTop: space.md }]}>
-          Step left past Wood for the clubs board. That one has no rank: it shows
-          every runner, coloured by the club holding the ground.
+          Use the arrows to scout another tier: ranks above yours stay locked
+          until you reach them, so you can see what waits ahead but you compete
+          on your own. Step left past Wood for the clubs board, which drops the
+          rank filter and colours every runner by the club holding the ground.
         </Text>
         <Button
           title="Got it"
           variant="gradient"
-          onPress={() => setRankInfoOpen(false)}
+          onPress={() => {
+            setRankInfoOpen(false);
+            completeRankGuide();
+          }}
           style={{ marginTop: space.lg }}
         />
       </Sheet>
@@ -1336,10 +1403,9 @@ export default function GlobalMapScreen({ route, navigation }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  // THE BOARD. The rect the frame is drawn into: the screen's three hard
-  // edges, with only `top` passed inline from the safe-area inset. No
-  // width/height — the four edges size it, and the art is stretched into
-  // whatever that comes out as.
+  // THE BOARD. The rect the frame is drawn into: all four of the screen's hard
+  // edges, `top` passed inline (see boardTop). No width/height — the edges size
+  // it, and the art is stretched into whatever that comes out as.
   board: {
     position: 'absolute',
     left: 0,
@@ -1372,7 +1438,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
     backgroundColor: colors.card,
-    borderRadius: radius.pill,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.card),
     ...shadow.raised,
   },
   actionsPanel: {
@@ -1381,6 +1449,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.card,
     padding: space.xs,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.card),
     ...shadow.raised,
   },
   rankMenu: { minHeight: 56, flexDirection: 'row', alignItems: 'center' },
@@ -1391,22 +1461,36 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   actionDivider: { height: StyleSheet.hairlineWidth, marginVertical: space.xs },
   actionRow: {
     minHeight: 48,
-    borderRadius: radius.pill,
+    borderRadius: nbRadius.sm,
     paddingHorizontal: space.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
   },
   actionIcon: { width: 28, alignItems: 'center', justifyContent: 'center' },
-  actionState: { marginLeft: 'auto' },
 
+  locateBtn: {
+    position: 'absolute',
+    width: LOCATE_SIZE,
+    height: LOCATE_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.card),
+    ...shadow.raised,
+  },
+
+  // Placed inline (bottom/left/right), because every edge of it is measured
+  // off the frame's rail.
   noticePill: {
     position: 'absolute',
-    left: space.gutter,
-    right: 88,
     backgroundColor: colors.card,
     borderRadius: radius.card,
     padding: space.lg,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.card),
     ...shadow.raised,
   },
 

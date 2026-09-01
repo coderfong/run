@@ -1,12 +1,16 @@
 // Player profile collected during the first-run flow: the runner's real name
-// (used to greet them and to label their card), their birthday (age gate —
-// the stores require 13+), and the one-time flags that drive the intro flow
-// and the in-app tutorial.
+// (used to greet them and to label their card), their birthday, and the
+// one-time flags that drive the intro flow and the in-app tutorial.
 //
-// Stored locally per user (AsyncStorage). The BIRTHDAY is the exception: it is
-// mirrored to the server, because the server is what decides how much of a
-// route gets published and it cannot protect a young account it does not know
-// is young (see backend/app/privacy.py). Nothing else here leaves the phone.
+// The birthday is OPTIONAL and stays null when the runner skips the step, so
+// every reader here has to cope with not knowing (backend is_minor() treats an
+// unknown age as an adult on purpose). A date that IS given holds the 13+ line.
+//
+// Stored locally per user (AsyncStorage). The BIRTHDAY is the exception: when
+// there is one it is mirrored to the server, because the server is what decides
+// how much of a route gets published and it cannot protect a young account it
+// does not know is young (see backend/app/privacy.py). Nothing else here leaves
+// the phone.
 
 import React, {
   createContext,
@@ -41,6 +45,13 @@ const EMPTY = {
   // years in, and nobody who has not read it once should be left guessing at
   // it. Set the first time the screen is dismissed.
   crossroadsIntroSeen: false,
+  // Same idea for the "Ranked map" explainer on GlobalMapScreen. Rank (Wood →
+  // Mythic, earned from taking and holding ground) is a completely different
+  // ladder from level (XP from distance), and the sheet that explains the
+  // difference used to be tap-to-open only — reachable, but nobody found it on
+  // their own. Defaults false for every account for the same reason
+  // `crossroadsIntroSeen` does.
+  rankGuideSeen: false,
 };
 
 const ProfileContext = createContext({
@@ -51,6 +62,7 @@ const ProfileContext = createContext({
   completeIntro: async () => {},
   completeTutorial: async () => {},
   completeCrossroadsIntro: async () => {},
+  completeRankGuide: async () => {},
 });
 
 export function ProfileProvider({ children }) {
@@ -112,6 +124,7 @@ export function ProfileProvider({ children }) {
     () => write({ crossroadsIntroSeen: true }),
     [write]
   );
+  const completeRankGuide = useCallback(() => write({ rankGuideSeen: true }), [write]);
 
   const displayName = profile.firstName || user?.username || '';
 
@@ -124,6 +137,7 @@ export function ProfileProvider({ children }) {
       completeIntro,
       completeTutorial,
       completeCrossroadsIntro,
+      completeRankGuide,
     }),
     [
       profile,
@@ -133,6 +147,7 @@ export function ProfileProvider({ children }) {
       completeIntro,
       completeTutorial,
       completeCrossroadsIntro,
+      completeRankGuide,
     ]
   );
 

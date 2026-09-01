@@ -132,7 +132,7 @@ def send_high_five(
         background.add_task(
             notify, [result["user_id"]], "paserby", "High five!",
             f"{user.username} high-fived you for crossing paths.",
-            {"kind": "paserby_high_five"}, str(user.id),
+            {"kind": "paserby_high_five", "screen": "crossroads"}, str(user.id),
         )
     return schemas.HighFiveOut(
         high_fived=True,

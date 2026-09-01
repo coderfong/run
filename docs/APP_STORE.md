@@ -15,6 +15,38 @@ but **do not submit an old EAS build**. Complete every unchecked gate in
 create and test a fresh production build, and submit its nine IAP products in
 the same submission.
 
+### 2026-09-01 rejection — build 54 (submission ddfafb95)
+
+Two findings, both fixed in source. **Both need a new build**: one is a server
+change the app already talks to, the other is JS that cannot ship over the air
+while the asset cap blocks `eas update`.
+
+**2.1(a) — "an error message was displayed when we used Sign in with Apple"**
+(iPad Air 11-inch M3, iPadOS 26.6). The exact message was not quoted and has not
+been reproduced here, so the fix removes the whole class rather than one branch.
+`POST /auth/apple` used to exchange the native authorization code for a refresh
+token and raise on any failure — a missing signing key on the deploy, a hiccup at
+Apple's token endpoint, a client that sent no code — even though the identity
+token had already proved who the runner was. That exchange is housekeeping for
+account deletion, not authentication, so it is now best effort and logged
+(`_try_exchange_apple_code`), and it is retried on the next sign-in, so an
+account that starts out unrevocable heals itself. Apple's signing keys are also
+cached in process now: fetching them fresh on every sign-in put a live call to
+appleid.apple.com, on a 6s timeout, between the runner and their account.
+
+If it recurs, the Render log now names the reason — grep `apple:`. Nothing there
+means the failure was on the device, before the request.
+
+**5.1.1(v) — date of birth must not be required.** The birthday step is now
+skippable and says so, and the skipped case writes nothing (not the pre-filled
+wheel value). The gender step went with it: it only seeded an opening hairstyle
+you change on the very next screen, and Apple's own example of this violation is
+an app requiring gender. A date that IS entered still has to clear 13+.
+
+Consequence worth knowing: a runner can now reach the app without stating an
+age, so `is_minor()` sees an unknown age and applies adult privacy floors. That
+was already true of every account created before the birthday step existed.
+
 ## App Store Connect metadata
 
 - Name: `PASER`

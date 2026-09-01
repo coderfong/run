@@ -66,6 +66,7 @@ const TROPHIES = [
 
 const NOTIF_ROWS = [
   ['stolen', 'Land under attack'],
+  ['defended', 'Attacks your land held off'],
   ['captured', 'Land you capture'],
   ['clan_goal', 'Club weekly goal'],
   ['kudos', 'Kudos received'],
@@ -73,6 +74,7 @@ const NOTIF_ROWS = [
   ['paserby', 'Crossed paths & high fives'],
   ['season', 'Season & promotion'],
   ['recap', 'Weekly recap'],
+  ['reminder', 'Streak & run reminders'],
 ];
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
@@ -563,12 +565,17 @@ export default function ProfileScreen({ navigation }) {
         {TROPHIES.map(({ key, label, icon, earned }) => {
           const got = stats ? earned(stats) : false;
           return (
-            <View key={key} style={[styles.trophy, got && { backgroundColor: withAlpha(accent, 0.12) }]}>
+            <Card
+              key={key}
+              padded={false}
+              style={styles.trophy}
+              fill={got ? withAlpha(accent, 0.12) : undefined}
+            >
               <AppIcon name={icon} size={30} opacity={got ? 1 : 0.32} />
               <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? colors.text : colors.textDim }]}>
                 {label}
               </Text>
-            </View>
+            </Card>
           );
         })}
       </View>
@@ -779,7 +786,7 @@ export default function ProfileScreen({ navigation }) {
           style={{ marginTop: space.md }}
         />
       ) : (
-        <Card style={{ marginTop: space.md, borderWidth: 1, borderColor: '#f5c2c2' }}>
+        <Card style={{ marginTop: space.md }} accent={colors.danger}>
           <Text style={[type.heading, { color: colors.danger, marginBottom: space.sm }]}>Delete this account?</Text>
           <Text style={[type.bodySm, { color: colors.textMuted, lineHeight: 19 }]}>
             This permanently removes your runs and territories. It cannot be undone. Type{' '}
@@ -921,13 +928,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
 
   trophyRow: { flexDirection: 'row', gap: space.sm },
-  trophy: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: radius.card,
-    paddingVertical: space.md,
-    alignItems: 'center',
-  },
+  trophy: { flex: 1, paddingVertical: space.md, alignItems: 'center' },
 
   runRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
   runDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },

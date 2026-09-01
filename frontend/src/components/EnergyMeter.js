@@ -6,10 +6,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { NB, brand, nbInk, radius, space, useTheme, useThemedType } from '../theme';
+import { brand, nbInk, space, useTheme, useThemedType } from '../theme';
 import { Bar } from '../ui/motion';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import AppIcon from './AppIcon';
 import GameLottie from './GameLottie';
+import Framed from './ui/Framed';
 
 export default function EnergyMeter({ status, onPress, compact = false, style }) {
   const { colors, scheme } = useTheme();
@@ -52,25 +54,31 @@ export default function EnergyMeter({ status, onPress, compact = false, style })
   const barColor = low ? colors.danger : brand.pink;
 
   const Wrap = onPress ? TouchableOpacity : View;
-  // The chip and its track both get a stroke. A progress bar is the one control
-  // where the neo-brutalist edge is doing more than styling: a bare track tinted
-  // `cardAlt` sitting inside a bare chip tinted `card` is two surface steps
-  // apart, which on the dark palette is six percent of lightness and on paper is
-  // almost nothing — so the EMPTY portion of the bar was invisible and the meter
-  // read as a floating pink stub rather than as a bar with a level in it.
+  // The chip is a DRAWN BOX and the track keeps its stroke. A progress bar is
+  // the one control where the edge is doing more than styling: a bare track
+  // tinted `cardAlt` sitting inside a bare chip tinted `card` is two surface
+  // steps apart, which on the dark palette is six percent of lightness and on
+  // paper is almost nothing — so the EMPTY portion of the bar was invisible and
+  // the meter read as a floating pink stub rather than as a bar with a level in
+  // it. The chip's own rounded rectangle went the way of every other chip in the
+  // app; see components/ui/Pill.js.
   const ink = nbInk(scheme, colors.card);
   return (
     <Wrap
-      style={[
-        styles.wrap,
-        compact && styles.compact,
-        { backgroundColor: colors.card, borderWidth: NB.strokeThin, borderColor: ink },
-        style,
-      ]}
+      style={style}
       onPress={onPress}
       activeOpacity={0.85}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={`Energy ${energy} of ${max}`}
+    >
+    <Framed
+      frame={frameVariant('chip', 'energy')}
+      fill={colors.card}
+      on={colors.card}
+      weight={INK.thin}
+      pose={framePose('energy')}
+      inset={compact ? 2 : 4}
+      contentStyle={[styles.wrap, compact && styles.compact]}
     >
       <View style={[styles.iconSlot, compact && styles.iconSlotCompact]}>
         <AppIcon name="energy" size={compact ? 16 : 20} />
@@ -95,20 +103,21 @@ export default function EnergyMeter({ status, onPress, compact = false, style })
       <Text style={[type.bodySmBold, { color: colors.text, minWidth: 46, textAlign: 'right' }]}>
         {energy}/{max}
       </Text>
+    </Framed>
     </Wrap>
   );
 }
 
 const styles = StyleSheet.create({
+  // No padding of its own any more: the frame's measured ink clearance is the
+  // padding, and a `paddingHorizontal` written here would be half-overridden by
+  // it — see the same note in Pill.
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
-    paddingHorizontal: space.md,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
   },
-  compact: { paddingVertical: 6, paddingHorizontal: space.sm },
+  compact: { gap: space.xs },
   iconSlot: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
   iconSlotCompact: { width: 16, height: 16 },
   energyFx: { position: 'absolute' },

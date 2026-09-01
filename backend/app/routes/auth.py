@@ -23,6 +23,7 @@ import logging
 import re
 import secrets
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -247,6 +248,42 @@ def _verify_google(id_token: str) -> dict:
     return claims
 
 
+# Apple's signing keys, cached in process. Fetching them fresh on every
+# sign-in put a live call to appleid.apple.com between the runner and their
+# account: one slow response past the timeout below and a perfectly good
+# identity token came back "could not verify Apple token". The keys rotate on
+# the order of months, so a cache costs nothing and removes that dependency
+# from the common path. An unknown kid still forces a refetch, which is what
+# makes rotation self-healing rather than an outage.
+_APPLE_KEYS: dict = {"keys": [], "at": 0.0}
+_APPLE_KEYS_TTL = 6 * 60 * 60
+
+
+def _apple_key(kid: str) -> dict | None:
+    def refresh() -> None:
+        try:
+            _APPLE_KEYS["keys"] = _http_json(APPLE_KEYS_URL)["keys"]
+            _APPLE_KEYS["at"] = time.time()
+        except Exception:
+            # Keep serving the cached set: stale keys still verify every token
+            # signed before the rotation, which is nearly all of them.
+            log.warning("apple: could not refresh signing keys", exc_info=True)
+
+    fetched = False
+    if time.time() - _APPLE_KEYS["at"] >= _APPLE_KEYS_TTL:
+        refresh()
+        fetched = True
+
+    key = next((k for k in _APPLE_KEYS["keys"] if k.get("kid") == kid), None)
+    if key is None and not fetched:
+        # Either Apple rotated early or this token is not one of ours. One
+        # refetch tells us which, and only ever costs a call we would have made
+        # anyway when the TTL expired.
+        refresh()
+        key = next((k for k in _APPLE_KEYS["keys"] if k.get("kid") == kid), None)
+    return key
+
+
 def _verify_apple(id_token: str) -> dict:
     """Verify an Apple identity token against Apple's public keys."""
     auds = _audiences(settings.apple_client_ids)
@@ -254,7 +291,7 @@ def _verify_apple(id_token: str) -> dict:
         raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "Apple sign-in not configured")
     try:
         kid = jose_jwt.get_unverified_header(id_token).get("kid")
-        key = next((k for k in _http_json(APPLE_KEYS_URL)["keys"] if k["kid"] == kid), None)
+        key = _apple_key(kid)
         if key is None:
             raise ValueError("no matching Apple key")
         claims = jose_jwt.decode(
@@ -321,7 +358,24 @@ def _apple_form(url: str, values: dict) -> dict:
         with urllib.request.urlopen(request, timeout=8) as response:
             raw = response.read()
             return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        # Apple answers a rejected exchange with a JSON body naming the reason
+        # (invalid_client, invalid_grant …). Swallowing it left a bare 502 in
+        # the log and nothing to act on, which is exactly the position a failed
+        # App Review sign-in put us in. The body carries no key material — the
+        # secret goes UP, not back — so it is safe to record.
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8", "replace")[:300]
+        except Exception:
+            pass
+        log.warning("apple: %s rejected the request (%s) %s", url, e.code, detail)
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Apple could not validate the authorization",
+        )
     except Exception:
+        log.warning("apple: could not reach %s", url, exc_info=True)
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
             "Apple could not validate the authorization",
@@ -347,6 +401,42 @@ def _exchange_apple_code(code: str) -> tuple[str, str]:
             "Apple did not return a revocable session",
         )
     return refresh_token, exchanged_id_token
+
+
+def _try_exchange_apple_code(code: str | None, sub: str | None) -> str | None:
+    """Best effort refresh token for a native Sign in with Apple authorization.
+
+    The exchange is HOUSEKEEPING, not authentication. What proves who this is
+    is the identity token, already verified against Apple's public keys before
+    we get here; the refresh token exists only so deleting the account can
+    revoke the Apple session later. Raising on a failed exchange therefore
+    turned a perfectly good authorization into a failed sign-in for reasons the
+    runner cannot do anything about: a key this deploy is missing, a hiccup at
+    Apple's token endpoint, an older client that sends no code at all.
+
+    So the failure is recorded and the sign-in continues. Nothing is lost
+    permanently: the exchange is attempted again on the runner's NEXT sign-in
+    and _oauth_login stores the token whenever one finally arrives, so an
+    account that starts out unrevocable heals itself.
+    """
+    if not code:
+        log.warning("apple: no authorization code, session is not revocable yet")
+        return None
+    try:
+        refresh_token, exchanged_id_token = _exchange_apple_code(code)
+        exchanged_claims = _verify_apple(exchanged_id_token)
+    except HTTPException as e:
+        log.warning("apple: code exchange failed (%s) %s", e.status_code, e.detail)
+        return None
+    except Exception:
+        log.warning("apple: code exchange failed", exc_info=True)
+        return None
+    if exchanged_claims.get("sub") != sub:
+        # Someone else's code. Drop the token rather than filing it against
+        # this account; the sign-in itself was already proven by the id_token.
+        log.warning("apple: exchanged token is for a different subject, dropping it")
+        return None
+    return refresh_token
 
 
 def _revoke_apple_token(refresh_token: str) -> None:
@@ -418,12 +508,7 @@ def google_auth(request: Request, response: Response, payload: OAuthIn, db: Sess
 @limiter.limit(settings.rate_limit_auth)
 def apple_auth(request: Request, response: Response, payload: OAuthIn, db: Session = Depends(get_db)):
     claims = _verify_apple(payload.id_token)
-    if not payload.authorization_code:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Apple authorization code required")
-    refresh_token, exchanged_id_token = _exchange_apple_code(payload.authorization_code)
-    exchanged_claims = _verify_apple(exchanged_id_token)
-    if exchanged_claims.get("sub") != claims.get("sub"):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Apple authorization mismatch")
+    refresh_token = _try_exchange_apple_code(payload.authorization_code, claims.get("sub"))
     return _oauth_login(db, "apple", claims, payload.name, refresh_token)
 
 

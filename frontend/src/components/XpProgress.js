@@ -14,20 +14,19 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import GameAnimation from './GameAnimation';
+import Framed from './ui/Framed';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { MAX_LEVEL, levelBandColor, levelFromXp, xpForLevel } from '../config/progression';
 import {
   NB,
   nbInk,
   nbTextOn,
-  radius,
   space,
   toonRadius,
   useTheme,
   useThemedStyles,
-  withAlpha,
 } from '../theme';
 import { CountUpText, Pop, Reveal, SteppedBar, haptic } from '../ui/motion';
 
@@ -98,8 +97,20 @@ const fmtGain = (n) => {
   return `+${Math.round(n)} XP`;
 };
 
-export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay = 420, style }) {
-  const { colors: D, scheme } = useTheme();
+export default function XpProgress({
+  xp,
+  gained = 0,
+  accent = '#7CF0D0',
+  delay = 420,
+  // Fired once per level the bar rolls THROUGH, with the level just reached.
+  // The bar is the only thing that knows when that happens — the totals it is
+  // handed say where the runner ended up, not which boundaries were crossed on
+  // the way — and the celebration is far too big a thing for this row to own,
+  // so it is announced rather than played here. See LevelUpCelebration.
+  onLevelUp,
+  style,
+}) {
+  const { colors: D } = useTheme();
   const styles = useThemedStyles(makeStyles);
   // The window this bar is animating across. Held in state and only moved when
   // the total actually moves: the result screen re-renders constantly (options
@@ -128,17 +139,19 @@ export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay =
 
   const onStep = (i) => {
     setStepIndex(i);
-    // The one haptic this block is allowed: a level is rare and it is the
-    // reason the bar is being watched. Ordinary XP does not buzz.
-    if (i > 0) haptic.success();
+    if (i > 0) {
+      // The one haptic this block is allowed: a level is rare and it is the
+      // reason the bar is being watched. Ordinary XP does not buzz.
+      haptic.success();
+      // `steps[i]` is the level the bar has just ARRIVED in, which is the one
+      // that was reached. Read off the steps rather than off `stepIndex`,
+      // which has not been committed yet at this point in the callback.
+      const reached = steps[i]?.level;
+      if (reached != null) onLevelUp?.(reached);
+    }
   };
 
   const band = step ? levelBandColor(step.level) : D.cardAlt;
-  // The chip carries a real stroke now rather than floating as a bare fill.
-  // Judged against the BAND it is drawn on, not against the page: the bands
-  // run from bronze up through the top of the ladder, and one stroke colour
-  // picked off the scheme disappears on some of them.
-  const chipInk = nbInk(scheme, band);
 
   return (
     <View style={[styles.root, style]}>
@@ -154,22 +167,44 @@ export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay =
                 runner sees pops once as it arrives and every later one pops as
                 it rolls over. */}
             <Pop trigger={step.level}>
-              <View style={[styles.levelChip, { backgroundColor: band, borderColor: chipInk }]}>
+              {/* A DRAWN BOX, like every other chip in the app. The band is its
+                  paper, so the ink is judged against the band and not against
+                  the page — the ladder runs from bronze to the top and one
+                  stroke colour picked off the scheme disappears on some of
+                  them. `Framed` makes that call in one place; this used to
+                  make it here with `nbInk`. */}
+              <Framed
+                frame={frameVariant('chip', `level:${step.level}`)}
+                fill={band}
+                on={band}
+                weight={INK.thin}
+                pose={framePose(`level:${step.level}`)}
+                inset={3}
+              >
                 <Text style={[styles.levelChipText, { color: nbTextOn(band) }]}>
                   {`LEVEL ${step.level}`}
                 </Text>
-              </View>
+              </Framed>
             </Pop>
             {leveledUp && (
               <>
-                {/* Behind the words, not beside them: the burst is the
-                    celebration and the words are what it is for. Sized to the
-                    row rather than to the screen — the full-screen confetti
-                    already firing on this page is the big gesture, and a
-                    second one that size would be two celebrations arguing. */}
-                <View style={styles.levelUpBurst} pointerEvents="none">
-                  <GameAnimation name="levelUpBronze" size={64} trigger={step.level} />
-                </View>
+                {/* IN THE ROW, NOT OVER IT. This was absolutely positioned
+                    across the whole head with `alignItems: 'flex-end'`, which
+                    put a 64pt opaque burst down on top of the words it was
+                    celebrating — the "LEVEL UP" underneath it was unreadable,
+                    which is a strange thing to do to the rarest line on the
+                    screen. It takes its own space now and cannot collide with
+                    anything.
+                    It is also SMALL on purpose. The real celebration is the
+                    full-screen one (LevelUpCelebration); this is the mark left
+                    behind on the card once that has played, not a second
+                    celebration arguing with the first. */}
+                <GameAnimation
+                  name="sparkleStar"
+                  size={26}
+                  trigger={step.level}
+                  style={styles.levelUpSpark}
+                />
                 <Pop trigger={step.level} delay={90}>
                   <Text style={[styles.levelUp, { color: accent }]}>LEVEL UP</Text>
                 </Pop>
@@ -178,9 +213,15 @@ export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay =
           </Reveal>
         ) : (
           <View style={styles.levelWrap}>
-            <View style={[styles.levelChip, { backgroundColor: D.cardAlt, borderColor: chipInk }]}>
+            <Framed
+              frame={frameVariant('chip', 'level:pending')}
+              fill={D.cardAlt}
+              on={D.cardAlt}
+              weight={INK.thin}
+              inset={3}
+            >
               <Text style={[styles.levelChipText, { color: D.textDim }]}>LEVEL ·</Text>
-            </View>
+            </Framed>
           </View>
         )}
         {gained > 0 && (
@@ -204,12 +245,7 @@ export default function XpProgress({ xp, gained = 0, accent = '#7CF0D0', delay =
           trackStyle={StyleSheet.absoluteFill}
           fillStyle={styles.fill}
         >
-          <LinearGradient
-            colors={[withAlpha(accent, 0.65), accent]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={StyleSheet.absoluteFill}
-          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: accent }]} />
         </SteppedBar>
       </View>
 
@@ -250,27 +286,16 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     marginBottom: space.sm,
   },
   levelWrap: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  levelChip: {
-    borderRadius: radius.pill,
-    borderWidth: NB.strokeThin,
-    paddingHorizontal: space.md,
-    paddingVertical: 4,
-  },
   // Colour is passed at the call site — it is judged against the level band
-  // behind it, which changes as the ladder is climbed.
-  levelChipText: { ...type.labelSm, letterSpacing: 0.8 },
+  // behind it, which changes as the ladder is climbed. The horizontal air is
+  // here rather than on the frame's content row, which `Framed` owns: that
+  // padding is the drawing's measured ink clearance and must not be overwritten.
+  levelChipText: { ...type.labelSm, letterSpacing: 0.8, paddingHorizontal: space.xs },
   levelUp: { ...type.labelSm, letterSpacing: 1.2 },
-  // Centred on the LEVEL UP words and sitting behind them. Absolute so it
-  // takes no space in the row: the burst appearing must not shove the chip
-  // sideways at the exact moment the chip is being looked at.
-  levelUpBurst: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: -20,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
+  // Pulled tight against the words it introduces. The star's art carries its
+  // own margin of transparency, so a gap measured off the box would read as
+  // twice the gap between the chip and the star.
+  levelUpSpark: { marginRight: -4, marginLeft: -2 },
   gain: { ...type.bodySmBold },
   // A 1pt hairline round the ladder read as disabled next to anything else on
   // this page. The bar is the thing the level-up is measured on, so it gets a

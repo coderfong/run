@@ -56,6 +56,7 @@ import TerritoryInsights from '../components/TerritoryInsights';
 import { ProFrosted, ProLockedSection, ProInlineLock } from '../components/ProLock';
 import { useProEntitlement } from '../pro/ProProvider';
 import XpProgress from '../components/XpProgress';
+import LevelUpCelebration from '../components/LevelUpCelebration';
 import { Image } from '../ui/image';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useAvatar } from '../state/avatar';
@@ -65,7 +66,7 @@ import { fetchAndCache, invalidate, invalidateAfterClaim } from '../api/cache';
 import { shouldReveal } from '../config/paserby';
 import { preloadScreenImages } from '../config/screenAssets';
 import { RUN_TIER } from '../config/economy';
-import { NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, runTuning, shadow, space, toon, toonRadius, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
+import { NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, runTuning, shadow, space, toon, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
 import { Framed, HardShadow, OutlinedText, ToonButton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { useClan } from '../state/clan';
@@ -954,6 +955,31 @@ export default function ResultScreen({ navigation, route }) {
   // the moment it is needed.
   const [crossed, setCrossed] = useState(null);
   const [crossedOpen, setCrossedOpen] = useState(false);
+  // THE LEVEL A RUN CROSSED, held until there is room to celebrate it.
+  //
+  // The XP bar is the only thing that knows a boundary was crossed — it is
+  // handed totals, and the crossing is a fact about the JOURNEY between them —
+  // so it announces and this screen decides when the moment plays. That
+  // separation is the whole reason the celebration can wait: this screen has a
+  // queue of overlays (the payoff, the standings wipe, crossed paths) and two
+  // celebrations on screen at once is a mess rather than a bigger party.
+  //
+  // ONE moment per run, at the level actually landed on. A run that crosses two
+  // levels fires this twice within the bar's ~900ms travel, and the second
+  // arrives while the first is still queued: `Math.max` keeps the one that
+  // means something. `celebratedLevel` is what stops a dismissed celebration
+  // from being re-armed by a late gain (the claim's XP lands after the run's).
+  const [levelUp, setLevelUp] = useState(null);
+  const celebratedLevel = useRef(0);
+  const onLevelUp = useCallback((reached) => {
+    if (!(reached > celebratedLevel.current)) return;
+    celebratedLevel.current = reached;
+    setLevelUp((prev) => (prev == null ? reached : Math.max(prev, reached)));
+  }, []);
+  // Stable while the modal is open. LevelUpCelebration owns a timer and an
+  // animation effect; an inline lambda here changed identity on every result
+  // screen render and restarted both (including its haptic) mid-celebration.
+  const closeLevelUp = useCallback(() => setLevelUp(null), []);
   const [crossedDone, setCrossedDone] = useState(false);
   const [highFiving, setHighFiving] = useState(false);
   const [highFivedAll, setHighFivedAll] = useState(false);
@@ -1691,7 +1717,7 @@ export default function ResultScreen({ navigation, route }) {
             this runner stood before the run to where they stand now, and rolls
             the level over if the run crossed one. */}
         {totalXp > 0 && (
-          <XpProgress xp={xpTotalNow} gained={totalXp} accent={team.glow} />
+          <XpProgress xp={xpTotalNow} gained={totalXp} accent={team.glow} onLevelUp={onLevelUp} />
         )}
 
         {/* What the run paid, under the bar it just moved — coins used to sit
@@ -1903,6 +1929,18 @@ export default function ResultScreen({ navigation, route }) {
       onContinue={closeCrossed}
     />
 
+    {/* THE LEVEL, once nothing else is celebrating. Gated on the other three
+        overlays rather than racing them: the bar under the payoff can cross a
+        boundary while the payoff itself is still on screen, and this must
+        arrive after it rather than on top of it. */}
+    <LevelUpCelebration
+      visible={levelUp != null && !seq.showPayoff && !seq.showLeaderboard && !crossedOpen}
+      level={levelUp}
+      equipped={equipped}
+      accent={team.glow}
+      onClose={closeLevelUp}
+    />
+
     {showConfetti && <Confetti />}
     </View>
   );
@@ -2048,9 +2086,14 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // gradient goes near-black in dark mode and black on black is nothing.
   placeHint: { ...type.bodySmBold, color: colors.text, marginBottom: space.md },
 
+  // Same notice idiom as `gateCard`: a full thin NB stroke, with the team's
+  // glow kept as the left accent (set inline) so the box still says WHOSE
+  // ground this is at a glance.
   takeCard: {
     backgroundColor: colors.cardAlt,
-    borderRadius: toonRadius.cell,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk(scheme, colors.cardAlt),
     borderLeftWidth: 4,
     padding: space.md,
     marginBottom: space.md,

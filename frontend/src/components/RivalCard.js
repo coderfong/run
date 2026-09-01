@@ -9,11 +9,11 @@
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import { brand, nbTextOn, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
-import { ToonButton, ToonCard, ToonGhostButton } from './ui';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
+import { Framed, ToonButton, ToonCard, ToonGhostButton } from './ui';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import { useAvatar } from '../state/avatar';
@@ -62,20 +62,10 @@ function VersusBar({ mine, theirs }) {
   return (
     <View style={styles.bar}>
       <View style={{ flex: Math.max(0.06, myShare) }}>
-        <LinearGradient
-          colors={['#4ade80', '#16a34a']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#22c55e' }]} />
       </View>
       <View style={{ flex: Math.max(0.06, 1 - myShare) }}>
-        <LinearGradient
-          colors={['#fb923c', '#ef4444']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#ef4444' }]} />
       </View>
     </View>
   );
@@ -150,11 +140,18 @@ export default function RivalCard({
           {(() => {
             const tagFill = behind ? '#ef4444' : brand.teal;
             return (
-              <View style={[styles.eyebrowBadge, { backgroundColor: tagFill, borderColor: toon.ink }]}>
+              <Framed
+                frame={frameVariant('chip', behind ? 'rivalry:attack' : 'rivalry:on')}
+                fill={tagFill}
+                on={tagFill}
+                weight={INK.thin}
+                pose={framePose(behind ? 'rivalry:attack' : 'rivalry:on')}
+                inset={2}
+              >
                 <Text style={[toonType.label, styles.eyebrowBadgeText, { color: nbTextOn(tagFill) }]}>
                   {behind ? '⚔ UNDER ATTACK' : '🔥 RIVALRY'}
                 </Text>
-              </View>
+              </Framed>
             );
           })()}
           {rival.clan_tag ? (
@@ -209,14 +206,10 @@ export default function RivalCard({
 const styles = StyleSheet.create({
   body: { paddingHorizontal: space.lg, paddingTop: space.md },
   eyebrowRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  // The filled rivalry tag: a stroked pill in the state colour.
-  eyebrowBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: toonRadius.pill,
-    borderWidth: 2,
-  },
-  eyebrowBadgeText: { fontSize: 12, letterSpacing: 0.8 },
+  // The filled rivalry tag: a drawn box in the state colour. Its padding is the
+  // frame's own measured ink clearance, so the air either side lives on the
+  // text — same arrangement as every other chip.
+  eyebrowBadgeText: { fontSize: 12, letterSpacing: 0.8, paddingHorizontal: 5 },
 
   sides: { flexDirection: 'row', alignItems: 'center', marginTop: space.md, gap: space.sm },
   side: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },

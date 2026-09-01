@@ -228,6 +228,13 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     # update at the end of this function — so a bot boxed in by a strong
     # neighbour would come up due on every tick forever, fail every time, and
     # eat a slot in the batch while never running again.
+    # Read once and passed through explicitly, mirroring routes/runs.py: it
+    # both scopes the fight (rivals are only ever in this bracket — see
+    # `_claim_territory`'s docstring) and is what the tier-scaled steal/lost/
+    # defend rewards below key off. Left implicit, `_claim_territory` would
+    # compute the identical number itself, but this way there is one query
+    # and one value in use for the whole call.
+    bot_rank_tier = ranks.status(db, user_id)["tier"]
     bounced = False
     try:
         territory_out, _stolen_m2, _stolen_from, steal_events, ground = _claim_territory(
@@ -239,6 +246,7 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
             strength=claim_strength(distance_m, duration_s),
             verified=True,
             clan_id=clan_id,
+            rank_tier=bot_rank_tier,
             lifetime_for=lambda r: claim_lifetime_days(distance_m, duration_s, r),
         )
     except HTTPException as exc:
@@ -328,10 +336,10 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
             },
         )
         if ev["defended"]:
-            ranks.award(db, ev["victim_id"], ranks.POINTS_DEFEND, "defend")
+            ranks.award(db, ev["victim_id"], ranks.defend_reward(bot_rank_tier), "defend")
             continue
-        ranks.award(db, user_id, ranks.POINTS_STEAL, "steal")
-        ranks.award(db, ev["victim_id"], ranks.POINTS_LOST, "lost_ground")
+        ranks.award(db, user_id, ranks.steal_reward(bot_rank_tier), "steal")
+        ranks.award(db, ev["victim_id"], ranks.loss_penalty(bot_rank_tier), "lost_ground")
 
         # Only a REAL victim gets a push — a bot losing land to another bot is
         # invisible noise nobody needs woken up for.

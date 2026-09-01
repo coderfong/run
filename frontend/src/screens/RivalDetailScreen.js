@@ -15,7 +15,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { api } from '../api/client';
 import ProTeaser from '../components/ProTeaser';
 import RivalCard, { ago, fmtArea } from '../components/RivalCard';
-import { Screen, Skeleton, ToonButton } from '../components/ui';
+import { Card, Screen, Skeleton, ToonButton } from '../components/ui';
 import { GOLD } from '../config/pro';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
@@ -110,7 +110,7 @@ export default function RivalDetailScreen({ route, navigation }) {
 
         {analytics ? (
           <Reveal delay={80}>
-            <View style={[styles.panel, { backgroundColor: colors.card }]}>
+            <Card style={styles.panel}>
               <Text style={[type.captionMedium, { color: GOLD, marginBottom: space.xs }]}>
                 HEAD TO HEAD
               </Text>
@@ -190,7 +190,7 @@ export default function RivalDetailScreen({ route, navigation }) {
                   style={{ marginTop: space.sm }}
                 />
               ) : null}
-            </View>
+            </Card>
           </Reveal>
         ) : (
           <Reveal delay={80}>
@@ -259,7 +259,7 @@ function beatLabel(event, them) {
 }
 
 const styles = StyleSheet.create({
-  panel: { borderRadius: radius.card, padding: space.md, marginTop: space.md },
+  panel: { marginTop: space.md },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,19 +1,27 @@
 // RewardReveal — the payoff moment when a tier is claimed or a box is opened.
 //
-// TWO SHAPES, one component:
+// THREE ACTS, one timeline: WIND-UP, HIT, SETTLE. Both shapes run it.
 //
-//   claim      the reward pops straight in. Nothing was hiding it.
-//   lootbox    a CLOSED BOX lands first, sits for a beat, then bursts — and
-//              the thing that was inside rises out of where the box was.
-//              `fromLootbox` is what selects this; the caller knows, because
-//              only the caller knows whether a box was opened to get here.
+//   claim      the wind-up is the screen itself tightening: the fan spins up
+//              and brightens, two rings close on the middle, and a ring of
+//              sparks falls into the point where the reward is about to be.
+//   lootbox    the same wind-up with a CLOSED BOX standing in the middle of
+//              it, trembling harder as the build goes on. `fromLootbox` is
+//              what selects this; the caller knows, because only the caller
+//              knows whether a box was opened to get here.
 //
-// The lootbox staging is the whole point of the second shape. Handing over the
-// contents and mentioning a box in the caption is a receipt, not a reveal: the
-// tension is in the second where the box is on screen and you don't yet know
-// what is in it. So the item does not merely appear after the box — it comes
-// OUT of it, starting small at the box's own position and rising into place as
-// the box shrinks away underneath it.
+// THE WIND-UP IS THE POINT. This used to hand the reward over 120ms after the
+// modal opened, on a spring that overshot to 1.12 and settled back — which is
+// a receipt with a bounce on it, not a reveal. Nothing was ever WAITED for.
+// The second in which the screen is visibly building to something is the whole
+// reason the hit lands, so a claim now gets a full second of build and the box
+// gets longer still.
+//
+// AND NOTHING OVERSHOOTS. The card grows out of the flash in one move on an
+// ease-out. An object that springs past its size and comes back reads as light
+// and rubbery, and the hit is supposed to have weight. The only motion left at
+// rest is a slow breath and the sparkles riding the card's corners, because a
+// reveal that freezes into a still the instant it arrives is a screenshot.
 //
 // THE BACKGROUND IS THE BACKGROUND. It used to be a 72%-black scrim with a
 // 320pt square of effects floating in the middle of it, and a square of
@@ -29,8 +37,8 @@
 // `RevealRays` over it); only the numbers differ.
 //
 // Everything is Reanimated (no Lottie), and Reduce Motion skips to the resting
-// state with the box phase collapsed — a reveal that makes you wait through an
-// animation you have turned off is just a delay.
+// state with the whole build collapsed — a reveal that makes you wait through
+// an animation you have turned off is just a delay.
 
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
@@ -42,7 +50,6 @@ import Animated, {
   withDelay,
   withRepeat,
   withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
@@ -50,7 +57,7 @@ import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import RewardArt, { RARITY_COLOR } from './RewardArt';
 import GameAnimation from './GameAnimation';
-import { brand, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { brand, radius, space, toon, toonType, useTheme, useThemedType } from '../theme';
 import { OutlinedText } from './ui';
 import { Confetti, useReduceMotion } from '../ui/motion';
 
@@ -85,14 +92,49 @@ const BOLT_ASPECT = 1400 / 788;
 const INK_ON_GOLD = 'rgba(12,12,16,0.78)';
 const INK_ON_GOLD_SOFT = 'rgba(12,12,16,0.55)';
 
-// How long the closed box holds before it bursts. Long enough to register as
-// an object, short enough that nobody taps through it.
-const BOX_HOLD_MS = 850;
+// ---------------------------------------------------------------------------
+// THE TIMELINE
+//
+// Every beat lives here because the acts have to stay in proportion to each
+// other: lengthening the wind-up without moving the label is how a reveal ends
+// up with a caption that arrives before the thing it captions.
+// ---------------------------------------------------------------------------
+
+// The build. A claim gets a beat just under a second — long enough to be a
+// wait, short enough that a tenth claim in a row is not a chore. The box gets
+// nearly twice that, because a box standing on screen is its own reason to
+// wait, and because the tremor needs room to go from a shiver to a rattle.
+const CHARGE_MS = 950;
+const BOX_CHARGE_MS = 1600;
+
+// The hit: a hard white frame with a long fall-off. The rise is shorter than a
+// frame at 60Hz so it reads as an impact rather than as a fade to white.
+const FLASH_UP_MS = 60;
+const FLASH_DOWN_MS = 340;
+
+// The settle.
+const CARD_IN_MS = 460;
+const WAVE_MS = 700;
+const LABEL_DELAY = 240;
+const LABEL_IN_MS = 320;
+// The hint comes LAST, and alone. Offering "tap to continue" while the reveal
+// is still resolving is an invitation to skip the thing you just built.
+const HINT_DELAY = 1100;
+// The resting breath. Slow enough that you notice it only if you stay.
+const FLOAT_MS = 2600;
 
 const BOX_SIZE = 132;
 // Wider than the card it fires behind — a burst that stops at the card's edge
 // reads as a texture on the card rather than as something bursting out of it.
 const BURST_SIZE = 300;
+
+// The wind-up furniture: two rings closing on the centre, and sparks falling
+// into it. DRAWN, for the same reason the fan is (see `RevealRays`) — this is
+// geometry at screen scale, and it has to take the reward's own tint.
+const RING_SIZE = 210;
+const MOTE_COUNT = 14;
+const MOTE_RADIUS = 190;
+const MOTES = Array.from({ length: MOTE_COUNT }, (_, i) => i);
 
 // The shine behind everything, DRAWN rather than scaled.
 //
@@ -109,7 +151,7 @@ const RAY_COUNT = 18;
 // over its own base gold, so a wedge that stops short would read as a wedge
 // that stops short. Same geometry either way, which is why it is one component
 // and not two.
-function RevealRays({ size, tint, sunburst = false }) {
+export function RevealRays({ size, tint, sunburst = false }) {
   const r = size / 2;
   // Wedges spanning half of each slice, so the gaps between them are the same
   // width as the rays — a fan with no gap is just a disc.
@@ -158,119 +200,280 @@ function RevealRays({ size, tint, sunburst = false }) {
   );
 }
 
+// One spark falling into the centre.
+//
+// Every mote reads the SAME `charge` value and derives its own angle and lag
+// from its index, so fourteen of them cost one animation instead of fourteen —
+// and they can never drift out of step with the rings or the fan, because
+// there is nothing for them to drift against.
+function ChargeMote({ charge, fade, index, color }) {
+  const angle = (index / MOTE_COUNT) * Math.PI * 2 + (index % 3) * 0.34;
+  const lag = (index % 5) * 0.07;
+  const size = index % 3 === 0 ? 8 : 5;
+  const style = useAnimatedStyle(() => {
+    const c = Math.max(0, Math.min(1, (charge.value - lag) / (1 - lag)));
+    // Squared: a mote drifts at first and is FALLING by the end. A spark that
+    // travels at a constant rate is a loading spinner.
+    const d = MOTE_RADIUS * (1 - c) * (1 - c);
+    return {
+      opacity: (c <= 0 ? 0 : Math.min(1, c * 4)) * (1 - fade.value),
+      transform: [
+        { translateX: Math.cos(angle) * d },
+        { translateY: Math.sin(angle) * d },
+        { scale: 0.5 + c * 0.8 },
+      ],
+    };
+  });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        { position: 'absolute', width: size, height: size, borderRadius: size, backgroundColor: color },
+        style,
+      ]}
+    />
+  );
+}
+
+// A ring closing on the centre. `phase` holds the second one back so the pair
+// reads as a pulse rather than as one thick line.
+function ChargeRing({ charge, fade, color, phase = 0 }) {
+  const style = useAnimatedStyle(() => {
+    const c = Math.max(0, Math.min(1, (charge.value - phase) / (1 - phase)));
+    return {
+      opacity: (c <= 0 ? 0 : Math.min(1, c * 3) * (1 - c * 0.3)) * (1 - fade.value),
+      transform: [{ scale: 2.5 - 1.75 * c }],
+    };
+  });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          width: RING_SIZE,
+          height: RING_SIZE,
+          borderRadius: RING_SIZE,
+          borderWidth: 3,
+          borderColor: color,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
+// The hit's own shockwave: one ring thrown back OUT of the point everything
+// just fell into. It is the release the whole wind-up was for, so it is drawn
+// rather than keyed — it has to be able to leave the screen without softening.
+function Shockwave({ wave, color }) {
+  const style = useAnimatedStyle(() => ({
+    opacity: wave.value <= 0 || wave.value >= 1 ? 0 : (1 - wave.value) * 0.8,
+    transform: [{ scale: 0.25 + wave.value * 2.6 }],
+  }));
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        {
+          position: 'absolute',
+          width: RING_SIZE,
+          height: RING_SIZE,
+          borderRadius: RING_SIZE,
+          borderWidth: 6,
+          borderColor: color,
+        },
+        style,
+      ]}
+    />
+  );
+}
+
 export default function RewardReveal({ visible, rewards, equipped, accent, fromLootbox = false, onClose }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const reduced = useReduceMotion();
   const { width, height } = useWindowDimensions();
 
-  // 'box' = the chest is on screen and still shut. Claims skip it entirely,
-  // and so does Reduce Motion.
+  // 'box' = the chest is on screen and still shut. Reduce Motion skips it, and
+  // with it the whole build.
   const staged = fromLootbox && !reduced;
-  const [opened, setOpened] = useState(!staged);
+  // `opened` is the hit. BOTH shapes start closed now — the claim's wind-up is
+  // the change — so this stays false until the build finishes or a tap cuts it
+  // short.
+  const [opened, setOpened] = useState(reduced);
+  const chargeMs = staged ? BOX_CHARGE_MS : CHARGE_MS;
 
   const scrim = useSharedValue(0);
   const box = useSharedValue(0);
+  const charge = useSharedValue(0);
+  const shake = useSharedValue(0.5);
+  const flash = useSharedValue(0);
+  const wave = useSharedValue(0);
   const pop = useSharedValue(0);
   const spin = useSharedValue(0);
+  const float = useSharedValue(0);
   const label = useSharedValue(0);
+  const hint = useSharedValue(0);
 
   useEffect(() => {
     if (!visible) {
-      // The shine is an INFINITE repeat: left running it would keep turning on
-      // the UI thread behind whatever screen you went back to, for the rest of
-      // the session. Fading it out is not the same as stopping it.
+      // The shine, the tremor and the breath are INFINITE repeats: left
+      // running they would keep going on the UI thread behind whatever screen
+      // you went back to, for the rest of the session. Fading one out is not
+      // the same as stopping it.
       cancelAnimation(spin);
+      cancelAnimation(shake);
+      cancelAnimation(float);
       spin.value = 0;
+      shake.value = 0.5;
+      float.value = 0;
       scrim.value = 0;
       box.value = 0;
+      charge.value = 0;
+      flash.value = 0;
+      wave.value = 0;
       pop.value = 0;
       label.value = 0;
-      setOpened(!staged);
+      hint.value = 0;
+      setOpened(reduced);
       return undefined;
     }
     scrim.value = reduced ? 1 : withTiming(1, { duration: 160 });
+    if (reduced) return undefined;
     // The shine turns behind everything for as long as the reveal is up. The
     // lootbox fan turns at the rate its master was authored at, so the drawn
     // rays and the bolts riding over them stay in step.
-    if (!reduced) {
-      spin.value = 0;
-      spin.value = withRepeat(
-        withTiming(1, { duration: fromLootbox ? LOOT_SPIN_MS : SPIN_MS, easing: Easing.linear }),
-        -1,
-        false
-      );
-    }
-    let timer;
-    if (staged) {
-      // The box drops in, breathes once, and is on its own clock — `opened`
-      // only flips when the hold is up (or when an impatient tap jumps it).
-      box.value = withSequence(
-        withSpring(1, { damping: 11, stiffness: 220 }),
-        withDelay(BOX_HOLD_MS * 0.45, withTiming(1.08, { duration: 200, easing: Easing.inOut(Easing.quad) }))
-      );
-      timer = setTimeout(() => setOpened(true), BOX_HOLD_MS);
-    }
+    spin.value = 0;
+    spin.value = withRepeat(
+      withTiming(1, { duration: fromLootbox ? LOOT_SPIN_MS : SPIN_MS, easing: Easing.linear }),
+      -1,
+      false
+    );
+    // THE BUILD. One accelerating value that every part of the wind-up reads:
+    // the rings, the motes, the fan's extra turn and its brightness, the box's
+    // tremor. Sharing one number is why they tighten TOGETHER instead of
+    // merely happening at the same time.
+    charge.value = 0;
+    charge.value = withTiming(1, { duration: chargeMs, easing: Easing.in(Easing.cubic) });
+    // The tremor runs flat out and takes its AMPLITUDE from the build, so it
+    // starts as a shiver and ends as a rattle without needing a second clock.
+    shake.value = 0.5;
+    shake.value = withRepeat(withTiming(1, { duration: 84, easing: Easing.inOut(Easing.quad) }), -1, true);
+    // The box arrives on an ease-out, not a spring. It is a heavy object.
+    if (staged) box.value = withTiming(1, { duration: 320, easing: Easing.out(Easing.cubic) });
+    const timer = setTimeout(() => setOpened(true), chargeMs);
     return () => {
       clearTimeout(timer);
       cancelAnimation(spin);
+      cancelAnimation(shake);
+      cancelAnimation(float);
     };
-  }, [visible, reduced, staged, fromLootbox, scrim, box, pop, label, spin]);
+  }, [
+    visible, reduced, staged, fromLootbox, chargeMs,
+    scrim, box, charge, shake, flash, wave, pop, label, hint, spin, float,
+  ]);
 
-  // The item's own entrance, fired when the box is out of the way (or
-  // immediately, for a plain claim).
+  // THE HIT, and everything after it — fired when the build finishes, or when
+  // an impatient tap ends it early.
   useEffect(() => {
     if (!visible || !opened) return;
     if (reduced) {
+      charge.value = 1;
       pop.value = 1;
       label.value = 1;
+      hint.value = 1;
       box.value = 0;
       return;
     }
-    // The box gives way as the item comes through it.
-    box.value = withTiming(0, { duration: 260, easing: Easing.out(Easing.quad) });
-    pop.value = withDelay(
-      staged ? 60 : 120,
-      withSequence(
-        withSpring(1.12, { damping: 9, stiffness: 260 }),
-        withSpring(1, { damping: 14, stiffness: 200 })
-      )
+    cancelAnimation(shake);
+    shake.value = 0.5;
+    // A tap can land mid-build. FINISHING the charge in one short move rather
+    // than cutting it means the rings still land on the centre — the wind-up
+    // is compressed, not thrown away, so a skipped reveal still resolves.
+    charge.value = withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) });
+    flash.value = withSequence(
+      withTiming(1, { duration: FLASH_UP_MS, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: FLASH_DOWN_MS, easing: Easing.in(Easing.quad) })
     );
-    label.value = withDelay(staged ? 280 : 340, withTiming(1, { duration: 220 }));
-  }, [visible, opened, reduced, staged, pop, label, box]);
+    wave.value = 0;
+    wave.value = withTiming(1, { duration: WAVE_MS, easing: Easing.out(Easing.cubic) });
+    // The box gives way as the item comes through it.
+    box.value = withTiming(0, { duration: 220, easing: Easing.in(Easing.quad) });
+    // ONE move, ease-out, no overshoot. Starts small at the burst's own centre
+    // so the card is born out of the flash rather than fading in over it.
+    pop.value = withDelay(50, withTiming(1, { duration: CARD_IN_MS, easing: Easing.out(Easing.cubic) }));
+    label.value = withDelay(LABEL_DELAY, withTiming(1, { duration: LABEL_IN_MS, easing: Easing.out(Easing.quad) }));
+    hint.value = withDelay(HINT_DELAY, withTiming(1, { duration: 420 }));
+    // The resting state is not a still: the card breathes for as long as you
+    // leave it there. It starts only once the card has arrived, so the
+    // entrance and the breath never fight over the same pixels.
+    float.value = withDelay(
+      CARD_IN_MS,
+      withRepeat(withTiming(1, { duration: FLOAT_MS, easing: Easing.inOut(Easing.quad) }), -1, true)
+    );
+  }, [visible, opened, reduced, charge, shake, flash, wave, pop, label, hint, box, float]);
 
   const scrimStyle = useAnimatedStyle(() => ({ opacity: scrim.value }));
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value * 0.92 }));
   const popStyle = useAnimatedStyle(() => ({
-    opacity: pop.value > 0 ? 1 : 0,
+    // Doubled, so the card is solid well before it is full size — it should
+    // read as an object growing, not as one dissolving in.
+    opacity: Math.min(1, pop.value * 2.2),
     transform: [
-      { scale: pop.value },
+      { scale: 0.55 + pop.value * 0.45 },
       // Rises OUT of the box: at pop 0 the card sits down where the lid was
       // and travels up into place as it grows. Without the lift the item
       // simply materialises in front of the box, which is a dissolve, not a
-      // reveal.
-      { translateY: staged ? (1 - Math.min(1, pop.value)) * (BOX_SIZE * 0.42) : 0 },
+      // reveal. A claim gets a shorter version of the same lift, and the
+      // resting breath rides on top of it once the entrance is over.
+      { translateY: (1 - pop.value) * (staged ? BOX_SIZE * 0.42 : 18) - float.value * 5 },
     ],
   }));
-  const boxStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(1, box.value),
-    transform: [{ scale: box.value }],
-  }));
+  const boxStyle = useAnimatedStyle(() => {
+    // The tremor: displacement and tilt both scale with the build, so the box
+    // is dead still when it lands and shaking itself apart by the end.
+    const swing = (shake.value - 0.5) * 2 * charge.value;
+    return {
+      opacity: Math.min(1, box.value),
+      transform: [
+        { translateX: swing * 5 },
+        { rotate: `${swing * 5}deg` },
+        { scale: box.value * (1 + charge.value * 0.06) },
+      ],
+    };
+  });
   const labelStyle = useAnimatedStyle(() => ({
     opacity: label.value,
-    transform: [{ translateY: (1 - label.value) * 10 }],
+    transform: [{ translateY: (1 - label.value) * 14 }, { scale: 0.86 + label.value * 0.14 }],
   }));
+  const hintStyle = useAnimatedStyle(() => ({ opacity: hint.value }));
   // The claim's shine sits at 55% because it is laid OVER a backdrop; the
   // lootbox fan is the backdrop and goes on at full strength.
   const rayAlpha = fromLootbox ? 1 : 0.55;
+  // The extra turn the build winds onto the fan is a CLAIM-only move. The
+  // lootbox fan is pinned to the rate its bolts were authored at, and a fan
+  // that spins up under bolts that do not is two pieces of art again.
+  const windUp = fromLootbox ? 0 : 200;
+  // ...and the sunburst may never scale BELOW 1. It is sized to the screen's
+  // diagonal exactly (see `raySize`), so shrinking it by even a few percent
+  // sweeps bare gold through the corners once a second.
+  const rayFloor = fromLootbox ? 1 : 0.94;
   const raysStyle = useAnimatedStyle(() => ({
-    opacity: rayAlpha * scrim.value,
-    transform: [{ rotate: `${spin.value * 360}deg` }],
+    opacity: rayAlpha * scrim.value * (0.34 + 0.66 * charge.value),
+    transform: [
+      { rotate: `${spin.value * 360 + charge.value * charge.value * windUp}deg` },
+      { scale: rayFloor + charge.value * 0.1 + flash.value * 0.08 },
+    ],
   }));
 
   const list = rewards || [];
   const headline = list.length > 1 ? `${list.length} rewards` : list[0]?.label;
   const rarity = list[0]?.kind === 'lootbox' ? list[0].key : null;
   const tint = (rarity && RARITY_COLOR[rarity]) || accent || brand.pink;
+  // The build's own ink. A rarity tint on the deep ink reads; the same tint on
+  // the lootbox gold does not, so the gold gets white and keeps the contrast.
+  const buildInk = fromLootbox ? '#FFFFFF' : tint;
 
   // Sized off the LONG edge so a square clip spans the whole screen rather
   // than sitting in it as a visible square. The container clips the overhang;
@@ -295,7 +498,7 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
   // diagonal would push their tips off screen and leave only the stubs.
   const boltBox = centredBox(fxSize, fxSize / BOLT_ASPECT);
 
-  // A tap during the box phase opens it now. Only once it is open does a tap
+  // A tap during the build ends it NOW. Only once the reward is out does a tap
   // dismiss — otherwise the first impatient tap throws away the reveal.
   const onTap = () => {
     if (!opened) return setOpened(true);
@@ -307,7 +510,7 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
       <Pressable
         style={styles.fill}
         onPress={onTap}
-        accessibilityLabel={opened ? 'Dismiss reward' : 'Open the box'}
+        accessibilityLabel={opened ? 'Dismiss reward' : staged ? 'Open the box' : 'Skip the reveal'}
       >
         {/* flat fill, then the full-bleed shine and confetti over it */}
         <Animated.View
@@ -335,15 +538,33 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
             </Animated.View>
           ) : null}
           {/* Real full-screen confetti, at whatever resolution the device has.
-              No-ops under Reduce Motion on its own. */}
-          {visible ? <Confetti count={34} /> : null}
+              Thrown at the HIT, not when the modal opens — paper already
+              falling while the screen is still winding up gives the ending
+              away. No-ops under Reduce Motion on its own. */}
+          {opened ? <Confetti count={40} /> : null}
         </View>
 
         <View style={styles.center} pointerEvents="none">
-          {/* The stage groups the box, the burst and the card so all three
-              share ONE centre. Centring them on the whole screen instead would
-              put the burst halfway between the card and its caption. */}
+          {/* The stage groups the build, the box, the burst and the card so
+              they all share ONE centre. Centring them on the whole screen
+              instead would put the burst halfway between the card and its
+              caption. */}
           <View style={styles.stage}>
+            {/* THE WIND-UP. Rings and sparks close on the point the reward is
+                about to occupy. `pop` is what fades them, so they are gone by
+                the time the card is full size without needing a clock of their
+                own — the thing arriving is what clears them away. */}
+            {!reduced ? (
+              <>
+                <ChargeRing charge={charge} fade={pop} color={buildInk} />
+                <ChargeRing charge={charge} fade={pop} color={buildInk} phase={0.35} />
+                {MOTES.map((i) => (
+                  <ChargeMote key={i} index={i} charge={charge} fade={pop} color={buildInk} />
+                ))}
+                <Shockwave wave={wave} color={buildInk} />
+              </>
+            ) : null}
+
             {/* The closed box, drawn UNDER the card — so when the two overlap
                 mid-reveal, the item is the thing in front. */}
             {staged ? (
@@ -381,6 +602,21 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
                   ))}
                 </View>
               </View>
+              {/* Twinkles on the card's own corners, riding its transform so
+                  they arrive with it. These are what keep the RESTING state
+                  alive: the burst is over in a second and a half, and without
+                  them the thing you are looking at while you read the label is
+                  a static picture. */}
+              {opened && !reduced ? (
+                <>
+                  <View style={[styles.spark, styles.sparkTop]} pointerEvents="none">
+                    <GameAnimation name="sparkleStar" size={62} loop />
+                  </View>
+                  <View style={[styles.spark, styles.sparkBottom]} pointerEvents="none">
+                    <GameAnimation name="sparkleStar" size={44} loop />
+                  </View>
+                </>
+              ) : null}
             </Animated.View>
           </View>
 
@@ -403,16 +639,26 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
                 {list.length > MAX_NAMED ? ` · +${list.length - MAX_NAMED} more` : ''}
               </Text>
             ) : null}
-            <Text
+            {/* Last in, on its own fade. The reveal has to look finished
+                before it asks to be dismissed. */}
+            <Animated.Text
               style={[
                 type.caption,
                 { color: fromLootbox ? INK_ON_GOLD_SOFT : 'rgba(255,255,255,0.5)', marginTop: space.sm },
+                hintStyle,
               ]}
             >
               Tap to continue
-            </Text>
+            </Animated.Text>
           </Animated.View>
         </View>
+
+        {/* THE HIT, over everything INCLUDING the card. A flash the card sits
+            on top of is a flash behind the card, which is a glow. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.fill, { backgroundColor: '#FFFFFF' }, flashStyle]}
+        />
       </Pressable>
     </Modal>
   );
@@ -438,5 +684,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   artRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  spark: { position: 'absolute' },
+  sparkTop: { top: -26, right: -22 },
+  sparkBottom: { bottom: -20, left: -24 },
   labelWrap: { alignItems: 'center', marginTop: space.lg, paddingHorizontal: space.xl },
 });

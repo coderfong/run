@@ -38,6 +38,7 @@ import { proContext } from '../config/proContexts';
 import usePro from '../hooks/usePro';
 import { useQuery } from '../hooks/useQuery';
 import BuyProSheet from '../components/BuyProSheet';
+import ProWelcome from '../components/ProWelcome';
 import { toast } from '../ui/toast';
 import {
   canShowAuto,
@@ -56,8 +57,13 @@ export function ProProvider({ children }) {
   // about. Without that, opening the app to the sign-in screen spends two
   // requests learning that nobody is signed in.
   const { signedIn } = useAuth();
+  // `revalidate` is passed HERE and nowhere else: this is the instance every
+  // padlock in the app reads, so it is the one that has to be able to correct
+  // itself. A launch-time read that timed out against a cold backend used to
+  // decide the whole session — see the header in hooks/usePro.js.
   const { pro, isPro: serverIsPro, isLifetime, inGrace, loading, refresh } = usePro({
     enabled: signedIn,
+    revalidate: true,
   });
 
   // Finished runs on this account. Drives every "has this person actually
@@ -86,6 +92,12 @@ export function ProProvider({ children }) {
 
   // { context, automatic } while open, null while closed.
   const [paywall, setPaywall] = useState(null);
+  // { returning } while the PRO welcome ceremony is up, null otherwise. Set a
+  // beat AFTER the paywall closes — presenting a second modal in the same tick
+  // an RN <Modal> is dismissing races on iOS ("presentation in progress").
+  const [welcome, setWelcome] = useState(null);
+  const welcomeTimer = useRef(null);
+  useEffect(() => () => clearTimeout(welcomeTimer.current), []);
   // Set when a purchase completes, so closing the sheet afterwards is not
   // recorded as a dismissal — the funnel would otherwise show every successful
   // subscription as an abandonment too.
@@ -182,10 +194,21 @@ export function ProProvider({ children }) {
     });
   }, []);
 
-  const onPurchased = useCallback(() => {
+  // Called by the sheet the instant a subscription is live — a fresh purchase,
+  // or a restore (`restored: true`, which only swaps the ceremony's headline).
+  // The sheet closes itself right after; the welcome opens once that dismissal
+  // is done.
+  const onPurchased = useCallback((info) => {
     purchasedRef.current = true;
     refresh?.();
+    clearTimeout(welcomeTimer.current);
+    welcomeTimer.current = setTimeout(
+      () => setWelcome({ returning: !!info?.restored }),
+      380
+    );
   }, [refresh]);
+
+  const closeWelcome = useCallback(() => setWelcome(null), []);
 
   /** Previews left on the free planner allowance. Infinity for PRO. */
   const plannerLeft = plannerPreviewsLeft(isPro);
@@ -242,6 +265,11 @@ export function ProProvider({ children }) {
       // --- dev ---
       devPro,
       setDevPro: __DEV__ ? setDevPro : () => {},
+      // Raise the post purchase ceremony without a sandbox transaction. Dev
+      // only, and it touches nothing but the local modal state.
+      previewProWelcome: __DEV__
+        ? (returning = false) => setWelcome({ returning: !!returning })
+        : () => {},
     }),
     [
       isPro, loading, isLifetime, inGrace, pro, refresh, canSell, canShowPro, openPaywall, closePaywall,
@@ -261,6 +289,14 @@ export function ProProvider({ children }) {
         automatic={!!paywall?.automatic}
         onClose={closePaywall}
         onPurchased={onPurchased}
+      />
+      {/* The payoff for the largest thing anyone does in the app. Mounted here
+          for the same reason the sheet is: it has to survive the screen behind
+          it navigating away. */}
+      <ProWelcome
+        visible={!!welcome}
+        returning={!!welcome?.returning}
+        onClose={closeWelcome}
       />
     </ProContext.Provider>
   );
@@ -294,6 +330,7 @@ export function useProEntitlement() {
       spendPlannerPreview: () => 0,
       devPro: null,
       setDevPro: () => {},
+      previewProWelcome: () => {},
     }
   );
 }

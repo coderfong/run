@@ -4,8 +4,8 @@ recipient's notif_prefs. Delivery is best-effort — a failed push never fails
 the request that triggered it — but failures are now logged and a token
 Expo reports as dead is pruned, instead of being silently retried forever.
 
-Categories: stolen | captured | clan_goal | kudos | season | recap | pasers |
-paserby.
+Categories: stolen | defended | captured | reminder | clan_goal | kudos |
+season | recap | pasers | paserby.
 """
 
 import json
@@ -26,8 +26,14 @@ EXPO_URL = "https://exp.host/--/api/v2/push/send"
 # name) — every call site today passes a hardcoded literal, but this
 # whitelist is what keeps that true instead of just assumed.
 CATEGORIES = {
-    "stolen", "captured", "clan_goal", "kudos", "season", "recap", "pasers", "paserby",
+    "stolen", "defended", "captured", "reminder", "clan_goal", "kudos",
+    "season", "recap", "pasers", "paserby",
 }
+
+# Alerts that describe somebody actively contesting the recipient's territory
+# deserve the high-priority Android channel. Everything else still arrives,
+# but it should not pretend to be urgent.
+URGENT_CATEGORIES = {"stolen", "defended"}
 
 
 def _expo_send(messages):
@@ -71,8 +77,13 @@ def _expo_send(messages):
 
 
 def notify(user_ids, category, title, body, data=None, actor_id=None):
-    """Open an own session (runs post-response), respect prefs, write the
-    in-app inbox row, then push.
+    """Open an own session (runs post-response), write every recipient's
+    in-app inbox row, then push to recipients who allow this category.
+
+    Notification preferences intentionally gate only the OUT-OF-APP push. The
+    inbox is the durable history of what happened in the game; turning off a
+    noisy lock-screen category must not make attacks, captures or social
+    events disappear from the app itself.
 
     `actor_id` is the user who CAUSED this — the runner who took your land,
     gave you kudos, sent the request. The inbox shows their portrait, so pass
@@ -85,15 +96,16 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
         return
     db = SessionLocal()
     try:
-        allowed = []
-        for uid in set(user_ids):
+        recipients = list(dict.fromkeys(str(uid) for uid in user_ids if uid))
+        push_allowed = []
+        for uid in recipients:
             pref = db.execute(
                 text(f"SELECT COALESCE((SELECT {category} FROM notif_prefs WHERE user_id = :u), true)"),
                 {"u": uid},
             ).scalar()
             if pref:
-                allowed.append(uid)
-        if not allowed:
+                push_allowed.append(uid)
+        if not recipients:
             return
         # Category always rides inside the structured payload too. Expo push
         # listeners receive only `data`, while the inbox has a first-class
@@ -105,7 +117,7 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
         event_data = json.loads(event_json)
         # Inbox rows (the bell) — written for every allowed recipient even if
         # they have no push token registered.
-        for uid in allowed:
+        for uid in recipients:
             db.execute(
                 text(
                     "INSERT INTO notifications (user_id, category, title, body, actor_id, data) "
@@ -118,13 +130,29 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
                  "d": event_json},
             )
         db.commit()
+        if not push_allowed:
+            return
         # user_id is uuid; the bound list arrives as text[] — cast the column.
         rows = db.execute(
-            text("SELECT token FROM device_tokens WHERE user_id::text = ANY(:ids)"),
-            {"ids": allowed},
+            text(
+                "SELECT d.token, d.user_id::text, "
+                "(SELECT COUNT(*) FROM notifications n "
+                " WHERE n.user_id = d.user_id AND NOT n.read) "
+                "FROM device_tokens d WHERE d.user_id::text = ANY(:ids)"
+            ),
+            {"ids": push_allowed},
         ).fetchall()
         messages = [
-            {"to": r[0], "title": title, "body": body, "data": event_data, "sound": "default"}
+            {
+                "to": r[0],
+                "title": title,
+                "body": body,
+                "data": event_data,
+                "sound": "default",
+                "badge": int(r[2] or 1),
+                "channelId": "territory-alerts" if category in URGENT_CATEGORIES else "game-events",
+                "priority": "high" if category in URGENT_CATEGORIES else "default",
+            }
             for r in rows
             if r[0]
         ]

@@ -15,8 +15,8 @@ import AppIcon from '../components/AppIcon';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
-import { NB, brand, fonts, nbRadius, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
-import { Card, Framed, Row, Sheet, Skeleton, Screen, OutlinedText, ToonButton, HardShadow } from '../components/ui';
+import { NB, brand, fonts, nbRadius, radius, shadow, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { Card, Framed, Row, Sheet, Skeleton, Screen, OutlinedText, ToonButton } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
 import GameAnimation from '../components/GameAnimation';
@@ -76,6 +76,15 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
   const cosmeticReward = rewards.find((reward) => reward.kind === 'cosmetic');
   const [cosmeticSlot, cosmeticId] = cosmeticReward?.key?.split(':') || [];
   const cosmeticRarity = getItem(cosmeticSlot, cosmeticId)?.rarity;
+  // ART ONLY. A collectible tile shows the object and nothing else — its
+  // rarity is said by the COLOUR OF THE BOX round it, not by a grey caption
+  // under it. Fifty of those captions down the page was a column of small text
+  // on a screen whose whole job is the artwork, and the shop and the studio
+  // grids had already dropped theirs for the same reason.
+  const rarityTint = cosmeticRarity ? RARITY_COLOR[cosmeticRarity] : null;
+  // Rarity wins the ink when there is one; the claim state is still readable
+  // off the heavier line, the tinted paper and the pulse.
+  const tint = rarityTint || (claimable ? accent : colors.border);
   // Generated chrome; each falls back to the code-drawn version when absent.
   //
   // NOTE: tile-free / tile-pro are deliberately NOT used. They're 9-slice
@@ -103,8 +112,8 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
     >
       <Framed
         frame={frameVariant('card', `${isPro ? 'pro' : 'free'}:${rewards.map((r) => r.key).join(':')}`)}
-        tint={claimable ? accent : colors.border}
-        fill={claimable ? withAlpha(accent, 0.13) : colors.card}
+        tint={tint}
+        fill={claimable ? withAlpha(tint, 0.16) : colors.card}
         weight={claimable ? INK.medium : INK.thin}
         pose={framePose(rewards.map((r) => r.key).join(':'))}
         inset={false}
@@ -131,19 +140,6 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
           />
         ))}
       </Pulse>
-      {cosmeticReward ? (
-        <View style={styles.rewardNameRow}>
-          <View
-            style={[
-              styles.rewardRarityDot,
-              { backgroundColor: RARITY_COLOR[cosmeticRarity] || accent },
-            ]}
-          />
-          <Text style={[type.caption, styles.rewardName]} numberOfLines={2}>
-            {cosmeticReward.label}
-          </Text>
-        </View>
-      ) : null}
       {claimed ? (
         chipClaimedArt ? (
           <Image source={chipClaimedArt} style={styles.chipArt} resizeMode="contain" fadeDuration={0} />
@@ -184,6 +180,42 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
   );
 }
 
+// A lane heading — FREE on the left, PASER PRO on the right.
+//
+// Same construction as ToonButton: a drawn frame filled with the lane's colour,
+// an outlined label, and the hard drop carried by the WRAPPER rather than by a
+// HardShadow behind it. That distinction matters here — a framed box has a
+// wobbly hand-inked silhouette, and a hard rectangle behind it shows at every
+// corner where the ink wanders in, which is the tell these pills had.
+function LaneHead({ label, fill, seed }) {
+  return (
+    <View style={styles.laneWrap}>
+      <Framed
+        frame={frameVariant('action', seed)}
+        tint={toon.ink}
+        fill={fill}
+        weight={INK.base}
+        pose={framePose(seed)}
+        inset={false}
+        style={styles.lane}
+        contentStyle={styles.laneContent}
+      >
+        <OutlinedText
+          style={styles.laneText}
+          outline={toon.ink}
+          width={2}
+          fit
+          minimumFontScale={0.7}
+          numberOfLines={1}
+          containerStyle={styles.laneLabel}
+        >
+          {label}
+        </OutlinedText>
+      </Framed>
+    </View>
+  );
+}
+
 // The center spine: a continuous line with the tier diamond on it. Reached
 // tiers fill solid; the NEXT tier gets the bright ring so the eye lands on
 // what you're running toward.
@@ -191,12 +223,17 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
 // skips the 45° transform the code-drawn square needs) and falls back to the
 // original rotated square otherwise.
 //
-// WHERE THE NUMBER GOES. A gem is not a circle: it is widest across its crown,
-// near the top, and tapers to a point. Centring the number in the gem's BOX
-// therefore drops it into the taper, where a two-digit level overhangs both
-// edges. It sits on the crown instead — up by CROWN_OFFSET — and is capped to
-// the width actually available there, so 7 and 47 both fit inside the stone.
-function Spine({ level, reached, current }) {
+// WHERE THE NUMBER GOES. Dead centre of the stone, on both axes, with an
+// explicit line height so the centring is arithmetic rather than a guess at
+// the platform's default leading. It used to ride up on the crown, which is
+// the widest part of the gem — a defensible place to put type, but it read as
+// a number that had slipped, and two digits at 13pt clear the taper anyway.
+//
+// PULSE. A tier you can collect breathes, the same slow swell the reward tiles
+// use. That is the ONE thing the spine can say that the tiles either side of
+// it cannot: with both tracks claimable the row has two pulsing tiles and no
+// centre, and with one claimed and one not it has a single lopsided one.
+function Spine({ level, reached, current, claimable = false }) {
   const { colors } = useTheme();
   const fill = reached ? brand.pink : colors.card;
   const ring = current ? '#F5C451' : reached ? brand.pink : colors.border;
@@ -210,7 +247,7 @@ function Spine({ level, reached, current }) {
     <View style={styles.spine}>
       <View style={[styles.spineLine, { backgroundColor: reached ? withAlpha(brand.pink, 0.4) : colors.border }]} />
       {gem ? (
-        <View style={styles.gemWrap}>
+        <Pulse active={claimable} style={styles.gemWrap}>
           <Image
             source={gem}
             style={styles.gemArt}
@@ -226,23 +263,25 @@ function Spine({ level, reached, current }) {
           >
             {String(level)}
           </OutlinedText>
-        </View>
+        </Pulse>
       ) : (
-        <View
-          style={[
-            styles.diamond,
-            { backgroundColor: fill, borderColor: ring, borderWidth: current ? 3 : 2.5 },
-          ]}
-        >
-          <OutlinedText
-            style={[...numStyle, styles.diamondText]}
-            outline={toon.ink}
-            width={reached ? 1.5 : 0}
-            numberOfLines={1}
+        <Pulse active={claimable} style={styles.gemWrap}>
+          <View
+            style={[
+              styles.diamond,
+              { backgroundColor: fill, borderColor: ring, borderWidth: current ? 3 : 2.5 },
+            ]}
           >
-            {String(level)}
-          </OutlinedText>
-        </View>
+            <OutlinedText
+              style={[...numStyle, styles.diamondText]}
+              outline={toon.ink}
+              width={reached ? 1.5 : 0}
+              numberOfLines={1}
+            >
+              {String(level)}
+            </OutlinedText>
+          </View>
+        </Pulse>
       )}
     </View>
   );
@@ -576,8 +615,16 @@ export default function ProgressionScreen() {
           frame={frameVariant('box', 'claim-bar')}
           tint={brand.pink}
           fill={colors.card}
-          weight={INK.thin}
+          // A hero row on the busiest screen in the app, drawn at the hairline
+          // the small chips wear: the line was finer than the ink on the button
+          // sitting inside it. Base is this box's weight.
+          weight={INK.base}
           pose={framePose('claim-bar')}
+          // The frame was drawn tight to its contents — CLAIM ALL's own hard
+          // drop landed ON the pink line, and the wording had no air above or
+          // below it. `inset` is breathing room ON TOP of the ink clearance, so
+          // this is the number that fixes it rather than a padding on the row.
+          inset={space.md}
           style={styles.claimBar}
           contentStyle={styles.claimBarContent}
         >
@@ -678,23 +725,16 @@ export default function ProgressionScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Solid, code-drawn lane buttons; the labels never depend on artwork. */}
+      {/* The lane headings wear the drawn frames, like everything else on this
+          page. They were the last two code-drawn rounded pills on a screen made
+          of hand-inked boxes, and a perfect radius next to fifty wobbly ones is
+          exactly the seam the pack exists to remove. */}
       <View style={styles.trackHead}>
-        <HardShadow color={toon.ink} offset={NB.offsetSm} radius={radius.pill} style={styles.ticketWrap}>
-          <View style={[styles.ticket, styles.ticketFree]}>
-            <View style={styles.ticketHighlight} pointerEvents="none" />
-            <Text style={[toonType.label, styles.ticketText, { color: '#fff' }]}>FREE</Text>
-          </View>
-        </HardShadow>
+        <LaneHead label="FREE" fill={brand.pink} seed="lane-free" />
         {showPremium ? (
           <>
             <View style={{ width: SPINE_W }} />
-            <HardShadow color={toon.ink} offset={NB.offsetSm} radius={radius.pill} style={styles.ticketWrap}>
-              <View style={[styles.ticket, styles.ticketPro]}>
-                <View style={styles.ticketHighlight} pointerEvents="none" />
-                <Text style={[toonType.label, styles.ticketText, styles.ticketTextPro]}>PASER PRO</Text>
-              </View>
-            </HardShadow>
+            <LaneHead label="PASER PRO" fill={GOLD} seed="lane-pro" />
           </>
         ) : null}
       </View>
@@ -703,9 +743,17 @@ export default function ProgressionScreen() {
       {ladder.map((row) => {
         const reached = level >= row.level;
         const current = level + 1 === row.level;
+        const freeOpen = reached && !claimed.has(`${row.level}:free`);
+        const proOpen = reached && premium_active && !claimed.has(`${row.level}:premium`);
+        // Either side of the spine still having something on it is what makes
+        // the stone breathe. Gated premium tiers do NOT count: that tier opens
+        // a paywall, not a reward, and a gem beckoning at it would be a lie.
+        const rowClaimable = freeOpen || proOpen;
         return (
           <View key={row.level} style={[styles.tierRow, !showPremium && styles.singleTierRow]}>
-            {!showPremium ? <Spine level={row.level} reached={reached} current={current} /> : null}
+            {!showPremium ? (
+              <Spine level={row.level} reached={reached} current={current} claimable={rowClaimable} />
+            ) : null}
             <TrackTile
               rewards={row.rewards}
               accent={brand.pink}
@@ -719,7 +767,7 @@ export default function ProgressionScreen() {
             />
             {showPremium ? (
               <>
-                <Spine level={row.level} reached={reached} current={current} />
+                <Spine level={row.level} reached={reached} current={current} claimable={rowClaimable} />
                 <TrackTile
                   rewards={row.premium}
                   accent={GOLD}
@@ -759,17 +807,23 @@ export default function ProgressionScreen() {
   );
 }
 
-const SPINE_W = 56;
+const SPINE_W = 60;
 // Reward art: ONE size for every kind, so the ladder is a grid rather than an
-// assortment. Up from 52/38 — the tiles gained the room the CLAIM pill used to
-// take, and the lootboxes gained the room their border used to take.
-const ART_SIZE = 64;
-const ART_SIZE_PAIR = 46;
-// The gem's crown sits above its box centre; the level number rides with it.
-const GEM_BOX = 44;
-const CROWN_OFFSET = 5;
-// Lane header pill height: the PRO crest is 22 plus breathing room.
-const LANE_H = 40;
+// assortment. Up from 64/46 — the tile is nothing but the object now that the
+// caption has gone, so the object is what should have the room.
+const ART_SIZE = 76;
+// A two-reward tier has to fit both objects plus the gap inside the narrowest
+// tile the ladder ever draws — a 375pt phone leaves ~137 per column once the
+// gutter and the spine are taken out, and 54 overran it.
+const ART_SIZE_PAIR = 50;
+// The gem box, and the line the level number is set on. Both explicit, because
+// the number is centred by arithmetic: (box - line) / 2 on each axis.
+const GEM_BOX = 48;
+const GEM_LINE = 22;
+// Lane header height. Taller than the 40 the code-drawn pill used: a drawn
+// frame spends real height on its own ink, and 40 left the label sitting in the
+// line rather than inside the box.
+const LANE_H = 48;
 
 const styles = StyleSheet.create({
   // The banner art is the card. `overflow: hidden` is what lets a cover image
@@ -792,12 +846,12 @@ const styles = StyleSheet.create({
   headerText: { color: '#ffffff' },
   headerSubText: { color: 'rgba(255,255,255,0.78)' },
 
-  claimAllBtn: { minWidth: 118 },
-  claimBar: { marginTop: space.md },
+  claimAllBtn: { minWidth: 132 },
+  claimBar: { marginTop: space.lg },
   claimBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
+    gap: space.lg,
   },
 
   xpTrack: { height: 10, borderRadius: 5, overflow: 'hidden', alignSelf: 'stretch', marginTop: space.md },
@@ -806,43 +860,30 @@ const styles = StyleSheet.create({
   boxCardContent: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   passBanner: { marginTop: space.md },
 
-  trackHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xl, marginBottom: space.sm },
-  // Flat fills plus an ink border and small highlight give the labels the same
-  // tactile button language as the rest of the pass. The hard drop is the
-  // HardShadow wrapper's job now — it used to be iOS-only shadow props that
-  // Android renders as a blurred material shadow pointing the wrong way.
-  ticketWrap: { flex: 1 },
-  ticket: {
-    flex: 1, height: LANE_H, flexDirection: 'row',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2.5, borderColor: toon.ink, borderRadius: radius.pill,
-  },
-  ticketFree: { backgroundColor: brand.pink },
-  ticketPro: { backgroundColor: GOLD },
-  ticketHighlight: {
-    position: 'absolute', top: 4, left: 12, right: 12, height: 7,
-    borderRadius: radius.pill, backgroundColor: 'rgba(255,255,255,0.28)',
-  },
-  ticketText: { letterSpacing: 0.9 },
-  ticketTextPro: { color: toon.ink },
+  trackHead: { flexDirection: 'row', alignItems: 'center', marginTop: space.xl, marginBottom: space.md },
+  // The hard drop rides on the wrapper, not on a HardShadow behind the box —
+  // see LaneHead. shadow.hard is iOS-only by design (theme/tokens.js); on
+  // Android the frame's own ink carries the weight.
+  laneWrap: { flex: 1, ...shadow.hard(NB.ink, NB.offsetSm) },
+  lane: { height: LANE_H },
+  laneContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.md },
+  laneLabel: { alignSelf: 'stretch' },
+  laneText: { ...toonType.button, fontSize: 16, letterSpacing: 0.9, color: '#ffffff' },
 
   tierRow: { flexDirection: 'row', alignItems: 'stretch' },
   singleTierRow: { paddingRight: SPINE_W },
-  tilePress: { flex: 1, marginVertical: space.xs },
-  tile: { flex: 1, minHeight: 144 },
+  // Tiers stand apart rather than touching: the ladder is fifty framed boxes,
+  // and at 4pt of gap the drawn lines of neighbouring rows read as one grid
+  // rule between them.
+  tilePress: { flex: 1, marginVertical: space.sm },
+  tile: { flex: 1, minHeight: 132 },
   tileContent: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6,
-    padding: space.md, paddingBottom: space.lg + 6,
-    // Grown with the artwork. The bottom padding still belongs to the
-    // locked/claimed chip, which is the only thing that sits down there now.
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    padding: space.md, paddingBottom: space.xl,
+    // The bottom padding belongs to the locked/claimed chip, which is the only
+    // thing that sits down there now that the caption has gone.
   },
-  artRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: ART_SIZE + 4 },
-  rewardNameRow: {
-    minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
-    paddingHorizontal: 2,
-  },
-  rewardRarityDot: { width: 6, height: 6, borderRadius: 3 },
-  rewardName: { flexShrink: 1, textAlign: 'center', lineHeight: 13 },
+  artRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, minHeight: ART_SIZE + 4 },
   chipArt: { position: 'absolute', bottom: 4, width: 26, height: 26 },
   stamp: { position: 'absolute', width: '86%', height: '52%', opacity: 0.75 },
   state: {
@@ -859,17 +900,21 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '45deg' }],
   },
   diamondText: { transform: [{ rotate: '-45deg' }] },
-  // Art variant: no rotation, and the gem is drawn larger than its 40px slot
-  // so the glow/sparkles can bleed past the spine without clipping.
+  // Art variant: no rotation, and the gem is drawn larger than its slot so the
+  // glow/sparkles can bleed past the spine without clipping.
   gemWrap: { width: GEM_BOX, height: GEM_BOX, alignItems: 'center', justifyContent: 'center' },
   // Bold, not semibold: at 14px on a saturated stone, semibold read as a smudge.
-  gemNumber: { ...toonType.label, fontFamily: fonts.bold, fontSize: 15, letterSpacing: 0 },
+  // The line height is stated so the box below can centre it exactly.
+  gemNumber: { ...toonType.label, fontFamily: fonts.bold, fontSize: 16, lineHeight: GEM_LINE, letterSpacing: 0 },
   // Two digits get tighter tracking and a hair less size rather than a smaller
-  // gem — the stones have to stay the same size down the whole spine.
-  gemNumberWide: { fontSize: 13, letterSpacing: -0.5 },
-  gemNumberBox: { position: 'absolute', width: GEM_BOX - 12, top: GEM_BOX / 2 - 11 - CROWN_OFFSET },
+  // gem — the stones have to stay the same size down the whole spine. The line
+  // height does NOT change with it, so the centring holds either way.
+  gemNumberWide: { fontSize: 14, letterSpacing: -0.5 },
+  // Dead centre of the stone. `alignItems: center` on gemWrap places an
+  // absolute child horizontally, so only the vertical needs stating.
+  gemNumberBox: { position: 'absolute', width: GEM_BOX - 10, top: (GEM_BOX - GEM_LINE) / 2 },
   // Slightly larger than the slot so the current tier's glow/sparkles read,
-  // but kept inside SPINE_W (56) — at 60 it overhung the spine and collided
-  // with the reward tiles either side.
-  gemArt: { position: 'absolute', width: 52, height: 52 },
+  // but kept inside SPINE_W — overhang collides with the reward tiles either
+  // side, and the pulse now swells it by another 7% at the top of its breath.
+  gemArt: { position: 'absolute', width: 54, height: 54 },
 });

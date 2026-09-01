@@ -405,14 +405,25 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
 
 // Contested-zone outline: a bright per-feature stroke whose opacity the
 // screen pulses. Rendered above the base board for recently-claimed land.
-export function ContestedOutline({ id = 'contested', featureCollection, opacity = 0.8 }) {
+// `transition` (ms) hands the opacity change to Mapbox rather than to us: the
+// layer eases to each new value instead of cutting to it, which is what makes a
+// stepped pulse read as breathing. 0 (the default) keeps the hard set, which is
+// what a one off overlay wants.
+export function ContestedOutline({ id = 'contested', featureCollection, opacity = 0.8, transition = 0 }) {
   if (!MAPBOX_AVAILABLE) return null;
   if (!featureCollection?.features?.length) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={featureCollection}>
       <LineLayer
         id={`${id}-line`}
-        style={{ lineColor: ['get', 'strokeColor'], lineWidth: 3.5, lineOpacity: opacity, lineCap: 'round', lineJoin: 'round' }}
+        style={{
+          lineColor: ['get', 'strokeColor'],
+          lineWidth: 3.5,
+          lineOpacity: opacity,
+          ...(transition ? { lineOpacityTransition: { duration: transition, delay: 0 } } : null),
+          lineCap: 'round',
+          lineJoin: 'round',
+        }}
       />
     </ShapeSource>
   );

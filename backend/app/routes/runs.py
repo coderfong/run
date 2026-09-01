@@ -520,7 +520,29 @@ def _live(alias: str) -> str:
     )
 
 
-def _club_support_sql(owner: str, overlap_expr: str, source: str = "territories") -> str:
+def _rank_scope_sql(tier: int, alias: str, prefix: str) -> tuple[str, dict]:
+    """SQL + bind values selecting users in exactly one live rank tier.
+
+    Territory rows do not freeze the rank they were created in: every plot
+    follows its owner's decayed points. Combat must use that same live reading
+    as ``/map-polygons`` or a runner could see one board and fight another.
+    """
+    floor, ceil = ranks.tier_bounds(tier)
+    points = ranks.decay_sql(alias)
+    clause = f"({points}) >= :{prefix}_floor"
+    params = {f"{prefix}_floor": floor}
+    if ceil is not None:
+        clause += f" AND ({points}) < :{prefix}_ceil"
+        params[f"{prefix}_ceil"] = ceil
+    return clause, params
+
+
+def _club_support_sql(
+    owner: str,
+    overlap_expr: str,
+    source: str = "territories",
+    rank_clause: str = "",
+) -> str:
     """The strengths of every clubmate territory overlapping this ground.
 
     Returns the RAW list, ordered strongest first — the weighting lives in
@@ -530,12 +552,18 @@ def _club_support_sql(owner: str, overlap_expr: str, source: str = "territories"
     apart over the claim formula.
     """
     extra = "" if source != "territories" else f" AND t2.verified AND {_live('t2')}"
+    # ``local`` is already rank-filtered by _placement_breakdown. The live
+    # territory table needs its owner's user row so cross-tier clubmates cannot
+    # lend defence into a fight they are not eligible to join.
+    rank_join = " JOIN users support_u ON support_u.id = t2.user_id" if rank_clause else ""
+    rank_filter = f" AND {rank_clause}" if rank_clause else ""
     return f"""COALESCE((
         SELECT array_agg(t2.strength ORDER BY t2.strength DESC)
-        FROM {source} t2
+        FROM {source} t2{rank_join}
         WHERE {owner}.clan_id IS NOT NULL
           AND t2.clan_id = {owner}.clan_id
           AND t2.id <> {owner}.id{extra}
+          {rank_filter}
           AND ST_Intersects(t2.polygon, {overlap_expr})
     ), ARRAY[]::double precision[])"""
 
@@ -686,7 +714,9 @@ def _pose_from_payload(payload):
     return clamp_t(t), normalise_rotation(deg)
 
 
-def _placement_breakdown(db: Session, user, polys, strength: float):
+def _placement_breakdown(
+    db: Session, user, polys, strength: float, rank_tier: int | None = None
+):
     """What each candidate placement would actually do to the map.
 
     Two queries for the whole list rather than two per candidate: the claim
@@ -706,6 +736,9 @@ def _placement_breakdown(db: Session, user, polys, strength: float):
         return out
 
     clan_id = str(user.clan_id) if user.clan_id else None
+    if rank_tier is None:
+        rank_tier = ranks.status(db, user.id)["tier"]
+    rank_clause, rank_params = _rank_scope_sql(rank_tier, "u", "claim_rank")
 
     # Ground nobody holds: the candidate minus the union of everything under
     # it. Done as a difference rather than "area minus overlaps" because two
@@ -725,8 +758,11 @@ def _placement_breakdown(db: Session, user, polys, strength: float):
             env AS (SELECT ST_Envelope(ST_Collect(g)) AS e FROM cand),
             near AS (
                 SELECT ST_Union(t.polygon) AS g
-                FROM territories t, env
+                FROM territories t
+                JOIN users u ON u.id = t.user_id
+                CROSS JOIN env
                 WHERE t.verified AND """ + _live("t") + """
+                  AND """ + rank_clause + """
                   AND ST_Intersects(t.polygon, env.e)
             )
             SELECT c.idx,
@@ -735,7 +771,7 @@ def _placement_breakdown(db: Session, user, polys, strength: float):
             FROM cand c CROSS JOIN near
             """
         ),
-        {"wkts": wkts, **_defence_params()},
+        {"wkts": wkts, **_defence_params(), **rank_params},
     ).fetchall():
         out[row[0] - 1]["area_m2"] = float(row[1] or 0.0)
         out[row[0] - 1]["new_m2"] = float(row[2] or 0.0)
@@ -755,8 +791,11 @@ def _placement_breakdown(db: Session, user, polys, strength: float):
             -- for every position and heading.
             local AS MATERIALIZED (
                 SELECT t.id, t.user_id, t.clan_id, t.strength, t.polygon
-                FROM territories t, env
+                FROM territories t
+                JOIN users u ON u.id = t.user_id
+                CROSS JOIN env
                 WHERE t.verified AND """ + _live("t") + """
+                  AND """ + rank_clause + """
                   AND ST_Intersects(t.polygon, env.e)
             ),
             hits AS (
@@ -773,7 +812,12 @@ def _placement_breakdown(db: Session, user, polys, strength: float):
             WHERE ST_Area(h.ov::geography) >= :min_area
             """
         ),
-        {"wkts": wkts, "min_area": PLACEMENT_MIN_M2, **_defence_params()},
+        {
+            "wkts": wkts,
+            "min_area": PLACEMENT_MIN_M2,
+            **_defence_params(),
+            **rank_params,
+        },
     ).fetchall()
 
     me = str(user.id)
@@ -887,7 +931,13 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float, s
     """
     limit = settings.claim_options_cache_size
     key = str(run.id)
-    revision = _territory_revision(db, route) if limit > 0 else None
+    rank_tier = ranks.status(db, user.id)["tier"]
+    # A tier change moves every eligible opponent at once even if no territory
+    # row changed. Keep it in the cache fingerprint so an options screen opened
+    # across a promotion/decay cannot replay the previous division's fights.
+    revision = (
+        f"rank={rank_tier}:{_territory_revision(db, route)}" if limit > 0 else None
+    )
     if limit > 0:
         hit = _OPTIONS_CACHE.get(key)
         if hit and hit[0] == revision:
@@ -895,7 +945,13 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float, s
             return hit[1], hit[2]
 
     grid = _claim_grid(route, area, stamp)
-    breakdowns = _placement_breakdown(db, user, [g[4] for g in grid], strength) if grid else []
+    breakdowns = (
+        _placement_breakdown(
+            db, user, [g[4] for g in grid], strength, rank_tier=rank_tier
+        )
+        if grid
+        else []
+    )
     cells = [
         {
             "placement": pi,
@@ -941,6 +997,10 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
     neutral_left = economy.neutral_claims_remaining(db, user.id)
     xp_left = economy.claim_xp_allowance(db, user.id)
     rank_left = economy.neutral_rank_allowance(db, user.id)
+    # Same tier the claim itself will fight on (see the note on `rank_tier` in
+    # /claim-territory) — the preview must quote the tier-scaled steal reward,
+    # or a runner near Mythic sees a bigger number than the claim will pay.
+    rank_tier = ranks.status(db, user.id)["tier"]
     run_xp = round((run.distance_m / 1000.0) * settings.xp_per_km)
 
     for p in placements:
@@ -965,7 +1025,7 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
             min(ranks.POINTS_CLAIM, rank_left)
             if p.action == economy.ACTION_EMPTY
             else ranks.POINTS_CLAIM
-        ) + (ranks.POINTS_STEAL if p.enemy_m2 > PLACEMENT_MIN_M2 else 0)
+        ) + (ranks.steal_reward(rank_tier) if p.enemy_m2 > PLACEMENT_MIN_M2 else 0)
 
         # Why this particular move is closed, in the words the claim endpoint
         # would refuse with — so the button explains itself before it is
@@ -1116,6 +1176,17 @@ def claim_options(
     # block reinforces it, but no border moves and nothing is gained.
     most_land = best(lambda p: p.new_m2)
     available_most_land = best(lambda p: p.new_m2 if p.available else 0.0)
+    # ATTACK points at the fight, and there is still a fight when the runner
+    # would lose it. Where a border can actually be taken it points at the
+    # biggest steal; where every rival on this stretch out-defends the runner
+    # it points at the most rival ground instead of going dead. A closed
+    # button hid the one pose the runner wanted to look at — who is holding
+    # this ground and how much of it holds — and read as "no rivals here",
+    # which is the opposite of the truth. The breakdown does the explaining
+    # from there.
+    biggest_steal = best(lambda p: p.enemy_m2, PLACEMENT_MIN_M2)
+    if biggest_steal is None:
+        biggest_steal = best(lambda p: p.defended_m2, PLACEMENT_MIN_M2)
     # The shape itself, at rest and unturned, plus the pivot it turns about and
     # the route it slides along. This is what makes the control continuous: the
     # client transforms these three locally at gesture speed and only asks the
@@ -1147,9 +1218,7 @@ def claim_options(
         # into re-covering land the runner already holds either.
         default_index=available_most_land if available_most_land is not None else plain,
         most_land_index=most_land,
-        biggest_steal_index=best(
-            lambda p: p.enemy_m2, PLACEMENT_MIN_M2
-        ),
+        biggest_steal_index=biggest_steal,
         best_defence_index=best(
             lambda p: p.mine_m2, PLACEMENT_MIN_M2
         ),
@@ -1357,10 +1426,15 @@ def claim_territory(
     # not get the cheap rate for storming a border. Affordability is checked
     # before any mutation, so a blocked claim costs nothing.
     first_of_day = economy.claims_today(db, user.id) == 0
+    # The runner's live rank tier, read once and used for every overlap query
+    # from here down: the price breakdown, and the claim itself. Both must
+    # score the fight against the same division the runner is on.
+    rank_tier = ranks.status(db, user.id)["tier"]
     action = economy.ACTION_EMPTY
     if claim_poly is not None:
         b = _placement_breakdown(
-            db, user, [claim_poly], claim_strength(run.distance_m, run.duration_s)
+            db, user, [claim_poly], claim_strength(run.distance_m, run.duration_s),
+            rank_tier=rank_tier,
         )[0]
         action = economy.claim_action(
             b["area_m2"], b["enemy_m2"], b["defended_m2"], b["mine_m2"]
@@ -1417,6 +1491,7 @@ def claim_territory(
         strength=claim_strength(run.distance_m, run.duration_s),
         verified=run.verified,
         clan_id=user.clan_id,
+        rank_tier=rank_tier,
         lifetime_for=lambda r: claim_lifetime_days(run.distance_m, run.duration_s, r),
     )
     run.claimed_at = datetime.utcnow()
@@ -1482,18 +1557,24 @@ def claim_territory(
             )
     if claim_points > 0:
         ranks.award(db, user.id, claim_points, "claim")
+    # Both sides of every steal_events row are in `rank_tier`'s bracket by
+    # construction (combat is rank-scoped — see the note on `rank_tier`
+    # above), so it alone picks the tier-scaled rate for both attacker and
+    # victim. See ranks.steal_reward/loss_penalty/defend_reward: flat through
+    # Gold, then the exchange tilts toward the defender as the tier rises, so
+    # the top of the ladder has to be held, not just reached.
     for ev in steal_events:
         if ev["area_m2"] < STEAL_LEDGER_MIN_M2:
             continue
         if ev["defended"]:
             # The attack bounced — the DEFENDER is the one who earned here.
-            ranks.award(db, ev["victim_id"], ranks.POINTS_DEFEND, "defend")
+            ranks.award(db, ev["victim_id"], ranks.defend_reward(rank_tier), "defend")
         else:
             # A steal moves points BOTH ways: the attacker gains, the victim
             # loses. Without the loss side, rank could only ever go up and
             # would just be a slower level.
-            ranks.award(db, user.id, ranks.POINTS_STEAL, "steal")
-            ranks.award(db, ev["victim_id"], ranks.POINTS_LOST, "lost_ground")
+            ranks.award(db, user.id, ranks.steal_reward(rank_tier), "steal")
+            ranks.award(db, ev["victim_id"], ranks.loss_penalty(rank_tier), "lost_ground")
 
     goal_reached, clan_id = (False, None)
     xp_gain = 0
@@ -1576,16 +1657,18 @@ def claim_territory(
     if run.verified and xp_gain > 0:
         sync_level_rewards(db, user.id)
 
-    # BOTH sides of a take are notified: EVERY victim who lost land ("stolen")
-    # and the attacker who took it ("captured"). `stolen_from` is only the
-    # headline victim and used to make multi-owner claims silently notify that
-    # one person. Aggregate the real event list instead.
+    # Every side of the fight is notified: each victim who lost land
+    # ("stolen"), each owner whose defence held ("defended"), and the attacker
+    # who actually took ground ("captured"). `stolen_from` is only the headline
+    # victim, so aggregate the real event list instead.
     taken_by_victim: dict[str, float] = {}
+    defended_by_victim: dict[str, float] = {}
     for ev in steal_events:
-        if ev["defended"] or ev["area_m2"] < STEAL_LEDGER_MIN_M2:
+        if ev["area_m2"] < STEAL_LEDGER_MIN_M2:
             continue
         victim_id = str(ev["victim_id"])
-        taken_by_victim[victim_id] = taken_by_victim.get(victim_id, 0.0) + float(ev["area_m2"])
+        bucket = defended_by_victim if ev["defended"] else taken_by_victim
+        bucket[victim_id] = bucket.get(victim_id, 0.0) + float(ev["area_m2"])
 
     # The attacker's own territory outline, so the victim's alert can box the
     # EXACT ground the rival ran instead of the seeded-fan stand-in. Only the
@@ -1605,6 +1688,8 @@ def claim_territory(
             "Your land was captured",
             f"{user.username} took {taken_m2 / 1_000_000:.3f} km² of your territory.",
             {
+                "kind": "territory_captured",
+                "screen": "map",
                 "capture_id": capture_id,
                 "taken_m2": taken_m2,
                 "lat": claim_centre.y,
@@ -1625,16 +1710,45 @@ def claim_territory(
             },
             str(user.id),
         )
+    for victim_id, defended_m2 in defended_by_victim.items():
+        background.add_task(
+            notify,
+            [victim_id],
+            "defended",
+            "Your defense held",
+            f"{user.username} attacked {defended_m2 / 1_000_000:.3f} km², but your territory held.",
+            {
+                "kind": "territory_defended",
+                "screen": "map",
+                "defended_m2": defended_m2,
+                "lat": claim_centre.y,
+                "lon": claim_centre.x,
+                "attacker_id": str(user.id),
+                "attacker_username": user.username,
+                "attacker_avatar": user.avatar or {},
+            },
+            str(user.id),
+        )
     if stolen_m2 > 0:
         from_str = f" from {stolen_from}" if stolen_from else ""
         background.add_task(
             notify, [str(user.id)], "captured", "Territory captured",
             f"You took {stolen_m2 / 1_000_000:.3f} km²{from_str} · +{xp_gain} XP.",
+            {
+                "kind": "territory_captured",
+                "screen": "map",
+                "taken_m2": stolen_m2,
+                "lat": claim_centre.y,
+                "lon": claim_centre.x,
+                "territory_id": str(territory_out.id),
+                **({"territory_ring": territory_ring} if territory_ring else {}),
+            },
         )
     if goal_reached and clan_id:
         background.add_task(
             notify, clan_member_ids(db, clan_id, exclude=user.id), "clan_goal",
             "Weekly goal reached!", "Your club hit this week's goal. Badge frame unlocked.",
+            {"kind": "clan_goal_reached", "screen": "club"},
         )
 
     return out
@@ -1886,17 +2000,23 @@ def _claim_territory(
     clan_id: str | None = None,
     lifetime_days: float | None = None,
     lifetime_for=None,
+    rank_tier: int | None = None,
 ):  # -> (TerritoryOut | None, stolen_m2, stolen_from, events, ground)
     """Insert the new polygon, resolving overlaps with existing territories.
 
     Rules (strength model):
       * Every claim carries a pace-based `strength`.
-      * RIVALS = other users OUTSIDE the claimer's club. For each rival
-        overlap, the attack succeeds only if the claim's strength beats the
-        rival's strength PLUS the summed strength of the rival's clubmates'
-        territories overlapping the same spot (stacked defense). Beaten
-        rivals lose the overlap (ST_Difference); successful defenses carve
-        the defended land OUT of the new claim instead.
+      * RIVALS = other users OUTSIDE the claimer's club AND inside the
+        claimer's live rank tier. Each rank is its own board — the same board
+        `/map-polygons` draws — so a claim never sees, steals from, or is
+        defended by land held by a runner in another division. Cross-tier
+        polygons simply coexist with the new one, the way a clubmate's does.
+        For each in-tier rival overlap, the attack succeeds only if the
+        claim's strength beats the rival's strength PLUS the summed strength
+        of the rival's clubmates' territories overlapping the same spot
+        (stacked defense). Beaten rivals lose the overlap (ST_Difference);
+        successful defenses carve the defended land OUT of the new claim
+        instead.
       * CLUBMATES' land is never stolen — overlapping club claims coexist,
         which is exactly what makes their defense stack.
       * Where this polygon overlaps the SAME USER's territory, the rows are
@@ -1963,20 +2083,36 @@ def _claim_territory(
             _claim_ground(db, new_geom_wkt, None),
         )
 
-    # Pull rivals that intersect: other users OUTSIDE the claimer's club.
+    # The claimer's live rank decides which board this fight happens on. Read
+    # once here and threaded through every overlap query below, so a decay or
+    # promotion mid-transaction cannot land the attacker on two boards at once.
+    if rank_tier is None:
+        rank_tier = ranks.status(db, user_id)["tier"]
+    rival_rank_clause, rival_rank_params = _rank_scope_sql(rank_tier, "ru", "fight_rank")
+    support_rank_clause, support_rank_params = _rank_scope_sql(
+        rank_tier, "support_u", "fight_sup_rank"
+    )
+
+    # Pull rivals that intersect: other users OUTSIDE the claimer's club and
+    # INSIDE the claimer's rank tier.
     rivals = db.execute(
         text(
             """
             SELECT t.id, t.user_id
             FROM territories t
+            JOIN users ru ON ru.id = t.user_id
             WHERE t.user_id <> :uid
               AND t.verified
               AND (CAST(:clan_id AS uuid) IS NULL OR t.clan_id IS NULL OR t.clan_id <> :clan_id)
+              AND """ + rival_rank_clause + """
               AND """ + _live("t") + """
               AND ST_Intersects(t.polygon, ST_GeomFromText(:wkt, 4326))
             """
         ),
-        {"uid": user_id, "wkt": new_geom_wkt, "clan_id": clan_id, **_defence_params()},
+        {
+            "uid": user_id, "wkt": new_geom_wkt, "clan_id": clan_id,
+            **_defence_params(), **rival_rank_params,
+        },
     ).fetchall()
 
     # Steal summary for the Result screen: total area taken from rivals + the
@@ -2006,14 +2142,15 @@ def _claim_territory(
                        ), 3)) AS contested,
                        """
                 + _club_support_sql(
-                    "t", "ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))"
+                    "t", "ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))",
+                    rank_clause=support_rank_clause,
                 )
                 + """ AS club_support
                 FROM territories t JOIN users u ON u.id = t.user_id
                 WHERE t.id = :rid
                 """
             ),
-            {"wkt": new_geom_wkt, "rid": rid, **_defence_params()},
+            {"wkt": new_geom_wkt, "rid": rid, **_defence_params(), **support_rank_params},
         ).fetchone()
         if not steal or not steal[0]:
             continue

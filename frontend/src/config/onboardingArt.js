@@ -155,6 +155,9 @@ export const ART_BG = {
   clans: '#261742',
   safety: '#0B322B',
   energy: '#2B1636',
+  // The final "go run" coach mark. No art yet (falls back to the Flag icon on
+  // this fill); `assets/art/onboarding/run.png` would slot straight in.
+  run: '#0F3D33',
   pasers: '#13294B',
   rewards: '#3A1D0B',
   leaderboard: '#0B322A',

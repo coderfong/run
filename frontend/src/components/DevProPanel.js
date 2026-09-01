@@ -50,8 +50,16 @@ export default function DevProPanel({ style }) {
   const { user } = useAuth();
   const { colors } = useTheme();
   const type = useThemedType();
-  const { isPro, canSell, devPro, setDevPro, openPaywall, plannerPreviewsLeft, runCount } =
-    useProEntitlement();
+  const {
+    isPro,
+    canSell,
+    devPro,
+    setDevPro,
+    openPaywall,
+    previewProWelcome,
+    plannerPreviewsLeft,
+    runCount,
+  } = useProEntitlement();
   // Bumped to re-read the exposure record, which is a plain module object
   // rather than React state — nothing else would tell this panel it changed.
   const [, bump] = useState(0);
@@ -148,6 +156,14 @@ export default function DevProPanel({ style }) {
         {Object.keys(PRO_CONTEXTS).map((key) => (
           <Btn key={key} label={key} onPress={() => openPaywall(key)} colors={colors} type={type} />
         ))}
+      </View>
+
+      <Text style={[type.caption, { color: colors.textDim, marginTop: space.sm }]}>
+        Welcome ceremony
+      </Text>
+      <View style={styles.row}>
+        <Btn label="New subscriber" onPress={() => previewProWelcome(false)} colors={colors} type={type} />
+        <Btn label="Returning" onPress={() => previewProWelcome(true)} colors={colors} type={type} />
       </View>
 
       {/* The funnel, as it fires. Without a vendor attached this is the only

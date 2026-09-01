@@ -472,14 +472,24 @@ export default function ChooseAttack({
       >
         <GroundMetric label="NEW" value={landStr(p?.new_m2)} color={team.glow} dim={!p?.new_m2} />
         <GroundMetric label="ENEMY" value={landStr(p?.enemy_m2)} color={D.danger} dim={!p?.enemy_m2} />
+        {/* Rival ground that holds. It used to live only in the sentence
+            underneath, so a stretch where every border out-defends you read as
+            ENEMY 0.000 — as though nobody was there. It is the number the
+            runner is deciding against, so it belongs beside the rest. Always
+            rendered, dim at zero like its neighbours: a row that appeared and
+            vanished would reflow the panel under a moving finger. */}
+        <GroundMetric label="THEIRS" value={landStr(p?.defended_m2)} color={withAlpha(D.danger, 0.5)} dim={!p?.defended_m2} />
         <GroundMetric label="YOURS" value={landStr(p?.mine_m2)} color={withAlpha(team.glow, 0.5)} dim={!p?.mine_m2} />
         <GroundMetric label="GAIN" value={landStr(gained)} color={team.glow} dim={!gained} />
       </Framed>
       </View>
 
-      {/* What this move is. The price used to be here and on the button; it is
-          now only ever shown on the meter, so the decision on this screen is
-          about GROUND and the energy is a separate fact about the account. */}
+      {/* What this move is. The price used to live here and on the button, then
+          moved to live only on the meter so the decision read as being about
+          GROUND rather than about a purchase. That traded away the one thing
+          nobody could otherwise answer — "what does THIS move cost, and what
+          does it do to my rank" — so it is back, as a plain fact under the
+          move rather than as a second price tag competing with the button. */}
       {!!p?.action && (
         <View style={styles.moveRow}>
           <MoveIcon size={18} color={team.glow} strokeWidth={2.7} />
@@ -510,6 +520,22 @@ export default function ChooseAttack({
         </View>
       )}
 
+      {/* The cost and the rank payoff, straight from the server's own pricing
+          of THIS pose (`/claim-preview`) — never re-derived on the client, so
+          it can never disagree with what the claim actually charges. Rank
+          points are a different ladder from XP/level (see the "Ranked map"
+          explainer on the global map) and used to be invisible until the
+          border itself changed days later. */}
+      {!!p?.action && (
+        <Text style={styles.costLine} numberOfLines={1}>
+          {`Costs ${p.energy_cost} energy`}
+          {p.expected_rank_points > 0 ? ` · earns +${p.expected_rank_points} rank` : ''}
+          {p.applied_discounts?.includes('first_claim_of_day')
+            ? ' · your first claim today, half price'
+            : ''}
+        </Text>
+      )}
+
       {/* Why this particular move is closed, in the server's own words. The
           claim button is disabled to match, so the reason and the dead button
           always appear together. */}
@@ -523,8 +549,8 @@ export default function ChooseAttack({
           claim that lands here is smaller than the one being previewed */}
       {p?.defended_m2 > 0 && (
         <Text style={styles.defendedNote}>
-          {landStr(p.defended_m2)} under this claim is too well defended. It stays theirs, and
-          you hold {landStr(p.held_m2)} of {landStr(p.area_m2)}.
+          That ground is too well defended, so it stays theirs. You hold{' '}
+          {landStr(p.held_m2)} of {landStr(p.area_m2)}.
         </Text>
       )}
     </View>
@@ -608,7 +634,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
 
   controlsRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 7 },
   breakdownFrame: { flex: 1, minWidth: 0 },
-  // One column of four rows, not a 2x2 grid: each metric on its own line,
+  // One column of rows, not a 2x2 grid: each metric on its own line,
   // label and number side by side, so both can run bigger than the grid's
   // ~48%-wide cells ever had room for.
   breakdown: { flexDirection: 'column', gap: 4, padding: 8 },
@@ -646,6 +672,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   avatar: { borderRadius: 14 },
   avatarOverlap: { marginLeft: -8 },
   moveNote: { ...type.caption, color: colors.textMuted, flex: 1, minWidth: 0 },
+
+  costLine: { ...type.caption, color: colors.textDim, marginTop: -3, marginBottom: 6 },
 
   defendedNote: { ...type.caption, color: colors.textDim, marginBottom: 5 },
 

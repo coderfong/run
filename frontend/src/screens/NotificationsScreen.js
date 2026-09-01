@@ -5,18 +5,21 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { brand, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { brand, NB, nbInk, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Skeleton, EmptyState } from '../components/ui';
 import AppIcon, { STEAL_ICON_SIZE } from '../components/AppIcon';
 import PortraitBorder from '../components/PortraitBorder';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { PressableScale, shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
 import { timeAgo } from '../utils/time';
+import { targetForNotification } from '../notifications/route';
 
 // category → generated sticker icon (assets/icons/*).
 const CATEGORY_ICON = {
   stolen: 'steal',
+  defended: 'clan-shield',
   captured: 'claim',
+  reminder: 'streak',
   clan_goal: 'clan-shield',
   kudos: 'like',
   season: 'trophy',
@@ -111,20 +114,15 @@ export default function NotificationsScreen({ navigation }) {
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl, paddingTop: space.md }}
         renderItem={({ item, index }) => {
           const capture = item.category === 'stolen';
-          const lat = Number(item.data?.lat);
-          const lon = Number(item.data?.lon);
-          const hasFocus =
-            item.data?.lat != null &&
-            item.data?.lon != null &&
-            Number.isFinite(lat) &&
-            Number.isFinite(lon);
-          const openCapture = capture
-            ? () =>
-                navigation.navigate('Map', {
-                  screen: 'MapMain',
-                  params: hasFocus ? { focus: { lat, lon } } : undefined,
-                })
-            : undefined;
+          // Every row is tappable to the place its event lives — the same
+          // routing a tapped push uses (src/notifications/route.js) — so the
+          // inbox and the lock screen agree on where a capture, a kudos or a
+          // club request opens.
+          const [route, params] = targetForNotification({
+            ...item.data,
+            category: item.category,
+          });
+          const open = () => navigation.navigate(route, params);
           return (
             <Animated.View
               entering={
@@ -134,10 +132,13 @@ export default function NotificationsScreen({ navigation }) {
               }
             >
               <PressableScale
-                onPress={openCapture}
-                disabled={!capture}
-                accessibilityRole={capture ? 'button' : undefined}
-                accessibilityLabel={capture ? `${item.title}. ${item.body}. View affected land.` : undefined}
+                onPress={open}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  capture
+                    ? `${item.title}. ${item.body}. View affected land.`
+                    : `${item.title}. ${item.body}.`
+                }
                 style={[
                   styles.row,
                   !item.read && styles.unread,
@@ -162,8 +163,11 @@ export default function NotificationsScreen({ navigation }) {
   );
 }
 
-const makeStyles = (colors) =>
+const makeStyles = (colors, scheme) =>
   StyleSheet.create({
+    // A stroke, not a drop: this is a stacked list, and forty rows each
+    // casting a hard offset block would print every row on top of the one
+    // above it — the same call `LeaderboardView` rows make.
     row: {
       flexDirection: 'row',
       gap: space.md,
@@ -171,6 +175,8 @@ const makeStyles = (colors) =>
       borderRadius: radius.card,
       padding: space.lg,
       marginBottom: space.sm,
+      borderWidth: NB.strokeThin,
+      borderColor: nbInk(scheme, colors.card),
     },
     unread: { backgroundColor: colors.cardAlt },
     captureRow: {

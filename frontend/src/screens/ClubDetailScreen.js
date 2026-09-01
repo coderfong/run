@@ -11,7 +11,7 @@ import { api } from '../api/client';
 import { invalidate } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { useClan } from '../state/clan';
-import { radius, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import { toast } from '../ui/toast';
@@ -93,7 +93,7 @@ export default function ClubDetailScreen({ route, navigation }) {
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
     >
       {/* header */}
-      <View style={[styles.header, { backgroundColor: withAlpha(accent, 0.1) }]}>
+      <Card style={styles.header}>
         <ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={64} />
         <Text style={[type.title, { marginTop: space.sm }]}>[{clan.tag}] {clan.name}</Text>
         {clan.description ? (
@@ -103,7 +103,7 @@ export default function ClubDetailScreen({ route, navigation }) {
           {clan.league ? <Pill label={LEAGUE_LABEL[clan.league]} color={accent} /> : null}
           <Pill label={isOpen ? 'Open' : 'Invite only'} color={colors.textMuted} variant="outline" />
         </Row>
-      </View>
+      </Card>
 
       {/* stats */}
       <Row between style={{ marginTop: space.lg }}>
@@ -193,7 +193,7 @@ export default function ClubDetailScreen({ route, navigation }) {
 }
 
 const makeStyles = (colors) => StyleSheet.create({
-  header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl },
+  header: { alignItems: 'center' },
   xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden', marginTop: space.sm },
   xpFill: { height: '100%', borderRadius: 4 },
   leaderAvatar: {

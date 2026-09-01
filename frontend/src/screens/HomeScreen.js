@@ -14,8 +14,6 @@ import { useQuery } from '../hooks/useQuery';
 import {
   NB,
   brand,
-  hardShadow,
-  nbDrop,
   nbInk,
   radius,
   space,
@@ -25,7 +23,7 @@ import {
   useThemedStyles,
 } from '../theme';
 import { useReduceMotion, PressableScale, PressableShift } from '../ui/motion';
-import { EmptyState, Framed, OutlinedText, Skeleton } from '../components/ui';
+import { EmptyState, Framed, HardShadow, OutlinedText, Skeleton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
@@ -481,7 +479,6 @@ export default function HomeScreen({ navigation }) {
   // page rather than against a card. Both the bell box and its unread dot take
   // this, so the dot reads as punched out of the same sheet of ink.
   const headerInk = nbInk(scheme, colors.bg);
-  const bellShadow = hardShadow(nbDrop(scheme, { on: colors.bg }), NB.offsetSm);
   const insets = useSafeAreaInsets();
   const { refreshRank } = useAvatar();
   const [shopOpen, setShopOpen] = useState(false);
@@ -581,23 +578,26 @@ export default function HomeScreen({ navigation }) {
           {/* A stroked box, not a bare glyph. The bell used to be the only
               tappable thing in the header with no edge on it, which next to a
               stroked energy chip read as decoration rather than as a control —
-              and it is the one that takes you somewhere. */}
-          <PressableShift
-            offset={NB.offsetSm}
-            style={[styles.bell, { borderColor: headerInk }]}
-            containerStyle={bellShadow}
-            onPress={() => {
-              // Clear the dot in the cache too, so coming back to Home doesn't
-              // briefly show a badge for notifications already read.
-              setNotifs((prev) => ({ ...(prev || {}), unread: 0 }));
-              navigation.navigate('Notifications');
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Notifications"
-          >
-            <AppIcon name="bell" size={22} />
-            {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink, borderColor: headerInk }]} />}
-          </PressableShift>
+              and it is the one that takes you somewhere.
+              HardShadow, not the iOS-only `hardShadow()` style spread: the
+              drop has to render on Android too. */}
+          <HardShadow offset={NB.offsetSm} radius={radius.sm} on={colors.bg}>
+            <PressableShift
+              offset={NB.offsetSm}
+              style={[styles.bell, { borderColor: headerInk }]}
+              onPress={() => {
+                // Clear the dot in the cache too, so coming back to Home doesn't
+                // briefly show a badge for notifications already read.
+                setNotifs((prev) => ({ ...(prev || {}), unread: 0 }));
+                navigation.navigate('Notifications');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+            >
+              <AppIcon name="bell" size={22} />
+              {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink, borderColor: headerInk }]} />}
+            </PressableShift>
+          </HardShadow>
         </View>
       </View>
 

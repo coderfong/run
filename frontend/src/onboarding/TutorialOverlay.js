@@ -3,13 +3,15 @@
 // dimmed behind, so the cards teach against the thing they describe).
 //
 // Armed by `completeIntro()` in state/profile.js and mounted by App.js while
-// `profile.tutorialPending` is true. The last card hands off to Pasers.
+// `profile.tutorialPending` is true. The last card hands off into the first
+// run (the record modal) rather than to Pasers — a brand-new account has no
+// pasers to add yet, so the strongest next step is to go run.
 
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Flag, ShieldCheck, Swords, UserPlus, Zap } from 'lucide-react-native';
+import { Flag, ShieldCheck, Swords, Zap } from 'lucide-react-native';
 
 import { space } from '../theme';
 import { OutlinedText, ToonButton } from '../components/ui';
@@ -25,6 +27,10 @@ import { toon, toonType } from './toon';
 // card, to the runner the player just built) on a tinted panel. `aspect`
 // matches the source art so `contain` never letterboxes oddly: the existing
 // story art is square, new panels are 4:3.
+//
+// `title` is the headline; `sub` is one plain sentence under it that carries
+// the actual mechanic (a headline alone can't). Keep `sub` short, plain and
+// dash-free — same voice rules as the rest of the app's copy.
 const CARDS = [
   {
     key: 'welcome',
@@ -32,6 +38,7 @@ const CARDS = [
     icon: Flag,
     aspect: 4 / 3,
     title: (name) => (name ? `Welcome to PASER, ${name}!` : 'Welcome to PASER!'),
+    sub: 'The streets you run become land you own.',
     cta: 'Next',
   },
   {
@@ -39,7 +46,8 @@ const CARDS = [
     artKey: 'claim',
     icon: Flag,
     aspect: 1,
-    title: () => 'Every run earns you ground to claim',
+    title: () => 'Every run earns you ground',
+    sub: 'Finish a run, then place your claim anywhere along the route you took. Longer runs claim more.',
     cta: 'Next',
   },
   {
@@ -47,15 +55,17 @@ const CARDS = [
     artKey: 'energy',
     icon: Zap,
     aspect: 4 / 3,
-    title: () => 'Energy powers your claims, and runs refill it',
+    title: () => 'Claiming costs Energy',
+    sub: 'Running earns it back, and your first claim each day is half price.',
     cta: 'Next',
   },
   {
-    key: 'clans',
+    key: 'defend',
     artKey: 'clans',
     icon: Swords,
     aspect: 1,
-    title: () => 'Clubs will come to take your land',
+    title: () => 'Land you take is never safe',
+    sub: 'Anyone who runs over your ground can claim it back. Reinforce it on your next run, or join a club so your teammates help you hold it.',
     cta: 'Next',
   },
   {
@@ -64,20 +74,21 @@ const CARDS = [
     icon: ShieldCheck,
     aspect: 1,
     title: () => "Territory can wait. Traffic can't.",
-    cta: 'Got it',
+    sub: 'Eyes up at crossings. Every run is checked, so there is no prize for cutting corners.',
+    cta: 'Next',
   },
   {
-    key: 'pasers',
-    artKey: 'pasers',
-    icon: UserPlus,
+    key: 'run',
+    icon: Flag,
     aspect: 4 / 3,
-    title: () => 'Add a paser to race the day with',
-    cta: "Let's add a paser!",
-    action: 'pasers',
+    title: () => 'Go claim your first patch',
+    sub: 'Pick a loop around your block and watch it land on the map.',
+    cta: 'Start my run',
+    action: 'run',
   },
 ];
 
-export default function TutorialOverlay({ name, onDone, onAddPaser }) {
+export default function TutorialOverlay({ name, onDone, onStartRun }) {
   const insets = useSafeAreaInsets();
   const reduced = useReduceMotion();
   const { equipped } = useAvatar();
@@ -87,9 +98,9 @@ export default function TutorialOverlay({ name, onDone, onAddPaser }) {
 
   const advance = () => {
     haptic.light();
-    if (card.action === 'pasers') {
+    if (card.action === 'run') {
       onDone?.();
-      onAddPaser?.();
+      onStartRun?.();
       return;
     }
     if (i === CARDS.length - 1) {
@@ -158,6 +169,8 @@ export default function TutorialOverlay({ name, onDone, onAddPaser }) {
             {card.title(name)}
           </OutlinedText>
 
+          {card.sub ? <Text style={styles.sub}>{card.sub}</Text> : null}
+
           <ToonButton title={card.cta} onPress={advance} />
         </View>
       </Animated.View>
@@ -186,6 +199,12 @@ const styles = StyleSheet.create({
     gap: space.lg,
   },
   title: { alignSelf: 'stretch' },
+  sub: {
+    ...toonType.body,
+    color: 'rgba(255,255,255,0.82)',
+    alignSelf: 'stretch',
+    marginTop: -space.sm,
+  },
 
   dots: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
   dot: {

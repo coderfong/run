@@ -10,9 +10,14 @@
  */
 
 import { xpSteps } from '../src/components/XpProgress';
+import { RevealRays } from '../src/components/RewardReveal';
 import { MAX_LEVEL, levelFromXp, xpForLevel } from '../src/config/progression';
 
 describe('xpSteps', () => {
+  it('exports the shared ray fan used by the full-screen level-up celebration', () => {
+    expect(typeof RevealRays).toBe('function');
+  });
+
   it('is a single pass when the gain stays inside one level', () => {
     // Level 1 spans 100..399.
     const steps = xpSteps(150, 173);

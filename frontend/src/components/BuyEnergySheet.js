@@ -2,11 +2,11 @@
 // consumables — bought again every time the player runs out).
 
 import React, { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { api } from '../api/client';
-import { brand, radius, space, useTheme, useThemedType } from '../theme';
-import { Sheet } from './ui';
+import { brand, space, useTheme, useThemedType } from '../theme';
+import { Card, Pill, Sheet } from './ui';
 import AppIcon from './AppIcon';
 import { toast } from '../ui/toast';
 import { finishPurchase, fetchProductPrices, storePurchase } from '../iap';
@@ -106,51 +106,44 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
         ENERGY
       </Text>
       {PACKS.map((pack) => (
-        <TouchableOpacity
+        <Card
           key={pack.id}
-          style={[styles.row, { backgroundColor: colors.card }]}
-          onPress={() => buy(pack)}
-          disabled={!!busy}
-          activeOpacity={0.85}
+          style={styles.row}
+          onPress={() => { if (!busy) buy(pack); }}
           accessibilityRole="button"
           accessibilityLabel={`${pack.label} for ${priceFor(pack)}`}
         >
-          <AppIcon name="energy" size={22} />
-          <Text style={[type.bodyBold, { flex: 1 }]}>{pack.label}</Text>
-          <View style={[styles.price, { backgroundColor: brand.pink }]}>
-            <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : priceFor(pack)}</Text>
+          <View style={styles.rowInner}>
+            <AppIcon name="energy" size={22} />
+            <Text style={[type.bodyBold, { flex: 1 }]}>{pack.label}</Text>
+            <Pill label={busy === pack.id ? '…' : priceFor(pack)} color={brand.pink} />
           </View>
-        </TouchableOpacity>
+        </Card>
       ))}
 
       <Text style={[type.bodySmBold, { color: colors.textMuted, marginTop: space.lg, marginBottom: space.sm }]}>
         COINS
       </Text>
       {COIN_PACKS.map((pack) => (
-        <TouchableOpacity
+        <Card
           key={pack.id}
-          style={[styles.row, { backgroundColor: colors.card }]}
-          onPress={() => buyCoins(pack)}
-          disabled={!!busy}
-          activeOpacity={0.85}
+          style={styles.row}
+          onPress={() => { if (!busy) buyCoins(pack); }}
           accessibilityRole="button"
           accessibilityLabel={`${pack.coins} coins for ${priceFor(pack)}`}
         >
-          <AppIcon name={pack.icon} size={26} />
-          <Text style={[type.bodyBold, { flex: 1 }]}>{pack.coins.toLocaleString()} coins</Text>
-          <View style={[styles.price, { backgroundColor: '#eab308' }]}>
-            <Text style={[type.bodySmBold, { color: '#fff' }]}>{busy === pack.id ? '…' : priceFor(pack)}</Text>
+          <View style={styles.rowInner}>
+            <AppIcon name={pack.icon} size={26} />
+            <Text style={[type.bodyBold, { flex: 1 }]}>{pack.coins.toLocaleString()} coins</Text>
+            <Pill label={busy === pack.id ? '…' : priceFor(pack)} color="#eab308" />
           </View>
-        </TouchableOpacity>
+        </Card>
       ))}
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row', alignItems: 'center', gap: space.md,
-    borderRadius: radius.card, padding: space.lg, marginBottom: space.sm,
-  },
-  price: { borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6, minWidth: 64, alignItems: 'center' },
+  row: { marginBottom: space.sm },
+  rowInner: { flexDirection: 'row', alignItems: 'center', gap: space.md },
 });

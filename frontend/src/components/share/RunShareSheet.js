@@ -45,6 +45,8 @@ import { shareStyleByKey, stylesForRun } from '../../config/shareStyles';
 import { useProEntitlement } from '../../pro/ProProvider';
 import { radius, space, useTheme, useThemedStyles } from '../../theme';
 import { PressableScale, haptic } from '../../ui/motion';
+import { Framed } from '../ui';
+import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
 import { toast } from '../../ui/toast';
 import { afterHandoff } from '../../utils/appActive';
 import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
@@ -141,16 +143,26 @@ class ShareBoundary extends Component {
 // letting a free account change it. The controls stay VISIBLE — the point is to
 // show what PRO buys — they just do not respond until it is bought.
 function Row({ label, locked, onLockedPress, children }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.row}>
       <View style={styles.rowHead}>
         <Text style={[styles.rowLabel, styles.rowLabelInHead]}>{label}</Text>
         {locked ? (
-          <View style={styles.proTag}>
+          <Framed
+            frame={frameVariant('chip', 'pro-tag')}
+            fill={colors.card}
+            on={colors.card}
+            tint={GOLD}
+            weight={INK.hairline}
+            pose={framePose('pro-tag')}
+            inset={2}
+            contentStyle={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}
+          >
             <Lock size={11} color={GOLD} strokeWidth={2.6} />
-            <Text style={styles.proTagText}>PRO</Text>
-          </View>
+            <Text style={[styles.proTagText, { paddingHorizontal: 4 }]}>PRO</Text>
+          </Framed>
         ) : null}
       </View>
       {locked ? (
@@ -179,16 +191,26 @@ function Row({ label, locked, onLockedPress, children }) {
 }
 
 function Chip({ label, on, onPress }) {
+  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
     <PressableScale
-      style={[styles.chip, on && styles.chipOn]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: on }}
       accessibilityLabel={label}
     >
-      <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+      <Framed
+        frame={frameVariant('chip', label)}
+        fill={on ? colors.primary : colors.bgElevated}
+        on={on ? colors.primary : colors.bgElevated}
+        tint={on ? colors.primaryInk : colors.textMuted}
+        weight={on ? INK.medium : INK.thin}
+        pose={framePose(label)}
+        inset={3}
+      >
+        <Text style={[styles.chipText, on && styles.chipTextOn]}>{label}</Text>
+      </Framed>
     </PressableScale>
   );
 }
@@ -588,7 +610,17 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               />
             </ShareBoundary>
             <View style={styles.transparentBadge} pointerEvents="none">
-              <Text style={styles.transparentText}>TRANSPARENT</Text>
+              <Framed
+                frame={frameVariant('chip', 'transparent-badge')}
+                fill="rgba(0,0,0,0.55)"
+                on="rgba(0,0,0,0.55)"
+                tint="#FFFFFF"
+                weight={INK.hairline}
+                pose={framePose('transparent-badge')}
+                inset={2}
+              >
+                <Text style={[styles.transparentText, { paddingHorizontal: space.xs }]}>TRANSPARENT</Text>
+              </Framed>
             </View>
           </View>
 
@@ -840,16 +872,6 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   rowLabelInHead: { marginBottom: 0 },
   // The gold PRO tag on a locked customisation's label. Same GOLD the padlocks
   // everywhere else in the app use, so a locked control reads as PRO at a glance.
-  proTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: GOLD,
-  },
   proTagText: { ...type.labelSm, fontSize: 9, letterSpacing: 1, color: GOLD },
   // PRO_NOTE, wherever it lands. A sentence, so NOT the uppercase label style
   // the rest of the row headings use.
@@ -859,15 +881,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   lockedControls: { opacity: 0.4 },
   chipRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  chip: {
-    paddingHorizontal: space.md,
-    paddingVertical: 7,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { ...type.bodySm, color: colors.textMuted },
+  chipText: { ...type.bodySm, color: colors.textMuted, paddingHorizontal: space.xs },
   chipTextOn: { ...type.bodySmBold, color: colors.primaryInk },
   swatch: {
     width: 34,
@@ -888,17 +902,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   // Named on the preview the way Strava names it, so "why is my background
   // grey squares" answers itself.
-  transparentBadge: {
-    position: 'absolute',
-    top: space.sm,
-    left: space.sm,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
+  transparentBadge: { position: 'absolute', top: space.sm, left: space.sm },
   transparentText: { ...type.labelSm, fontSize: 10, letterSpacing: 1, color: '#FFFFFF' },
   cardFallback: {
     alignItems: 'center',

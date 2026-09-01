@@ -68,6 +68,14 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[test]' })),
+  // The device-level wiring (src/notifications/setup.js): a foreground handler,
+  // Android channels the backend addresses by id, and the cold-start tap.
+  setNotificationHandler: jest.fn(),
+  setNotificationChannelAsync: jest.fn(async () => ({})),
+  getLastNotificationResponseAsync: jest.fn(async () => null),
+  getBadgeCountAsync: jest.fn(async () => 0),
+  setBadgeCountAsync: jest.fn(async () => true),
+  AndroidImportance: { MIN: 1, LOW: 2, DEFAULT: 3, HIGH: 4, MAX: 5 },
 }));
 
 // Reanimated ships its own mock; without it every animated style throws.

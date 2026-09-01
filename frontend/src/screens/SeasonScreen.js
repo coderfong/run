@@ -45,8 +45,6 @@ import { useProEntitlement } from '../pro/ProProvider';
 import { useAuth } from '../auth/AuthContext';
 import StandingBar from '../components/StandingBar';
 import {
-  NB,
-  nbInk,
   radius,
   space,
   toon,
@@ -59,6 +57,7 @@ import { NEUTRAL } from '../state/clan';
 import {
   Screen,
   Card,
+  Framed,
   Row,
   Sheet,
   Skeleton,
@@ -72,6 +71,7 @@ import PortraitBorder from '../components/PortraitBorder';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { useAvatar } from '../state/avatar';
 import { Arrival, PressableScale, useArrival } from '../ui/motion';
+import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { SEASON_CATEGORY_ART, SEASON_SCOPE_ART } from '../config/seasonArt';
 
 const km2 = (m) => (m / 1e6).toFixed(2);
@@ -132,20 +132,33 @@ function SheetChip({ label, active, locked, onPress, styles, type, colors }) {
   return (
     <PressableScale
       onPress={onPress}
-      style={[styles.sheetChip, active && styles.sheetChipActive]}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
       accessibilityLabel={locked ? `${label}. Paser Pro` : label}
     >
-      <Text
-        style={[type.bodySmBold, { color: active ? colors.primaryInk : colors.text }]}
-        numberOfLines={1}
+      <Framed
+        frame={frameVariant('chip', `season:${label}`)}
+        fill={active ? colors.primary : colors.bgElevated}
+        on={active ? colors.primary : colors.bgElevated}
+        tint={active ? colors.primaryInk : colors.textMuted}
+        weight={active ? INK.medium : INK.thin}
+        pose={framePose(`season:${label}`)}
+        inset={3}
+        contentStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
       >
-        {label}
-      </Text>
-      {locked ? (
-        <Lock size={12} color={active ? colors.primaryInk : colors.textDim} strokeWidth={2.5} />
-      ) : null}
+        <Text
+          style={[
+            type.bodySmBold,
+            { color: active ? colors.primaryInk : colors.text, paddingHorizontal: space.xs },
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+        {locked ? (
+          <Lock size={12} color={active ? colors.primaryInk : colors.textDim} strokeWidth={2.5} />
+        ) : null}
+      </Framed>
     </PressableScale>
   );
 }
@@ -380,15 +393,26 @@ export default function SeasonScreen({ navigation, route }) {
         accessibilityLabel={`Filters. ${summary}`}
         accessibilityHint="Choose what the board ranks, over what period, and who is on it"
       >
-        <Text style={[type.bodySmBold, styles.summaryText]} numberOfLines={1}>
-          {summary}
-        </Text>
-        {changed ? (
-          <View style={styles.summaryCount}>
-            <Text style={[type.captionMedium, styles.summaryCountText]}>{changed}</Text>
-          </View>
-        ) : null}
-        <ChevronDown size={16} color={PANEL_INK} strokeWidth={3} />
+        <Framed
+          frame={frameVariant('action', 'season-filter-bar')}
+          fill="#ffffff"
+          on={art.bg}
+          tint={PANEL_INK}
+          weight={INK.thin}
+          pose={framePose('season-filter-bar')}
+          style={styles.summaryBarFramed}
+          contentStyle={styles.summaryBarInner}
+        >
+          <Text style={[type.bodySmBold, styles.summaryText]} numberOfLines={1}>
+            {summary}
+          </Text>
+          {changed ? (
+            <View style={styles.summaryCount}>
+              <Text style={[type.captionMedium, styles.summaryCountText]}>{changed}</Text>
+            </View>
+          ) : null}
+          <ChevronDown size={16} color={PANEL_INK} strokeWidth={3} />
+        </Framed>
       </PressableScale>
     </ToonHeader>
   );
@@ -408,7 +432,7 @@ export default function SeasonScreen({ navigation, route }) {
     const amount = metricAmount(item, category);
     return (
       <PressableScale onPress={() => openClan(item.clan_id)}>
-        <Card style={[{ marginBottom: space.sm }, top && { borderWidth: 1, borderColor: c.stroke }]}>
+        <Card style={{ marginBottom: space.sm }} accent={top ? c.color : undefined} accentDrop={top}>
           <Row between>
             <Row gap={12} style={{ flex: 1 }}>
               <RankCol rank={rank} top={top} />
@@ -631,18 +655,9 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
   // The summary bar, and nothing else: the scope chips that used to sit above
   // it went with the scope picker. Single-line by construction, so the
   // header's height is fixed on all ten boards.
-  summaryBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-    marginTop: space.md,
-    paddingHorizontal: space.md,
-    paddingVertical: 10,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: 'rgba(20,20,20,0.32)',
-    backgroundColor: 'rgba(255,255,255,0.55)',
-  },
+  summaryBar: { marginTop: space.md, alignSelf: 'stretch' },
+  summaryBarFramed: { alignSelf: 'stretch' },
+  summaryBarInner: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   summaryText: { flex: 1, color: PANEL_INK },
   // How many axes are off their default. The sentence already says WHICH, so
   // this only has to say "you changed something" at a glance.
@@ -659,19 +674,4 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
 
   // --- filter sheet ---
   sheetChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  sheetChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: space.md,
-    paddingVertical: 9,
-    borderRadius: radius.pill,
-    borderWidth: NB.strokeThin,
-    borderColor: colors.border,
-    backgroundColor: colors.bgElevated,
-  },
-  sheetChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: nbInk(scheme, colors.primary),
-  },
 });

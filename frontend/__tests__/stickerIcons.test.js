@@ -55,11 +55,6 @@ const ALLOWED = {
   'components/ClanBadge.js': ['Crown', 'Flame'],
   'screens/AvatarStudioScreen.js': ['Crown', 'Layers', 'Sparkles'],
 
-  // The contested-ground toggle. It inverts its own foreground when active
-  // (white on the accent, text colour when off), and AppIcon renders
-  // full-colour PNGs that cannot be tinted — see AppIcon's own header. A
-  // control whose whole job is to show two states cannot use art that has one.
-  'screens/GlobalMapScreen.js': ['Flame'],
 };
 
 function sourceFiles(dir) {

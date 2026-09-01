@@ -699,7 +699,8 @@ def request_join(request: Request, response: Response, clan_id: str,
         {"cid": clan_id},
     ).fetchall()
     notify([o[0] for o in officers], "clan_goal", "Join request",
-           f"{user.username} wants to join {c[1]}.", actor_id=str(user.id))
+           f"{user.username} wants to join {c[1]}.",
+           {"kind": "clan_join_request", "screen": "club"}, actor_id=str(user.id))
     return {"ok": True, "status": "pending"}
 
 
@@ -751,6 +752,7 @@ def act_on_request(request: Request, response: Response, clan_id: str, req_id: s
     notify([req[0]], "clan_goal",
            "Request approved" if action == "approve" else "Request declined",
            f"Your request to join {tag} was {'approved, welcome in' if action == 'approve' else 'declined'}.",
+           {"kind": "clan_join_response", "screen": "club"},
            actor_id=str(user.id))
     return {"ok": True}
 

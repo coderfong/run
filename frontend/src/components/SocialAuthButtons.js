@@ -143,13 +143,19 @@ export default function SocialAuthButtons() {
       const name = cred.fullName
         ? [cred.fullName.givenName, cred.fullName.familyName].filter(Boolean).join(' ')
         : undefined;
-      if (!cred.authorizationCode) throw new Error('No authorization code from Apple');
+      // The authorization code is only needed so the server can hold a
+      // revocable session for account deletion. It is NOT what signs you in,
+      // so a missing one is passed along as absent rather than thrown: the
+      // identity token is the credential, and the server retries the exchange
+      // on the next sign-in.
       await signInWithProvider('apple', cred.identityToken, {
         name,
-        authorization_code: cred.authorizationCode,
+        authorization_code: cred.authorizationCode || undefined,
       });
     } catch (e) {
-      if (e?.code === 'ERR_REQUEST_CANCELED') return; // user backed out — not an error
+      // Both spellings: the constant was renamed across expo-apple-authentication
+      // versions and a cancel must never surface as a failure.
+      if (e?.code === 'ERR_REQUEST_CANCELED' || e?.code === 'ERR_CANCELED') return;
       toast.error(e.message || 'Could not sign in with Apple');
     } finally {
       setBusy(false);

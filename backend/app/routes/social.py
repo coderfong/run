@@ -276,7 +276,8 @@ def add_run_comment(request: Request, response: Response, run_id: str, payload: 
     if owner_id != user.id:
         background.add_task(
             notify, [owner_id], "kudos", "New comment on your run",
-            f"{user.username}: {body[:80]}", None, str(user.id),
+            f"{user.username}: {body[:80]}",
+            {"kind": "run_comment", "screen": "run", "run_id": run_id}, str(user.id),
         )
     return schemas.RunCommentOut(
         id=row[0], user_id=user.id, username=user.username, is_you=True,
@@ -303,7 +304,8 @@ def toggle_kudos(request: Request, response: Response, run_id: str, background: 
         if run[0] != user.id:
             background.add_task(
                 notify, [run[0]], "kudos", "You got kudos",
-                f"{user.username} gave kudos to your run.", None, str(user.id),
+                f"{user.username} gave kudos to your run.",
+                {"kind": "run_kudos", "screen": "run", "run_id": run_id}, str(user.id),
             )
     db.commit()
     count = db.execute(text("SELECT COUNT(*) FROM run_kudos WHERE run_id = :rid"), {"rid": run_id}).scalar()
@@ -369,7 +371,8 @@ def set_run_reaction(request: Request, response: Response, run_id: str, payload:
     if emote and not previous and owner_id != user.id:
         background.add_task(
             notify, [owner_id], "kudos", "Someone reacted to your run",
-            f"{user.username} reacted to your run.", None, str(user.id),
+            f"{user.username} reacted to your run.",
+            {"kind": "run_reaction", "screen": "run", "run_id": run_id}, str(user.id),
         )
 
     summary, mine = reaction_rules.summarise(db, [run_id], user.id)
@@ -400,7 +403,8 @@ def register_push_token(request: Request, response: Response, payload: schemas.P
 def get_prefs(user: models.User = Depends(current_user), db: Session = Depends(get_db)):
     row = db.execute(
         text(
-            "SELECT stolen, captured, clan_goal, kudos, season, recap, pasers, paserby "
+            "SELECT stolen, defended, captured, reminder, clan_goal, kudos, "
+            "season, recap, pasers, paserby "
             "FROM notif_prefs WHERE user_id = :u"
         ),
         {"u": user.id},
@@ -408,8 +412,9 @@ def get_prefs(user: models.User = Depends(current_user), db: Session = Depends(g
     if not row:
         return schemas.NotifPrefs()
     return schemas.NotifPrefs(
-        stolen=row[0], captured=row[1], clan_goal=row[2], kudos=row[3], season=row[4],
-        recap=row[5], pasers=row[6], paserby=row[7],
+        stolen=row[0], defended=row[1], captured=row[2], reminder=row[3],
+        clan_goal=row[4], kudos=row[5], season=row[6], recap=row[7],
+        pasers=row[8], paserby=row[9],
     )
 
 
@@ -419,16 +424,19 @@ def set_prefs(payload: schemas.NotifPrefs, user: models.User = Depends(current_u
         text(
             """
             INSERT INTO notif_prefs
-                (user_id, stolen, captured, clan_goal, kudos, season, recap, pasers, paserby)
-            VALUES (:u, :s, :cap, :g, :k, :se, :r, :p, :pb)
-            ON CONFLICT (user_id) DO UPDATE SET stolen=:s, captured=:cap, clan_goal=:g, kudos=:k,
+                (user_id, stolen, defended, captured, reminder, clan_goal, kudos,
+                 season, recap, pasers, paserby)
+            VALUES (:u, :s, :d, :cap, :rem, :g, :k, :se, :r, :p, :pb)
+            ON CONFLICT (user_id) DO UPDATE SET stolen=:s, defended=:d,
+                captured=:cap, reminder=:rem, clan_goal=:g, kudos=:k,
                 season=:se, recap=:r, pasers=:p, paserby=:pb
             """
         ),
         # `pasers` was in the model and on the wire but was never written —
         # muting paser requests silently did nothing. Both social categories
         # are persisted here now.
-        {"u": user.id, "s": payload.stolen, "cap": payload.captured, "g": payload.clan_goal,
+        {"u": user.id, "s": payload.stolen, "d": payload.defended,
+         "cap": payload.captured, "rem": payload.reminder, "g": payload.clan_goal,
          "k": payload.kudos, "se": payload.season, "r": payload.recap,
          "p": payload.pasers, "pb": payload.paserby},
     )
@@ -507,5 +515,47 @@ def weekly_recap(background: BackgroundTasks, db: Session = Depends(get_db)):
         background.add_task(
             notify, [uid], "recap", "Last week on PASER",
             f"{(dist or 0) / 1000:.1f} km · {int(claims or 0)} claims. Keep the streak alive.",
+            {"kind": "weekly_recap", "screen": "home"},
+        )
+    return {"ok": True, "users": len(rows)}
+
+
+@router.post("/admin/run-reminders", dependencies=[Depends(require_admin)])
+def run_reminders(background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Cron (evening): nudge runners whose daily streak breaks at midnight.
+
+    "Streak at risk" is the one reminder worth interrupting for — the runner
+    already built the streak, and it is gone for nothing if they do not notice.
+    Whoever's most recent run was YESTERDAY (UTC) and who has not run today.
+    Same admin-token gate as the weekly recap: an open fan-out-a-push endpoint
+    is a spam button with a URL.
+    """
+    rows = db.execute(
+        text(
+            """
+            SELECT dr.user_id::text, dr.days
+            FROM (
+                SELECT user_id,
+                       MAX((ended_at AT TIME ZONE 'UTC')::date) AS last_date,
+                       COUNT(DISTINCT (ended_at AT TIME ZONE 'UTC')::date) AS days
+                FROM runs
+                WHERE ended_at >= now() - interval '10 days'
+                GROUP BY user_id
+            ) dr
+            WHERE dr.last_date = (now() AT TIME ZONE 'UTC')::date - 1
+            """
+        )
+    ).fetchall()
+    for uid, days in rows:
+        run_days = int(days or 0)
+        tail = (
+            f"You are on a {run_days}-day streak. "
+            if run_days >= 2
+            else "You ran yesterday. "
+        )
+        background.add_task(
+            notify, [uid], "reminder", "Keep your streak alive",
+            f"{tail}A short loop before midnight keeps it going.",
+            {"kind": "streak_at_risk", "screen": "home", "streak_days": run_days},
         )
     return {"ok": True, "users": len(rows)}

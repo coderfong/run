@@ -26,10 +26,10 @@ from datetime import datetime
 # next to a contested outcome, which is the point: painting empty map can
 # contribute a little, but it must never be the easiest way up the PvP ladder.
 POINTS_CLAIM = 3         # claim open ground — participation, not achievement
-POINTS_STEAL = 25        # take ground off another runner
-POINTS_DEFEND = 15       # their attack failed against your land
+POINTS_STEAL = 25        # take ground off another runner (tier 0 rate — see steal_reward)
+POINTS_DEFEND = 15       # their attack failed against your land (tier 0 rate — see defend_reward)
 POINTS_HOLD = 2          # a zone survived 48h still yours (see hold_credit)
-POINTS_LOST = -10        # someone took YOUR ground — the other half of a steal
+POINTS_LOST = -10        # someone took YOUR ground (tier 0 rate — see loss_penalty)
 
 # Rank thresholds, widening so the top tiers stay rare. Keys match
 # BORDER_TIERS in progression.py so the art lines up 1:1.
@@ -46,9 +46,51 @@ RANK_TIERS = [
     (30000, "mythic", "Mythic"),
 ]
 
+# Combat is rank-scoped (see `_rank_scope_sql` in routes/runs.py): every
+# steal happens between two runners already in the SAME live tier bracket, so
+# the fight's tier — one index into RANK_TIERS — fully describes both sides.
+# Below Platinum the exchange is flat and generous, the same numbers this
+# system always paid, so the early climb doesn't get harder. From Platinum up,
+# a steal pays the attacker less and costs the victim more each tier, and a
+# defence pays the defender more — so the closer to Mythic you get, the more
+# the ladder rewards HOLDING ground over just taking it, and a quiet week of
+# getting raided actually costs you tier. That asymmetry is what should make
+# the top feel like a fight to stay up, not a longer version of the same climb.
+STEAL_REWARD_BY_TIER  = [25, 25, 25, 25, 23, 21, 18, 15, 12, 10]
+LOSS_PENALTY_BY_TIER  = [-10, -10, -10, -10, -12, -15, -18, -22, -26, -30]
+DEFEND_REWARD_BY_TIER = [15, 15, 15, 15, 16, 18, 20, 23, 26, 30]
+
+
+def _tiered(table, tier: int) -> int:
+    return table[max(0, min(len(table) - 1, int(tier or 0)))]
+
+
+def steal_reward(tier: int) -> int:
+    """Rank points a successful steal pays the attacker, at this tier."""
+    return _tiered(STEAL_REWARD_BY_TIER, tier)
+
+
+def loss_penalty(tier: int) -> int:
+    """Rank points a steal costs the victim, at this tier (negative)."""
+    return _tiered(LOSS_PENALTY_BY_TIER, tier)
+
+
+def defend_reward(tier: int) -> int:
+    """Rank points a bounced attack pays the defender, at this tier."""
+    return _tiered(DEFEND_REWARD_BY_TIER, tier)
+
+
 # Inactivity decay. Applied per FULL week with no points earned, so a normal
 # week of running never loses anything.
 DECAY_PER_WEEK = 0.02
+# Above DECAY_HIGH_TIER_FLOOR (Diamond), standing still costs more: the top of
+# the ladder needs upkeep, not just a one-time climb, or "reach Mythic" is a
+# task you finish instead of a position you have to keep earning. Selected by
+# the RAW points a balance last earned at, same as the rest of this decay
+# model — see the note on `award` for why that raw value can run ahead of the
+# decayed one a player sees.
+DECAY_PER_WEEK_HIGH = 0.05
+DECAY_HIGH_TIER_FLOOR = RANK_TIERS[5][0]  # 5500 — Diamond
 DECAY_GRACE_DAYS = 7
 _WEEK = 7 * 86400
 
@@ -70,7 +112,8 @@ def effective_points(points: int, last_earned_at: datetime | None,
     if idle <= 0:
         return int(points)
     weeks = int(idle // _WEEK) + 1
-    return int(round(points * ((1 - DECAY_PER_WEEK) ** weeks)))
+    rate = DECAY_PER_WEEK_HIGH if points >= DECAY_HIGH_TIER_FLOOR else DECAY_PER_WEEK
+    return int(round(points * ((1 - rate) ** weeks)))
 
 
 # The same decay, as a SQL expression over `u.rank_points` / `u.rank_points_at`.
@@ -84,19 +127,35 @@ def effective_points(points: int, last_earned_at: datetime | None,
 # It is a DUPLICATE and has to stay in step. `test_rank_decay_sql.py` runs both
 # over the same inputs and fails the moment they disagree, which is the only
 # thing that makes having two of them acceptable.
-DECAY_SQL = f"""
+def decay_sql(alias: str = "u") -> str:
+    """The decay expression for a particular SQL user-table alias.
+
+    Most callers use ``u`` and keep reading :data:`DECAY_SQL`. Claim combat
+    has several user roles in the same statement (attacker, territory owner,
+    supporting clubmate), so it needs the identical formula under different
+    aliases. Building it here keeps those rank comparisons on the one tested
+    SQL implementation instead of copying or string-rewriting it at each call
+    site.
+    """
+    if not alias.replace("_", "").isalnum():
+        raise ValueError("rank SQL alias must be an identifier")
+    return f"""
     CASE
-        WHEN COALESCE(u.rank_points, 0) <= 0 THEN 0
-        WHEN u.rank_points_at IS NULL THEN u.rank_points
-        WHEN EXTRACT(EPOCH FROM (timezone('utc', now()) - u.rank_points_at))
+        WHEN COALESCE({alias}.rank_points, 0) <= 0 THEN 0
+        WHEN {alias}.rank_points_at IS NULL THEN {alias}.rank_points
+        WHEN EXTRACT(EPOCH FROM (timezone('utc', now()) - {alias}.rank_points_at))
              <= {DECAY_GRACE_DAYS} * 86400
-            THEN u.rank_points
-        ELSE ROUND(u.rank_points * POWER(
-            {1 - DECAY_PER_WEEK}::numeric,
-            FLOOR((EXTRACT(EPOCH FROM (timezone('utc', now()) - u.rank_points_at))
+            THEN {alias}.rank_points
+        ELSE ROUND({alias}.rank_points * POWER(
+            (CASE WHEN {alias}.rank_points >= {DECAY_HIGH_TIER_FLOOR}
+                  THEN {1 - DECAY_PER_WEEK_HIGH} ELSE {1 - DECAY_PER_WEEK} END)::numeric,
+            FLOOR((EXTRACT(EPOCH FROM (timezone('utc', now()) - {alias}.rank_points_at))
                    - {DECAY_GRACE_DAYS} * 86400) / {_WEEK}) + 1))
     END
 """
+
+
+DECAY_SQL = decay_sql()
 
 
 def rank_for_points(points: int) -> dict:

@@ -64,6 +64,47 @@ describe('capture placement controls', () => {
     act(() => tree.unmount());
   });
 
+  it('shows the ground that holds as its own number', () => {
+    // A stretch where every border out-defends the runner used to read as
+    // ENEMY 0.000 with the real figure buried in a sentence. ATTACK stays
+    // pressable there (the server points it at the fight it can see), and the
+    // breakdown says how much of the ground is theirs.
+    const defendedPose = {
+      ...placement(0.55, 45),
+      action: 'fortified',
+      held_m2: 230000,
+      new_m2: 230000,
+      enemy_m2: 0,
+      defended_m2: 43000,
+      area_m2: 273000,
+      rivals: [{ user_id: 'r1', username: 'nix', avatar: null, area_m2: 43000, defended: true }],
+    };
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ChooseAttack
+          options={options}
+          pose={{ t: 0.55, deg: 45 }}
+          onPose={() => {}}
+          placement={defendedPose}
+          team={{ fill: '#22162B', stroke: '#EC4899', glow: '#EC4899' }}
+        />
+      );
+    });
+
+    const attack = tree.root.findByProps({ accessibilityLabel: 'Move claim to attack' });
+    expect(attack.props.accessibilityState.disabled).toBeFalsy();
+
+    const copy = tree.root.findAllByType(Text)
+      .map((node) => node.props.children)
+      .flat(Infinity)
+      .filter((value) => typeof value === 'string')
+      .join(' ');
+    expect(copy).toContain('THEIRS');
+    expect(copy).toContain('0.043 km²');
+    act(() => tree.unmount());
+  });
+
   it('keeps ATTACK visible but disabled when there is no rival placement', () => {
     let tree;
     act(() => {

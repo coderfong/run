@@ -1,10 +1,15 @@
 // "Who is our paser?" — the step between the birthday and the character
 // creator.
 //
-// It does two jobs. It records `gender` on the local profile (the age/gender
-// pair is what a fitness app needs for any calorie or pace modelling later),
-// and it seeds the HAIR slot so the runner opens the creator already looking
-// roughly like the person picked instead of always the same default head.
+// It does two jobs. It records `gender` on the local profile, and it seeds the
+// HAIR slot so the runner opens the creator already looking roughly like the
+// person picked instead of always the same default head.
+//
+// Both are conveniences, so the step is OPTIONAL: pick nothing and the button
+// reads "Skip for now" and carries you through with `gender` left empty. A
+// character creator you cannot reach without declaring a gender is required
+// personal information, and the seed it buys is one you change on the very
+// next screen anyway.
 //
 // You pick a FACE, not a word. The two options are the actual runner wearing
 // each seed, so the choice previews itself: the old version was a list of text
@@ -38,7 +43,7 @@ export const GENDER_OPTIONS = [
 
 const BUST = 132;
 
-export default function GenderStep({ value, onChange, onContinue }) {
+export default function GenderStep({ value, onChange, onContinue, onSkip }) {
   const { equipped, setPart } = useAvatar();
 
   const pick = (opt) => {
@@ -106,11 +111,13 @@ export default function GenderStep({ value, onChange, onContinue }) {
           })}
         </View>
 
-        {/* With the step, not pinned to the bottom edge of the screen. */}
+        {/* With the step, not pinned to the bottom edge of the screen.
+            Picking nothing is a valid answer — the seed is a convenience, not
+            information PASER needs — so the button carries you past instead of
+            greying out and making the step look like a wall. */}
         <ToonButton
-          title="Continue"
-          onPress={onContinue}
-          disabled={!value}
+          title={value ? 'Continue' : 'Skip for now'}
+          onPress={value ? onContinue : (onSkip || onContinue)}
           style={styles.cta}
         />
       </ScrollView>

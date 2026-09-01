@@ -103,12 +103,22 @@ const RefreshBar = memo(function RefreshBar({ expiresAt, onExpire }) {
   }, [left, expiresAt, onExpire]);
 
   return (
-    <Row gap={6} style={[styles.timer, { backgroundColor: colors.cardAlt, borderColor: colors.border }]}>
+    <Framed
+      frame={frameVariant('chip', 'shop-restock')}
+      weight={INK.thin}
+      pose={framePose('shop-restock')}
+      inset={3}
+      tint={colors.textMuted}
+      fill={colors.cardAlt}
+      on={colors.cardAlt}
+      style={styles.timer}
+      contentStyle={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+    >
       <AppIcon name="timer" size={16} />
-      <Text style={[type.captionMedium, { color: colors.textMuted }]}>
+      <Text style={[type.captionMedium, { color: colors.textMuted, paddingHorizontal: space.xs }]}>
         Fresh stock in {expiresAt ? text : '·'}
       </Text>
-    </Row>
+    </Framed>
   );
 });
 
@@ -218,7 +228,7 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
 
   return (
     <Reveal from="down" duration={220}>
-      <Card style={[styles.panel, { borderColor: tint }]}>
+      <Card style={styles.panel}>
         <View style={styles.panelArt}>
           {/* The glow is the rarity, read at a glance and before the words. */}
           <View
@@ -586,12 +596,7 @@ export default function ShopScreen() {
 
 const styles = StyleSheet.create({
   wallet: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  timer: {
-    alignItems: 'center', justifyContent: 'center', alignSelf: 'center',
-    paddingVertical: space.sm, paddingHorizontal: space.lg,
-    marginTop: space.sm,
-    borderRadius: radius.pill, borderWidth: 1,
-  },
+  timer: { alignSelf: 'center', marginTop: space.sm },
   grid: {
     flexDirection: 'row', flexWrap: 'wrap', gap: '2.75%',
   },
@@ -611,9 +616,10 @@ const styles = StyleSheet.create({
     width: '100%', minHeight: 92,
   },
   cellContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, padding: 7 },
+  // No border of its own: the Card brings the neo-brutalist stroke. The rarity
+  // read lives on the glow behind the thumb and the spelled-out rarity line.
   panel: {
     flexDirection: 'row', alignItems: 'center', gap: space.md,
-    borderWidth: 1.5,
   },
   // The art sits in a fixed square so the name column starts in the same place
   // whatever the item is, and so the burst has a centre to fire from.

@@ -82,6 +82,8 @@ import { ToastHost } from './src/ui/toast';
 import { RivalPopupHost } from './src/components/RivalPopup';
 import { LandCaptureAlertHost } from './src/components/LandCaptureAlert';
 import { CrossroadsAlertHost } from './src/components/CrossroadsAlert';
+import { DefenseHeldBanner } from './src/components/DefenseHeldBanner';
+import { useNotificationTaps } from './src/notifications/setup';
 import TabBar from './src/navigation/TabBar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
@@ -596,7 +598,12 @@ function RootNavigator() {
   const reduced = useReduceMotion();
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
+  const [navReady, setNavReady] = useState(false);
   usePushRegistration(signedIn);
+  // Foreground handler, Android channels, and tap routing for every category
+  // — cold start included. The per-event hosts below own their in-app banners;
+  // this owns "where does a tapped notification open".
+  useNotificationTaps(navigationRef, navReady && signedIn);
   // A subscription renews with the app closed, so the expiry the backend
   // holds goes stale on its own. This re-posts whatever the store says is
   // live; it can only ever extend PRO, never take it away.
@@ -654,7 +661,12 @@ function RootNavigator() {
     phase = 'app';
     content = (
       <>
-        <NavigationContainer ref={navigationRef} theme={navTheme} linking={linking}>
+        <NavigationContainer
+          ref={navigationRef}
+          theme={navTheme}
+          linking={linking}
+          onReady={() => setNavReady(true)}
+        >
           <RootStack />
         </NavigationContainer>
         {/* Steal alerts drop in over whatever screen is up, so the host lives
@@ -704,19 +716,29 @@ function RootNavigator() {
             });
           }}
         />
+        {/* Somebody ran your border and your territory held. Not a full-screen
+            cutscene — losing land earns that, a defense that held earns a line
+            you can tap through to the map or let pass. */}
+        <DefenseHeldBanner
+          onOpen={(focus) => {
+            if (!navigationRef.isReady()) return;
+            navigationRef.navigate('Tabs', {
+              screen: 'Map',
+              params: { screen: 'MapMain', params: focus },
+            });
+          }}
+        />
         {/* first-run coach marks, dimming the real home screen behind them */}
         {profile.tutorialPending ? (
           <TutorialOverlay
             name={displayName}
             onDone={completeTutorial}
-            onAddPaser={() => {
+            onStartRun={() => {
               if (!navigationRef.isReady()) return;
-              navigationRef.navigate('Tabs', {
-                screen: 'You',
-                // initial:false keeps the profile under Pasers, so its back
-                // button returns there instead of dead-ending the tab.
-                params: { screen: 'Pasers', initial: false },
-              });
+              // The record modal lives at the root, alongside Tabs — the same
+              // target the tab bar's record button and every "take it back"
+              // CTA use.
+              navigationRef.navigate('Record');
             }}
           />
         ) : null}

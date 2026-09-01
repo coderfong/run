@@ -19,21 +19,23 @@ class _Result:
 
 
 class _Session:
-    def __init__(self):
+    def __init__(self, *, pref=True):
         self.inserts = []
         self.deletes = []
         self.committed = False
         self.closed = False
+        self.pref = pref
 
     def execute(self, statement, params=None):
         sql = str(statement)
         if "notif_prefs" in sql:
-            return _Result(scalar=True)
+            return _Result(scalar=self.pref)
         if "INSERT INTO notifications" in sql:
             self.inserts.append(params)
             return _Result()
-        if "SELECT token FROM device_tokens" in sql:
-            return _Result(rows=[("ExponentPushToken[test]",)])
+        if "FROM device_tokens" in sql and "DELETE" not in sql:
+            # token, user_id::text, unread count — see notifications.notify.
+            return _Result(rows=[("ExponentPushToken[test]", "user-id", 3)])
         if "DELETE FROM device_tokens" in sql:
             self.deletes.append(params)
             return _Result()
@@ -68,6 +70,21 @@ class NotificationTest(unittest.TestCase):
         self.assertEqual(stored, sent[0]["data"])
         self.assertEqual(stored["category"], "stolen")
         self.assertEqual(stored["attacker_id"], str(actor_id))
+        self.assertEqual(sent[0]["badge"], 3)
+        self.assertEqual(sent[0]["channelId"], "territory-alerts")
+        self.assertTrue(session.committed and session.closed)
+
+    def test_muted_category_stays_in_inbox_without_push(self):
+        session = _Session(pref=False)
+        sent = []
+        with (
+            patch.object(notifications, "SessionLocal", lambda: session),
+            patch.object(notifications, "_expo_send", lambda messages: sent.extend(messages)),
+        ):
+            notifications.notify([str(uuid.uuid4())], "reminder", "Time to run", "Keep your streak alive.")
+
+        self.assertEqual(len(session.inserts), 1)
+        self.assertEqual(sent, [])
         self.assertTrue(session.committed and session.closed)
 
     def test_unknown_category_is_dropped_before_touching_the_db(self):

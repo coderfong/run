@@ -48,38 +48,36 @@ export const COPY = {
   highFiveSent: 'HIGH FIVED',
   viewCrossroads: 'VIEW CROSSROADS',
   continue: 'Continue',
-  introTitle: 'How the Crossroads works',
+  introTitle: 'The Crossroads',
   introCta: 'GOT IT',
 };
 
 // The one time explainer that opens the first time a runner reaches the plaza
 // (components/paserby/CrossroadsIntro.js). The plaza teaches nothing on its
 // own: characters simply stand there, and the whole feature — who they are,
-// what tapping does, what the labels mean, what they can see of you — has to
-// be said once.
+// what tapping does, what they can see of you — has to be said once.
 //
 // DATA ONLY, like the rest of this file. Each beat's icon is the component's
 // business; `key` is what it looks the icon up by.
 //
-// Four beats, in the order a runner meets them: who is here, what to do, what
-// it builds towards, and what it costs them in privacy. The last one is not
-// filler — it is the answer to the question the screen provokes.
+// Three beats, one short sentence each: who is here, what to do, what it
+// costs them in privacy. The last one is not filler — it is the answer to the
+// question the screen provokes. The familiarity ladder (Familiar Face →
+// Running Regular → Local Legend) used to be a fourth beat here; it is
+// already printed under each character's own card, so a first-time reader
+// meets it there instead of in a wall of text before they have met anyone.
 export const INTRO_BEATS = [
   {
     key: 'plaza',
-    text: 'Runners whose recent runs crossed near yours are standing in the plaza, wearing what they wear.',
+    text: 'These runners crossed paths with you on a recent run.',
   },
   {
     key: 'tap',
-    text: 'Tap anyone to see who they are, send them a high five, or open their profile.',
-  },
-  {
-    key: 'ladder',
-    text: 'Cross paths with the same runner again and they climb: Familiar Face, Running Regular, then Local Legend.',
+    text: 'Tap anyone to high five them or see their profile.',
   },
   {
     key: 'privacy',
-    text: 'They never see your route, your location or when you crossed. You can hide or block anyone, any time.',
+    text: 'They never see your route, location or crossing time. Hide or block anyone, any time.',
   },
 ];
 

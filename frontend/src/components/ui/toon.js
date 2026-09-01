@@ -424,35 +424,6 @@ export function ToonHeader({
   );
 }
 
-// ---------------------------------------------------------------------------
-// ToonChip — the outlined pill used for counters (coins, energy, level).
-// ---------------------------------------------------------------------------
-
-// The stroke is `strokeThin` and the drop is `offsetSm`. A counter chip is
-// about 32pt tall: 3pt of ink closes up the counters in the label (the same
-// reason Pill went thin), and the full 4pt drop under something that small
-// reads as the chip being knocked askew rather than as depth.
-export function ToonChip({ icon, label, bg, color, style }) {
-  const { colors, scheme } = useTheme();
-  const fill = bg || colors.card;
-  const s = toonSurface(colors, scheme, {
-    on: fill,
-    stroke: NB.strokeThin,
-    offset: NB.offsetSm,
-  });
-  return (
-    // HardShadow, so the drop exists on Android — a chip is chrome and turns up
-    // in headers on both platforms. `style` rides the wrapper: every caller
-    // passes it to place the chip in a row, and a margin left on the inner box
-    // would move the chip out from under its own shadow.
-    <HardShadow offset={s.offset} radius={toonRadius.pill} on={fill} style={style}>
-      <View style={[styles.chip, { backgroundColor: fill, ...s.outline }]}>
-        {icon}
-        <Text style={[toonType.sub, { fontSize: 15, color: color || colors.text }]}>{label}</Text>
-      </View>
-    </HardShadow>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // ToonRowGroup / ToonRow — the settings-style list: one outlined card, rows
@@ -770,15 +741,6 @@ const styles = StyleSheet.create({
     marginRight: space.sm,
   },
   panelCompact: { paddingBottom: space.md },
-
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: space.md,
-    paddingVertical: 7,
-    borderRadius: toonRadius.pill,
-  },
 
   row: {
     flexDirection: 'row',

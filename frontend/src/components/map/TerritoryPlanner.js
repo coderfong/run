@@ -33,9 +33,10 @@ import { Undo2, X } from 'lucide-react-native';
 
 import { FREE_PLANNER_PREVIEWS } from '../../config/proExposure';
 import { GOLD } from '../../config/pro';
-import { radius, shadow, space, useTheme, useThemedType } from '../../theme';
+import { space, useTheme, useThemedType } from '../../theme';
 import AppIcon from '../AppIcon';
-import { ToonButton } from '../ui';
+import { Card, Framed, ToonButton } from '../ui';
+import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
 
 const km = (m) => {
   const v = Math.max(0, m || 0) / 1000;
@@ -89,7 +90,7 @@ export default function TerritoryPlanner({
   const exhausted = !isPro && previewsLeft <= 0;
 
   return (
-    <View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <Card style={styles.panel}>
       <View style={styles.headRow}>
         <AppIcon name="route" size={24} />
         <View style={{ flex: 1 }}>
@@ -111,25 +112,28 @@ export default function TerritoryPlanner({
           <TouchableOpacity
             onPress={onToggleDrawMode}
             hitSlop={10}
-            style={[
-              styles.mode,
-              {
-                backgroundColor: drawMode ? GOLD : 'transparent',
-                borderColor: drawMode ? GOLD : colors.border,
-              },
-            ]}
             accessibilityRole="button"
             accessibilityState={{ selected: drawMode }}
             accessibilityLabel={drawMode ? 'Switch to tapping points' : 'Switch to drawing the route'}
           >
-            <Text
-              style={[
-                type.captionMedium,
-                { color: drawMode ? '#141414' : colors.textMuted },
-              ]}
+            <Framed
+              frame={frameVariant('chip', 'planner-mode')}
+              fill={drawMode ? GOLD : colors.card}
+              on={drawMode ? GOLD : colors.card}
+              tint={drawMode ? '#141414' : colors.textMuted}
+              weight={INK.thin}
+              pose={framePose('planner-mode')}
+              inset={3}
             >
-              {drawMode ? 'Draw' : 'Tap'}
-            </Text>
+              <Text
+                style={[
+                  type.captionMedium,
+                  { color: drawMode ? '#141414' : colors.textMuted, paddingHorizontal: space.xs },
+                ]}
+              >
+                {drawMode ? 'Draw' : 'Tap'}
+              </Text>
+            </Framed>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity onPress={onUndo} disabled={!points.length} hitSlop={10}
@@ -241,7 +245,7 @@ export default function TerritoryPlanner({
           </TouchableOpacity>
         ) : null}
       </View>
-    </View>
+    </Card>
   );
 }
 
@@ -251,18 +255,8 @@ const styles = StyleSheet.create({
     left: space.gutter,
     right: space.gutter,
     bottom: space.xl,
-    borderRadius: radius.card,
-    borderWidth: 2,
-    padding: space.md,
-    ...shadow.raised,
   },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  mode: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
-    borderWidth: 2,
-  },
   statRow: { flexDirection: 'row', gap: space.md, marginTop: space.sm },
   stat: { flex: 1, minWidth: 0 },
   crossRow: {

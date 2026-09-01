@@ -179,7 +179,14 @@ export function useQuery(key, fetcher, options = {}) {
   useEffect(() => {
     if (!active) return undefined;
     return subscribeCached(key, (next) => {
-      if (mounted.current) setRaw(next);
+      if (mounted.current) {
+        setRaw(next);
+        // A cache publication is a successful answer, even when it came from
+        // a sibling mutation rather than this hook's own fetch. Leaving the
+        // old error attached made entitlement self-heal keep retrying after a
+        // subscribe/sync response had already proved PRO active.
+        setError(null);
+      }
     });
   }, [active, key]);
 

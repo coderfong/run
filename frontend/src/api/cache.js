@@ -277,6 +277,18 @@ export function invalidateAfterEntitlementChange() {
   AFTER_ENTITLEMENT.forEach((prefix) => invalidate(prefix));
 }
 
+// A successful subscribe/sync response already IS the authoritative PRO
+// status. Keep that answer instead of invalidating it and asking the same
+// server for it again: the mounted ProProvider subscribes to this cache key,
+// so writing the response here removes every padlock in the same tick. The
+// related entitlement-shaped payloads are still dropped first and will
+// revalidate normally when their screens are next opened.
+export function applyProEntitlement(status) {
+  if (!status || typeof status !== 'object') return;
+  invalidateAfterEntitlementChange();
+  setCached('pro', status);
+}
+
 export function invalidateAfterRun() {
   AFTER_RUN.forEach((prefix) => invalidate(prefix));
 }

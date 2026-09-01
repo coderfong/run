@@ -57,8 +57,11 @@ Revisions: 0001 baseline · 0002 MultiPolygon · 0003 clan groundwork ·
   (`backend/app/clans_meta.py`) — no seeding needed.
 - **Nightly:** `POST /admin/recompute-season` (refresh clan areas + assign
   league tiers). **Monday:** `POST /admin/weekly-recap` (push last-week
-  recap). Wire both to a scheduler (cron / Fly Machines / Render cron) and
-  **lock the `/admin/*` routes down** (add an admin token) before production.
+  recap). **Evening (e.g. 20:00 local-ish, once daily):**
+  `POST /admin/run-reminders` (nudge runners whose daily streak breaks at
+  midnight — most recent run was yesterday UTC, none today). Wire all three to
+  a scheduler (cron / Fly Machines / Render cron) and **lock the `/admin/*`
+  routes down** (add an admin token) before production.
 
 ## Backend deploy (Fly.io / Render)
 

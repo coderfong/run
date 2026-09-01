@@ -13,14 +13,14 @@ import { invalidate } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
-import { nbField, radius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { nbField, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { art } from '../config/onboardingArt';
 import { Screen, Card, Framed, Row, Button, Input, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import { toast } from '../ui/toast';
 import { pickPhoto } from '../ui/photoPicker';
 import { framePose, frameVariant } from '../ui/frameRegistry';
-import { Arrival, Bar, useArrival } from '../ui/motion';
+import { Arrival, Bar, PressableScale, useArrival } from '../ui/motion';
 import GameLottie from '../components/GameLottie';
 import { INK } from '../ui/frameRegistry';
 
@@ -348,13 +348,15 @@ function MemberHub({ clanId, navigation }) {
     return (
       <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
         {tabs}
-        <View style={styles.rankHero}>
-          <AppIcon name="trophy" size={34} />
-          <View style={{ flex: 1 }}>
-            <Text style={type.title}>Season standings</Text>
-            <Text style={type.caption}>How every club’s claimed ground stacks up.</Text>
-          </View>
-        </View>
+        <Card style={styles.rankHero}>
+          <Row gap={space.md}>
+            <AppIcon name="trophy" size={34} />
+            <View style={{ flex: 1 }}>
+              <Text style={type.title}>Season standings</Text>
+              <Text style={type.caption}>How every club’s claimed ground stacks up.</Text>
+            </View>
+          </Row>
+        </Card>
         {ranksLoading ? (
           Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} width="100%" height={72} style={{ borderRadius: 16, marginTop: space.sm }} />
@@ -400,7 +402,7 @@ function MemberHub({ clanId, navigation }) {
       {tabs}
       {/* header — crew-standoff art sits behind the crest, faded so the
           club's own colour and text stay dominant */}
-      <View style={[styles.header, { backgroundColor: withAlpha(accent, 0.1) }]}>
+      <Card style={styles.header}>
         {art('headerClub') && (
           <Image
             source={art('headerClub')}
@@ -443,7 +445,7 @@ function MemberHub({ clanId, navigation }) {
               change colour when a member joins. */}
           <Pill label={`${clan.member_count} members`} seed="club:members" />
         </Row>
-      </View>
+      </Card>
 
       {/* weekly goal (the chest) */}
       {goal && (
@@ -487,24 +489,44 @@ function MemberHub({ clanId, navigation }) {
       <View style={styles.membersHeader}>
         <Text style={type.heading}>Members</Text>
         <Row gap={8}>
-          <TouchableOpacity
-            style={[styles.actionPill, { borderColor: accent }]}
+          <PressableScale
             onPress={() => navigation.navigate('ClubChat', { clanId })}
             accessibilityRole="button"
             accessibilityLabel="Open club chat"
           >
-            <AppIcon name="comment" size={18} />
-            <Text style={[type.captionMedium, { color: accent }]}>Chat</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionPill}
+            <Framed
+              frame={frameVariant('chip', 'club-chat')}
+              tint={accent}
+              on={colors.card}
+              fill={colors.card}
+              weight={INK.thin}
+              pose={framePose('club-chat')}
+              inset={3}
+              contentStyle={styles.actionPillInner}
+            >
+              <AppIcon name="comment" size={18} />
+              <Text style={[type.captionMedium, { color: accent, paddingHorizontal: space.xs }]}>Chat</Text>
+            </Framed>
+          </PressableScale>
+          <PressableScale
             onPress={invite}
             accessibilityRole="button"
             accessibilityLabel="Invite a member"
           >
-            <AppIcon name="invite" size={18} />
-            <Text style={[type.captionMedium, { color: colors.textMuted }]}>Invite</Text>
-          </TouchableOpacity>
+            <Framed
+              frame={frameVariant('chip', 'club-invite')}
+              tint={colors.textMuted}
+              on={colors.card}
+              fill={colors.card}
+              weight={INK.thin}
+              pose={framePose('club-invite')}
+              inset={3}
+              contentStyle={styles.actionPillInner}
+            >
+              <AppIcon name="invite" size={18} />
+              <Text style={[type.captionMedium, { color: colors.textMuted, paddingHorizontal: space.xs }]}>Invite</Text>
+            </Framed>
+          </PressableScale>
         </Row>
       </View>
       <Card padded={false}>
@@ -651,12 +673,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: colors.bg,
   },
-  header: { alignItems: 'center', borderRadius: radius.card, padding: space.xl, overflow: 'hidden', marginTop: space.md },
-  rankHero: {
-    flexDirection: 'row', alignItems: 'center', gap: space.md,
-    marginTop: space.md, padding: space.md,
-    borderRadius: radius.card, backgroundColor: colors.cardAlt,
-  },
+  header: { alignItems: 'center', overflow: 'hidden', marginTop: space.md },
+  rankHero: { marginTop: space.md },
   headerArt: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.22 },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.bgElevated, overflow: 'hidden' },
   goalBarStage: { position: 'relative', justifyContent: 'center' },
@@ -674,17 +692,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     marginTop: space.xl,
     marginBottom: space.md,
   },
-  actionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.pill,
-    paddingHorizontal: space.md,
-    paddingVertical: 7,
-    backgroundColor: colors.card,
-  },
+  actionPillInner: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   introOverlay: {
     ...StyleSheet.absoluteFillObject, zIndex: 100, elevation: 30,
     alignItems: 'center', justifyContent: 'center', padding: space.gutter,

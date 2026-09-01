@@ -26,7 +26,7 @@ import React, { useEffect, useState } from 'react';
 import { Linking, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { api } from '../api/client';
-import { invalidateAfterEntitlementChange } from '../api/cache';
+import { applyProEntitlement, invalidateAfterEntitlementChange } from '../api/cache';
 import { EVENTS, track } from '../analytics';
 import { PLANS, PRO_MONTHLY, PRO_PRODUCTS } from '../config/pro';
 import { proContext } from '../config/proContexts';
@@ -118,11 +118,14 @@ export default function BuyProSheet({
       // unfinished transaction stays queued and replays, so a failure here
       // is recoverable; finishing first and then failing loses a purchase
       // that has already been paid for.
-      await api.subscribePro(plan, receipt, platform);
+      const entitlement = await api.subscribePro(plan, receipt, platform);
       await finishPurchase(purchase, { isConsumable: false });
-      invalidateAfterEntitlementChange();
+      // /subscribe returns the final server entitlement. Publish it directly
+      // so every mounted lock opens now, without depending on a second GET.
+      applyProEntitlement(entitlement);
       track(EVENTS.PURCHASE_SUCCESS, funnel());
-      toast.success('PASER PRO is active!');
+      // No toast: the sheet closes and ProProvider raises the full-screen
+      // welcome (src/components/ProWelcome.js), which is the confirmation now.
       onPurchased?.();
       onClose?.();
     } catch (e) {
@@ -162,22 +165,20 @@ export default function BuyProSheet({
           await finishPurchase(legacy, { isConsumable: false });
           invalidateAfterEntitlementChange();
           track(EVENTS.RESTORE_SUCCESS, funnel({ plan: 'premium_pass' }));
-          toast.success('Your lifetime pass is back.');
-          onPurchased?.();
+          onPurchased?.({ restored: true });
           onClose?.();
           return;
         }
         toast.error('No previous purchase found for this account.');
         return;
       }
-      await api.syncPro(owned.map((p) => ({
+      const entitlement = await api.syncPro(owned.map((p) => ({
         product_id: p.productId, receipt: p.purchaseToken, platform: Platform.OS,
       })));
       for (const p of owned) await finishPurchase(p, { isConsumable: false });
-      invalidateAfterEntitlementChange();
+      applyProEntitlement(entitlement);
       track(EVENTS.RESTORE_SUCCESS, funnel());
-      toast.success('PASER PRO restored!');
-      onPurchased?.();
+      onPurchased?.({ restored: true });
       onClose?.();
     } catch (e) {
       toast.error(e.message || 'Could not restore purchases');

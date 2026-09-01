@@ -199,7 +199,7 @@ def send_request(
         background.add_task(
             notify, [target_id], "pasers", "You're now pasers",
             f"{user.username} accepted your paser request.",
-            {"kind": "paser_accepted", "user_id": user.id}, str(user.id),
+            {"kind": "paser_accepted", "screen": "pasers", "user_id": user.id}, str(user.id),
         )
         return _card_for(db, target_id, user.id)
 
@@ -214,7 +214,7 @@ def send_request(
     background.add_task(
         notify, [target_id], "pasers", "New paser request",
         f"{user.username} wants to be your paser.",
-        {"kind": "paser_request", "user_id": user.id}, str(user.id),
+        {"kind": "paser_request", "screen": "pasers", "user_id": user.id}, str(user.id),
     )
     return _card_for(db, target_id, user.id)
 
@@ -260,7 +260,7 @@ def respond_to_request(
     background.add_task(
         notify, [requester_id], "pasers", "You're now pasers",
         f"{user.username} accepted your paser request.",
-        {"kind": "paser_accepted", "user_id": user.id}, str(user.id),
+        {"kind": "paser_accepted", "screen": "pasers", "user_id": user.id}, str(user.id),
     )
     return _card_for(db, requester_id, user.id)
 

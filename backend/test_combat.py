@@ -140,6 +140,64 @@ def test_rank_weighting():
     )
 
 
+def test_rank_weighting_by_tier():
+    print("\n[5] the top of the ladder favours holding ground over taking it")
+    n = len(ranks.RANK_TIERS)
+    check(
+        "every tier table covers every rank tier",
+        len(ranks.STEAL_REWARD_BY_TIER) == n
+        and len(ranks.LOSS_PENALTY_BY_TIER) == n
+        and len(ranks.DEFEND_REWARD_BY_TIER) == n,
+        n,
+    )
+    # Tier 0 has to reproduce the flat numbers test_rank_weighting already
+    # checked, or this table silently changed the game for every new player.
+    check(
+        "wood still pays the original flat rates",
+        (ranks.steal_reward(0), ranks.loss_penalty(0), ranks.defend_reward(0))
+        == (ranks.POINTS_STEAL, ranks.POINTS_LOST, ranks.POINTS_DEFEND),
+    )
+    top = n - 1
+    check(
+        "stealing pays less the closer the fight is to Mythic",
+        ranks.steal_reward(top) < ranks.steal_reward(0),
+        f"mythic {ranks.steal_reward(top)} vs wood {ranks.steal_reward(0)}",
+    )
+    check(
+        "losing ground costs more the closer the fight is to Mythic",
+        ranks.loss_penalty(top) < ranks.loss_penalty(0),
+        f"mythic {ranks.loss_penalty(top)} vs wood {ranks.loss_penalty(0)}",
+    )
+    check(
+        "defending pays more the closer the fight is to Mythic",
+        ranks.defend_reward(top) > ranks.defend_reward(0),
+        f"mythic {ranks.defend_reward(top)} vs wood {ranks.defend_reward(0)}",
+    )
+    # The actual test of "harder to climb": at the top, successfully taking
+    # ground off someone must pay the attacker LESS than losing it cost the
+    # victim — a steal should shrink the total points on the board, not grow
+    # it, or aggregate rank inflates and Mythic gets easier over time instead
+    # of harder.
+    check(
+        "a top-tier steal is zero-sum or worse, not a net mint",
+        ranks.steal_reward(top) <= abs(ranks.loss_penalty(top)),
+        f"gain {ranks.steal_reward(top)} vs loss {abs(ranks.loss_penalty(top))}",
+    )
+    # And defending must be the better payday, so staying near Mythic means
+    # holding your ground rather than farming raids on someone else's.
+    check(
+        "at the top, a successful defence outpays a successful steal",
+        ranks.defend_reward(top) > ranks.steal_reward(top),
+        f"defend {ranks.defend_reward(top)} vs steal {ranks.steal_reward(top)}",
+    )
+    check(
+        "decay bites harder once you're actually near the top",
+        ranks.DECAY_PER_WEEK_HIGH > ranks.DECAY_PER_WEEK
+        and ranks.DECAY_HIGH_TIER_FLOOR == ranks.RANK_TIERS[5][0],
+        f"{ranks.DECAY_PER_WEEK_HIGH} vs {ranks.DECAY_PER_WEEK} above {ranks.DECAY_HIGH_TIER_FLOOR}",
+    )
+
+
 def main():
     print(
         f"combat — club weights {settings.club_defence_w1}/{settings.club_defence_w2}/"
@@ -150,6 +208,7 @@ def main():
     test_ceiling()
     test_immunity_is_real_without_chip()
     test_rank_weighting()
+    test_rank_weighting_by_tier()
     print(f"\n{len(PASSES)} passed, {len(FAILURES)} failed")
     if FAILURES:
         sys.exit(1)

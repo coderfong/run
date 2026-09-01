@@ -897,7 +897,9 @@ class PushTokenIn(BaseModel):
 
 class NotifPrefs(BaseModel):
     stolen: bool = True
+    defended: bool = True
     captured: bool = True
+    reminder: bool = True
     clan_goal: bool = True
     kudos: bool = True
     season: bool = True
