@@ -115,10 +115,9 @@ services:
   # territory — see bot_activity.py. Talks to the database directly, same
   # reasoning as the sweep cron above.
   #
-  # Every 30 minutes: with ~120 bots each running roughly once every 1-2 days,
-  # most ticks have a small handful due (see bot_activity.py's BATCH_SIZE
-  # math) rather than a burst, which is what keeps the map's activity looking
-  # like people playing instead of a scheduled batch job.
+  # Every 15 minutes: with 384 bots running about once per 1.3 days, most ticks
+  # have roughly three due, with larger morning/evening peaks. The shorter tick
+  # prevents those peaks reading as one half-hourly scheduled batch.
   - type: cron
     name: territory-run-bots
     runtime: docker
@@ -126,7 +125,7 @@ services:
     dockerContext: .
     plan: starter
     region: singapore
-    schedule: "*/30 * * * *"
+    schedule: "*/15 * * * *"
     dockerCommand: python bot_activity.py
     envVars:
       - key: DATABASE_URL

@@ -46,6 +46,7 @@ from shapely.geometry import Polygon, MultiPolygon, Point  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 
 import bot_world  # noqa: E402
+from app import ranks  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.clans_meta import CLAN_COLORS, CLAN_BADGES  # noqa: E402
@@ -68,8 +69,8 @@ ATTACKER_FRACTION = 0.22
 # an empty profile and a single claim; a handful gives it a history, a route
 # thumbnail per run, a believable total distance, and territory of several
 # different ages rather than a world minted in one instant.
-MIN_HISTORY_RUNS = 2
-MAX_HISTORY_RUNS = 5
+MIN_HISTORY_RUNS = 4
+MAX_HISTORY_RUNS = 7
 
 # Bots cluster around a few estate centres per region instead of scattering
 # uniformly across its land area. Uniform scatter is the other half of why the
@@ -276,7 +277,7 @@ def _target_avoid_geom(db):
 
 
 def _seed_one_run(db, *, user_id, clan_id, home_lat, home_lon, land, started_at,
-                  avoid_geom, rng) -> float:
+                  avoid_geom, rank_tier, rng) -> float:
     """One historical run for a bot: route, run row, and the claim it earned.
 
     Returns the distance run, so the caller can total it into XP. Returns 0.0
@@ -323,6 +324,7 @@ def _seed_one_run(db, *, user_id, clan_id, home_lat, home_lon, land, started_at,
             strength=claim_strength(distance_m, duration_s),
             verified=True,
             clan_id=clan_id,
+            rank_tier=rank_tier,
             lifetime_for=lambda r, d=distance_m, du=duration_s: claim_lifetime_days(d, du, r),
         )
     except HTTPException as exc:
@@ -354,7 +356,7 @@ def main() -> int:
     ap.add_argument("--reset", action="store_true", help="wipe existing bot accounts first")
     ap.add_argument("--seed", type=int, default=None, help="RNG seed, for a reproducible run")
     # Size overrides exist so the whole thing can be exercised against a local
-    # database in seconds. A full seed is ~1300 claims, each doing real PostGIS
+    # database in seconds. A full seed is ~2100 claims, each doing real PostGIS
     # overlap resolution, which is several minutes — too slow to iterate on.
     ap.add_argument("--clans", type=int, default=N_CLANS, help=f"number of clubs (default {N_CLANS})")
     ap.add_argument("--per-clan", type=int, default=BOTS_PER_CLAN,
@@ -714,6 +716,7 @@ def main() -> int:
             for _ in range(per_clan):
                 username = usernames[cursor]
                 points = rank_points[cursor]
+                rank_tier = ranks.rank_for_points(points)["tier"]
                 cursor += 1
                 user_id = str(uuid.uuid4())
                 is_attacker = rng.random() < ATTACKER_FRACTION
@@ -728,6 +731,12 @@ def main() -> int:
                     {"id": user_id, "u": username, "cid": clan_id, "age_days": rng.uniform(3, 200),
                      "avatar": json.dumps(bot_world.make_avatar(rng))},
                 )
+
+                # The rank must exist BEFORE historical territory is resolved.
+                # Combat is rank-scoped; assigning it afterwards made every
+                # initial claim fight as Wood, carving unrelated rank layers out
+                # of each other and leaving every map board needlessly sparse.
+                bot_world.apply_rank_points(db, user_id, points, rng)
                 db.execute(
                     text(
                         "INSERT INTO clan_members (clan_id, user_id, role) VALUES (:cid, :uid, :role)"
@@ -760,7 +769,8 @@ def main() -> int:
                     distance_total += _seed_one_run(
                         db, user_id=user_id, clan_id=clan_id,
                         home_lat=home_lat, home_lon=home_lon, land=region["geom"],
-                        started_at=started_at, avoid_geom=avoid_geom, rng=rng,
+                        started_at=started_at, avoid_geom=avoid_geom,
+                        rank_tier=rank_tier, rng=rng,
                     )
                     total_runs += 1
 
@@ -770,10 +780,8 @@ def main() -> int:
                     text("UPDATE users SET xp = :xp WHERE id = :u"),
                     {"xp": round(distance_total / 1000.0 * settings.xp_per_km), "u": user_id},
                 )
-                bot_world.apply_rank_points(db, user_id, points, rng)
-
                 total_attackers += 1 if is_attacker else 0
-            # Commit per club, not once at the end. A full seed is ~1300
+            # Commit per club, not once at the end. A full seed is ~2100
             # claims, and against a remote database that is the better part of
             # an hour inside a single transaction — long enough for a dropped
             # connection or an idle timeout to throw the whole thing away, and

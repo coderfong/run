@@ -49,7 +49,13 @@ from app.database import SessionLocal
 from app.geospatial import claim_area_m2
 from app.notifications import notify
 from app.routes.clans import record_clan_activity
-from app.routes.runs import STEAL_LEDGER_MIN_M2, _claim_territory, claim_lifetime_days, claim_strength
+from app.routes.runs import (
+    STEAL_LEDGER_MIN_M2,
+    _claim_territory,
+    _rank_scope_sql,
+    claim_lifetime_days,
+    claim_strength,
+)
 
 TARGET_USERNAME = "jonfong78"
 
@@ -59,27 +65,33 @@ TARGET_USERNAME = "jonfong78"
 # has to absorb that burst plus a missed tick or two, not just the mean.
 BATCH_SIZE = 60
 
-# Of every DUE RUN from an attacker-eligible bot (~22% of the roster, set at
-# seed time), this fraction targets TARGET_USERNAME's own territory instead
-# of the bot's home turf. With ~85 eligible bots each running ~once every 2
-# days, the pool produces roughly 42 runs/day ≈ 300/week; 0.013 * 300 ≈ 4
-# raids/week — "a few times a week". Tune this one constant to change it.
-ATTACK_CHANCE = 0.013
+# Of every due run from an attacker-eligible bot in the TARGET's current rank,
+# this fraction targets the player's land. Rank scoping matters: choosing from
+# all ~85 eligible bots made nine out of ten apparent raids unable to fight the
+# selected land. At the denser cadence this yields roughly 2-5 real attempts a
+# week depending on the population of the player's tier.
+ATTACK_CHANCE = 0.06
 
 # Chance any bot's run goes after a NEIGHBOURING BOT's land instead of its
 # own. This is what makes the world's territory move on its own: without it,
 # bots only ever fought the one real player, every other border on the map
 # was frozen, and the map looked like a photograph rather than a game in
-# progress. One run in nine is a local derby.
-RIVAL_CHANCE = 0.11
+# progress. Nearly one run in three is now an intentional local derby; ordinary
+# home routes still produce incidental border contact on top of this.
+RIVAL_CHANCE = 0.32
+
+# Prefer someone this bot has fought before on most intentional raids. This is
+# the difference between many unrelated steals and a border that visibly moves
+# back and forth between recognisable rivals.
+REMATCH_CHANCE = 0.70
 
 # How far a bot will travel to raid a neighbour. Far enough to reach the next
 # estate, near enough that it is still a local rivalry.
-RIVAL_RADIUS_M = 2500
+RIVAL_RADIUS_M = 5000
 
 # A bot's home-turf run starts within this radius of its home point, so its
 # territory drifts and occasionally bumps a neighbour rather than teleporting.
-HOME_JITTER_M = 350.0
+HOME_JITTER_M = 900.0
 
 _REGION_FILE = os.path.join(os.path.dirname(__file__), "sg_regions.json")
 _regions_cache: dict | None = None
@@ -126,25 +138,35 @@ def _due_bots(db, limit: int):
     ).fetchall()
 
 
-def _target_territory(db):
-    """A random one of TARGET_USERNAME's currently-live territories, or None."""
+def _target_territory(db, rank_tier: int):
+    """A random live TARGET territory on the bot's combat board, or None."""
+    rank_clause, rank_params = _rank_scope_sql(rank_tier, "u", "target_rank")
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT ST_Y(ST_Centroid(t.polygon)), ST_X(ST_Centroid(t.polygon))
             FROM territories t JOIN users u ON u.id = t.user_id
             WHERE u.username = :n AND t.verified
               AND (t.expires_at IS NULL OR t.expires_at > now())
+              AND {rank_clause}
             """
         ),
-        {"n": TARGET_USERNAME},
+        {"n": TARGET_USERNAME, **rank_params},
     ).fetchall()
     if not rows:
         return None
     return random.choice(rows)
 
 
-def _rival_territory(db, home_lat: float, home_lon: float, clan_id, user_id):
+def _rival_territory(
+    db,
+    home_lat: float,
+    home_lon: float,
+    clan_id,
+    user_id,
+    rank_tier: int,
+    prefer_rematch: bool,
+):
     """A nearby bot's land, owned by somebody in another club.
 
     Excludes club-mates deliberately: club-mates stack defence on each other's
@@ -153,9 +175,20 @@ def _rival_territory(db, home_lat: float, home_lon: float, clan_id, user_id):
     player is a separate, rationed decision, not something that should also
     happen by accident through this path.
     """
-    row = db.execute(
-        text(
-            """
+    rank_clause, rank_params = _rank_scope_sql(rank_tier, "u", "rival_rank")
+    params = {
+        "me": user_id,
+        "clan": clan_id,
+        "lat": home_lat,
+        "lon": home_lon,
+        "radius": RIVAL_RADIUS_M,
+        **rank_params,
+    }
+
+    def find(extra: str = ""):
+        return db.execute(
+            text(
+                f"""
             SELECT ST_Y(ST_Centroid(t.polygon)), ST_X(ST_Centroid(t.polygon))
             FROM territories t
             JOIN users u ON u.id = t.user_id
@@ -163,19 +196,37 @@ def _rival_territory(db, home_lat: float, home_lon: float, clan_id, user_id):
               AND t.verified
               AND (t.expires_at IS NULL OR t.expires_at > now())
               AND u.id <> :me
-              AND (u.clan_id IS DISTINCT FROM :clan)
+              AND (
+                CAST(:clan AS uuid) IS NULL
+                OR u.clan_id IS NULL
+                OR u.clan_id <> :clan
+              )
+              AND {rank_clause}
               AND ST_DWithin(
                     t.polygon::geography,
                     ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
                     :radius)
+              {extra}
             ORDER BY random()
             LIMIT 1
             """
-        ),
-        {"me": user_id, "clan": clan_id, "lat": home_lat, "lon": home_lon,
-         "radius": RIVAL_RADIUS_M},
-    ).fetchone()
-    return row
+            ),
+            params,
+        ).fetchone()
+
+    if prefer_rematch:
+        row = find(
+            """
+              AND u.id IN (
+                SELECT victim_id FROM territory_steals WHERE attacker_id = :me
+                UNION
+                SELECT attacker_id FROM territory_steals WHERE victim_id = :me
+              )
+            """
+        )
+        if row is not None:
+            return row
+    return find()
 
 
 def _jitter(lat: float, lon: float, metres: float, rng: random.Random) -> tuple[float, float]:
@@ -193,20 +244,26 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     rng = random.Random()
 
     distance_m, pace_s_per_km = bot_world.plan_run(rng, user_id=user_id)
+    # Read the live tier before choosing a destination. A cross-tier target is
+    # scenery to the claim engine, so selecting one cannot create a rivalry.
+    bot_rank_tier = ranks.status(db, user_id)["tier"]
 
     # Where does this run start?
-    start_lat, start_lon = home_lat, home_lon
-    roll = rng.random()
-    if attacker and roll < ATTACK_CHANCE:
-        target = _target_territory(db)
-        if target is not None:
-            start_lat, start_lon = _jitter(target[0], target[1], 150, rng)
-    elif roll < ATTACK_CHANCE + RIVAL_CHANCE:
-        rival = _rival_territory(db, home_lat, home_lon, clan_id, user_id)
+    start_lat, start_lon = _jitter(home_lat, home_lon, HOME_JITTER_M, rng)
+    target = (
+        _target_territory(db, bot_rank_tier)
+        if attacker and rng.random() < ATTACK_CHANCE
+        else None
+    )
+    if target is not None:
+        start_lat, start_lon = _jitter(target[0], target[1], 150, rng)
+    elif rng.random() < RIVAL_CHANCE:
+        rival = _rival_territory(
+            db, home_lat, home_lon, clan_id, user_id, bot_rank_tier,
+            prefer_rematch=rng.random() < REMATCH_CHANCE,
+        )
         if rival is not None:
             start_lat, start_lon = _jitter(rival[0], rival[1], 200, rng)
-    else:
-        start_lat, start_lon = _jitter(home_lat, home_lon, HOME_JITTER_M, rng)
 
     path = bot_world.synth_route(
         start_lat, start_lon, distance_m, rng, land=_land_for(region_key)
@@ -234,7 +291,6 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     # defend rewards below key off. Left implicit, `_claim_territory` would
     # compute the identical number itself, but this way there is one query
     # and one value in use for the whole call.
-    bot_rank_tier = ranks.status(db, user_id)["tier"]
     bounced = False
     try:
         territory_out, _stolen_m2, _stolen_from, steal_events, ground = _claim_territory(

@@ -513,16 +513,29 @@ _RUN_WINDOWS = [
     (11.0, 17.5, 5),   # the few who run in the afternoon heat
 ]
 
+# A seeded runner represents the visible activity of a populated board, not a
+# literal background account that can disappear for most of a week. Keep most
+# runners daily, some every other day, and only a small tail at three days.
+# The mean is 1.33 days, versus 2.04 days under the old 1-4 day distribution.
+_RUN_GAP_DAYS = [1, 2, 3]
+_RUN_GAP_WEIGHTS = [72, 23, 5]
+
+
+def _run_gap_days(rng: random.Random) -> int:
+    """Draw one cadence gap shared by past and future bot schedules."""
+    return rng.choices(_RUN_GAP_DAYS, weights=_RUN_GAP_WEIGHTS, k=1)[0]
+
 
 def next_run_at(rng: random.Random, after: Optional[datetime] = None) -> datetime:
     """The next time this bot goes running, as naive UTC.
 
-    Gap is 1-4 days, weighted toward 1-2: a casual runner's cadence. The hour
+    Gap is 1-3 days, strongly weighted toward daily: an active game's cadence.
+    The hour
     within the chosen day comes from the windows above rather than from a
     uniform draw, which is what stops the world running at 4am.
     """
     now = after or datetime.utcnow()
-    days = rng.choices([1, 2, 3, 4], weights=[36, 34, 20, 10], k=1)[0]
+    days = _run_gap_days(rng)
 
     starts = [w[0] for w in _RUN_WINDOWS]
     ends = [w[1] for w in _RUN_WINDOWS]
@@ -547,7 +560,7 @@ def recent_run_times(rng: random.Random, count: int, now: Optional[datetime] = N
     out: List[datetime] = []
     cursor = now
     for _ in range(count):
-        gap_days = rng.choices([1, 2, 3, 4], weights=[36, 34, 20, 10], k=1)[0]
+        gap_days = _run_gap_days(rng)
         idx = rng.choices(range(len(_RUN_WINDOWS)), weights=[w[2] for w in _RUN_WINDOWS], k=1)[0]
         local_hour = rng.uniform(_RUN_WINDOWS[idx][0], _RUN_WINDOWS[idx][1])
         cursor = cursor - timedelta(days=gap_days)
