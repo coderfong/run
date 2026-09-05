@@ -14,7 +14,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -332,8 +332,32 @@ def rebuild_clan_season_stats(db) -> int:
 
 
 def clan_member_ids(db: Session, clan_id: str, exclude=None):
-    rows = db.execute(text("SELECT user_id::text FROM clan_members WHERE clan_id = :c"), {"c": clan_id}).fetchall()
+    rows = db.execute(
+        text(
+            "SELECT cm.user_id::text FROM clan_members cm "
+            "JOIN users u ON u.id = cm.user_id "
+            "WHERE cm.clan_id = :c AND NOT COALESCE(u.is_bot, false)"
+        ),
+        {"c": clan_id},
+    ).fetchall()
     return [r[0] for r in rows if r[0] != exclude]
+
+
+def _league_change_notification(previous: str | None, current: str):
+    """Copy and kind for a newly assigned or changed club league."""
+    if previous is None:
+        return (
+            "Club league assigned",
+            f"Your club joined the {current.title()} league.",
+            "league_assigned",
+        )
+    league_order = {name: index for index, name in enumerate(LEAGUES)}
+    promoted = league_order.get(current, 0) > league_order.get(previous, 0)
+    return (
+        "Club promoted!" if promoted else "Club league changed",
+        f"Your club moved from {previous.title()} to {current.title()} league.",
+        "league_promoted" if promoted else "league_demoted",
+    )
 
 
 def add_clan_xp(db: Session, clan_id: str | None, amount: int):
@@ -839,7 +863,7 @@ def my_clan(user: models.User = Depends(current_user), db: Session = Depends(get
 
 
 @router.post("/admin/recompute-season", dependencies=[Depends(require_admin)])
-def recompute_season(db: Session = Depends(get_db)):
+def recompute_season(background: BackgroundTasks, db: Session = Depends(get_db)):
     """Nightly job (cron): refresh every clan's current area for the live
     season and re-assign leagues by size-normalized held area.
 
@@ -871,17 +895,42 @@ def recompute_season(db: Session = Depends(get_db)):
         text(
             """
             SELECT s.clan_id::text,
-                   s.area_current / GREATEST(1, (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = s.clan_id)) AS norm
+                   s.area_current / GREATEST(1, (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = s.clan_id)) AS norm,
+                   s.league
             FROM clan_season_stats s WHERE s.season_id = :sid ORDER BY norm DESC
             """
         ),
         {"sid": season[0]},
     ).fetchall()
     n = len(rows)
+    league_changes = []
     for i, r in enumerate(rows):
         # top 20% diamond ... bottom bronze
         tier = LEAGUES[min(len(LEAGUES) - 1, int((1 - i / max(1, n)) * len(LEAGUES)))]
         db.execute(text("UPDATE clan_season_stats SET league = :l WHERE season_id = :sid AND clan_id = :cid"),
                    {"l": tier, "sid": season[0], "cid": r[0]})
+        if r[2] != tier:
+            league_changes.append((r[0], r[2], tier))
     db.commit()
-    return {"ok": True, "clans": n}
+
+    # A settings row for season/promotion notifications used to have no
+    # producer. League placement and later movement now reach every member;
+    # notify() keeps the event in-app even when its external push is muted.
+    from ..notifications import notify  # local import keeps route imports lean
+
+    for clan_id, previous, current in league_changes:
+        title, body, kind = _league_change_notification(previous, current)
+        background.add_task(
+            notify,
+            clan_member_ids(db, clan_id),
+            "season",
+            title,
+            body,
+            {
+                "kind": kind,
+                "screen": "season",
+                "previous_league": previous,
+                "league": current,
+            },
+        )
+    return {"ok": True, "clans": n, "league_changes": len(league_changes)}

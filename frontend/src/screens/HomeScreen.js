@@ -639,8 +639,17 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   // Paired with the outline flip in HomeScreen: ink on light, white on dark.
   wordmark: { ...type.title, color: scheme === 'light' ? toon.ink : '#ffffff' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flexShrink: 1 },
-  headerEnergy: { flexShrink: 1 },
+  headerRight: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: space.sm,
+  },
+  // A real flex item, not intrinsic-width content. This gives the bar the
+  // remaining header space and lets it yield cleanly before the bell.
+  headerEnergy: { flex: 1, minWidth: 0, maxWidth: 150 },
   bell: {
     width: 40,
     height: 40,

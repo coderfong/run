@@ -25,7 +25,7 @@
 // The only thing reversed is who stands where.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Image, Modal, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, Modal, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -37,22 +37,16 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Notifications from 'expo-notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MapPin, ShieldAlert, Swords, TriangleAlert } from 'lucide-react-native';
 
-import { api } from '../api/client';
-import {
-  fetchAndCache,
-  getCached,
-  invalidateAfterLandLoss,
-} from '../api/cache';
+import { invalidateAfterLandLoss } from '../api/cache';
+import { subscribeNotificationEvents } from '../notifications/events';
 import { MAPBOX_PUBLIC_TOKEN, MAP_READY, styleForTheme } from '../config/map';
 import { useAvatar } from '../state/avatar';
 import { brand, space, toon, toonRadius, toonType, useTheme, withAlpha } from '../theme';
 import { haptic, useReduceMotion } from '../ui/motion';
 import {
-  isRecentNotification,
   landCaptureAlertKey,
   normaliseLandCaptureAlert,
 } from '../utils/landCaptureAlerts';
@@ -99,8 +93,6 @@ function staticMapUrl({ lat, lon, width, height, scheme, pinHex, zoom = 15 }) {
   return `https://api.mapbox.com/styles/v1/${style}/static/${pin}/${lon},${lat},${z.toFixed(2)},0/${w}x${h}@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`;
 }
 
-const POLL_MS = 10_000;
-const FIRST_FETCH_GRACE_MS = 3_000;
 const DUPLICATE_TTL_MS = 45_000;
 
 // The ground to turn over when the capture arrived without a ring.
@@ -269,79 +261,12 @@ export function LandCaptureAlertHost({ onViewLand }) {
     setQueue((items) => items.slice(1));
   }, [current, queue]);
 
-  // The foreground path is intentionally redundant. Push is immediate when a
-  // token is healthy; polling also covers simulators, denied push permission,
-  // Expo delivery issues, and the development capture harness.
+  // The root notification setup owns the one native listener + active poll;
+  // this host only answers the stolen-land events it publishes.
   useEffect(() => {
-    const cached = getCached('notifications');
-    const known = new Set((cached?.items || []).map((item) => item.id));
-    const mountedAt = Date.now();
-    let alive = true;
-    let firstCheck = true;
-    let active = AppState.currentState === 'active';
-
-    const check = async () => {
-      if (!alive || !active) return;
-      try {
-        const response = await fetchAndCache('notifications', api.notifications);
-        if (!alive) return;
-        const fresh = [];
-        for (const item of response?.items || []) {
-          if (!item?.id || known.has(item.id)) continue;
-          known.add(item.id);
-          if (
-            item.category === 'stolen' &&
-            (!firstCheck || isRecentNotification(item, mountedAt - FIRST_FETCH_GRACE_MS))
-          ) {
-            fresh.push(item);
-          }
-        }
-        // The API is newest-first; queue oldest-first so two simultaneous
-        // captures are replayed in the order they happened.
-        fresh.reverse().forEach(enqueue);
-        firstCheck = false;
-      } catch {
-        // The next interval or foreground push gets another chance. Alerts are
-        // additive and must never destabilise the rest of the app.
-      }
-    };
-
-    check();
-    const timer = setInterval(check, POLL_MS);
-    const appStateSub = AppState.addEventListener('change', (state) => {
-      active = state === 'active';
-      if (active) check();
+    return subscribeNotificationEvents((item) => {
+      if (item.category === 'stolen' || item.data?.category === 'stolen') enqueue(item);
     });
-    let pushSub = { remove() {} };
-    try {
-      pushSub = Notifications.addNotificationReceivedListener((notification) => {
-        const content = notification?.request?.content || {};
-        const data = content.data || {};
-        if (data.category === 'stolen') {
-          enqueue({
-            ...data,
-            data,
-            category: 'stolen',
-            title: content.title,
-            body: content.body,
-            created_at: new Date().toISOString(),
-          });
-        }
-        // The background task writes the inbox row at roughly the same time as
-        // the push. A short follow-up keeps the bell/inbox cache current too.
-        setTimeout(check, 500);
-      });
-    } catch {
-      // Expo web and a few development runtimes do not implement foreground
-      // push listeners. Active polling remains the complete fallback.
-    }
-
-    return () => {
-      alive = false;
-      clearInterval(timer);
-      appStateSub.remove();
-      pushSub.remove();
-    };
   }, [enqueue]);
 
   useEffect(() => {

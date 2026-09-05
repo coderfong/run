@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import * as ExpoNotifications from 'expo-notifications';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
@@ -75,6 +76,7 @@ export default function NotificationsScreen({ navigation }) {
   useEffect(() => {
     if (!data?.unread) return;
     api.markNotificationsRead().catch(() => {});
+    ExpoNotifications.setBadgeCountAsync?.(0)?.catch(() => {});
     // Reflect it locally so the rows lose their unread tint and Home's badge
     // is already clear when you go back, without another round trip.
     setData((prev) => ({
@@ -100,7 +102,7 @@ export default function NotificationsScreen({ navigation }) {
         <EmptyState
           art={require('../../assets/art/empty-notifications.png')}
           title="Nothing yet"
-          body="Attacks on your land, club goals, and kudos land here."
+          body="Attacks, successful defenses, captures, reminders, and social updates land here."
         />
       </Screen>
     );

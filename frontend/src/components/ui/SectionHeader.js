@@ -9,11 +9,12 @@
 // text baseline to sit on.
 
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { nbAccentFor, nbTextOn, space, useTheme, useThemedType } from '../../theme';
 import { framePose, frameVariant } from '../../ui/frameRegistry';
 import Framed from './Framed';
+import { PressableScale } from '../../ui/motion';
 
 /**
  * `framed` draws the hand-drawn label box around the TITLE only, not around
@@ -78,9 +79,9 @@ export default function SectionHeader({
         heading
       )}
       {action ? (
-        <TouchableOpacity onPress={onAction} hitSlop={10} accessibilityRole="button" accessibilityLabel={action}>
+        <PressableScale onPress={onAction} hitSlop={10} accessibilityRole="button" accessibilityLabel={action}>
           <Text style={[type.captionMedium, { color: colors.textMuted }]}>{action}</Text>
-        </TouchableOpacity>
+        </PressableScale>
       ) : null}
     </View>
   );

@@ -39,6 +39,10 @@ export function AuthProvider({ children }) {
   // run the onboarding intro once for that user. Existing users who log in
   // (or are restored from a saved token) never see it.
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  // Provider identity data is deliberately ephemeral. Apple gives the name to
+  // the native client (not in its ID token), so it lives here only until the
+  // new-account flow has written the per-account local profile.
+  const [onboardingIdentity, setOnboardingIdentity] = useState(null);
 
   // Restore on launch.
   //
@@ -158,6 +162,7 @@ export function AuthProvider({ children }) {
     await persist(res.access_token, res.user);
     setToken(res.access_token);
     setUser(res.user);
+    setOnboardingIdentity(null);
   }, []);
 
   const signUp = useCallback(async (username, password, email) => {
@@ -166,6 +171,7 @@ export function AuthProvider({ children }) {
     await persist(res.access_token, res.user);
     setToken(res.access_token);
     setUser(res.user);
+    setOnboardingIdentity(null);
     setNeedsOnboarding(true); // new account → show the intro once
   }, []);
 
@@ -177,6 +183,7 @@ export function AuthProvider({ children }) {
     await persist(res.access_token, res.user);
     setToken(res.access_token);
     setUser(res.user);
+    setOnboardingIdentity(null);
   }, []);
 
   // Pull /me again after something changed the account off to the side (the
@@ -193,16 +200,29 @@ export function AuthProvider({ children }) {
   // token; the backend verifies it and returns our own session. New users are
   // routed through onboarding just like a fresh signup.
   const signInWithProvider = useCallback(async (provider, idToken, extra = {}) => {
-    const res = await api.oauthLogin(provider, idToken, extra);
+    // onboardingIdentity is client-only: Apple's raw name is not part of the
+    // server credential and must not be mixed into the auth request contract.
+    const { onboardingIdentity: suppliedIdentity, ...requestExtra } = extra;
+    const res = await api.oauthLogin(provider, idToken, requestExtra);
     setAuthToken(res.access_token);
     await persist(res.access_token, res.user);
     setToken(res.access_token);
     setUser(res.user);
-    if (res.created) setNeedsOnboarding(true);
+    if (res.created) {
+      setOnboardingIdentity({
+        provider,
+        firstName: suppliedIdentity?.firstName || '',
+        lastName: suppliedIdentity?.lastName || '',
+      });
+      setNeedsOnboarding(true);
+    } else {
+      setOnboardingIdentity(null);
+    }
   }, []);
 
   const completeOnboarding = useCallback(() => {
     setNeedsOnboarding(false);
+    setOnboardingIdentity(null);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -212,6 +232,7 @@ export function AuthProvider({ children }) {
     setToken(null);
     setUser(null);
     setNeedsOnboarding(false);
+    setOnboardingIdentity(null);
   }, []);
 
   const updateUsername = useCallback(async (next) => {
@@ -227,6 +248,8 @@ export function AuthProvider({ children }) {
     setAuthToken(null);
     setToken(null);
     setUser(null);
+    setNeedsOnboarding(false);
+    setOnboardingIdentity(null);
   }, []);
 
   const value = useMemo(
@@ -236,6 +259,7 @@ export function AuthProvider({ children }) {
       loading,
       signedIn: !!token,
       needsOnboarding,
+      onboardingIdentity,
       signIn,
       signUp,
       signInWithProvider,
@@ -251,6 +275,7 @@ export function AuthProvider({ children }) {
       user,
       loading,
       needsOnboarding,
+      onboardingIdentity,
       signIn,
       signUp,
       signInWithProvider,

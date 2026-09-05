@@ -74,6 +74,8 @@ export function targetForNotification(data) {
       return tab('Home', { screen: 'Season', initial: false });
     case 'home':
       return tab('Home', { screen: 'HomeMain' });
+    case 'record':
+      return ['Record'];
     default:
       return inbox();
   }
@@ -100,6 +102,8 @@ function screenFromCategory(category) {
       return 'season';
     case 'recap':
       return 'home';
+    case 'reminder':
+      return 'record';
     default:
       return null;
   }

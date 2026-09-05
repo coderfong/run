@@ -123,3 +123,21 @@ describe('capture placement controls', () => {
     act(() => tree.unmount());
   });
 });
+
+
+test('enables Attack for a live rival overlap missed by preset suggestions', () => {
+  const onPose = jest.fn();
+  let tree;
+  act(() => { tree = renderer.create(<ChooseAttack
+    options={{ placements: [], biggest_steal_index: null }}
+    pose={{ t: 0.37, deg: 22 }} onPose={onPose}
+    placement={{ ...placement(0.37, 22), action: 'attack', enemy_m2: 100 }}
+    stale={false} team={{ glow: '#EC4899' }}
+  />); });
+  const attack = tree.root.findByProps({ accessibilityLabel: 'Move claim to attack' });
+  expect(attack.props.accessibilityState.disabled).toBe(false);
+  expect(attack.props.accessibilityState.selected).toBe(true);
+  act(() => attack.props.onPress());
+  expect(onPose).toHaveBeenCalledWith({ t: 0.37, deg: 22 }, { commit: true });
+  act(() => tree.unmount());
+});

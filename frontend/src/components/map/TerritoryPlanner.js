@@ -27,15 +27,15 @@
 // into a trap, and the runner cannot tell the difference between the two by
 // looking, so they will assume the worst.
 
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Undo2, X } from 'lucide-react-native';
+import { Info, Undo2, X } from 'lucide-react-native';
 
 import { FREE_PLANNER_PREVIEWS } from '../../config/proExposure';
 import { GOLD } from '../../config/pro';
 import { space, useTheme, useThemedType } from '../../theme';
 import AppIcon from '../AppIcon';
-import { Card, Framed, ToonButton } from '../ui';
+import { Card, Framed, Sheet, ToonButton } from '../ui';
 import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
 
 const km = (m) => {
@@ -86,12 +86,21 @@ export default function TerritoryPlanner({
   const { colors } = useTheme();
   const type = useThemedType();
 
+  const [helpOpen, setHelpOpen] = useState(false);
   const canPreview = points.length >= 2;
   const exhausted = !isPro && previewsLeft <= 0;
 
   return (
     <Card style={styles.panel}>
+      <Sheet visible={helpOpen} onClose={() => setHelpOpen(false)}>
+        <Text style={type.heading}>Plan your run</Text>
+        <Text style={[type.body, { marginVertical: space.md }]}>Tap the map to make a route, or use Draw to trace one. Tap Preview to see its length and whose land it crosses. This is a plan — run it to earn land.</Text>
+        <ToonButton title="Got it" onPress={() => setHelpOpen(false)} />
+      </Sheet>
       <View style={styles.headRow}>
+        <TouchableOpacity onPress={() => setHelpOpen(true)} accessibilityRole="button" accessibilityLabel="How to use Territory Planner" style={{ padding: 10 }}>
+          <Info size={22} color={colors.text} />
+        </TouchableOpacity>
         <AppIcon name="route" size={24} />
         <View style={{ flex: 1 }}>
           <Text style={type.bodyBold}>Territory Planner</Text>

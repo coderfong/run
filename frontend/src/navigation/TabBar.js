@@ -22,6 +22,8 @@ import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
+  cancelAnimation,
+  withSpring,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -43,6 +45,15 @@ const LABELS = { Home: 'Home', Map: 'Map', Club: 'Club', You: 'You' };
 
 function TabItem({ route, isFocused, accent, onPress, onWarm }) {
   const { colors, scheme } = useTheme();
+  const reduced = useReduceMotion();
+  const focus = useSharedValue(isFocused ? 1 : 0);
+  useEffect(() => {
+    focus.value = reduced ? (isFocused ? 1 : 0) : withSpring(isFocused ? 1 : 0, { damping: 15, stiffness: 240 });
+    return () => cancelAnimation(focus);
+  }, [isFocused, reduced, focus]);
+  const iconMotion = useAnimatedStyle(() => ({
+    transform: [{ translateY: reduced ? 0 : -2 * focus.value }, { scale: 1 + 0.12 * focus.value }],
+  }));
   const key = ICON_KEY[route.name] || 'tab-home';
   const color = isFocused ? accent : INACTIVE;
   // Thin: the pill is about 44pt tall and sits four across, and 3pt of ink on
@@ -71,7 +82,9 @@ function TabItem({ route, isFocused, accent, onPress, onWarm }) {
         accessibilityState={{ selected: isFocused }}
         accessibilityLabel={LABELS[route.name]}
       >
-        <AppIcon name={key} size={isFocused ? 38 : 34} faded={!isFocused} />
+        <Animated.View style={iconMotion}>
+          <AppIcon name={key} size={34} faded={!isFocused} />
+        </Animated.View>
         <Text style={[styles.label, { color }]}>{LABELS[route.name]}</Text>
       </PressableScale>
     </View>
@@ -90,6 +103,7 @@ function RecordButton({ accent, onPress, onWarm }) {
     } else {
       pulse.value = 1;
     }
+    return () => cancelAnimation(pulse);
   }, [isRecording, reduce, pulse]);
 
   const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));

@@ -4,6 +4,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   FadeIn,
   FadeInDown,
@@ -336,10 +337,18 @@ export function PressableScale({
   onPressOut,
   disabled,
   scaleTo = 0.97,
+  onHoverIn,
+  onHoverOut,
   ...rest
 }) {
   const reduced = useReduceMotion();
   const scale = useSharedValue(1);
+  const hovered = useRef(false);
+  const pressed = useRef(false);
+  useEffect(() => {
+    if (reduced || disabled) scale.value = 1;
+    return () => cancelAnimation(scale);
+  }, [reduced, disabled, scale]);
 
   // useAnimatedStyle keeps the shared-value read on the UI thread —
   // reading `scale` inline in the render would trip Reanimated strict mode.
@@ -351,12 +360,24 @@ export function PressableScale({
     <Pressable
       style={containerStyle}
       onPressIn={(event) => {
+        pressed.current = true;
         if (!reduced) scale.value = withSpring(scaleTo, { damping: 20, stiffness: 300 });
         onPressIn?.(event);
       }}
       onPressOut={(event) => {
-        if (!reduced) scale.value = withSpring(1, { damping: 20, stiffness: 300 });
+        pressed.current = false;
+        if (!reduced) scale.value = withSpring(hovered.current ? 1.025 : 1, { damping: 20, stiffness: 300 });
         onPressOut?.(event);
+      }}
+      onHoverIn={(event) => {
+        hovered.current = true;
+        if (!reduced && !disabled && !pressed.current) scale.value = withSpring(1.025, { damping: 20, stiffness: 300 });
+        onHoverIn?.(event);
+      }}
+      onHoverOut={(event) => {
+        hovered.current = false;
+        if (!reduced && !pressed.current) scale.value = withSpring(1, { damping: 20, stiffness: 300 });
+        onHoverOut?.(event);
       }}
       onPress={onPress}
       disabled={disabled}

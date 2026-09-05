@@ -3,7 +3,8 @@ import uuid
 import unittest
 from unittest.mock import patch
 
-from app import notifications
+from app import notifications, schemas
+from app.routes.clans import _league_change_notification
 
 
 class _Result:
@@ -49,6 +50,20 @@ class _Session:
 
 
 class NotificationTest(unittest.TestCase):
+    def test_every_supported_category_has_a_push_preference(self):
+        self.assertEqual(set(schemas.NotifPrefs.model_fields), notifications.CATEGORIES)
+
+    def test_league_changes_have_season_notification_copy(self):
+        self.assertEqual(
+            _league_change_notification("silver", "gold")[2], "league_promoted"
+        )
+        self.assertEqual(
+            _league_change_notification("gold", "silver")[2], "league_demoted"
+        )
+        self.assertEqual(
+            _league_change_notification(None, "bronze")[2], "league_assigned"
+        )
+
     def test_context_is_shared_by_inbox_and_push(self):
         session = _Session()
         sent = []
@@ -69,6 +84,7 @@ class NotificationTest(unittest.TestCase):
         stored = json.loads(session.inserts[0]["d"])
         self.assertEqual(stored, sent[0]["data"])
         self.assertEqual(stored["category"], "stolen")
+        self.assertTrue(uuid.UUID(stored["event_id"]))
         self.assertEqual(stored["attacker_id"], str(actor_id))
         self.assertEqual(sent[0]["badge"], 3)
         self.assertEqual(sent[0]["channelId"], "territory-alerts")

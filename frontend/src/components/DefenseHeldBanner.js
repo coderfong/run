@@ -12,22 +12,18 @@
 // The event stays an inbox row either way.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
-import * as Notifications from 'expo-notifications';
 import { ShieldCheck } from 'lucide-react-native';
 
-import { api } from '../api/client';
-import { fetchAndCache, getCached, invalidateAfterLandLoss } from '../api/cache';
+import { invalidateAfterLandLoss } from '../api/cache';
+import { subscribeNotificationEvents } from '../notifications/events';
 import { NB, nbInk, radius, space, useTheme, useThemedType } from '../theme';
 import { PressableScale, haptic } from '../ui/motion';
-import { isRecentNotification } from '../utils/landCaptureAlerts';
 import HardShadow from './ui/HardShadow';
 
 const DWELL_MS = 6000;
-const POLL_MS = 12_000;
-const FIRST_FETCH_GRACE_MS = 3_000;
 const DUPLICATE_TTL_MS = 45_000;
 
 // A hold, not an alarm — the app's own green.
@@ -77,62 +73,12 @@ export function DefenseHeldBanner({ onOpen }) {
     timer.current = setTimeout(() => setAlert(null), DWELL_MS);
   }, []);
 
-  useEffect(() => {
-    const cached = getCached('notifications');
-    const known = new Set((cached?.items || []).map((i) => i.id));
-    const mountedAt = Date.now();
-    let alive = true;
-    let firstCheck = true;
-    let active = AppState.currentState === 'active';
-
-    const check = async () => {
-      if (!alive || !active) return;
-      try {
-        const res = await fetchAndCache('notifications', api.notifications);
-        if (!alive) return;
-        for (const item of res?.items || []) {
-          if (!item?.id || known.has(item.id)) continue;
-          known.add(item.id);
-          if (
-            item.category === 'defended' &&
-            (!firstCheck || isRecentNotification(item, mountedAt - FIRST_FETCH_GRACE_MS))
-          ) {
-            raise(item);
-          }
-        }
-        firstCheck = false;
-      } catch {
-        // The next tick or a foreground push gets another go.
-      }
-    };
-
-    check();
-    const poll = setInterval(check, POLL_MS);
-    const appState = AppState.addEventListener('change', (state) => {
-      active = state === 'active';
-      if (active) check();
-    });
-    let received = { remove() {} };
-    try {
-      received = Notifications.addNotificationReceivedListener((notification) => {
-        const content = notification?.request?.content || {};
-        const data = content.data || {};
-        if (data.category === 'defended') {
-          raise({ id: null, body: content.body, data });
-        }
-        setTimeout(check, 500);
-      });
-    } catch {
-      // No foreground listener on this runtime; the poll covers it.
-    }
-
-    return () => {
-      alive = false;
-      clearInterval(poll);
-      appState.remove();
-      received.remove?.();
-    };
-  }, [raise]);
+  useEffect(
+    () => subscribeNotificationEvents((item) => {
+      if (item.category === 'defended' || item.data?.category === 'defended') raise(item);
+    }),
+    [raise]
+  );
 
   if (!alert) return null;
 

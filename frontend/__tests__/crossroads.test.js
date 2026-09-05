@@ -30,7 +30,7 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { Alert, Text } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
-import * as Notifications from 'expo-notifications';
+import { publishNotificationEvent } from '../src/notifications/events';
 
 let mockCrossroads = { encounters: [], unseen: 0, total: 0, enabled: true };
 
@@ -247,8 +247,7 @@ describe('the Crossroads plaza', () => {
 
 describe('the arrival banner', () => {
   const push = (data) => {
-    const listener = Notifications.addNotificationReceivedListener.mock.calls.at(-1)[0];
-    act(() => listener({ request: { content: { title: 'Crossroads', body: 'x', data } } }));
+    act(() => publishNotificationEvent({ ...data, data }));
   };
 
   beforeEach(() => {

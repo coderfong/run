@@ -7,6 +7,11 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import * as Notifications from 'expo-notifications';
 
+jest.mock('../src/api/client', () => ({
+  api: { notifications: jest.fn(async () => ({ unread: 0, items: [] })) },
+}));
+jest.mock('@sentry/react-native', () => ({ captureException: jest.fn() }));
+
 import { useNotificationTaps } from '../src/notifications/setup';
 
 function Probe({ navigationRef, ready }) {
@@ -39,6 +44,13 @@ describe('useNotificationTaps', () => {
       await flush();
     });
     expect(Notifications.setNotificationHandler).toHaveBeenCalled();
+    const { handleNotification } = Notifications.setNotificationHandler.mock.calls[0][0];
+    await expect(
+      handleNotification({ request: { content: { data: { category: 'defended' } } } })
+    ).resolves.toEqual(expect.objectContaining({ shouldShowBanner: false, shouldShowList: true }));
+    await expect(
+      handleNotification({ request: { content: { data: { category: 'kudos' } } } })
+    ).resolves.toEqual(expect.objectContaining({ shouldShowBanner: true, shouldShowList: true }));
     await act(async () => tree.unmount());
   });
 

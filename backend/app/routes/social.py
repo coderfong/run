@@ -26,6 +26,7 @@ from ..config import settings
 from ..database import get_db
 from ..geospatial import geometry_to_rings
 from ..notifications import notify
+from ..reminders import deliver_scheduled_reminders
 from ..ratelimit import limiter
 from ..security import current_user, require_admin
 
@@ -522,40 +523,10 @@ def weekly_recap(background: BackgroundTasks, db: Session = Depends(get_db)):
 
 @router.post("/admin/run-reminders", dependencies=[Depends(require_admin)])
 def run_reminders(background: BackgroundTasks, db: Session = Depends(get_db)):
-    """Cron (evening): nudge runners whose daily streak breaks at midnight.
+    """Queue today's deduplicated streak and territory-expiry reminders."""
 
-    "Streak at risk" is the one reminder worth interrupting for — the runner
-    already built the streak, and it is gone for nothing if they do not notice.
-    Whoever's most recent run was YESTERDAY (UTC) and who has not run today.
-    Same admin-token gate as the weekly recap: an open fan-out-a-push endpoint
-    is a spam button with a URL.
-    """
-    rows = db.execute(
-        text(
-            """
-            SELECT dr.user_id::text, dr.days
-            FROM (
-                SELECT user_id,
-                       MAX((ended_at AT TIME ZONE 'UTC')::date) AS last_date,
-                       COUNT(DISTINCT (ended_at AT TIME ZONE 'UTC')::date) AS days
-                FROM runs
-                WHERE ended_at >= now() - interval '10 days'
-                GROUP BY user_id
-            ) dr
-            WHERE dr.last_date = (now() AT TIME ZONE 'UTC')::date - 1
-            """
-        )
-    ).fetchall()
-    for uid, days in rows:
-        run_days = int(days or 0)
-        tail = (
-            f"You are on a {run_days}-day streak. "
-            if run_days >= 2
-            else "You ran yesterday. "
-        )
-        background.add_task(
-            notify, [uid], "reminder", "Keep your streak alive",
-            f"{tail}A short loop before midnight keeps it going.",
-            {"kind": "streak_at_risk", "screen": "home", "streak_days": run_days},
-        )
-    return {"ok": True, "users": len(rows)}
+    def enqueue(*args):
+        background.add_task(notify, *args)
+
+    result = deliver_scheduled_reminders(db, enqueue)
+    return {"ok": True, **result}

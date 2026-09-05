@@ -592,7 +592,13 @@ const navigationRef = createNavigationContainerRef();
 function RootNavigator() {
   const { colors } = useTheme();
   const navTheme = useNavTheme();
-  const { signedIn, loading, needsOnboarding, completeOnboarding } = useAuth();
+  const {
+    signedIn,
+    loading,
+    needsOnboarding,
+    onboardingIdentity,
+    completeOnboarding,
+  } = useAuth();
   const { needsSetup: avatarNeedsSetup, loading: avatarLoading } = useAvatar();
   const { profile, displayName, loading: profileLoading, completeTutorial } = useProfile();
   const reduced = useReduceMotion();
@@ -604,6 +610,10 @@ function RootNavigator() {
   // — cold start included. The per-event hosts below own their in-app banners;
   // this owns "where does a tapped notification open".
   useNotificationTaps(navigationRef, navReady && signedIn);
+
+  useEffect(() => {
+    if (!signedIn) setNavReady(false);
+  }, [signedIn]);
   // A subscription renews with the app closed, so the expiry the backend
   // holds goes stale on its own. This re-posts whatever the store says is
   // live; it can only ever extend PRO, never take it away.
@@ -644,6 +654,7 @@ function RootNavigator() {
     content = (
       <OnboardingFlow
         mode={needsOnboarding ? 'full' : 'character'}
+        onboardingIdentity={needsOnboarding ? onboardingIdentity : null}
         onDone={completeOnboarding}
       />
     );

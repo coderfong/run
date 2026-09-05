@@ -73,6 +73,10 @@ describe('targetForNotification', () => {
     expect(params.params.screen).toBe('HomeMain');
   });
 
+  test('a streak reminder opens the run recorder', () => {
+    expect(targetForNotification({ category: 'reminder', screen: 'record' })).toEqual(['Record']);
+  });
+
   test('an unknown payload still goes somewhere — the inbox', () => {
     const [route, params] = targetForNotification({});
     expect(route).toBe('Tabs');

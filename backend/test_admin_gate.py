@@ -2,8 +2,8 @@
 
 All of them rewrite or fan out to everyone's data — the expiry sweep deletes
 territory and awards rank, the season recompute reassigns every club's league,
-and the weekly recap and the streak reminder each fan a push notification out
-to every eligible account. All were reachable by anyone who knew the path.
+and the weekly recap and scheduled game reminders each fan a push notification
+out to every eligible account. All were reachable by anyone who knew the path.
 
 Runs against the app in-process (no server, no database: the gate rejects
 before any handler body executes).

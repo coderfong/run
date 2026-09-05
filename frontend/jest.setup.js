@@ -60,10 +60,8 @@ jest.mock('expo-location', () => ({
 
 jest.mock('expo-notifications', () => ({
   addNotificationReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
-  // A push ARRIVING and a push being TAPPED are two listeners. Both are
-  // registered together (components/CrossroadsAlert.js), inside one try/catch
-  // — so a missing mock here does not fail a test, it silently drops the half
-  // that was left out of it.
+  // A push ARRIVING and a push being TAPPED are two root listeners, both owned
+  // by notifications/setup.js and shared with event-specific presentations.
   addNotificationResponseReceivedListener: jest.fn(() => ({ remove: jest.fn() })),
   getPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),

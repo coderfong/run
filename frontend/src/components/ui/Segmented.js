@@ -14,15 +14,36 @@
 // as one crowded slab rather than as separate choices. `labelSuffix` qualifies
 // the per-option screen-reader name ("Light theme" rather than a bare "Light").
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { NB, nbInk, radius, useTheme, useThemedType } from '../../theme';
-import { PressableScale } from '../../ui/motion';
+import { PressableScale, useReduceMotion } from '../../ui/motion';
 
 export default function Segmented({ options, value, onChange, style, labelSuffix }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
+  const reduced = useReduceMotion();
+  const [layouts, setLayouts] = useState({});
+  const selection = layouts[value];
+  const x = useSharedValue(0);
+  const y = useSharedValue(0);
+  const width = useSharedValue(0);
+  const height = useSharedValue(0);
+  const positioned = useRef(false);
+  useEffect(() => {
+    if (!selection) return;
+    const move = (next) => reduced || !positioned.current ? next : withTiming(next, { duration: 220 });
+    x.value = move(selection.x);
+    y.value = move(selection.y);
+    width.value = move(selection.width);
+    height.value = move(selection.height);
+    positioned.current = true;
+  }, [selection, reduced, x, y, width, height]);
+  const indicator = useAnimatedStyle(() => ({
+    left: x.value, top: y.value, width: width.value, height: height.value,
+  }));
   return (
     <View
       style={[
@@ -42,6 +63,10 @@ export default function Segmented({ options, value, onChange, style, labelSuffix
         style,
       ]}
     >
+      <Animated.View
+        pointerEvents="none"
+        style={[{ position: 'absolute', borderRadius: radius.pill, backgroundColor: colors.primary, opacity: selection ? 1 : 0 }, indicator]}
+      />
       {options.map((opt) => {
         const active = opt.key === value;
         return (
@@ -49,14 +74,20 @@ export default function Segmented({ options, value, onChange, style, labelSuffix
           // forwards its style to an inner Animated.View, so flex there never
           // reached the pressable and every segment collapsed to text width,
           // bunching them at the left of the track. Same fix as TabBar.
-          <View key={opt.key} style={{ flex: 1 }}>
+          <View key={opt.key} style={{ flex: 1 }} onLayout={({ nativeEvent: { layout } }) => {
+            setLayouts((previous) => {
+              const old = previous[opt.key];
+              if (old && ['x', 'y', 'width', 'height'].every((field) => old[field] === layout[field])) return previous;
+              return { ...previous, [opt.key]: layout };
+            });
+          }}>
             <PressableScale
               style={{
                 paddingVertical: 10,
                 paddingHorizontal: 12,
                 borderRadius: radius.pill,
                 alignItems: 'center',
-                backgroundColor: active ? colors.primary : 'transparent',
+                backgroundColor: active && !selection ? colors.primary : 'transparent',
               }}
               onPress={() => onChange(opt.key)}
               accessibilityRole="button"

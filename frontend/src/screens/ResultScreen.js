@@ -281,7 +281,7 @@ function QuietStat({ label, value, unit, accent }) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.quietStat}>
-      <Text style={styles.quietLabel}>{label}</Text>
+      <Text style={styles.quietLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{label}</Text>
       <View style={styles.quietValueRow}>
         <Text style={[styles.quietValue, accent && { color: accent }]}>{value}</Text>
         {!!unit && <Text style={styles.quietUnit}>{unit}</Text>}

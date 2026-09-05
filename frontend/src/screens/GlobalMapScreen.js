@@ -24,6 +24,7 @@ import { useAccent } from '../hooks/useAccent';
 import { Pop, ScreenIn, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
+import { ringCentroid } from '../components/territoryBoard';
 import { territoryRings } from '../components/claim/geometry';
 import GameMap, {
   ContestedOutline,
@@ -97,7 +98,12 @@ const ACTIONS_W = 238;
 // the one map action you reach for mid-thought and often twice in a row, so it
 // is a button on the board rather than a row two taps deep in the menu, and it
 // sits under the thumb, at the opposite corner from the menu it left.
-const LOCATE_SIZE = 52;
+const LOCATE_SIZE = 60;
+
+// A direct view switch in the other thumb corner. Club view used to be hidden
+// one step left of Wood inside the actions menu; a labelled sticker makes the
+// view discoverable and gives the runner a one-tap route back to their rank.
+const VIEW_SWITCH_SIZE = 76;
 
 function RankMark({ tier }) {
   const art = BORDER_ART[tier.key];
@@ -111,31 +117,6 @@ function RankMark({ tier }) {
       accessible={false}
     />
   );
-}
-
-// Area-weighted centroid (shoelace) of a territory's largest ring — where the
-// owner portrait sits. Vertex-averaging drifts off-centre once a claim is
-// carved into an irregular shape; the true centroid stays put.
-function ringCentroid(t) {
-  const ring = t.rings?.length ? t.rings[0] : t.polygon;
-  if (!ring || ring.length < 3) return null;
-  let a = 0, cx = 0, cy = 0;
-  for (let i = 0; i < ring.length; i++) {
-    const [x0, y0] = ring[i];
-    const [x1, y1] = ring[(i + 1) % ring.length];
-    const cross = x0 * y1 - x1 * y0;
-    a += cross;
-    cx += (x0 + x1) * cross;
-    cy += (y0 + y1) * cross;
-  }
-  if (Math.abs(a) < 1e-12) {
-    // Degenerate (a line) — fall back to the vertex mean.
-    let lon = 0, lat = 0;
-    for (const [x, y] of ring) { lon += x; lat += y; }
-    return { latitude: lat / ring.length, longitude: lon / ring.length };
-  }
-  a *= 0.5;
-  return { latitude: cy / (6 * a), longitude: cx / (6 * a) };
 }
 
 // Repeat-claim saturation: each time the owner re-runs the same ground the
@@ -290,6 +271,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   const mapRef = useRef(null);
   // The padded region we've already loaded: { minLon,minLat,maxLon,maxLat, capped }.
   const coveredRef = useRef(null);
+  const regionsRef = useRef([]);
+  const pendingRef = useRef(null);
   // Latest in-flight request wins — stops a slow older response (fetched for a
   // smaller bbox) from landing last and wiping out land.
   const seqRef = useRef(0);
@@ -457,10 +440,30 @@ export default function GlobalMapScreen({ route, navigation }) {
     // panning back would re-serve the previous tier's cached region.
     const rank = viewRankRef.current;
     const cov = coveredRef.current;
-    if (!force && cov && cov.capped === capped && cov.rank === rank && bboxContains(cov, bbox)) return;
+    if (!force && cov && cov.capped === capped && cov.rank === rank && bboxContains(cov, bbox) && Date.now() - cov.at < 30000) {
+      // A pan back into loaded land supersedes an outstanding request elsewhere.
+      if (pendingRef.current && !bboxContains(pendingRef.current, bbox)) {
+        ++seqRef.current;
+        pendingRef.current = null;
+      }
+      return;
+    }
 
-    const padded = padBbox(bbox);
+    const pending = pendingRef.current;
+    if (pending && pending.capped === capped && pending.rank === rank && bboxContains(pending, bbox)) return;
+    const cached = regionsRef.current.find((r) => r.capped === capped && r.rank === rank && bboxContains(r, bbox));
     const seq = ++seqRef.current;
+    if (cached) {
+      setList(cached.territories);
+      setLoadError(false);
+      coveredRef.current = cached;
+      if (!force && Date.now() - cached.at < 30000) {
+        pendingRef.current = null;
+        return;
+      }
+    }
+    const padded = padBbox(bbox);
+    pendingRef.current = { ...padded, capped, rank, seq };
     try {
       // CLUB_VIEW sends no rank at all, which is what the endpoint reads as
       // "every rank". The cache key above still carries -1, so stepping club →
@@ -469,7 +472,9 @@ export default function GlobalMapScreen({ route, navigation }) {
         rank: rank === CLUB_VIEW ? undefined : rank,
       });
       if (seq !== seqRef.current) return; // superseded by a newer viewport
-      coveredRef.current = { ...padded, capped, rank };
+      const region = { ...padded, capped, rank, territories: data.territories, at: Date.now() };
+      regionsRef.current = [region, ...regionsRef.current.filter((r) => !(r.rank === rank && r.capped === capped && bboxContains(region, r)))].slice(0, 8);
+      coveredRef.current = region;
       setList(data.territories);
       setLoadError(false);
     } catch {
@@ -478,6 +483,8 @@ export default function GlobalMapScreen({ route, navigation }) {
       // believing this region is loaded.
       setLoadError(true);
       setList((prev) => prev || []);
+    } finally {
+      if (pendingRef.current?.seq === seq) pendingRef.current = null;
     }
   }, []);
 
@@ -502,6 +509,11 @@ export default function GlobalMapScreen({ route, navigation }) {
     const zz = z ?? zoomRef.current;
     lastViewRef.current = { bbox, z: zz };
     fetchViewport(bbox, zz);
+  }, [fetchViewport]);
+
+  // Start loading while the camera moves, before it settles on fresh ground.
+  const onViewportChange = useCallback(({ bounds, zoom: z }) => {
+    fetchViewport({ minLon: bounds.sw[0], minLat: bounds.sw[1], maxLon: bounds.ne[0], maxLat: bounds.ne[1] }, z);
   }, [fetchViewport]);
 
   // Coming back to the map (e.g. straight after claiming) refetches the current
@@ -573,6 +585,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   const landPortraits = useMemo(() => {
     if ((zoom || 0) < PORTRAIT_MIN_ZOOM) return [];
     return (list || [])
+      .filter((t) => t.user_id === user.id ? equipped : t.avatar)
+      .slice().sort((a, b) => (b.area_m2 || 0) - (a.area_m2 || 0)).slice(0, 40)
       .map((t) => ({
         id: t.id,
         userId: t.user_id,
@@ -580,13 +594,12 @@ export default function GlobalMapScreen({ route, navigation }) {
         avatar: t.user_id === user.id ? equipped : t.avatar,
         ring: (t.clan_color || NEUTRAL).stroke,
         area: t.area_m2 || 0,
-        at: ringCentroid(t),
+        at: ringCentroid(territoryRings(t)[0]),
       }))
       .filter((m) => m.at && m.avatar)
       .sort((a, b) => b.area - a.area)
       .slice(0, 40);
   }, [list, user.id, equipped, zoom]);
-  const showPortraits = (zoom || 0) >= PORTRAIT_MIN_ZOOM;
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
@@ -872,6 +885,13 @@ export default function GlobalMapScreen({ route, navigation }) {
   const atFirstTier = viewRankTier <= CLUB_VIEW;
   const atLastTier = viewRankTier >= TOP_VIEW;
   const ownTierLabel = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))].label;
+  const toggleClubView = () => {
+    pickedRef.current = true;
+    stepDirRef.current = isClubView ? 1 : -1;
+    setSelected(null);
+    setActionsOpen(false);
+    setViewRankTier(isClubView ? ownTier : CLUB_VIEW);
+  };
 
   return (
     <View style={styles.container}>
@@ -890,6 +910,7 @@ export default function GlobalMapScreen({ route, navigation }) {
         <GameMap
           ref={mapRef}
           onIdle={onIdle}
+          onViewportChange={onViewportChange}
           onPress={onMapPress}
           onReady={onMapReady}
           // A stroke must not also pan the camera. `locked` is the same freeze
@@ -930,13 +951,7 @@ export default function GlobalMapScreen({ route, navigation }) {
           {/* Keep location visible when pulled back without covering the land. */}
           {myLoc && (
             <UserMarker point={myLoc} onPress={() => setProfileUserId(user.id)}>
-              {showPortraits ? (
-                // The "this is you" ring has to be the opposite of the map it
-                // sits on — a white ring vanished on the light style.
-                <CharacterBust equipped={equipped} size={44} ring={colors.text} bg={colors.card} />
-              ) : (
-                <View style={[styles.locationDot, { backgroundColor: accent, borderColor: colors.card }]} />
-              )}
+              <View style={[styles.locationDot, { backgroundColor: accent, borderColor: colors.card }]} />
             </UserMarker>
           )}
         </GameMap>
@@ -1045,23 +1060,44 @@ export default function GlobalMapScreen({ route, navigation }) {
             the same predictable place, and the open panel gives each one a
             name. Rank remains a stepper rather than being buried in an
             explainer: lower and higher tiers are still one tap away. */}
-        {/* MY LOCATION. Bottom right, inside the frame's rail, diagonally
-            opposite the actions menu: the two things you reach for on this
-            screen, each in its own corner, neither hiding the other.
+        {/* CLUB VIEW + MY LOCATION. One direct action in each thumb corner.
+            The stickers carry their own outlines, so neither needs another
+            heavy box around it.
 
             It stands down for the two things that own the bottom of the board
             outright, the planner and the tapped territory card, rather than
             floating on top of them. */}
         {!planning && !selected ? (
-          <TouchableOpacity
-            style={[styles.locateBtn, { bottom: rail + space.xs, right: rail + space.xs }]}
-            onPress={locateMe}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Center map on my location"
-          >
-            <AppIcon name="locate" size={28} />
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity
+              style={[
+                styles.viewSwitchBtn,
+                { bottom: rail + space.xs, left: rail + space.xs },
+              ]}
+              onPress={toggleClubView}
+              activeOpacity={0.78}
+              accessibilityRole="button"
+              accessibilityLabel={isClubView ? `Return to my rank, ${ownTierLabel}` : 'Open Club view'}
+              accessibilityState={{ selected: isClubView }}
+            >
+              <AppIcon name={isClubView ? 'tab-map' : 'tab-club'} size={38} />
+              <View style={styles.viewSwitchLabel}>
+                <Text style={[type.captionMedium, { color: colors.text }]} numberOfLines={1}>
+                  {isClubView ? 'My rank' : 'Club view'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.locateBtn, { bottom: rail + space.xs, right: rail + space.xs }]}
+              onPress={locateMe}
+              activeOpacity={0.78}
+              accessibilityRole="button"
+              accessibilityLabel="Center map on my location"
+            >
+              <AppIcon name="locate" size={38} />
+            </TouchableOpacity>
+          </>
         ) : null}
 
         {actionsOpen ? (
@@ -1220,10 +1256,11 @@ export default function GlobalMapScreen({ route, navigation }) {
             style={[
               styles.noticePill,
               {
-                bottom: rail + space.xs,
+                // Sit above the bottom controls instead of squeezing between
+                // them; the message stays wide enough to read on small phones.
+                bottom: rail + space.xs + LOCATE_SIZE + space.sm,
                 left: rail + space.xs,
-                // Clear of the locate button in the same corner.
-                right: rail + space.xs + LOCATE_SIZE + space.sm,
+                right: rail + space.xs,
               },
             ]}
           >
@@ -1344,10 +1381,9 @@ export default function GlobalMapScreen({ route, navigation }) {
         )}
       </Sheet>
 
-      {/* Explainer: why the board only shows one rank at a time, and what
-          actually moves your rank. Opens itself once (see the effect near
-          `rankInfoOpen` above); after that it is tap-to-reopen from the pill's
-          "?" the way it always was. */}
+      {/* A short, scannable first-use guide. It opens itself once (see the
+          effect near `rankInfoOpen` above), then stays available from Rank in
+          the actions menu. */}
       <Sheet
         visible={rankInfoOpen}
         onClose={() => {
@@ -1365,30 +1401,51 @@ export default function GlobalMapScreen({ route, navigation }) {
               <Users size={22} color={colors.text} strokeWidth={2.5} />
             </View>
           )}
-          <Text style={type.heading}>Ranked map</Text>
+          <Text style={type.heading}>How the map works</Text>
         </View>
-        <Text style={[type.body, { color: colors.textDim, marginTop: space.sm }]}>
-          The board shows land held by runners in one rank. You start on your own
-          tier, {ownTierLabel}, so the map fills with the rivals you are actually
-          racing rather than the whole world.
-        </Text>
-        {/* The number a runner actually needed: rank is not level. Level only
-            climbs, from distance; rank climbs AND falls, from what you hold
-            right now — the same values ChooseAttack shows per move. */}
-        <Text style={[type.body, { color: colors.textDim, marginTop: space.md }]}>
-          Rank is not your level. Level only goes up, from how far you run.
-          Rank goes up and down, from what you hold: +25 for stealing ground,
-          +15 for defending it, +3 for claiming empty ground, −10 when someone
-          takes yours. Go quiet for a week and it starts to decay.
-        </Text>
-        <Text style={[type.body, { color: colors.textDim, marginTop: space.md }]}>
-          Use the arrows to scout another tier: ranks above yours stay locked
-          until you reach them, so you can see what waits ahead but you compete
-          on your own. Step left past Wood for the clubs board, which drops the
-          rank filter and colours every runner by the club holding the ground.
-        </Text>
+        <View style={styles.rankInfoList}>
+          <View style={styles.rankInfoSection}>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>Your rank</Text>
+            <Text style={[type.body, { color: colors.textDim }]}>
+              You compete with runners in {ownTierLabel}. Their land appears here.
+            </Text>
+          </View>
+
+          <View style={styles.rankInfoSection}>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>Rank and level are different</Text>
+            <Text style={[type.body, { color: colors.textDim }]}>
+              Level grows with distance. Rank moves up or down as territory changes.
+            </Text>
+          </View>
+
+          <View style={styles.rankInfoSection}>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>Starting rank points</Text>
+            <View style={styles.rankPointsGrid}>
+              {[
+                ['+25', 'Take land'],
+                ['+15', 'Defend'],
+                ['+3', 'Claim open land'],
+                ['−10', 'Lose land'],
+              ].map(([points, label]) => (
+                <View key={label} style={styles.rankPoint}>
+                  <Text style={[type.bodyBold, { color: colors.text }]}>{points}</Text>
+                  <Text style={[type.caption, styles.rankPointLabel]}>{label}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={[type.caption, { marginTop: space.xs }]}>Rewards change in higher ranks. Points fall after 7 quiet days.</Text>
+          </View>
+
+          <View style={styles.rankInfoSection}>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>Change the view</Text>
+            <Text style={[type.body, { color: colors.textDim }]}>
+              Use the arrows for another rank. Tap Club view to see every club.
+            </Text>
+            <Text style={[type.caption, { marginTop: 2 }]}>Higher ranks unlock when you reach them.</Text>
+          </View>
+        </View>
         <Button
-          title="Got it"
+          title="Done"
           variant="gradient"
           onPress={() => {
             setRankInfoOpen(false);
@@ -1475,11 +1532,23 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     height: LOCATE_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  viewSwitchBtn: {
+    position: 'absolute',
+    width: VIEW_SWITCH_SIZE,
+    minHeight: LOCATE_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewSwitchLabel: {
+    marginTop: -2,
+    minWidth: 62,
+    alignItems: 'center',
     backgroundColor: colors.card,
-    borderRadius: nbRadius.sm,
-    borderWidth: NB.strokeThin,
-    borderColor: nbInk(scheme, colors.card),
-    ...shadow.raised,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.xs,
+    paddingVertical: 2,
   },
 
   // Placed inline (bottom/left/right), because every edge of it is measured
@@ -1505,6 +1574,23 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // the same type every rank is said in and needs no mark of its own.
   clubMark: { width: RANK_MARK, height: RANK_MARK, alignItems: 'center', justifyContent: 'center' },
   rankInfoHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  rankInfoList: { gap: space.sm, marginTop: space.md },
+  rankInfoSection: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    gap: 2,
+  },
+  rankPointsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: space.sm,
+    rowGap: space.xs,
+    marginTop: space.xs,
+  },
+  rankPoint: { width: '47%', flexDirection: 'row', alignItems: 'baseline', gap: space.xs },
+  rankPointLabel: { flex: 1, color: colors.textDim },
 
   // The locked board. The scrim is a separate absolutely-filled child rather
   // than a background on the wrapper so it can carry its own opacity without

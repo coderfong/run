@@ -77,13 +77,21 @@ function polygonFeature(points) {
 // the app is wearing. Every screen used to hard-code theme="dark", so the one
 // surface that fills the whole screen stayed black in light mode.
 const GameMap = forwardRef(function GameMap(
-  { theme, onPress, onIdle, onReady, showsUserLocation = false, children, style, initialCenter, initialZoom, locked = false },
+  { theme, onPress, onIdle, onViewportChange, onReady, showsUserLocation = false, children, style, initialCenter, initialZoom, locked = false },
   ref
 ) {
   const { scheme } = useTheme();
   const placeholderStyles = useThemedStyles(makePlaceholderStyles);
   const cameraRef = useRef(null);
   const mapRef = useRef(null);
+  const lastPreviewRef = useRef(0);
+  const handleCameraChanged = useCallback((state) => {
+    if (!onViewportChange || Date.now() - lastPreviewRef.current < 200) return;
+    const p = state?.properties;
+    if (!p?.bounds) return;
+    lastPreviewRef.current = Date.now();
+    onViewportChange({ bounds: p.bounds, zoom: p.zoom });
+  }, [onViewportChange]);
 
   // Map settled → hand the viewport (bounds + zoom) up so screens can query
   // /map-polygons for what's visible. Fires only when movement stops.
@@ -213,6 +221,7 @@ const GameMap = forwardRef(function GameMap(
       styleURL={styleForTheme(theme || scheme)}
       onPress={locked ? undefined : onPress}
       onMapIdle={handleIdle}
+      onCameraChanged={handleCameraChanged}
       // Style parsed and the first frame drawn. Screens use it to hold their
       // reveal until there is a map to reveal, rather than fading up over grey.
       onDidFinishLoadingMap={onReady}

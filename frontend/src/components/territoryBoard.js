@@ -4,14 +4,14 @@
 // the running HUD and the post-run placement map all speak the same board so
 // "everyone's land + character portraits" looks identical everywhere.
 //
-// Portraits sit at the AREA-WEIGHTED CENTROID of a territory's LARGEST ring.
+// Portraits sit inside the largest ring, using its centroid when it is inside.
 // After a steal carves a plot with ST_Difference, the largest surviving
 // fragment is rings[0], so the owner's portrait stays on the land they still
 // hold instead of floating over ground that was taken from them.
 
 import { NEUTRAL } from '../state/clan';
 
-// Area-weighted centroid (shoelace) of a [lon,lat] ring -> {latitude, longitude}.
+// Interior portrait anchor of a [lon,lat] ring -> {latitude, longitude}.
 export function ringCentroid(ring) {
   if (!ring || ring.length < 3) return null;
   let a = 0, cx = 0, cy = 0;
@@ -22,8 +22,29 @@ export function ringCentroid(ring) {
     a += cr; cx += (x0 + x1) * cr; cy += (y0 + y1) * cr;
   }
   if (Math.abs(a) < 1e-12) return { latitude: ring[0][1], longitude: ring[0][0] };
-  a *= 0.5;
-  return { latitude: cy / (6 * a), longitude: cx / (6 * a) };
+  const longitude = cx / (3 * a), latitude = cy / (3 * a);
+  if (pointInRing(longitude, latitude, ring)) return { latitude, longitude };
+  // A concave route can have its centroid in empty space. Intersect horizontal
+  // scan lines with the polygon and use the widest interior interval.
+  const ys = [...new Set(ring.map((p) => p[1]))].sort((a, b) => a - b);
+  const stride = Math.max(1, Math.ceil((ys.length - 1) / 64));
+  let best = null, width = -1;
+  for (let k = 0; k < ys.length - 1; k += stride) {
+    const y = (ys[k] + ys[k + 1]) / 2;
+    const xs = [];
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [x0, y0] = ring[j], [x1, y1] = ring[i];
+      if ((y0 > y) !== (y1 > y)) xs.push(x0 + (y - y0) * (x1 - x0) / (y1 - y0));
+    }
+    xs.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      if (xs[i + 1] - xs[i] > width) {
+        width = xs[i + 1] - xs[i];
+        best = { longitude: (xs[i] + xs[i + 1]) / 2, latitude: y };
+      }
+    }
+  }
+  return best || { longitude: ring[0][0], latitude: ring[0][1] };
 }
 
 function ringsOf(t) {

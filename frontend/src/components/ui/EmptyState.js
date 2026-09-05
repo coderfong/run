@@ -14,6 +14,7 @@ import { Image } from '../../ui/image';
 import { NB, darkColors, nbAccentFor, nbInk, radius, space, useTheme, useThemedType } from '../../theme';
 import { frameVariant } from '../../ui/frameRegistry';
 import Button from './Button';
+import { Reveal } from '../../ui/motion';
 import Framed from './Framed';
 import HardShadow from './HardShadow';
 
@@ -37,7 +38,7 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
   // re-checked against whatever colour came up.
   const artFill = nbAccentFor(title || 'empty');
   return (
-    <View style={[{ alignItems: 'center', justifyContent: 'center', padding: space.xl }, style]}>
+    <Reveal duration={380} style={[{ alignItems: 'center', justifyContent: 'center', padding: space.xl }, style]}>
       {art ? (
         // The mascot stands in a DRAWN box. The white squircle underneath is
         // load bearing and stays — the illustrations are black outlined on
@@ -126,6 +127,6 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
           style={{ marginTop: space.lg }}
         />
       ) : null}
-    </View>
+    </Reveal>
   );
 }

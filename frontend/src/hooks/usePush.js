@@ -1,6 +1,6 @@
 // Registers the device's Expo push token with the backend once, after
 // sign-in, when notification permission is granted. Retention engine for
-// Phase 6 (stolen land, clan goal, kudos, season, weekly recap).
+// attacks, successful defenses, captures, reminders and social events.
 
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
@@ -9,12 +9,16 @@ import * as Notifications from 'expo-notifications';
 import * as Sentry from '@sentry/react-native';
 
 import { api } from '../api/client';
+import { ensureNotificationChannels } from '../notifications/setup';
 
 export function usePushRegistration(signedIn) {
   useEffect(() => {
-    if (!signedIn) return;
+    if (!signedIn || Platform.OS === 'web') return;
     (async () => {
       try {
+        // Android 13 presents the permission prompt only after a channel
+        // exists, and the backend addresses these channel ids directly.
+        await ensureNotificationChannels();
         const { status } = await Notifications.getPermissionsAsync();
         let granted = status === 'granted';
         if (!granted) {

@@ -55,13 +55,13 @@ Revisions: 0001 baseline · 0002 MultiPolygon · 0003 clan groundwork ·
   `seasons` row (name, starts_at, ends_at).
 - Clan **colors (12)** and **badges (16)** are code constants
   (`backend/app/clans_meta.py`) — no seeding needed.
-- **Nightly:** `POST /admin/recompute-season` (refresh clan areas + assign
-  league tiers). **Monday:** `POST /admin/weekly-recap` (push last-week
-  recap). **Evening (e.g. 20:00 local-ish, once daily):**
-  `POST /admin/run-reminders` (nudge runners whose daily streak breaks at
-  midnight — most recent run was yesterday UTC, none today). Wire all three to
-  a scheduler (cron / Fly Machines / Render cron) and **lock the `/admin/*`
-  routes down** (add an admin token) before production.
+- **Nightly:** `POST /admin/recompute-season` refreshes club areas and league
+  tiers, notifying members whose league changes. **Monday:**
+  `POST /admin/weekly-recap` sends the previous week's
+  recap. The Render blueprint also runs `python reminders.py` daily at 20:00
+  Singapore time; it sends deduplicated streak-at-risk and territory-expiry
+  reminders. `POST /admin/run-reminders` is the authenticated manual retry.
+  All `/admin/*` routes require the configured admin token.
 
 ## Backend deploy (Fly.io / Render)
 

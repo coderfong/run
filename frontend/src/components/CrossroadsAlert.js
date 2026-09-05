@@ -11,8 +11,9 @@
 // worth a full-screen cutscene, somebody turning up at the plaza is worth a
 // line you can tap or ignore. No modal, no scrim, nothing blocked.
 //
-// It also carries the push TAP: opening the app from the notification lands on
-// the plaza rather than wherever the app happened to be.
+// Push taps are routed centrally by notifications/setup.js: opening the app
+// from the notification lands on the plaza rather than wherever it happened
+// to be.
 //
 // Wording lives in config/paserby.js and mirrors the server, so the banner and
 // the push a runner may have already seen on the lock screen say one thing.
@@ -21,9 +22,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
-import * as Notifications from 'expo-notifications';
 
 import { invalidate } from '../api/cache';
+import { subscribeNotificationEvents } from '../notifications/events';
 import { art } from '../config/onboardingArt';
 import { crossroadsWaitingLine } from '../config/paserby';
 import { NB, nbInk, radius, space, useTheme, useThemedType } from '../theme';
@@ -87,31 +88,16 @@ export function CrossroadsAlertHost({ onOpen }) {
   }, []);
 
   useEffect(() => {
-    let received = null;
-    let responded = null;
-    try {
-      received = Notifications.addNotificationReceivedListener((notification) => {
-        const count = arrivalCount(notification?.request?.content?.data);
-        if (count && !atCrossroads) raise(count);
-      });
-      // Tapping the push (or the notification centre entry) while the app is
-      // backgrounded: no banner, straight to the plaza.
-      responded = Notifications.addNotificationResponseReceivedListener((response) => {
-        const data = response?.notification?.request?.content?.data;
-        if (!arrivalCount(data)) return;
-        invalidate('me:paserby');
-        onOpen?.();
-      });
-    } catch {
-      // Expo web and a few development runtimes have no foreground listeners.
-      // The push itself, the inbox row and the rail badge all still work.
-    }
+    const unsubscribe = subscribeNotificationEvents((item) => {
+      const data = item.data || item;
+      const count = arrivalCount(data);
+      if (count && !atCrossroads) raise(count);
+    });
     return () => {
       clearTimeout(timer.current);
-      received?.remove?.();
-      responded?.remove?.();
+      unsubscribe();
     };
-  }, [onOpen, raise]);
+  }, [raise]);
 
   if (!alert) return null;
 

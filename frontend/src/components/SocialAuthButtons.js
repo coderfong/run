@@ -22,6 +22,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../auth/AuthContext';
+import { appleIdentityFromCredential } from '../auth/onboardingIdentity';
 import { space } from '../theme';
 import { framePose, frameVariant } from '../ui/frameRegistry';
 import { toast } from '../ui/toast';
@@ -138,11 +139,15 @@ export default function SocialAuthButtons() {
         ],
       });
       if (!cred?.identityToken) throw new Error('No identity token from Apple');
-      // Apple only sends the name on the FIRST authorization — pass it through
-      // so the backend can seed a username from it.
-      const name = cred.fullName
-        ? [cred.fullName.givenName, cred.fullName.familyName].filter(Boolean).join(' ')
-        : undefined;
+      // Apple asks for the name in its own trusted sheet. Carry that answer
+      // into onboarding as well as using it to seed the public username, so
+      // the app never asks the person to type the same information again.
+      // A later authorization may omit the name; Apple accounts still skip
+      // our name form because it is not required to use PASER.
+      const onboardingIdentity = appleIdentityFromCredential(cred.fullName);
+      const name = [onboardingIdentity.firstName, onboardingIdentity.lastName]
+        .filter(Boolean)
+        .join(' ') || undefined;
       // The authorization code is only needed so the server can hold a
       // revocable session for account deletion. It is NOT what signs you in,
       // so a missing one is passed along as absent rather than thrown: the
@@ -151,6 +156,7 @@ export default function SocialAuthButtons() {
       await signInWithProvider('apple', cred.identityToken, {
         name,
         authorization_code: cred.authorizationCode || undefined,
+        onboardingIdentity,
       });
     } catch (e) {
       // Both spellings: the constant was renamed across expo-apple-authentication
@@ -172,14 +178,18 @@ export default function SocialAuthButtons() {
 
       <View style={{ gap: space.sm }}>
         {appleOk && (
-          <Row
-            bg="#000"
-            glyph=""
-            fg="#fff"
-            label={busy ? 'Signing in…' : 'Continue with Apple'}
-            disabled={busy}
-            onPress={signInApple}
-          />
+          <View
+            pointerEvents={busy ? 'none' : 'auto'}
+            style={[styles.appleButtonWrap, busy && styles.busy]}
+          >
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+              cornerRadius={8}
+              style={styles.appleButton}
+              onPress={signInApple}
+            />
+          </View>
         )}
 
         {HAS_GOOGLE ? (
@@ -217,4 +227,7 @@ const styles = StyleSheet.create({
   btnText: { fontSize: 16, fontWeight: '600' },
   glyph: { fontSize: 18, fontWeight: '700', width: 18, textAlign: 'center' },
   gGlyph: { color: '#4285F4' },
+  appleButtonWrap: { height: 52, width: '100%' },
+  appleButton: { height: 52, width: '100%' },
+  busy: { opacity: 0.6 },
 });

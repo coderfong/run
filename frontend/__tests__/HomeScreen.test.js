@@ -96,7 +96,9 @@ import { NavigationContext } from '@react-navigation/native';
 import HomeScreen from '../src/screens/HomeScreen';
 import { HOME_AUTO_PROMPT_DELAY_MS } from '../src/config/proExposure';
 import FeedCard from '../src/components/FeedCard';
+import EnergyMeter from '../src/components/EnergyMeter';
 import ReactionEffect from '../src/effects/ReactionEffect';
+import { Bar } from '../src/ui/motion';
 
 // `useFocusEffect` and `useQuery` both reach for the navigation object through
 // context rather than through props, so passing one as a prop is not enough —
@@ -154,6 +156,25 @@ describe('HomeScreen', () => {
     const tree = mount();
     await act(async () => {});
     expect(tree).toBeTruthy();
+    act(() => tree.unmount());
+  });
+
+  it('keeps the compact energy amount inside its correctly measured bar', async () => {
+    const tree = mount();
+    await act(async () => {});
+
+    const meter = tree.root.findByType(EnergyMeter);
+    const labels = meter
+      .findAllByType(Text)
+      .map((node) => node.props.children)
+      .filter((value) => typeof value === 'string' || typeof value === 'number')
+      .map(String);
+    const bar = meter.findByType(Bar);
+
+    expect(meter.props.compact).toBe(true);
+    expect(labels).toContain('40');
+    expect(labels).not.toContain('40/100');
+    expect(bar.props.trackStyle).toBe(StyleSheet.absoluteFill);
     act(() => tree.unmount());
   });
 

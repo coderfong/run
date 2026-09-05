@@ -294,15 +294,15 @@ function Spine({ level, reached, current, claimable = false }) {
 const INFO_SECTIONS = [
   {
     title: 'Level',
-    body: 'Every kilometre you run earns XP, and XP is permanent. Level 1 to 50, and it never goes back down.',
+    body: 'Run to earn XP and level up. Your level never goes down.',
   },
   {
     title: 'Rank',
-    body: 'Rank comes from territory: claiming ground, stealing it, defending it. It can fall too, if someone takes your land or you stop running for a while. Your rank sets the border around your portrait.',
+    body: 'Claim and protect land to raise your rank. Losing land or taking a long break can lower it. Your portrait border shows your rank.',
   },
   {
     title: 'Rewards',
-    body: 'Reaching a level unlocks its tier below. Everyone gets the free reward; PASER PRO adds a second, better one on the same tier. Tap a lit tile to collect, or use Claim all.',
+    body: 'Level up to unlock gifts. Tap a bright gift to collect it. PRO members get extra gifts.',
   },
 ];
 

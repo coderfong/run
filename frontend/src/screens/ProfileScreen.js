@@ -74,7 +74,7 @@ const NOTIF_ROWS = [
   ['paserby', 'Crossed paths & high fives'],
   ['season', 'Season & promotion'],
   ['recap', 'Weekly recap'],
-  ['reminder', 'Streak & run reminders'],
+  ['reminder', 'Streak & territory reminders'],
 ];
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
@@ -569,10 +569,10 @@ export default function ProfileScreen({ navigation }) {
               key={key}
               padded={false}
               style={styles.trophy}
-              fill={got ? withAlpha(accent, 0.12) : undefined}
+              fill={got ? '#FFF2C6' : colors.card}
             >
-              <AppIcon name={icon} size={30} opacity={got ? 1 : 0.32} />
-              <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? colors.text : colors.textDim }]}>
+              <AppIcon name={icon} size={30} opacity={got ? 1 : 0.6} />
+              <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? '#292015' : colors.textMuted }]}>
                 {label}
               </Text>
             </Card>
@@ -755,7 +755,10 @@ export default function ProfileScreen({ navigation }) {
       </Card>
 
       {/* notifications */}
-      <SectionHeader title="Notifications" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <SectionHeader title="Push notifications" style={{ marginTop: space.xl, marginBottom: space.sm }} />
+      <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
+        Every event stays in your in-app inbox. Choose which ones may alert you outside PASER.
+      </Text>
       <Card padded={false}>
         {NOTIF_ROWS.map(([key, label], i) => (
           <View key={key} style={[styles.toggleRow, i > 0 && styles.runDivider]}>

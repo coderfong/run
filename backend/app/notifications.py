@@ -1,6 +1,7 @@
-"""Push notifications via Expo's push service. Sent on a background task so
-the request never blocks on the HTTP call. Each category is gated by the
-recipient's notif_prefs. Delivery is best-effort — a failed push never fails
+"""Durable in-app notifications plus Expo push delivery.
+
+Inbox rows are always written; each category preference gates only the
+out-of-app push. Delivery is best-effort — a failed push never fails
 the request that triggered it — but failures are now logged and a token
 Expo reports as dead is pruned, instead of being silently retried forever.
 
@@ -10,6 +11,7 @@ season | recap | pasers | paserby.
 
 import json
 import logging
+import uuid
 import urllib.error
 import urllib.request
 
@@ -113,10 +115,16 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
         # client recognise the same capture whichever path arrives first.
         # Round-trip through JSON once so UUIDs passed by older call sites are
         # converted to strings for both Postgres JSONB and Expo's encoder.
-        event_json = json.dumps({"category": category, **(data or {})}, default=str)
+        # One opaque id rides both delivery paths. The foreground push can
+        # arrive just before the inbox poll sees the row; without a shared id
+        # the app would present the same attack/defense twice.
+        event_json = json.dumps(
+            {**(data or {}), "category": category, "event_id": str(uuid.uuid4())},
+            default=str,
+        )
         event_data = json.loads(event_json)
-        # Inbox rows (the bell) — written for every allowed recipient even if
-        # they have no push token registered.
+        # Inbox rows (the bell) — written for every recipient even if they
+        # disabled this category's push or have no push token registered.
         for uid in recipients:
             db.execute(
                 text(

@@ -17,6 +17,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../theme';
+import { shouldCollectName } from '../auth/onboardingIdentity';
 import { ITEMS } from '../config/cosmetics';
 import { useProVisible } from '../pro/storeAvailable';
 import { useAvatar } from '../state/avatar';
@@ -71,7 +72,7 @@ const defaultBirthday = () => ({ y: new Date().getFullYear() - 25, m: 6, d: 15 }
 const iso = ({ y, m, d }) =>
   `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-export default function OnboardingFlow({ onDone, mode = 'full' }) {
+export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdentity = null }) {
   const insets = useSafeAreaInsets();
   const reduced = useReduceMotion();
   const { save: saveAvatar, setPart } = useAvatar();
@@ -90,8 +91,8 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState({
-    firstName: profile.firstName || '',
-    lastName: profile.lastName || '',
+    firstName: profile.firstName || onboardingIdentity?.firstName || '',
+    lastName: profile.lastName || onboardingIdentity?.lastName || '',
   });
   const [birthday, setBirthday] = useState(() => {
     if (!profile.birthday) return defaultBirthday();
@@ -119,7 +120,9 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
       .map((s) => ({ ...s, kind: 'character' }));
     if (mode === 'character') return [...character, { key: 'ready', kind: 'ready' }];
     return [
-      { key: 'name', kind: 'name' },
+      ...(shouldCollectName(mode, onboardingIdentity)
+        ? [{ key: 'name', kind: 'name' }]
+        : []),
       // Birthday and gender are both SKIPPABLE. Neither is needed to run, claim
       // ground or hold an account: the birthday only raises the privacy floor
       // on a young account (backend app/privacy.py, is_minor), and the gender
@@ -132,7 +135,7 @@ export default function OnboardingFlow({ onDone, mode = 'full' }) {
       ...(canShowPro ? [{ key: 'pro', kind: 'pro', optional: true }] : []),
       { key: 'ready', kind: 'ready' },
     ];
-  }, [mode, canShowPro]);
+  }, [mode, canShowPro, onboardingIdentity]);
 
   const current = steps[step];
   const last = step === steps.length - 1;

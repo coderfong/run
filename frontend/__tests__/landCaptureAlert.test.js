@@ -11,10 +11,8 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
-// `check()` calls api.notifications on mount and every 10s after. Left
-// unmocked it hits a real fetch that hangs the whole run instead of settling
-// — the alert's own try/catch would happily absorb the eventual rejection,
-// but jest never gets to see it.
+// The root notification synchroniser is not mounted in this focused component
+// test; these mocks keep unrelated character/profile reads inert.
 jest.mock('../src/api/client', () => ({
   api: new Proxy({}, { get: () => jest.fn(() => new Promise(() => {})) }),
   ApiError: class ApiError extends Error {},

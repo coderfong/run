@@ -45,7 +45,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import CharacterRig from './character/CharacterRig';
+import CharacterRig, { BODY_RATIO, HEADROOM } from './character/CharacterRig';
 import GameAnimation from './GameAnimation';
 import { RevealRays } from './RewardReveal';
 import { Framed, OutlinedText } from './ui';
@@ -154,7 +154,7 @@ export default function LevelUpCelebration({ visible, level, equipped, accent, o
   // turns through. A square clipped to the screen would sweep bare backdrop
   // across a corner once a turn.
   const raySize = Math.ceil(Math.hypot(width, height));
-  const rigSize = Math.min(Math.round(width * 0.62), 260);
+  const rigSize = Math.min(width * 0.42, (height * 0.46) / (BODY_RATIO * (1 + HEADROOM)), 180);
 
   return (
     <Modal visible={!!visible} transparent animationType="none" onRequestClose={onClose}>
@@ -185,7 +185,7 @@ export default function LevelUpCelebration({ visible, level, equipped, accent, o
           {/* One stage, so the burst, the character and the badge at its feet
               share a centre. Centred separately on the screen they would drift
               apart on every device size. */}
-          <Animated.View style={[{ width: rigSize, height: rigSize }, heroStyle]}>
+          <Animated.View style={[{ alignItems: 'center' }, heroStyle]}>
             {/* Behind the runner, and only behind them: the gold hit is what
                 makes the arrival land. It fires once, keyed on the level, so
                 re-rendering the screen underneath does not replay it. */}
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   bleed: { overflow: 'hidden' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg },
   stageFx: { alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', left: 0, right: 0, bottom: -18, alignItems: 'center' },
+  badge: { marginTop: space.sm, alignItems: 'center' },
   labelWrap: { alignItems: 'center', marginTop: space.xl },
   chip: { marginTop: space.md },
   chipText: { letterSpacing: 1, paddingHorizontal: space.sm },

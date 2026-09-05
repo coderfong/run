@@ -362,11 +362,19 @@ export default function ChooseAttack({
   // (AS RUN — jump back to where the run itself was — used to sit here as a
   // fourth choice; the position rail's own rest notch at `baseT` already does
   // that job with a snap, so the button was a second control for one thing.)
-  const recs = RECOMMENDATIONS.map((r) => ({
-    ...r,
-    target: options?.[r.key],
-    cell: options?.placements?.[options?.[r.key]],
-  }));
+  const recs = RECOMMENDATIONS.map((r) => {
+    let cell = options?.placements?.[options?.[r.key]];
+    if (r.key === 'biggest_steal_index') {
+      // A live placement can hit a rival missed by the sampled suggestions.
+      if (!stale && (p?.enemy_m2 > 0 || p?.defended_m2 > 0 || p?.action === 'attack' || p?.action === 'fortified')) {
+        cell = { ...p, t: pose.t, rotation_deg: pose.deg };
+      } else if (!cell) {
+        cell = options?.placements?.filter((candidate) => candidate.enemy_m2 > 0 || candidate.defended_m2 > 0)
+          .sort((a, b) => (b.enemy_m2 || b.defended_m2) - (a.enemy_m2 || a.defended_m2))[0];
+      }
+    }
+    return { ...r, cell };
+  });
 
   // What this pose would WIN: everything under it that is not already yours.
   //
@@ -419,7 +427,7 @@ export default function ChooseAttack({
               <Framed
                 frame={frameVariant('chip', r.key)}
                 tint={active ? D.text : r.color}
-                fill={active ? r.color : withAlpha(r.color, 0.2)}
+                fill={active ? r.color : (unavailable ? withAlpha(r.color, 0.2) : '#FFF3F8')}
                 weight={active ? INK.medium : INK.thin}
                 pose={framePose(r.key)}
                 inset={false}
