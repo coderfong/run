@@ -46,9 +46,9 @@ def test_player_target_is_scoped_to_the_attackers_rank():
     assert bot_activity._target_territory(db, 3) == (1.31, 103.82)
 
     sql, params = db.calls[0]
-    assert "rank_points" in sql
-    assert params["target_rank_floor"] == 1500
-    assert params["target_rank_ceil"] == 3000
+    assert "solo_elo" in sql
+    assert params["target_rank_floor"] == 1350
+    assert params["target_rank_ceil"] == 1500
 
 
 def test_rival_target_prefers_rematch_then_falls_back_on_the_same_rank_board():
@@ -68,8 +68,7 @@ def test_rival_target_prefers_rematch_then_falls_back_on_the_same_rank_board():
     assert "territory_steals" in db.calls[0][0]
     assert "territory_steals" not in db.calls[1][0]
     for sql, params in db.calls:
-        assert "rank_points" in sql
-        assert params["rival_rank_floor"] == 30000
+        assert "solo_elo" in sql
+        assert params["rival_rank_floor"] == 2400
         assert "rival_rank_ceil" not in params
         assert params["radius"] == 5000
-

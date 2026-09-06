@@ -27,6 +27,12 @@ class Clan(Base):
     color_glow = Column(Text, nullable=False)
     created_by = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    elo_rating = Column(Integer, nullable=False, default=1000, server_default="1000")
+    elo_peak = Column(Integer, nullable=False, default=1000, server_default="1000")
+    elo_matches = Column(Integer, nullable=False, default=0, server_default="0")
+    elo_wins = Column(Integer, nullable=False, default=0, server_default="0")
+    elo_losses = Column(Integer, nullable=False, default=0, server_default="0")
+    elo_draws = Column(Integer, nullable=False, default=0, server_default="0")
 
 
 class User(Base):
@@ -40,6 +46,12 @@ class User(Base):
     # Equipped cosmetics (the client's loadout dict) — lets other users render
     # this runner's character portrait on feeds/cards.
     avatar = Column(JSONB, nullable=True)
+    solo_elo = Column(Integer, nullable=False, default=1000, server_default="1000")
+    solo_elo_peak = Column(Integer, nullable=False, default=1000, server_default="1000")
+    solo_elo_matches = Column(Integer, nullable=False, default=0, server_default="0")
+    solo_elo_wins = Column(Integer, nullable=False, default=0, server_default="0")
+    solo_elo_losses = Column(Integer, nullable=False, default=0, server_default="0")
+    solo_elo_draws = Column(Integer, nullable=False, default=0, server_default="0")
 
     # Social sign-in identity (Google / Apple). Null for password accounts.
     oauth_provider = Column(Text, nullable=True)

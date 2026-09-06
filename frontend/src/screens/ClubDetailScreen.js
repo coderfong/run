@@ -14,6 +14,7 @@ import { useClan } from '../state/clan';
 import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
+import EloProgressCard from '../components/EloProgressCard';
 import { toast } from '../ui/toast';
 import { Arrival, Bar, Reveal, staggerDelay, useArrival } from '../ui/motion';
 
@@ -111,6 +112,22 @@ export default function ClubDetailScreen({ route, navigation }) {
         <StatValue size="md" label="Season" value={clan.season_rank ? `#${clan.season_rank}` : '·'} />
         <StatValue size="md" label="Members" value={String(clan.member_count)} />
       </Row>
+
+      <EloProgressCard
+        title="Club Elo"
+        rating={clan.elo_rating}
+        label={clan.elo_label}
+        nextRating={clan.elo_next_rating}
+        nextLabel={clan.elo_next_label}
+        progress={clan.elo_progress}
+        matches={clan.elo_matches}
+        wins={clan.elo_wins}
+        losses={clan.elo_losses}
+        draws={clan.elo_draws}
+        peak={clan.elo_peak}
+        accent={accent}
+        style={{ marginTop: space.lg }}
+      />
 
       {/* club XP progress — every member's runs, claims and steals feed this */}
       <Card style={{ marginTop: space.md }}>

@@ -22,7 +22,7 @@ from sqlalchemy import text
 
 from app.database import SessionLocal
 from app.geospatial import circle_polygon_wgs
-from app import ranks
+from app import elo
 from app.routes.runs import _claim_territory
 
 db = SessionLocal()
@@ -40,16 +40,15 @@ def check(label, cond, detail=""):
         fails.append(label)
 
 
-def mkuser(name, points, clan_id=None):
-    """A user planted squarely in the tier `points` maps to, clock fresh so
-    nothing decays out from under the test."""
+def mkuser(name, rating, clan_id=None):
+    """A user planted squarely in the requested Elo tier."""
     return db.execute(
         text(
-            "INSERT INTO users (id, username, created_at, rank_points, rank_points_at, clan_id) "
-            "VALUES (gen_random_uuid(), :n, now(), :p, timezone('utc', now()), :c) "
+            "INSERT INTO users (id, username, created_at, solo_elo, solo_elo_peak, clan_id) "
+            "VALUES (gen_random_uuid(), :n, now(), :p, :p, :c) "
             "RETURNING id::text"
         ),
-        {"n": name, "p": points, "c": clan_id},
+        {"n": name, "p": rating, "c": clan_id},
     ).scalar()
 
 
@@ -92,10 +91,10 @@ def claim(uid, lat, lon, radius, strength, clan_id=None):
     return territory, stolen, events
 
 
-# Wood (0), Gold (tier 3), and a second Wood. Confirm the ladder agrees.
-WOOD_PTS, GOLD_PTS = 0, 1600
-check("0 points is tier 0", ranks.rank_for_points(WOOD_PTS)["tier"] == 0)
-check("1600 points is tier 3", ranks.rank_for_points(GOLD_PTS)["tier"] == 3)
+# Wood, Gold (tier 3), and a second Wood. Confirm the ladder agrees.
+WOOD_PTS, GOLD_PTS = 1000, 1400
+check("1000 Elo is tier 0", elo.tier_for_rating(WOOD_PTS)["tier"] == 0)
+check("1400 Elo is tier 3", elo.tier_for_rating(GOLD_PTS)["tier"] == 3)
 
 attacker = mkuser(f"rsAtk{tag}", WOOD_PTS)
 same_tier = mkuser(f"rsSame{tag}", WOOD_PTS)

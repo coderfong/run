@@ -43,7 +43,7 @@ from shapely.geometry import MultiPolygon, Polygon
 from sqlalchemy import text
 
 import bot_world
-from app import economy, ranks
+from app import economy, elo, ranks
 from app.config import settings
 from app.database import SessionLocal
 from app.geospatial import claim_area_m2
@@ -246,7 +246,7 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     distance_m, pace_s_per_km = bot_world.plan_run(rng, user_id=user_id)
     # Read the live tier before choosing a destination. A cross-tier target is
     # scenery to the claim engine, so selecting one cannot create a rivalry.
-    bot_rank_tier = ranks.status(db, user_id)["tier"]
+    bot_rank_tier = elo.solo_status(db, user_id)["tier"]
 
     # Where does this run start?
     start_lat, start_lon = _jitter(home_lat, home_lon, HOME_JITTER_M, rng)
@@ -422,6 +422,13 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
                     str(user_id),
                 )
             )
+
+    # Bots play on the same zero-sum ladder as people. Keep this in the same
+    # transaction as the territory and steal ledger so a rolled-back claim can
+    # never leave either solo or club Elo behind.
+    elo.record_claim_matches(
+        db, user_id, run_id, steal_events, attacker_clan_id=clan_id
+    )
 
     db.execute(
         text("UPDATE bot_accounts SET next_run_at = :n WHERE user_id = :u"),

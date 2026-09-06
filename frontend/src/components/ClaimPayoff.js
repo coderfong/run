@@ -209,6 +209,18 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
             </View>
           )}
 
+          {victims.length > 0 && claim.solo_elo != null && (
+            <View style={[styles.block, styles.eloResult]}>
+              <AppIcon name="trophy" size={24} />
+              <View>
+                <Text style={[type.bodyBold, { color: colors.text }]}>{`${claim.solo_elo_delta >= 0 ? '+' : ''}${claim.solo_elo_delta || 0} Solo Elo · ${(claim.solo_elo || 1000).toLocaleString()}`}</Text>
+                {claim.club_elo != null ? (
+                  <Text style={[type.caption, { color: colors.textMuted }]}>{`${claim.club_elo_delta >= 0 ? '+' : ''}${claim.club_elo_delta || 0} Club Elo · ${claim.club_elo.toLocaleString()}`}</Text>
+                ) : null}
+              </View>
+            </View>
+          )}
+
           {/* XP + level */}
           {claim.xp_gained > 0 && (
             <View style={styles.block}>
@@ -319,5 +331,6 @@ const styles = StyleSheet.create({
     marginTop: space.md,
   },
   heldHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  eloResult: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm },
   actions: { paddingHorizontal: space.gutter, gap: space.xs },
 });

@@ -537,7 +537,7 @@ export default function ChooseAttack({
       {!!p?.action && (
         <Text style={styles.costLine} numberOfLines={1}>
           {`Costs ${p.energy_cost} energy`}
-          {p.expected_rank_points > 0 ? ` · earns +${p.expected_rank_points} rank` : ''}
+          {(p.enemy_m2 > 0 || p.defended_m2 > 0) ? ' · Elo rated' : ''}
           {p.applied_discounts?.includes('first_claim_of_day')
             ? ' · your first claim today, half price'
             : ''}

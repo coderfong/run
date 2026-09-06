@@ -519,6 +519,12 @@ class ClaimOut(BaseModel):
     energy_cost: int = 0
     # Neutral expansions left in the game day AFTER this claim.
     neutral_claims_remaining: int = 0
+    # Rated result after this claim. Neutral/reinforcement claims leave both
+    # deltas at zero; club values are null when the runner has no club.
+    solo_elo: int = 1000
+    solo_elo_delta: int = 0
+    club_elo: Optional[int] = None
+    club_elo_delta: int = 0
 
 
 class LeaderboardEntry(BaseModel):
@@ -534,6 +540,13 @@ class LeaderboardEntry(BaseModel):
     rank_points: Optional[int] = None
     rank_key: Optional[str] = None
     rank_label: Optional[str] = None
+    # Explicit names for the new rating system. rank_* remains populated as a
+    # compatibility alias for builds that shipped before Elo.
+    solo_elo: int = 1000
+    elo_matches: int = 0
+    elo_wins: int = 0
+    elo_losses: int = 0
+    elo_draws: int = 0
 
 
 class RunInsightsPro(BaseModel):
@@ -736,6 +749,15 @@ class MeStats(BaseModel):
     rank_next_points: Optional[int] = None
     rank_progress: float = 0.0
     rank_best_key: str = "wood"
+    solo_elo: int = 1000
+    solo_elo_peak: int = 1000
+    solo_elo_matches: int = 0
+    solo_elo_wins: int = 0
+    solo_elo_losses: int = 0
+    solo_elo_draws: int = 0
+    solo_elo_next: Optional[int] = None
+    solo_elo_next_label: Optional[str] = None
+    solo_elo_points_to_next: int = 0
 
 
 class NotificationItem(BaseModel):
@@ -1144,6 +1166,8 @@ class RunnerProfile(BaseModel):
     avatar: Optional[dict] = None
     # Territorial rank — what the portrait's frame is drawn from.
     rank_key: str = "wood"
+    solo_elo: int = 1000
+    solo_elo_label: str = "Wood"
     clan_tag: Optional[str] = None
     clan_name: Optional[str] = None
     clan_color: Optional[ClanColor] = None
@@ -1261,6 +1285,18 @@ class ClanOut(BaseModel):
     members: List[ClanMemberOut] = []
     week_goal: Optional[WeekGoalOut] = None
     xp: int = 0                            # collective club XP (all members' earned XP)
+    elo_rating: int = 1000
+    elo_peak: int = 1000
+    elo_matches: int = 0
+    elo_wins: int = 0
+    elo_losses: int = 0
+    elo_draws: int = 0
+    elo_key: str = "wood"
+    elo_label: str = "Wood"
+    elo_next_rating: Optional[int] = None
+    elo_next_label: Optional[str] = None
+    elo_points_to_next: int = 0
+    elo_progress: float = 0.0
 
 
 class ClanSummary(BaseModel):
@@ -1295,6 +1331,15 @@ class ClanLeaderboardEntry(BaseModel):
     league: Optional[str] = None
     total_area_m2: float
     member_count: int
+    elo_rating: int = 1000
+    elo_matches: int = 0
+    elo_wins: int = 0
+    elo_losses: int = 0
+    elo_draws: int = 0
+    elo_key: str = "wood"
+    elo_label: str = "Wood"
+    elo_next_rating: Optional[int] = None
+    elo_progress: float = 0.0
 
 
 class MyClan(BaseModel):

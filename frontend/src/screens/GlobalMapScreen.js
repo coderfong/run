@@ -905,9 +905,9 @@ export default function GlobalMapScreen({ route, navigation }) {
   const ownTierLabel = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))].label;
   const ownRank = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))];
   const rankStats = unlockCtx?.stats;
-  const rankPoints = Math.max(0, Number(rankStats?.rank_points) || 0);
-  const nextRankPoints = Number.isFinite(rankStats?.rank_next_points)
-    ? rankStats.rank_next_points
+  const rankPoints = Math.max(0, Number(rankStats?.solo_elo ?? rankStats?.rank_points) || 0);
+  const nextRankPoints = Number.isFinite(rankStats?.solo_elo_next ?? rankStats?.rank_next_points)
+    ? (rankStats.solo_elo_next ?? rankStats.rank_next_points)
     : null;
   const rankProgress = rankStats
     ? (nextRankPoints == null
@@ -1455,7 +1455,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                 <Text style={[type.labelSm, { color: colors.textMuted }]}>Your rank</Text>
                 <Text style={[type.heading, { color: ownRankColor }]}>{ownTierLabel}</Text>
               </View>
-              <Text style={[type.bodySmBold, { color: colors.text }]}>{rankPoints.toLocaleString()} pts</Text>
+              <Text style={[type.bodySmBold, { color: colors.text }]}>{rankPoints.toLocaleString()} Elo</Text>
             </View>
             <View style={[styles.rankProgressTrack, { borderColor: nbInk(scheme, colors.cardAlt) }]}>
               <Bar
@@ -1469,7 +1469,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                 ? 'Rank progress is loading…'
                 : pointsToNext == null
                 ? 'Top rank reached. Keep defending your place.'
-                : `${pointsToNext.toLocaleString()} points to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
+                : `${pointsToNext.toLocaleString()} Elo to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
             </Text>
             <Text style={[type.body, { color: colors.textDim }]}>You compete with runners in this tier. Their land appears on your ranked map.</Text>
           </View>
@@ -1477,18 +1477,18 @@ export default function GlobalMapScreen({ route, navigation }) {
           <View style={styles.rankInfoSection}>
             <Text style={[type.bodySmBold, { color: colors.text }]}>Rank and level are different</Text>
             <Text style={[type.body, { color: colors.textDim }]}>
-              Level grows with distance. Rank moves up or down as territory changes.
+              Level grows with distance. Elo moves up or down against the rating of the runner you battle.
             </Text>
           </View>
 
           <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>Starting rank points</Text>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>How Elo moves</Text>
             <View style={styles.rankPointsGrid}>
               {[
-                ['+25', 'Take land'],
-                ['+15', 'Defend'],
-                ['+3', 'Claim open land'],
-                ['−10', 'Lose land'],
+                ['UP', 'Take land'],
+                ['UP', 'Defend'],
+                ['—', 'Claim open land'],
+                ['DOWN', 'Lose land'],
               ].map(([points, label]) => (
                 <View key={label} style={styles.rankPoint}>
                   <Text style={[type.bodyBold, { color: colors.text }]}>{points}</Text>
@@ -1496,7 +1496,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                 </View>
               ))}
             </View>
-            <Text style={[type.caption, { marginTop: space.xs }]}>Rewards change in higher ranks. Points fall after 7 quiet days.</Text>
+            <Text style={[type.caption, { marginTop: space.xs }]}>Beating a higher-rated rival is worth more. Every gain is matched by the opponent’s loss.</Text>
           </View>
 
           <View style={styles.rankInfoSection}>
@@ -1509,7 +1509,7 @@ export default function GlobalMapScreen({ route, navigation }) {
         </View>
         <View style={styles.rankInfoActions}>
           <Button
-            title="Rank standings"
+            title="Elo standings"
             variant="secondary"
             onPress={() => {
               setRankInfoOpen(false);

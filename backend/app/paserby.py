@@ -508,7 +508,7 @@ SELECT e.id::text,
        ({_MINE.format(a='e.user_b_high_five_at', b='e.user_a_high_five_at')}) IS NOT NULL AS they_high_fived,
        COALESCE(p.encounter_count, 1) AS times,
        u.username, u.avatar, u.xp,
-       COALESCE(u.rank_points, 0), u.rank_points_at,
+       COALESCE(u.solo_elo, 1000), NULL::timestamp,
        c.tag, c.name, c.color_key
 FROM paserby_encounters e
 JOIN users u
@@ -534,7 +534,7 @@ def _card(row, today):
     Note what is NOT here: no coordinate, no crossing time, no created_at, no
     run id. `when` is a phrase, and it is the only temporal field.
     """
-    from . import ranks  # local: ranks imports config, this module is imported early
+    from . import elo
     from .clans_meta import color_triple
 
     times = int(row[6] or 1)
@@ -545,7 +545,7 @@ def _card(row, today):
         "username": row[7],
         "avatar": row[8],
         "level": _level(row[9]),
-        "rank_key": ranks.key_for(row[10], row[11]),
+        "rank_key": elo.key_for(row[10], row[11]),
         "clan_tag": row[12],
         "clan_name": row[13],
         "clan_color": color_triple(row[14]) if row[14] else None,

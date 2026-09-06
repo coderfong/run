@@ -26,7 +26,7 @@ from sqlalchemy import text
 
 from app.database import SessionLocal
 from app.main import app
-from app import ranks
+from app import elo
 
 c = TestClient(app)
 tag = uuid.uuid4().hex[:6]
@@ -49,9 +49,9 @@ def signup(name):
 
 
 def set_points(uid, pts):
-    """Put a runner squarely in a tier, with a fresh clock so nothing decays."""
+    """Put a runner squarely in an Elo tier."""
     db.execute(
-        text("UPDATE users SET rank_points = :p, rank_points_at = timezone('utc', now()) "
+        text("UPDATE users SET solo_elo = :p, solo_elo_peak = GREATEST(solo_elo_peak,:p) "
              "WHERE id = CAST(:u AS uuid)"),
         {"p": pts, "u": uid},
     )
@@ -84,18 +84,18 @@ db = SessionLocal()
 h_wood, wood = signup(f"mrWood{tag}")
 h_gold, gold = signup(f"mrGold{tag}")
 h_myth, myth = signup(f"mrMyth{tag}")
-set_points(wood, 0)          # Wood floor
-set_points(gold, 1600)       # inside Gold [1500, 3000)
-set_points(myth, 31000)      # Mythic (top, no ceiling)
+set_points(wood, 1000)       # Wood
+set_points(gold, 1400)       # inside Gold [1350, 1500)
+set_points(myth, 2450)       # Mythic (top, no ceiling)
 give_land(wood, LAT, LON)
 give_land(gold, LAT + 0.001, LON)
 give_land(myth, LAT, LON + 0.001)
 db.commit()
 
 # Sanity: the tiers we seeded are the tiers the ladder assigns.
-check("Wood is tier 0", ranks.rank_for_points(0)["tier"] == 0)
-check("Gold is tier 3", ranks.rank_for_points(1600)["tier"] == 3, str(ranks.rank_for_points(1600)))
-check("Mythic is tier 9", ranks.rank_for_points(31000)["tier"] == 9)
+check("Wood is tier 0", elo.tier_for_rating(1000)["tier"] == 0)
+check("Gold is tier 3", elo.tier_for_rating(1400)["tier"] == 3, str(elo.tier_for_rating(1400)))
+check("Mythic is tier 9", elo.tier_for_rating(2450)["tier"] == 9)
 
 print("\n== every territory carries its owner's rank ==")
 r = board()
@@ -142,7 +142,7 @@ check("a tier with no local holders returns none of ours",
 print("\n== the top tier's open ceiling ==")
 # Mythic has no next tier, so its band is [30000, ∞). A runner far past the
 # floor must still count as Mythic, not fall off the top.
-set_points(myth, 999999)
+set_points(myth, 9999)
 db.commit()
 ids9b = {t["user_id"] for t in board(rank=9).json()["territories"]}
 check("a runner well past the Mythic floor is still Mythic", myth in ids9b, str(ids9b))

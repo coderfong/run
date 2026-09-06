@@ -31,6 +31,7 @@ import { toast } from '../ui/toast';
 import { Arrival, Bar, Pulse, useArrival, useReduceMotion } from '../ui/motion';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
+import EloProgressCard from '../components/EloProgressCard';
 
 // Roll an unowned shop/stat cosmetic of the box's actual rarity. Pass rewards
 // are never in the pool: a lootbox must not bypass either reward track.
@@ -298,7 +299,7 @@ const INFO_SECTIONS = [
   },
   {
     title: 'Rank',
-    body: 'Claim and protect land to raise your rank. Losing land or taking a long break can lower it. Your portrait border shows your rank.',
+    body: 'Take rival land or successfully defend yours to change Elo. Beating a higher-rated runner is worth more, and every gain is matched by their loss. Your portrait border shows your rank.',
   },
   {
     title: 'Rewards',
@@ -582,9 +583,9 @@ export default function ProgressionScreen() {
           {/* Rank, not level. At the top tier it is just the name — it used to
               read "Mythic · top rank", which said the same thing twice. */}
           <Text style={[type.caption, styles.headerSubText]}>
-            {rank?.next_points
-              ? `${rank?.label || 'Wood'} · ${rank.points}/${rank.next_points} to ${rank.next_label}`
-              : (rank?.label || 'Wood')}
+            {rank?.next_rating
+              ? `${(rank.rating || 1000).toLocaleString()} Elo · ${rank?.label || 'Wood'} · ${rank.points_to_next} to ${rank.next_label}`
+              : `${(rank?.rating || 1000).toLocaleString()} Elo · ${rank?.label || 'Wood'}`}
           </Text>
           {/* Fills from empty every time you open the screen. You mostly get
               here straight off a finished run, and watching the bar run up to
@@ -606,6 +607,22 @@ export default function ProgressionScreen() {
           </Text>
         </View>
       </Framed>
+
+      <EloProgressCard
+        title="Solo Elo progression"
+        rating={rank?.rating}
+        label={rank?.label}
+        nextRating={rank?.next_rating}
+        nextLabel={rank?.next_label}
+        progress={rank?.progress}
+        matches={rank?.matches}
+        wins={rank?.wins}
+        losses={rank?.losses}
+        draws={rank?.draws}
+        peak={rank?.peak}
+        accent={brand.pink}
+        style={{ marginTop: space.lg }}
+      />
 
       {/* What there is to collect, and one button that collects it. This used
           to be a small pill under the portrait, which is a strange way to

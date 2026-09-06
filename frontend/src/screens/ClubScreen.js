@@ -17,6 +17,7 @@ import { nbField, space, withAlpha, useTheme, useThemedType, useThemedStyles } f
 import { art } from '../config/onboardingArt';
 import { Screen, Card, Framed, Row, Button, Input, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
+import EloProgressCard from '../components/EloProgressCard';
 import { toast } from '../ui/toast';
 import { pickPhoto } from '../ui/photoPicker';
 import { framePose, frameVariant } from '../ui/frameRegistry';
@@ -61,7 +62,7 @@ function ClubIntroOverlay({ step, onNext, accent }) {
         <Text style={styles.introTitle}>{ranking ? 'Club rankings' : 'Club view'}</Text>
         <Text style={styles.introBody}>
           {ranking
-            ? 'See where every club stands this season. Tap one to meet its crew.'
+            ? 'See every club’s live Elo rating. Tap one to meet its crew.'
             : 'Weekly goals, members, chat and invites, all in one place.'}
         </Text>
         <ToonButton title={ranking ? 'Got it' : 'Show me rankings'} onPress={onNext} fill={{ color: accent, border: '#FFFFFF' }} />
@@ -213,8 +214,8 @@ function MemberHub({ clanId, navigation }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [clubView, setClubView] = useState('view');
   const { data: clubRanks, loading: ranksLoading, refresh: reloadRanks } = useQuery(
-    'leaderboard:clans',
-    api.clanLeaderboard,
+    'leaderboard:clans:elo',
+    api.clanEloLeaderboard,
     { enabled: clubView === 'rankings', fallback: [] }
   );
 
@@ -337,7 +338,7 @@ function MemberHub({ clanId, navigation }) {
     <Segmented
       options={[
         { key: 'view', label: 'Club view' },
-        { key: 'rankings', label: 'Club rankings' },
+        { key: 'rankings', label: 'Club Elo' },
       ]}
       value={clubView}
       onChange={setClubView}
@@ -352,8 +353,8 @@ function MemberHub({ clanId, navigation }) {
           <Row gap={space.md}>
             <AppIcon name="trophy" size={34} />
             <View style={{ flex: 1 }}>
-              <Text style={type.title}>Season standings</Text>
-              <Text style={type.caption}>How every club’s claimed ground stacks up.</Text>
+              <Text style={type.title}>Club Elo standings</Text>
+              <Text style={type.caption}>Rated territory battles move both clubs up or down.</Text>
             </View>
           </Row>
         </Card>
@@ -379,9 +380,14 @@ function MemberHub({ clanId, navigation }) {
               />
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>[{entry.tag}] {entry.name}</Text>
-                <Text style={type.caption}>{entry.member_count} members{entry.league ? ` · ${LEAGUE_LABEL[entry.league]}` : ''}</Text>
+                <Text style={type.caption}>
+                  {entry.elo_label || 'Wood'} · {entry.elo_wins || 0}W {entry.elo_losses || 0}L {entry.elo_draws || 0}D · {entry.member_count} members
+                </Text>
               </View>
-              <Text style={[type.bodySmBold, { color: entry.color?.stroke || accent }]}>{(entry.total_area_m2 / 1e6).toFixed(2)} km²</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={[type.bodySmBold, { color: entry.color?.stroke || accent }]}>{(entry.elo_rating ?? 1000).toLocaleString()} Elo</Text>
+                <Text style={type.caption}>{(entry.total_area_m2 / 1e6).toFixed(2)} km²</Text>
+              </View>
             </Row>
           </Card>
         ))}
@@ -439,13 +445,28 @@ function MemberHub({ clanId, navigation }) {
         {clan.description ? <Text style={[type.caption, { textAlign: 'center', marginTop: 2 }]}>{clan.description}</Text> : null}
         <Row gap={8} style={{ marginTop: space.sm }}>
           {clan.league ? <Pill label={LEAGUE_LABEL[clan.league]} color={accent} /> : null}
-          <Pill label={clan.season_rank ? `Season #${clan.season_rank}` : 'Unranked'} color={accent} variant="outline" />
           {/* No colour: a metadata chip deals its own from the deck. Seeded on
               what it MEANS rather than on its label, so the chip does not
               change colour when a member joins. */}
           <Pill label={`${clan.member_count} members`} seed="club:members" />
         </Row>
       </Card>
+
+      <EloProgressCard
+        title="Club Elo"
+        rating={clan.elo_rating}
+        label={clan.elo_label}
+        nextRating={clan.elo_next_rating}
+        nextLabel={clan.elo_next_label}
+        progress={clan.elo_progress}
+        matches={clan.elo_matches}
+        wins={clan.elo_wins}
+        losses={clan.elo_losses}
+        draws={clan.elo_draws}
+        peak={clan.elo_peak}
+        accent={accent}
+        style={{ marginTop: space.lg }}
+      />
 
       {/* weekly goal (the chest) */}
       {goal && (

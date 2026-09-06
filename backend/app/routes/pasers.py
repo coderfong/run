@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, paserby, ranks, schemas
+from .. import elo, models, paserby, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -71,7 +71,7 @@ def search_users(
             f"""
             SELECT u.id::text, u.username, u.avatar, c.tag, c.color_key, u.xp,
                    pl.requester_id::text, pl.status, pl.id::text,
-                   COALESCE(u.rank_points, 0), u.rank_points_at
+                   COALESCE(u.solo_elo, 1000), NULL::timestamp
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -95,7 +95,7 @@ def search_users(
             avatar=r[2],
             clan_tag=r[3],
             clan_color=_clan_color(r[4]),
-            rank_key=ranks.key_for(r[9], r[10]),
+            rank_key=elo.key_for(r[9], r[10]),
             level=_level(r[5]),
             state=_state_for(r[6], r[7], user.id),
             # A hit can already be pending_in — the row offers Accept, which
@@ -115,7 +115,7 @@ def my_pasers(user: models.User = Depends(current_user), db: Session = Depends(g
             """
             SELECT pl.id::text, pl.status, pl.requester_id::text,
                    u.id::text, u.username, u.avatar, c.tag, c.color_key, u.xp,
-                   COALESCE(u.rank_points, 0), u.rank_points_at
+                   COALESCE(u.solo_elo, 1000), NULL::timestamp
             FROM paser_links pl
             JOIN users u
               ON u.id = CASE WHEN pl.requester_id = :uid THEN pl.addressee_id
@@ -138,7 +138,7 @@ def my_pasers(user: models.User = Depends(current_user), db: Session = Depends(g
             avatar=r[5],
             clan_tag=r[6],
             clan_color=_clan_color(r[7]),
-            rank_key=ranks.key_for(r[9], r[10]),
+            rank_key=elo.key_for(r[9], r[10]),
             level=_level(r[8]),
             state=state,
             request_id=r[0],
@@ -296,7 +296,7 @@ def _card_for(db, other_id: str, viewer_id: str) -> schemas.RunnerCard:
             f"""
             SELECT u.id::text, u.username, u.avatar, c.tag, c.color_key, u.xp,
                    pl.requester_id::text, pl.status, pl.id::text,
-                   COALESCE(u.rank_points, 0), u.rank_points_at
+                   COALESCE(u.solo_elo, 1000), NULL::timestamp
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -314,7 +314,7 @@ def _card_for(db, other_id: str, viewer_id: str) -> schemas.RunnerCard:
         avatar=r[2],
         clan_tag=r[3],
         clan_color=_clan_color(r[4]),
-        rank_key=ranks.key_for(r[9], r[10]),
+        rank_key=elo.key_for(r[9], r[10]),
         level=_level(r[5]),
         state=_state_for(r[6], r[7], viewer_id),
         request_id=r[8],
@@ -335,7 +335,7 @@ def runner_profile(
             f"""
             SELECT u.id::text, u.username, u.avatar, c.tag, c.name, c.color_key, u.xp,
                    pl.requester_id::text, pl.status, pl.id::text,
-                   COALESCE(u.rank_points, 0), u.rank_points_at
+                   COALESCE(u.solo_elo, 1000), NULL::timestamp
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -399,6 +399,7 @@ def runner_profile(
     ).fetchall()
 
     xp = int(u[6] or 0)
+    rating = elo.tier_for_rating(int(u[10] or elo.INITIAL_RATING))
     return schemas.RunnerProfile(
         user_id=u[0],
         username=u[1],
@@ -406,7 +407,9 @@ def runner_profile(
         clan_tag=u[3],
         clan_name=u[4],
         clan_color=_clan_color(u[5]),
-        rank_key=ranks.key_for(u[10], u[11]),
+        rank_key=rating["key"],
+        solo_elo=rating["rating"],
+        solo_elo_label=rating["label"],
         state=state,
         request_id=u[9],
         paser_count=int(paser_count or 0),

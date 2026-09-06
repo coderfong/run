@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import entitlements, models, ranks, schemas
+from .. import elo, entitlements, models, schemas
 from ..clans_meta import color_triple, photo_url
 from ..config import settings
 from ..database import get_db
@@ -136,53 +136,44 @@ def rank_leaderboard(
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, le=500),
 ):
-    """Standings by RANK POINTS — the competitive board.
-
-    Points decay with inactivity, so this ranks who's winning ground now
-    rather than who has ever played the most. Decay is applied per row on read
-    (same lazy model as everywhere else), which is why the ordering is done in
-    Python after the fetch: a stored balance can be stale, and sorting on the
-    stale column would show a decayed player above an active one.
-    """
+    """Solo Elo standings, highest live rating first."""
     rows = db.execute(
         text(
             """
-            SELECT u.id::text, u.username, COALESCE(u.rank_points, 0),
-                   u.rank_points_at, c.tag, c.color_key
+            SELECT u.id::text, u.username, COALESCE(u.solo_elo, 1000),
+                   COALESCE(u.solo_elo_matches,0), COALESCE(u.solo_elo_wins,0),
+                   COALESCE(u.solo_elo_losses,0), COALESCE(u.solo_elo_draws,0),
+                   c.tag, c.color_key
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
-            WHERE COALESCE(u.rank_points, 0) > 0
-            ORDER BY u.rank_points DESC
+            WHERE COALESCE(u.solo_elo_matches,0) > 0 OR COALESCE(u.rank_points,0) > 0
+            ORDER BY u.solo_elo DESC, u.solo_elo_matches DESC, u.username ASC
             LIMIT :limit
             """
         ),
-        {"limit": limit * 2},   # over-fetch: decay can reorder the tail
+        {"limit": limit},
     ).fetchall()
 
-    scored = []
+    out = []
     for r in rows:
-        pts = ranks.effective_points(int(r[2]), r[3])
-        if pts <= 0:
-            continue
-        info = ranks.rank_for_points(pts)
-        scored.append((pts, r, info))
-    scored.sort(key=lambda x: -x[0])
-
-    return [
-        schemas.LeaderboardEntry(
+        rating = int(r[2] or elo.INITIAL_RATING)
+        info = elo.tier_for_rating(rating)
+        out.append(schemas.LeaderboardEntry(
             user_id=r[0],
             username=r[1],
             total_area_m2=0.0,
             territory_count=0,
-            clan_tag=r[4],
-            clan_color=schemas.ClanColor(**color_triple(r[5])) if r[5] else None,
-            rank_points=pts,
+            clan_tag=r[7],
+            clan_color=schemas.ClanColor(**color_triple(r[8])) if r[8] else None,
+            rank_points=rating,
             rank_key=info["key"],
             rank_label=info["label"],
-        )
-        for pts, r, info in scored[:limit]
-    ]
+            solo_elo=rating,
+            elo_matches=int(r[3] or 0), elo_wins=int(r[4] or 0),
+            elo_losses=int(r[5] or 0), elo_draws=int(r[6] or 0),
+        ))
+    return out
 
 
 @router.get("/leaderboard/season", response_model=List[schemas.SeasonLeaderboardEntry])
@@ -393,7 +384,7 @@ def season_leaderboard(
                    -- other player surface draws them: their portrait inside
                    -- their rank frame. Selected alongside rather than looked
                    -- up per row — a board is fifty different runners.
-                   u.avatar, {ranks.SELECT_COLS}
+                   u.avatar, {elo.SELECT_COLS}
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN land l ON l.user_id = u.id
@@ -419,7 +410,7 @@ def season_leaderboard(
             defense_count=int(r[6] or 0),
             distance_m=float(r[7] or 0),
             avatar=r[8],
-            rank_key=ranks.key_for(r[9], r[10]),
+            rank_key=elo.key_for(r[9], r[10]),
         )
         for r in rows
     ]
@@ -486,10 +477,9 @@ def my_standing(
                       WHERE r.user_id = u.id AND (r.verified OR r.user_id = :viewer_id)
                         AND r.ended_at >= :starts_at AND r.ended_at < :ends_at), 0)
         """,
-        # The competitive board, and so the one where "where am I" matters
-        # most. Points decay with inactivity, and the decay has to happen
-        # inside the ranking or an idle player sits above an active one.
-        "rank": ranks.DECAY_SQL,
+        # Unrated players do not occupy a tied place on the rated board.
+        "rank": "CASE WHEN COALESCE(u.solo_elo_matches,0) > 0 OR "
+                "COALESCE(u.rank_points,0) > 0 THEN COALESCE(u.solo_elo,1000) ELSE 0 END",
     }[category]
 
     row = db.execute(
@@ -580,9 +570,8 @@ def leaderboard(
                    -- ordering is still area — this is not a second rank
                    -- board — it just lets a row show the badge that every
                    -- other surface displaying a player already shows.
-                   -- DECAYED, not the stored number, so somebody who has
-                   -- gone quiet reads the same here as everywhere else.
-                   ({ranks.DECAY_SQL}) AS rank_pts
+                   -- The live solo Elo carried as context on the land board.
+                   COALESCE(u.solo_elo, 1000) AS rank_pts
             FROM users u
             LEFT JOIN territories t
               ON t.user_id = u.id
@@ -591,11 +580,7 @@ def leaderboard(
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
             {solo_clause}
-            -- rank_points and rank_points_at join the grouping because
-            -- DECAY_SQL reads them at row scope; they are per-user columns,
-            -- so this cannot split a user across two rows.
-            GROUP BY u.id, u.username, c.tag, c.color_key,
-                     u.rank_points, u.rank_points_at
+            GROUP BY u.id, u.username, c.tag, c.color_key, u.solo_elo
             HAVING COALESCE(SUM(t.area_m2), 0) > 0
             ORDER BY total_area DESC
             LIMIT :limit
@@ -608,7 +593,7 @@ def leaderboard(
     out = []
     for r in rows:
         pts = int(r[6] or 0)
-        info = ranks.rank_for_points(pts)
+        info = elo.tier_for_rating(pts)
         out.append(
             schemas.LeaderboardEntry(
                 user_id=r[0],
@@ -620,6 +605,7 @@ def leaderboard(
                 rank_points=pts,
                 rank_key=info["key"],
                 rank_label=info["label"],
+                solo_elo=pts,
             )
         )
     return out

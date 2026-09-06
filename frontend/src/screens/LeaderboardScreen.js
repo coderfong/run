@@ -2,9 +2,8 @@
 // in LeaderboardView, which Home also embeds in its segmented control.
 //
 // Two boards, because they answer different questions:
-//   Rank — who's winning ground. Points decay with inactivity and are lost
-//          when someone takes your land, so this is the competitive standing
-//          the portrait border is drawn from.
+//   Solo Elo — pairwise territory results move both runners in opposite
+//              directions; the portrait border follows this rating.
 //   Land — who simply holds the most ground right now.
 
 import React, { useState } from 'react';
@@ -15,7 +14,7 @@ import { Segmented } from '../components/ui';
 import LeaderboardView from '../components/LeaderboardView';
 
 const TABS = [
-  { key: 'rank', label: 'Rank' },
+  { key: 'rank', label: 'Solo Elo' },
   { key: 'land', label: 'Land' },
 ];
 

@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from .. import coins as coins_mod
 from .. import economy
+from .. import elo
 from .. import energy as energy_mod
 from .. import paserby
 from .. import ranks
@@ -524,11 +525,11 @@ def _rank_scope_sql(tier: int, alias: str, prefix: str) -> tuple[str, dict]:
     """SQL + bind values selecting users in exactly one live rank tier.
 
     Territory rows do not freeze the rank they were created in: every plot
-    follows its owner's decayed points. Combat must use that same live reading
+    follows its owner's live Elo rating. Combat must use that same reading
     as ``/map-polygons`` or a runner could see one board and fight another.
     """
-    floor, ceil = ranks.tier_bounds(tier)
-    points = ranks.decay_sql(alias)
+    floor, ceil = elo.tier_bounds(tier)
+    points = elo.rating_sql(alias)
     clause = f"({points}) >= :{prefix}_floor"
     params = {f"{prefix}_floor": floor}
     if ceil is not None:
@@ -737,7 +738,7 @@ def _placement_breakdown(
 
     clan_id = str(user.clan_id) if user.clan_id else None
     if rank_tier is None:
-        rank_tier = ranks.status(db, user.id)["tier"]
+        rank_tier = elo.solo_status(db, user.id)["tier"]
     rank_clause, rank_params = _rank_scope_sql(rank_tier, "u", "claim_rank")
 
     # Ground nobody holds: the candidate minus the union of everything under
@@ -931,10 +932,10 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float, s
     """
     limit = settings.claim_options_cache_size
     key = str(run.id)
-    rank_tier = ranks.status(db, user.id)["tier"]
+    rank_tier = elo.solo_status(db, user.id)["tier"]
     # A tier change moves every eligible opponent at once even if no territory
     # row changed. Keep it in the cache fingerprint so an options screen opened
-    # across a promotion/decay cannot replay the previous division's fights.
+    # across a promotion cannot replay the previous division's fights.
     revision = (
         f"rank={rank_tier}:{_territory_revision(db, route)}" if limit > 0 else None
     )
@@ -1000,7 +1001,7 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
     # Same tier the claim itself will fight on (see the note on `rank_tier` in
     # /claim-territory) — the preview must quote the tier-scaled steal reward,
     # or a runner near Mythic sees a bigger number than the claim will pay.
-    rank_tier = ranks.status(db, user.id)["tier"]
+    rank_tier = elo.solo_status(db, user.id)["tier"]
     run_xp = round((run.distance_m / 1000.0) * settings.xp_per_km)
 
     for p in placements:
@@ -1429,7 +1430,7 @@ def claim_territory(
     # The runner's live rank tier, read once and used for every overlap query
     # from here down: the price breakdown, and the claim itself. Both must
     # score the fight against the same division the runner is on.
-    rank_tier = ranks.status(db, user.id)["tier"]
+    rank_tier = elo.solo_status(db, user.id)["tier"]
     action = economy.ACTION_EMPTY
     if claim_poly is not None:
         b = _placement_breakdown(
@@ -1540,9 +1541,9 @@ def claim_territory(
         db.rollback()
         raise HTTPException(402, "Not enough Energy for this move.")
 
-    # ---- rank points -------------------------------------------------------
-    # Territorial only: claiming, taking and defending ground. Distance is
-    # already paid in XP, so ranks stay a measure of standing, not mileage.
+    # ---- legacy rank points -----------------------------------------------
+    # Kept for already-shipped builds and historical rewards. The live ladder
+    # is Elo below; these additive points are no longer exposed as rank.
     #
     # The flat per-claim award is rationed daily: it is the one territorial
     # reward a player can repeat at will, and until rank is scored against the
@@ -1575,6 +1576,13 @@ def claim_territory(
             # would just be a slower level.
             ranks.award(db, user.id, ranks.steal_reward(rank_tier), "steal")
             ranks.award(db, ev["victim_id"], ranks.loss_penalty(rank_tier), "lost_ground")
+
+    # One zero-sum rated encounter per rival, plus one per opposing club.
+    # This stays inside the claim transaction: a rating can never move for a
+    # territory update that later rolls back.
+    elo_result = elo.record_claim_matches(
+        db, user.id, run.id, steal_events, attacker_clan_id=user.clan_id
+    )
 
     goal_reached, clan_id = (False, None)
     xp_gain = 0
@@ -1640,6 +1648,10 @@ def claim_territory(
         action=action,
         energy_cost=cost,
         neutral_claims_remaining=economy.neutral_claims_remaining(db, user.id),
+        solo_elo=elo_result["solo_rating"],
+        solo_elo_delta=elo_result["solo_delta"],
+        club_elo=elo_result["club_rating"],
+        club_elo_delta=elo_result["club_delta"],
     )
     run.claim_result = out.model_dump(mode="json")
 
@@ -1783,7 +1795,7 @@ def _claim_victims(db: Session, attacker_id, events) -> list[schemas.ClaimVictim
                          AND s.victim_id = :me
                          AND NOT s.defended
                    ) AS took_from_me,
-                   COALESCE(u.rank_points, 0), u.rank_points_at
+                   COALESCE(u.solo_elo, 1000), NULL::timestamp
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -1803,7 +1815,7 @@ def _claim_victims(db: Session, attacker_id, events) -> list[schemas.ClaimVictim
                 user_id=r[0],
                 username=r[1],
                 avatar=r[2],
-                rank_key=ranks.key_for(r[5], r[6]),
+                rank_key=elo.key_for(r[5], r[6]),
                 clan_color=schemas.ClanColor(**color_triple(r[3])) if r[3] else None,
                 area_m2=agg["area_m2"],
                 defended=agg["defended"],
@@ -2084,10 +2096,10 @@ def _claim_territory(
         )
 
     # The claimer's live rank decides which board this fight happens on. Read
-    # once here and threaded through every overlap query below, so a decay or
-    # promotion mid-transaction cannot land the attacker on two boards at once.
+    # once here and threaded through every overlap query below, so a promotion
+    # mid-transaction cannot land the attacker on two boards at once.
     if rank_tier is None:
-        rank_tier = ranks.status(db, user_id)["tier"]
+        rank_tier = elo.solo_status(db, user_id)["tier"]
     rival_rank_clause, rival_rank_params = _rank_scope_sql(rank_tier, "ru", "fight_rank")
     support_rank_clause, support_rank_params = _rank_scope_sql(
         rank_tier, "support_u", "fight_sup_rank"

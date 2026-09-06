@@ -12,12 +12,12 @@ from sqlalchemy.orm import Session
 
 from .. import (
     content_moderation,
+    elo,
     images,
     models,
     paserby,
     post_media,
     privacy,
-    ranks,
     reactions as reaction_rules,
     schemas,
 )
@@ -454,7 +454,7 @@ def my_notifications(limit: int = 30, user: models.User = Depends(current_user),
             """
             SELECT n.id::text, n.category, n.title, n.body, n.read, n.created_at,
                    n.actor_id::text, a.username, a.avatar,
-                   COALESCE(a.rank_points, 0), a.rank_points_at, c.color_key,
+                   COALESCE(a.solo_elo, 1000), NULL::timestamp, c.color_key,
                    COALESCE(n.data, '{}'::jsonb)
             FROM notifications n
             LEFT JOIN users a ON a.id = n.actor_id
@@ -476,7 +476,7 @@ def my_notifications(limit: int = 30, user: models.User = Depends(current_user),
                 actor_id=r[6],
                 actor_username=r[7],
                 actor_avatar=r[8],
-                actor_rank_key=ranks.key_for(r[9], r[10]),
+                actor_rank_key=elo.key_for(r[9], r[10]),
                 actor_clan_color=schemas.ClanColor(**color_triple(r[11])) if r[11] else None,
                 data=r[12] or {},
             )

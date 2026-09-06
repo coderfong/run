@@ -18,7 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import content_moderation, images, models, schemas
+from .. import content_moderation, elo, images, models, schemas
 from ..clans_meta import (
     CLAN_BADGES,
     CLAN_COLORS,
@@ -132,6 +132,7 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
     if not c:
         raise HTTPException(404, "club not found")
     area, league, rank = _season_area_and_rank(db, clan_id)
+    rating = elo.club_status(db, clan_id)
     my = _membership(db, viewer_id) if viewer_id else None
 
     members = []
@@ -179,6 +180,12 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
         member_count=_member_count(db, clan_id), created_by=c[8], created_at=c[9],
         my_role=my[1] if my else None, league=league, season_area_m2=area, season_rank=rank,
         members=members, week_goal=week_goal, xp=int(c[10] or 0),
+        elo_rating=rating["rating"], elo_peak=rating["peak"],
+        elo_matches=rating["matches"], elo_wins=rating["wins"],
+        elo_losses=rating["losses"], elo_draws=rating["draws"],
+        elo_key=rating["key"], elo_label=rating["label"],
+        elo_next_rating=rating["next_rating"], elo_next_label=rating["next_label"],
+        elo_points_to_next=rating["points_to_next"], elo_progress=rating["progress"],
     )
 
 
@@ -632,31 +639,66 @@ def update_clan(request: Request, response: Response, clan_id: str, payload: sch
 
 @router.get("/leaderboard/clans", response_model=list[schemas.ClanLeaderboardEntry])
 def clan_leaderboard(db: Session = Depends(get_db), limit: int = Query(50, ge=1, le=200)):
+    """Legacy season-land order for already-shipped clients."""
     season = _current_season(db)
     if not season:
         return []
     rows = db.execute(
         text(
             """
-            SELECT c.id::text, c.name, c.tag, c.color_key, s.area_current, s.league,
+            SELECT c.id::text, c.name, c.tag, c.color_key, COALESCE(s.area_current,0), s.league,
                    (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id),
-                   c.badge_icon, c.photo_etag
+                   c.badge_icon, c.photo_etag, c.elo_rating, c.elo_matches,
+                   c.elo_wins, c.elo_losses, c.elo_draws
             FROM clan_season_stats s JOIN clans c ON c.id = s.clan_id
-            WHERE s.season_id = :sid
+            WHERE s.season_id = CAST(:sid AS uuid)
             ORDER BY s.area_current DESC
             LIMIT :limit
             """
         ),
         {"sid": season[0], "limit": limit},
     ).fetchall()
-    return [
-        schemas.ClanLeaderboardEntry(
+    return _clan_leaderboard_out(rows)
+
+
+@router.get("/leaderboard/clans/elo", response_model=list[schemas.ClanLeaderboardEntry])
+def clan_elo_leaderboard(db: Session = Depends(get_db), limit: int = Query(50, ge=1, le=200)):
+    """All-time club Elo order; current-season land remains row context."""
+    season = _current_season(db)
+    rows = db.execute(
+        text(
+            """
+            SELECT c.id::text, c.name, c.tag, c.color_key, COALESCE(s.area_current,0), s.league,
+                   (SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = c.id),
+                   c.badge_icon, c.photo_etag, c.elo_rating, c.elo_matches,
+                   c.elo_wins, c.elo_losses, c.elo_draws
+            FROM clans c
+            LEFT JOIN clan_season_stats s
+              ON s.clan_id = c.id AND s.season_id = CAST(:sid AS uuid)
+            ORDER BY c.elo_rating DESC, c.elo_matches DESC, COALESCE(s.area_current,0) DESC
+            LIMIT :limit
+            """
+        ),
+        {"sid": season[0] if season else None, "limit": limit},
+    ).fetchall()
+    return _clan_leaderboard_out(rows)
+
+
+def _clan_leaderboard_out(rows):
+    out = []
+    for r in rows:
+        status = elo.tier_for_rating(int(r[9] or elo.INITIAL_RATING))
+        out.append(schemas.ClanLeaderboardEntry(
             clan_id=r[0], name=r[1], tag=r[2], color=_color(r[3]),
             badge_icon=r[7] or "shield", photo_url=_photo_url(r[0], r[8]),
             league=r[5], total_area_m2=float(r[4]), member_count=int(r[6]),
-        )
-        for r in rows
-    ]
+            elo_rating=status["rating"], elo_matches=int(r[10] or 0),
+            elo_wins=int(r[11] or 0), elo_losses=int(r[12] or 0),
+            elo_draws=int(r[13] or 0), elo_key=status["key"],
+            elo_label=status["label"], elo_next_rating=status["next_rating"],
+            elo_progress=status["progress"],
+        ))
+    return out
 
 
 @router.get("/clans/{clan_id}/feed", response_model=schemas.FeedOut)

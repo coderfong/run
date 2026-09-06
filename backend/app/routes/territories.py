@@ -17,7 +17,7 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, ranks, schemas
+from .. import elo, models, schemas
 from ..clans_meta import color_triple
 from ..config import settings
 from ..database import get_db
@@ -70,21 +70,17 @@ def map_polygons(
         else ""
     )
 
-    # Scope to one rank tier when asked. The band is [floor, ceil) over the
-    # owner's DECAYED points — so a whale who has gone idle drops out of the top
-    # board the same way they do everywhere else. The filter must live in SQL,
+    # Scope to one Elo tier when asked. The filter must live in SQL,
     # not a Python post-pass: this endpoint has a LIMIT, and filtering after the
     # fact would return far fewer rows than asked whenever the tier is sparse.
-    # DECAY_SQL is repeated here because it reads `u.rank_points` at row scope,
-    # which no SELECT alias is visible to; the doc on DECAY_SQL owns that debt.
     rank_params = {}
     rank_clause = ""
     if rank is not None:
-        floor, ceil = ranks.tier_bounds(rank)
-        rank_clause = f"AND ({ranks.DECAY_SQL}) >= :rank_floor"
+        floor, ceil = elo.tier_bounds(rank)
+        rank_clause = f"AND ({elo.RATING_SQL}) >= :rank_floor"
         rank_params["rank_floor"] = floor
         if ceil is not None:
-            rank_clause += f" AND ({ranks.DECAY_SQL}) < :rank_ceil"
+            rank_clause += f" AND ({elo.RATING_SQL}) < :rank_ceil"
             rank_params["rank_ceil"] = ceil
 
     rows = db.execute(
@@ -110,7 +106,7 @@ def map_polygons(
                        ) - t.created_at)))
                    )) AS freshness,
                    t.reinforcements,
-                   ({ranks.DECAY_SQL}) AS rank_pts,
+                   ({elo.RATING_SQL}) AS rank_pts,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
             FROM territories t
             JOIN users u ON u.id = t.user_id
@@ -143,7 +139,7 @@ def map_polygons(
         rings = geometry_to_rings(geom)  # largest-first
         if not rings:
             continue
-        rinfo = ranks.rank_for_points(int(rank_pts or 0))
+        rinfo = elo.tier_for_rating(int(rank_pts or elo.INITIAL_RATING))
         out.append(
             schemas.TerritoryOut(
                 id=tid,

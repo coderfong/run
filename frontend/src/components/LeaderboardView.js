@@ -90,12 +90,14 @@ export function LeaderboardRow({ item, isMe = false, board = 'land', celebrateDe
           {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}{isMe ? ' · you' : ''}
         </Text>
         <Text style={type.caption}>
-          {item.clan_tag ? 'club' : 'solo'} · {item.territory_count} territories
+          {board === 'rank'
+            ? `${item.elo_matches || 0} rated battles · ${item.elo_wins || 0}W ${item.elo_losses || 0}L ${item.elo_draws || 0}D`
+            : `${item.clan_tag ? 'club' : 'solo'} · ${item.territory_count} territories`}
         </Text>
       </View>
       <Text style={[styles.area, { color: c.stroke }]}>
         {board === 'rank'
-          ? `${(item.rank_points || 0).toLocaleString()} pts · ${item.rank_label || ''}`
+          ? `${(item.solo_elo ?? item.rank_points ?? 1000).toLocaleString()} Elo · ${item.rank_label || ''}`
           : `${((item.total_area_m2 || 0) / 1e6).toFixed(3)} km²`}
       </Text>
     </View>
@@ -117,9 +119,7 @@ function RowSkeleton() {
   );
 }
 
-// `board`: 'land' (area held) or 'rank' (rank points). Rank is the
-// competitive read — it decays and can be lost, so it answers "who's winning
-// now", where land answers "who holds the most".
+// `board`: 'land' (area held) or 'rank' (solo Elo).
 export default function LeaderboardView({ board = 'land' }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
@@ -204,8 +204,10 @@ export default function LeaderboardView({ board = 'land' }) {
       <View style={styles.listContent}>
         <EmptyState
           art={require('../../assets/art/empty-leaderboard.png')}
-          title="Nobody has claimed land yet"
-          body="Be first. Run a loop and the ground inside is yours."
+          title={board === 'rank' ? 'No rated battles yet' : 'Nobody has claimed land yet'}
+          body={board === 'rank'
+            ? 'Attack rival territory or defend your own to enter the Elo standings.'
+            : 'Be first. Run a loop and the ground inside is yours.'}
           style={{ paddingTop: space.xl }}
         />
       </View>
@@ -265,7 +267,7 @@ export default function LeaderboardView({ board = 'land' }) {
             </Text>
             <Text style={[type.captionMedium, { color: c.stroke }]}>
               {board === 'rank'
-                ? `${(r.rank_points || 0).toLocaleString()} pts`
+                ? `${(r.solo_elo ?? r.rank_points ?? 1000).toLocaleString()} Elo`
                 : Math.round(r.total_area_m2).toLocaleString()}
             </Text>
           </View>
@@ -330,7 +332,7 @@ export default function LeaderboardView({ board = 'land' }) {
           </View>
           <Text style={[styles.area, { color: (myRow.clan_color || NEUTRAL).stroke }]}>
             {board === 'rank'
-              ? `${(myRow.rank_points || 0).toLocaleString()} pts`
+              ? `${(myRow.solo_elo ?? myRow.rank_points ?? 1000).toLocaleString()} Elo`
               : `${((myRow.total_area_m2 || 0) / 1e6).toFixed(3)} km²`}
           </Text>
         </View>

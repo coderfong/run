@@ -389,7 +389,7 @@ export const api = {
   syncPro: (purchases) =>
     request('/me/pro/sync', { method: 'POST', body: JSON.stringify({ purchases }) }),
 
-  // Standings by rank points (the competitive board) rather than land held.
+  // Standings by live solo Elo rather than land held.
   rankLeaderboard: (limit = 50) => request(`/leaderboard/ranks?limit=${limit}`),
 
   // ----- coin shop -------------------------------------------------------
@@ -497,6 +497,7 @@ export const api = {
   updateClan: (clanId, body) => request(`/clans/${clanId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   clanFeed: (clanId) => request(`/clans/${clanId}/feed`),
   clanLeaderboard: () => request('/leaderboard/clans'),
+  clanEloLeaderboard: () => request('/leaderboard/clans/elo'),
   // `window` and `filter` are the PASER PRO half of the board and default to
   // the free view, so omitting them asks for exactly the board this endpoint
   // has always returned. `filter: 'local'` additionally needs lat/lon; the

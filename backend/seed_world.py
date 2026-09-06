@@ -502,6 +502,8 @@ def main() -> int:
             pts = bot_world.rank_points_pyramid(rng, len(ids))
             from app.ranks import rank_for_points
             tiers = [rank_for_points(p)["tier"] for p in pts]
+            from app.elo import rating_for_tier
+            elo_ratings = [rating_for_tier(t, 0.3) for t in tiers]
             ages = [rng.uniform(0, 200) for _ in ids]
             db.execute(
                 text(
@@ -510,17 +512,20 @@ def main() -> int:
                     SET rank_points = d.pts,
                         rank_points_at = timezone('utc', now())
                                          - make_interval(secs => d.age * 3600),
-                        rank_best = GREATEST(COALESCE(u.rank_best, 0), d.tier)
+                        rank_best = GREATEST(COALESCE(u.rank_best, 0), d.tier),
+                        solo_elo = d.elo,
+                        solo_elo_peak = GREATEST(COALESCE(u.solo_elo_peak,1000), d.elo)
                     FROM (
                         SELECT unnest(CAST(:ids AS uuid[]))  AS id,
                                unnest(CAST(:pts AS int[]))   AS pts,
                                unnest(CAST(:tiers AS int[])) AS tier,
+                               unnest(CAST(:elo AS int[]))   AS elo,
                                unnest(CAST(:ages AS float[])) AS age
                     ) d
                     WHERE u.id = d.id
                     """
                 ),
-                {"ids": ids, "pts": pts, "tiers": tiers, "ages": ages},
+                {"ids": ids, "pts": pts, "tiers": tiers, "elo": elo_ratings, "ages": ages},
             )
             db.commit()
             import collections

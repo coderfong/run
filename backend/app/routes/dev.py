@@ -18,7 +18,7 @@ from shapely.ops import unary_union
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, paserby, ranks, schemas
+from .. import elo, models, paserby, schemas
 from ..database import get_db
 from ..devtools import is_dev_account
 from ..notifications import notify
@@ -222,9 +222,9 @@ def rival_takes_mine(
     # Read with raw SQL because the rank columns are deliberately NOT mapped on
     # the User model — see the note beside `premium_pass` in models.py.
     rank_row = db.execute(
-        text(f"SELECT {ranks.SELECT_COLS} FROM users u WHERE u.id = :u"), {"u": rival.id}
+        text(f"SELECT {elo.SELECT_COLS} FROM users u WHERE u.id = :u"), {"u": rival.id}
     ).first()
-    rival_rank_key = ranks.key_for(rank_row[0], rank_row[1]) if rank_row else "wood"
+    rival_rank_key = elo.key_for(rank_row[0], rank_row[1]) if rank_row else "wood"
     event_data = {
         "capture_id": capture_id,
         "taken_m2": taken_from_me,
@@ -293,6 +293,7 @@ _CROSS_DAY_OFFSETS = [0, 0, 1, 2, 5, 9]
 # Rank-point rungs, so the portrait borders vary across the plaza. Straddles the
 # tier thresholds from migration 0019 (250 / 700 / 1500 / 3000 / ...).
 _CROSS_RANK_POINTS = [0, 300, 800, 1600, 3200, 6000, 10000, 22000]
+_CROSS_ELO_RATINGS = [1000, 1100, 1250, 1400, 1550, 1700, 1850, 2200]
 
 
 def _crossroads_prefix(user) -> str:
@@ -351,6 +352,7 @@ def seed_crossroads(
         level = 1 + (i % 30)
         xp = level * level * 100
         rank_points = _CROSS_RANK_POINTS[i % len(_CROSS_RANK_POINTS)]
+        solo_elo = _CROSS_ELO_RATINGS[i % len(_CROSS_ELO_RATINGS)]
         # Roughly half wear a club, cycling through whatever clubs exist.
         clan_id = clan_ids[i % len(clan_ids)] if clan_ids and i % 2 == 0 else None
         avatar = avatars[i % len(avatars)] if avatars else {}
@@ -360,10 +362,10 @@ def seed_crossroads(
                 """
                 INSERT INTO users
                     (id, username, password_hash, created_at, clan_id, avatar,
-                     is_bot, xp, rank_points, rank_points_at)
+                     is_bot, xp, rank_points, rank_points_at, solo_elo, solo_elo_peak)
                 VALUES
                     (:id, :u, NULL, now(), :cid, CAST(:avatar AS jsonb),
-                     true, :xp, :rp, now())
+                     true, :xp, :rp, now(), :elo, :elo)
                 """
             ),
             {
@@ -373,6 +375,7 @@ def seed_crossroads(
                 "avatar": json.dumps(avatar or {}),
                 "xp": xp,
                 "rp": rank_points,
+                "elo": solo_elo,
             },
         )
         if clan_id is not None:

@@ -16,7 +16,7 @@ from shapely import wkt as shapely_wkt
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .. import models, post_media, privacy, ranks, reactions as reaction_rules, schemas
+from .. import elo, models, post_media, privacy, reactions as reaction_rules, schemas
 from ..clans_meta import color_triple
 from ..database import get_db
 from ..geospatial import geometry_to_rings
@@ -116,7 +116,7 @@ def feed(
                    u.avatar,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, 0.00004)) AS poly_wkt,
                    ST_AsText(ST_Simplify(r.path, 0.00004)) AS path_wkt,
-                   COALESCE(u.rank_points, 0), u.rank_points_at,
+                   COALESCE(u.solo_elo, 1000), NULL::timestamp,
                    -- Privacy, selected alongside rather than looked up per row:
                    -- a page can carry fifty runs from fifty different runners.
                    COALESCE(r.visibility, 'public'),
@@ -192,7 +192,7 @@ def feed(
                 """
                 SELECT ts.run_id::text, ts.victim_id::text, u.username, u.avatar,
                        ts.area_m2, c.color_key,
-                       COALESCE(u.rank_points, 0), u.rank_points_at
+                       COALESCE(u.solo_elo, 1000), NULL::timestamp
                 FROM territory_steals ts
                 JOIN users u ON u.id = ts.victim_id
                 LEFT JOIN clan_members cm ON cm.user_id = ts.victim_id
@@ -213,7 +213,7 @@ def feed(
                     user_id=s[1],
                     username=s[2],
                     avatar=s[3],
-                    rank_key=ranks.key_for(s[6], s[7]),
+                    rank_key=elo.key_for(s[6], s[7]),
                     clan_color=schemas.ClanColor(**color_triple(s[5])) if s[5] else None,
                     area_m2=float(s[4] or 0),
                     defended=False,
@@ -241,7 +241,7 @@ def feed(
             kudoed=bool(r[11]),
             comment_count=int(r[12] or 0),
             avatar=r[13],
-            rank_key=ranks.key_for(r[16], r[17]),
+            rank_key=elo.key_for(r[16], r[17]),
             rings=_claim_rings(r[26]) or _rings_from_wkt(r[14]),
             # The trace, but only as much of it as this viewer may see. The
             # feed used to ship a simplified path for every run on the page to

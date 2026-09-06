@@ -33,6 +33,7 @@ import { COPY as PASERBY_COPY } from '../config/paserby';
 import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
 import EnergyMeter from '../components/EnergyMeter';
+import EloProgressCard from '../components/EloProgressCard';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
@@ -360,6 +361,26 @@ export default function ProfileScreen({ navigation }) {
         )}
 
       </Reveal>
+
+      {stats ? (
+        <Reveal delay={70}>
+          <EloProgressCard
+            title="Solo Elo"
+            rating={stats.solo_elo}
+            label={stats.rank_label}
+            nextRating={stats.solo_elo_next}
+            nextLabel={stats.solo_elo_next_label}
+            progress={stats.rank_progress}
+            matches={stats.solo_elo_matches}
+            wins={stats.solo_elo_wins}
+            losses={stats.solo_elo_losses}
+            draws={stats.solo_elo_draws}
+            peak={stats.solo_elo_peak}
+            accent={accent}
+            style={{ marginTop: space.lg }}
+          />
+        </Reveal>
+      ) : null}
 
       {/* stat wall */}
       <Reveal delay={90} style={styles.wall}>

@@ -623,20 +623,28 @@ def apply_rank_points(db, user_id: str, points: int, rng: random.Random) -> None
     is backdated a little so decay is a live force on the seeded world too,
     rather than every bot being frozen at exactly full strength.
     """
-    from app.ranks import rank_for_points
+    from app import elo
+    from app.ranks import RANK_TIERS, rank_for_points
 
     tier = rank_for_points(points)["tier"]
+    old_floor = RANK_TIERS[tier][0]
+    old_ceiling = RANK_TIERS[tier + 1][0] if tier + 1 < len(RANK_TIERS) else old_floor * 1.4 + 4000
+    progress = (points - old_floor) / max(1, old_ceiling - old_floor)
+    elo_rating = elo.rating_for_tier(tier, progress)
     db.execute(
         text(
             """
             UPDATE users
             SET rank_points = :p,
                 rank_points_at = timezone('utc', now()) - (:h || ' hours')::interval,
-                rank_best = GREATEST(COALESCE(rank_best, 0), :t)
+                rank_best = GREATEST(COALESCE(rank_best, 0), :t),
+                solo_elo = :elo,
+                solo_elo_peak = GREATEST(COALESCE(solo_elo_peak, 1000), :elo)
             WHERE id = :u
             """
         ),
-        {"p": int(points), "h": rng.uniform(0, 200), "t": tier, "u": user_id},
+        {"p": int(points), "h": rng.uniform(0, 200), "t": tier,
+         "elo": elo_rating, "u": user_id},
     )
 
 
