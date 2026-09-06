@@ -13,6 +13,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
+import { Path as SvgPath } from 'react-native-svg';
 
 import RunShareSheet from '../src/components/share/RunShareSheet';
 import RunShareCard, {
@@ -22,6 +23,7 @@ import RunShareCard, {
 } from '../src/components/share/RunShareCard';
 import LogoRunner, { MARK_FOOT } from '../src/components/character/LogoRunner';
 import OutlinedText from '../src/components/ui/OutlinedText';
+import { fonts } from '../src/theme';
 import TrailDecorations, {
   TRAIL_DECORATIONS,
   trailMarks,
@@ -109,10 +111,9 @@ describe('the run share card', () => {
 
     // The end dot the figure is meant to be standing on, straight off the card.
     const size = runner.props.size;
-    const box = tree.root
-      .findAll((n) => typeof n.props?.style?.left === 'number' && n.props?.style?.position === 'absolute')
-      .map((n) => n.props.style)
-      .find((s) => typeof s.top === 'number' && s.left !== undefined && s.width === undefined);
+    const box = StyleSheet.flatten(
+      tree.root.findByProps({ testID: 'share-route-runner' }).props.style
+    );
     // The end dot is the one wearing the clan colour; the start dot is white,
     // and the avatar's own rig draws circles of its own.
     const dot = tree.root
@@ -227,6 +228,38 @@ describe('the run share card', () => {
     expect(text).toContain('km');
     expect(text).toContain('/km');
     expect(text).toContain('PASER');
+    act(() => tree.unmount());
+  });
+
+  test('frames the running stats and route with square brackets', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <RunShareCard width={360} team={TEAM} run={RUN} path={PATH} rings={RINGS} />
+      );
+    });
+    const bracket = tree.root.findByProps({ testID: 'share-bracket-frame' });
+    expect(bracket.props.accessibilityLabel).toContain('run stats and route');
+    // Two dark under-strokes plus two white bracket faces.
+    expect(bracket.findAllByType(SvgPath)).toHaveLength(4);
+    act(() => tree.unmount());
+  });
+
+  test('uses chunky poster type and keeps the PASER stamp centered', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <RunShareCard width={360} team={TEAM} run={RUN} path={PATH} rings={RINGS} />
+      );
+    });
+    const value = tree.root.findAllByType(OutlinedText)[0];
+    expect(StyleSheet.flatten(value.props.style).fontFamily).toBe(fonts.hero);
+    const lockup = tree.root.findAll(
+      (node) => String(node.props?.testID || '').startsWith('share-stat-lockup-')
+    )[0];
+    expect(StyleSheet.flatten(lockup.props.style).transform[0].scaleX).toBeGreaterThan(1);
+    const signature = tree.root.findByProps({ testID: 'share-signature' });
+    expect(StyleSheet.flatten(signature.props.style).justifyContent).toBe('center');
     act(() => tree.unmount());
   });
 

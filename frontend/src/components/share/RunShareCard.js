@@ -12,7 +12,7 @@
 // it is the runner's own story showing through.
 //
 // The 2026-08-25 pass finished that job: the poster face is a heavy grotesque
-// rather than a condensed one (fonts.poster), the column reserves room for the
+// rather than a condensed one, the column reserves room for the
 // ink outline so the numbers stop arriving with shaved edges, and the art
 // column is measured against the STAT BLOCK — level with the numbers and hard
 // up against them, instead of pinned to the top corner of the story.
@@ -101,8 +101,23 @@ const ROUTE_SHARE = 0.3;
 // wanted for them — a card whose whole idea is one enormous type size was
 // quietly drawing it 10% smaller. The type gets the width back and the art
 // gets it returned the moment a card does not need it.
-const ART_COL = 0.4;
+//
+// 0.4 until the em table was found to be measuring the WRONG FACE (see EM).
+// Against Inter's widths the numbers could never reach the size this split
+// offered them, so handing the type more column looked free; with Poppins'
+// real widths the same 0.4 drew them a fifth bigger than anybody asked for and
+// took the difference out of the route. Back up to 0.44, which is the split
+// where the figures grow enough to read as the poster they are and the route
+// keeps a column worth projecting into.
+const ART_COL = 0.44;
 const COL_GAP = 8;
+// How far the art column is held OFF the card's outer edge, on top of padX.
+// The brackets live out there, and the route was drawing right up against the
+// right-hand one — a squiggle apparently hooked onto the bracket's ink rather
+// than a graphic standing in its own space. The numbers are already inset from
+// their bracket by the same kind of margin; this gives the art the matching
+// one on its side.
+const ART_EDGE_U = 14;
 // The art column is a tall rectangle rather than the full height of the card,
 // for the same reason: a 1:3 slot draws a postage stamp in the middle of a lot
 // of nothing.
@@ -116,6 +131,14 @@ const ART_ASPECT = 1.6;
 // numbers it sits above.
 const ROUTE_W = 7;
 const ROUTE_UNDER_W = 15;
+
+// The whole run is held between a pair of oversized square brackets, matching
+// the reference's editorial poster treatment. Each bracket is drawn twice:
+// black underneath for contrast on any Story photo, then solid white on top.
+const BRACKET_W = 12;
+const BRACKET_UNDER_W = 20;
+const BRACKET_CAP_U = 20;
+const BRACKET_PAD_U = 22;
 
 // --- geometry ---------------------------------------------------------------
 
@@ -318,10 +341,11 @@ export const ACCENTS = [
 // Indexed by how many numbers are on the card, in design units.
 const VALUE_FOR_ROWS = [0, 78, 66, 54, 42, 34, 29];
 
-// Tight, the way a poster stacks — the lines nearly touch. Not tighter: a line
-// box under about 1.1 starts clipping caps on Android, which is a bug you only
-// ever see on somebody else's phone.
-const LINE_RATIO = 1.15;
+// Tight, the way a poster stacks, but not touching: each row gets breathing
+// room rather than the numbers reading as one fused block. Not tighter than
+// about 1.1: a line box under that starts clipping caps on Android, which is a
+// bug you only ever see on somebody else's phone.
+const LINE_RATIO = 1.4;
 
 // How thick the ink outline round every number is, as a share of the type's
 // own size. The stroke grows WITH the type: held at a fixed width it thinned
@@ -344,11 +368,29 @@ const OUTLINE_RATIO = 0.045;
 // normal use.
 const FIT_SAFETY = 0.97;
 
+// How much of that width budget the art column has to treat as really taken.
+//
+// The em table above is a budget for SIZING, and a budget errs wide on
+// purpose: guessing narrow crops glyphs. The SPLIT does not need that same
+// insurance — being a few points out there only moves the route — so it pays
+// the share the type actually draws. Paying the full padded figure twice is
+// what walked the route across its own column and into the right bracket.
+//
+// 0.94 while the table was Inter's and over-budgeting Poppins by a fifth. Now
+// that it measures the real face, the only slack left is the negative tracking
+// the rows are set with (-0.02em a glyph, which raw advance widths know
+// nothing about), so the reserve is nearly the whole estimate.
+const TYPE_RESERVE = 0.97;
+
 // The unit rides at the TOP of the digits, small and in caps — the reference's
 // superscript KM. Set against the value's own size so it stays in proportion
 // however far the block had to shrink.
 const UNIT_RATIO = 0.3;
 const UNIT_RISE = 0.16;
+// The reference lettering is not merely bold: its figures are deliberately
+// broad. Scale the complete value + unit lockup so both glyphs and their
+// outline gain horizontal mass together, without faking width with tracking.
+const TYPE_X_SCALE = 1.32;
 
 // How wide a glyph sets in the poster face, in ems. This exists to CHOOSE a
 // font size that will fit — `fit` still measures for real underneath — but it
@@ -356,29 +398,42 @@ const UNIT_RISE = 0.16;
 // the fitter, and `adjustsFontSizeToFit` on a Text with an explicit lineHeight
 // is exactly what was cropping the numbers.
 //
-// MEASURED, not guessed: these are Inter Black's own advance widths, read out
-// of the hmtx table that ships in node_modules. The table they replace was
-// Anton's and was rounded down on top of that, so a number was budgeted about
-// a quarter narrower than it draws.
+// MEASURED FROM THE FACE THE CARD ACTUALLY SETS IN, which for a while it was
+// not. These widths came out of
+// `node_modules/@expo-google-fonts/poppins/900Black/Poppins_900Black.ttf`
+// (hmtx / unitsPerEm 1000) — RUN_FONT is `fonts.hero`, Poppins Black.
 //
-// The digits are the subtle part. The card asks for TABULAR figures (statHero
-// carries fontVariant: ['tabular-nums']), and Inter's tabular digits are all
-// 0.645em — but the feature is a request, not a promise, and where it does not
-// apply the proportional widths run from 0.452 ('1') to 0.711 ('0'). Each
-// entry is therefore the WIDER of the two, so the estimate holds whichever
-// figures the platform actually draws.
+// The table used to hold INTER Black's widths, left behind when the card moved
+// off `fonts.poster`. Inter is the more even face: its '1' sets 0.645em where
+// Poppins' sets 0.399em, so a clock like 1:30:01 was budgeted 4.13em and drew
+// 3.38em. The type is sized by dividing the column by that estimate, so every
+// number on the card was being drawn about a fifth smaller than the column it
+// was given, and the art column was pushed right to make room for type that
+// was never there.
+//
+// PROPORTIONAL WIDTHS ARE SAFE HERE, which is the fact the whole table rests
+// on. `type.statHero` asks for tabular figures (fontVariant: ['tabular-nums']),
+// and if the face answered, every digit would set at one width and a
+// 1-heavy string would render WIDER than these entries — the underestimate
+// that fires the fitter and crops glyphs. Poppins Black ships no `tnum`
+// feature (its GSUB carries only Devanagari shaping plus ss01-ss04), so the
+// request cannot apply and the digits are always these.
+//
+// IF THE POSTER FACE CHANGES AGAIN: re-measure this table in the same pass and
+// re-check the new face for `tnum`. Both halves matter.
 const EM = {
-  '0': 0.711, '1': 0.645, '2': 0.646, '3': 0.669, '4': 0.702,
-  '5': 0.646, '6': 0.675, '7': 0.645, '8': 0.679, '9': 0.675,
-  '.': 0.373, ':': 0.373, "'": 0.372, '"': 0.625, ' ': 0.199, '/': 0.412, '²': 0.475,
+  '0': 0.662, '1': 0.399, '2': 0.566, '3': 0.615, '4': 0.704,
+  '5': 0.660, '6': 0.633, '7': 0.512, '8': 0.657, '9': 0.597,
+  '.': 0.319, ':': 0.319, "'": 0.265, '"': 0.490, ' ': 0.170, '/': 0.399,
+  '²': 0.422, '±': 0.551,
   // The units are the only letters on the card and they are drawn uppercase,
   // so these are caps.
-  B: 0.668, E: 0.613, H: 0.75, K: 0.759, M: 0.956, S: 0.666, T: 0.687,
+  B: 0.684, E: 0.556, H: 0.755, K: 0.755, M: 0.951, S: 0.625, T: 0.616,
 };
-// Anything not in the table, which should be nothing: M is the widest cap
-// Inter Black has short of W, so an unlisted glyph is over-budgeted rather
-// than under.
-const EM_DEFAULT = 0.956;
+// Anything not in the table, which should be nothing: W is the widest glyph
+// Poppins Black has, so an unlisted character is over-budgeted rather than
+// under — the safe direction, since under is what crops.
+const EM_DEFAULT = 1.1;
 function emWidth(s) {
   let w = 0;
   // Uppercased to match the unit's own textTransform — 'km' is drawn as 'KM',
@@ -433,6 +488,11 @@ const TONE = {
   shadow: NB.ink,
 };
 
+// Poppins Black has the wide, rounded, sports-poster silhouette in the visual
+// reference. Keep this local to the share sticker so changing the type here
+// cannot quietly restyle the rest of the app.
+const RUN_FONT = fonts.hero;
+
 // One number, drawn as big as its column allows.
 //
 // No label, no box, no rule under it — a figure, its unit raised at the
@@ -465,61 +525,79 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
         overflow: 'visible',
       }}
     >
-      {/* A real stroke, not a shadow. This is the number somebody screenshots
-          and it has to survive a white t-shirt behind it. */}
-      <OutlinedText
-        style={[
-          type.statHero,
-          {
-            fontFamily: fonts.poster,
-            fontSize: size,
-            lineHeight: lineH,
-            // Tight, the way the reference sets its figures: a heavy
-            // grotesque at poster size leaves gaps between digits that only
-            // negative tracking closes.
-            letterSpacing: -0.02 * size,
-            color: color || tone.text,
-          },
-        ]}
-        outline={tone.ink}
-        // Proportional to the type (see OUTLINE_RATIO), and known to the
-        // layout above so the column can reserve the room it needs. Held at a
-        // fixed width it thinned out as the digits got bigger, which is the
-        // opposite of what a heavier number needs — the outline is the card's
-        // whole answer to landing on a white t-shirt.
-        width={bleed}
-        align={align}
-        // The backstop. The block is already sized to its widest member, so
-        // this should almost never fire — but "almost never" is not "never"
-        // once somebody runs past ten hours.
-        fit
-        minimumFontScale={0.6}
-        containerStyle={{ flexShrink: 1 }}
+      <View
+        testID={`share-stat-lockup-${value}`}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          transform: [{ scaleX: TYPE_X_SCALE }],
+          // scaleX grows the box from its own centre by default, which bleeds
+          // half the added width OUTWARD past whichever edge the row is
+          // anchored to — on a left-aligned card that pushed digits straight
+          // into the bracket's ink, since the layout above only ever reserved
+          // room for growth on the far side (see typeUsed). Anchoring the
+          // scale to the same edge the row is justified from keeps all the
+          // extra width headed into the row's own box, matching the math that
+          // sized it.
+          transformOrigin: align === 'right' ? 'right' : align === 'left' ? 'left' : 'center',
+        }}
       >
-        {value}
-      </OutlinedText>
-      {!!unit && (
-        <Text
-          style={{
-            fontFamily: fonts.poster,
-            fontSize: unitSize,
-            lineHeight: unitSize * 1.15,
-            letterSpacing: 0.2 * u,
-            textTransform: 'uppercase',
-            color: tone.unit,
-            marginLeft: 2 * u,
-            // Raised to the cap height of the digits beside it rather than
-            // sat on their baseline. Measured off the LINE box, which is the
-            // only thing here that knows how tall the number actually is.
-            marginTop: lineH * UNIT_RISE,
-            textShadowColor: tone.shadow,
-            textShadowOffset: { width: 1.2 * u, height: 1.2 * u },
-            textShadowRadius: 0,
-          }}
+        {/* A real stroke, not a shadow. This is the number somebody screenshots
+            and it has to survive a white t-shirt behind it. */}
+        <OutlinedText
+          style={[
+            type.statHero,
+            {
+              fontFamily: RUN_FONT,
+              fontSize: size,
+              lineHeight: lineH,
+              // Tight, the way the reference sets its figures: a heavy
+              // grotesque at poster size leaves gaps between digits that only
+              // negative tracking closes.
+              letterSpacing: -0.02 * size,
+              color: color || tone.text,
+            },
+          ]}
+          outline={tone.ink}
+          // Proportional to the type (see OUTLINE_RATIO), and known to the
+          // layout above so the column can reserve the room it needs. Held at a
+          // fixed width it thinned out as the digits got bigger, which is the
+          // opposite of what a heavier number needs — the outline is the card's
+          // whole answer to landing on a white t-shirt.
+          width={bleed}
+          align={align}
+          // The backstop. The block is already sized to its widest member, so
+          // this should almost never fire — but "almost never" is not "never"
+          // once somebody runs past ten hours.
+          fit
+          minimumFontScale={0.6}
+          containerStyle={{ flexShrink: 1 }}
         >
-          {unit}
-        </Text>
-      )}
+          {value}
+        </OutlinedText>
+        {!!unit && (
+          <Text
+            style={{
+              fontFamily: RUN_FONT,
+              fontSize: unitSize,
+              lineHeight: unitSize * 1.15,
+              letterSpacing: 0.2 * u,
+              textTransform: 'uppercase',
+              color: tone.unit,
+              marginLeft: 2 * u,
+              // Raised to the cap height of the digits beside it rather than
+              // sat on their baseline. Measured off the LINE box, which is the
+              // only thing here that knows how tall the number actually is.
+              marginTop: lineH * UNIT_RISE,
+              textShadowColor: tone.shadow,
+              textShadowOffset: { width: 1.2 * u, height: 1.2 * u },
+              textShadowRadius: 0,
+            }}
+          >
+            {unit}
+          </Text>
+        )}
+      </View>
     </View>
   );
 }
@@ -641,8 +719,23 @@ export default function RunShareCard({
   // before it runs out of width. The art gets the difference (see ART_COL), so
   // "beside the numbers" means beside them rather than somewhere off to the
   // right of them.
-  const typeUsed = splitCols ? Math.min(typeW, valueSize * emPerLine) : typeW;
-  const artW = splitCols ? inner - typeUsed - COL_GAP * u : width;
+  //
+  // `emPerLine` deliberately errs WIDE — an underestimate is what fires the
+  // fitter and crops the glyphs (see EM) — but the SPLIT does not need that
+  // same insurance, and paying for it twice is what walked the route across
+  // its own column and into the right bracket. TYPE_RESERVE hands the art back
+  // the slack the estimate was holding, and still leaves the numbers more room
+  // than they measure.
+  const typeUsed = splitCols
+    ? Math.min(inner - COL_GAP * u, valueSize * emPerLine * TYPE_X_SCALE * TYPE_RESERVE)
+    : typeW;
+  // The art keeps clear of the bracket on its own side; the width it gives up
+  // for that comes out of the column, not out of the route's size, because the
+  // reserve above hands back more than this costs.
+  const artEdge = splitCols ? ART_EDGE_U * u : 0;
+  const artW = splitCols
+    ? Math.max(width * 0.12, inner - typeUsed - COL_GAP * u - artEdge)
+    : width;
 
   // The numbers sit above the wordmark and the art is measured against them.
   const statsBottom = padBottom + signatureH + STATS_TO_MARK_U * u;
@@ -674,7 +767,12 @@ export default function RunShareCard({
     // Centred in the space it was given, so the gap above the route and the
     // gap down to the numbers are the same gap.
     : padTop + Math.max(0, (stackedFree - artH) / 2);
-  const artLeft = splitCols ? (align === 'right' ? padX : width - padX - artW) : 0;
+  // Whichever side the art lands on is the side it has to keep off the bracket,
+  // so the extra inset goes on its OUTER edge — left when the numbers are
+  // right-aligned, right when they are not.
+  const artLeft = splitCols
+    ? (align === 'right' ? padX + artEdge : width - padX - artEdge - artW)
+    : 0;
   // Breathing room inside the art box. The narrow column cannot afford the
   // 26u the full-width band used — it would be a fifth of the column on each
   // side — so it scales with the box it is padding.
@@ -777,6 +875,30 @@ export default function RunShareCard({
     };
   })();
 
+  // One frame around the visible stats and visible route rather than around
+  // the route's taller layout slot. The mascot may overlap the frame, like a
+  // sticker breaking its border; it must not make the brackets grow longer.
+  const contentTops = [statsTop];
+  const contentBottoms = [statsTop + statsH];
+  const visibleArtY = shapes.flatMap((shape) =>
+    (shape.pts || []).map((point) => point[1]).filter(Number.isFinite)
+  );
+  if (hasArt && visibleArtY.length) {
+    contentTops.push(artTop + Math.min(...visibleArtY));
+    contentBottoms.push(artTop + Math.max(...visibleArtY));
+  }
+  const bracketTop = Math.max(padTop, Math.min(...contentTops) - BRACKET_PAD_U * u);
+  const bracketLimit = height - padBottom - signatureH - 8 * u;
+  const bracketBottom = Math.min(
+    bracketLimit,
+    Math.max(...contentBottoms) + BRACKET_PAD_U * u
+  );
+  const bracketLeft = 10 * u;
+  const bracketRight = width - 10 * u;
+  const bracketCap = BRACKET_CAP_U * u;
+  const leftBracket = `M ${bracketLeft + bracketCap} ${bracketTop} H ${bracketLeft} V ${bracketBottom} H ${bracketLeft + bracketCap}`;
+  const rightBracket = `M ${bracketRight - bracketCap} ${bracketTop} H ${bracketRight} V ${bracketBottom} H ${bracketRight - bracketCap}`;
+
   return (
     <View
       ref={cardRef}
@@ -790,6 +912,40 @@ export default function RunShareCard({
         overflow: 'hidden',
       }}
     >
+
+      {/* Editorial square brackets hold the complete run together: the
+          chunky white stats and the route read as one shareable statement. */}
+      <Svg
+        testID="share-bracket-frame"
+        accessibilityLabel="Square brackets around run stats and route"
+        width={width}
+        height={height}
+        style={{ position: 'absolute', left: 0, top: 0 }}
+        pointerEvents="none"
+      >
+        {[leftBracket, rightBracket].map((d) => (
+          <Path
+            key={`under:${d}`}
+            d={d}
+            fill="none"
+            stroke={tone.ink}
+            strokeWidth={BRACKET_UNDER_W * u}
+            strokeLinecap="square"
+            strokeLinejoin="miter"
+          />
+        ))}
+        {[leftBracket, rightBracket].map((d) => (
+          <Path
+            key={`white:${d}`}
+            d={d}
+            fill="none"
+            stroke={tone.text}
+            strokeWidth={BRACKET_W * u}
+            strokeLinecap="square"
+            strokeLinejoin="miter"
+          />
+        ))}
+      </Svg>
 
       {/* --- the route: a column beside the numbers, not the whole card ---
 
@@ -893,6 +1049,7 @@ export default function RunShareCard({
       {/* --- the runner: the PASER mark, wearing the player's own head --- */}
       {runner && (
         <View
+          testID="share-route-runner"
           style={{ position: 'absolute', left: runner.left, top: runner.top }}
           pointerEvents="none"
         >
@@ -939,6 +1096,7 @@ export default function RunShareCard({
               story, where the handle is already at the top of the screen and
               the date is today. --- */}
       <View
+        testID="share-signature"
         style={{
           position: 'absolute',
           left: padX,
@@ -946,7 +1104,9 @@ export default function RunShareCard({
           bottom: padBottom,
           flexDirection: 'row',
           alignItems: 'center',
-          justifyContent: ROW_JUSTIFY[align],
+          // The PASER stamp is the sign-off for the whole story and remains
+          // centred even when the runner moves the stats left or right.
+          justifyContent: 'center',
         }}
       >
         {/* THE SIGNATURE IS A BADGE NOW — a solid block of the run's own accent,
@@ -984,12 +1144,11 @@ export default function RunShareCard({
                 // THE SAME FACE AND THE SAME RHYTHM as the numbers above it,
                 // which is the point: the wordmark and the figures have to
                 // read as one piece of lettering rather than as a logo pasted
-                // under a card. It follows fonts.poster wherever that goes —
-                // so the 2026-08-25 switch to a heavy grotesque took the
-                // wordmark with it — and it stays tightly tracked, because
+                // under a card. It follows the share card's local poster face
+                // and stays tightly tracked, because
                 // letterspacing heavy enough to be noticed is what made it
                 // look like a different typeface the last time.
-                fontFamily: fonts.poster,
+                fontFamily: RUN_FONT,
                 fontSize: 18 * u,
                 letterSpacing: 1 * u,
                 // Judged against the badge fill: `glow` is the clan colour or

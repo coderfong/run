@@ -69,6 +69,7 @@ import RivalsScreen from './src/screens/RivalsScreen';
 import RivalDetailScreen from './src/screens/RivalDetailScreen';
 import CrossroadsScreen from './src/screens/CrossroadsScreen';
 import RunnerProfileScreen from './src/screens/RunnerProfileScreen';
+import RunShareCard from './src/components/share/RunShareCard';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
 import { ClanProvider } from './src/state/clan';
@@ -799,6 +800,32 @@ function useBackendWarmUp() {
   }, []);
 }
 
+// Local-only visual review surface. EXPO_PUBLIC_SHARE_PREVIEW is never set by
+// an EAS profile; it lets us show the capture component itself in a browser.
+const SHARE_PREVIEW_PATH = Array.from({ length: 48 }, (_, i) => ({
+  latitude: 1.29 + Math.sin((i / 48) * Math.PI * 2) * (0.0025 + 0.0007 * Math.sin(i * 1.7)),
+  longitude: 103.84 + Math.cos((i / 48) * Math.PI * 2) * (0.0036 + 0.0008 * Math.cos(i * 1.3)),
+}));
+
+function SharePreview() {
+  const { width, height } = useWindowDimensions();
+  const cardWidth = Math.min(380, width * 0.9, height * 0.52);
+  return (
+    <View style={{ flex: 1, backgroundColor: '#10141A', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ backgroundColor: '#71879A', borderRadius: 24, overflow: 'hidden' }}>
+        <RunShareCard
+          width={cardWidth}
+          team={{ fill: '#FDE7F1', stroke: '#EC4899', glow: '#EC4899' }}
+          run={{ distanceM: 18230, durationS: 5401, areaM2: 0 }}
+          path={SHARE_PREVIEW_PATH}
+          rings={null}
+          showCharacter={false}
+        />
+      </View>
+    </View>
+  );
+}
+
 function App() {
   useBackendWarmUp();
   const [startupImagesReady, setStartupImagesReady] = useState(false);
@@ -870,6 +897,8 @@ function App() {
   }, [ready]);
 
   if (!ready) return null;
+
+  if (process.env.EXPO_PUBLIC_SHARE_PREVIEW === '1') return <SharePreview />;
 
   return (
     <SafeAreaProvider>
