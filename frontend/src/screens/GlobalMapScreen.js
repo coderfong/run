@@ -21,7 +21,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useAccent } from '../hooks/useAccent';
-import { Pop, ScreenIn, useReduceMotion } from '../ui/motion';
+import { Bar, Pop, ScreenIn, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { ringCentroid } from '../components/territoryBoard';
@@ -40,6 +40,7 @@ import MapLayersSheet from '../components/map/MapLayersSheet';
 import TerritoryPlanner from '../components/map/TerritoryPlanner';
 import { EVENTS, track } from '../analytics';
 import { layerByKey, layerFeatureCollection } from '../map/intelligence';
+import { boardPresentation } from '../map/presentation';
 import { analyseRoute } from '../map/planner';
 import { isDrag, shouldSample, strokeToRoute } from '../map/freehand';
 import { useProEntitlement } from '../pro/ProProvider';
@@ -103,7 +104,7 @@ const LOCATE_SIZE = 60;
 // A direct view switch in the other thumb corner. Club view used to be hidden
 // one step left of Wood inside the actions menu; a labelled sticker makes the
 // view discoverable and gives the runner a one-tap route back to their rank.
-const VIEW_SWITCH_SIZE = 76;
+const VIEW_SWITCH_SIZE = 104;
 
 function RankMark({ tier }) {
   const art = BORDER_ART[tier.key];
@@ -260,7 +261,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   const insets = useSafeAreaInsets();
   const { width: screenW } = useWindowDimensions();
   const { user } = useAuth();
-  const { equipped, rankKey } = useAvatar();
+  const { equipped, rankKey, unlockCtx } = useAvatar();
   const { profile, loading: profileLoading, completeRankGuide } = useProfile();
   const accent = useAccent();
   const reduce = useReduceMotion();
@@ -336,6 +337,10 @@ export default function GlobalMapScreen({ route, navigation }) {
   useEffect(() => {
     viewRankRef.current = viewRankTier;
   }, [viewRankTier]);
+
+  // Shared by the board presentation and the controls below. Keeping one
+  // derived boolean also makes the overview/detail split explicit.
+  const isClubView = viewRankTier === CLUB_VIEW;
 
   // The rank explainer used to be tap-to-open only (the little "?" by the
   // pill), which meant almost nobody who needed it ever found it — rank and
@@ -553,7 +558,18 @@ export default function GlobalMapScreen({ route, navigation }) {
   };
 
   const rows = list || [];
-  const features = useMemo(() => toFeatures(rows, user.id, accent), [rows, user.id, accent]);
+  // The planner always gets the precise board: hidden solo territory would
+  // make a route quote dishonest. Outside planning, Club view becomes a calm
+  // club-only overview and restores individual borders once zoomed in.
+  const board = useMemo(
+    () => boardPresentation(rows, { clubView: isClubView && !planning, zoom }),
+    [rows, isClubView, planning, zoom]
+  );
+  const visibleRows = board.rows;
+  const features = useMemo(
+    () => toFeatures(visibleRows, user.id, accent),
+    [visibleRows, user.id, accent]
+  );
   const contestedFC = useMemo(
     () => ({ type: 'FeatureCollection', features: features.filter((f) => f.properties.contested) }),
     [features]
@@ -583,7 +599,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   // avatars come from the API; the viewer's own uses the freshest local
   // loadout. Capped + shown only when zoomed in enough to avoid clutter/perf.
   const landPortraits = useMemo(() => {
-    if ((zoom || 0) < PORTRAIT_MIN_ZOOM) return [];
+    if ((isClubView && !planning) || (zoom || 0) < PORTRAIT_MIN_ZOOM) return [];
     return (list || [])
       .filter((t) => t.user_id === user.id ? equipped : t.avatar)
       .slice().sort((a, b) => (b.area_m2 || 0) - (a.area_m2 || 0)).slice(0, 40)
@@ -599,25 +615,28 @@ export default function GlobalMapScreen({ route, navigation }) {
       .filter((m) => m.at && m.avatar)
       .sort((a, b) => b.area - a.area)
       .slice(0, 40);
-  }, [list, user.id, equipped, zoom]);
+  }, [list, user.id, equipped, zoom, isClubView, planning]);
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
     const acc = {};
-    for (const t of rows) {
-      const key = t.clan_tag || 'Solo';
+    for (const t of visibleRows) {
+      // This is a clubs legend. Solo land belongs on ranked boards, but it is
+      // neither a club nor a useful entry in this sheet.
+      if (!t.clan_tag) continue;
+      const key = t.clan_tag;
       const color = t.clan_color || NEUTRAL;
       acc[key] = acc[key] || { key, color, area: 0, count: 0 };
       acc[key].area += t.area_m2 || 0;
       acc[key].count += 1;
     }
     return Object.values(acc).sort((a, b) => b.area - a.area).slice(0, 5);
-  }, [rows]);
+  }, [visibleRows]);
 
   const focusTeam = (key) => {
     const pts = [];
-    for (const t of rows) {
-      if ((t.clan_tag || 'Solo') !== key) continue;
+    for (const t of visibleRows) {
+      if (t.clan_tag !== key) continue;
       territoryRings(t).forEach((ring) =>
         ring.forEach(([lon, lat]) => pts.push({ latitude: lat, longitude: lon }))
       );
@@ -823,8 +842,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   // board, which TerritoryLayer already renders.
   const layerFC = useMemo(() => {
     if (!activeLayer || activeLayer.key === 'all') return null;
-    return layerFeatureCollection(activeLayer, rows, { userId: user.id }, territoryRings);
-  }, [activeLayer, rows, user.id]);
+    return layerFeatureCollection(activeLayer, visibleRows, { userId: user.id }, territoryRings);
+  }, [activeLayer, visibleRows, user.id]);
 
   const selectLayer = useCallback((key) => {
     setLayerKey(key);
@@ -847,13 +866,12 @@ export default function GlobalMapScreen({ route, navigation }) {
 
   const selectedColor = selected ? (selected.clan_color || NEUTRAL) : null;
   const loaded = list !== null;
-  const showEmpty = loaded && rows.length === 0 && !loadError;
+  const showEmpty = loaded && visibleRows.length === 0 && !loadError;
 
   // Rank selector view-model. The tier itself is all the pill needs now — it
   // draws that rank's frame (see RankMark). Tiers above the runner's own are
   // LOCKED — still viewable (you can scout the board ahead), just flagged as
   // not yours.
-  const isClubView = viewRankTier === CLUB_VIEW;
   const viewedTier = isClubView
     ? null
     : RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, viewRankTier))];
@@ -885,6 +903,21 @@ export default function GlobalMapScreen({ route, navigation }) {
   const atFirstTier = viewRankTier <= CLUB_VIEW;
   const atLastTier = viewRankTier >= TOP_VIEW;
   const ownTierLabel = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))].label;
+  const ownRank = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))];
+  const rankStats = unlockCtx?.stats;
+  const rankPoints = Math.max(0, Number(rankStats?.rank_points) || 0);
+  const nextRankPoints = Number.isFinite(rankStats?.rank_next_points)
+    ? rankStats.rank_next_points
+    : null;
+  const rankProgress = rankStats
+    ? (nextRankPoints == null
+      ? 1
+      : Math.max(0, Math.min(1, Number(rankStats.rank_progress) || 0)))
+    : 0;
+  const pointsToNext = !rankStats
+    ? undefined
+    : (nextRankPoints == null ? null : Math.max(0, nextRankPoints - rankPoints));
+  const ownRankColor = rankColor(ownRank);
   const toggleClubView = () => {
     pickedRef.current = true;
     stepDirRef.current = isClubView ? 1 : -1;
@@ -924,12 +957,19 @@ export default function GlobalMapScreen({ route, navigation }) {
               of why the board read pastel — the plain 2px stroke alone. Dark
               mode is where a blurred neon outline actually reads as vivid
               rather than muddy against a light basemap. */}
-          <TerritoryLayer featureCollection={baseFC} onPress={onTerritoryPress} dark={scheme === 'dark'} />
-          <HeatOutline featureCollection={contestedFC} reduce={reduce} focused={focused} />
+          <TerritoryLayer
+            featureCollection={baseFC}
+            onPress={onTerritoryPress}
+            dark={scheme === 'dark'}
+            overview={board.overview}
+          />
+          {board.showTerritoryDetail ? (
+            <HeatOutline featureCollection={contestedFC} reduce={reduce} focused={focused} />
+          ) : null}
           {/* The intelligence overlay, drawn ON TOP of the unchanged board.
               Every claim stays exactly as visible as it was — a layer adds a
               reading, it never takes the map away. */}
-          {layerFC ? (
+          {layerFC && board.showTerritoryDetail ? (
             <ContestedOutline id={`layer-${activeLayer.key}`} featureCollection={layerFC} opacity={0.95} />
           ) : null}
           {/* The planned route. Drawn in the PRO gold rather than the player
@@ -1080,10 +1120,10 @@ export default function GlobalMapScreen({ route, navigation }) {
               accessibilityLabel={isClubView ? `Return to my rank, ${ownTierLabel}` : 'Open Club view'}
               accessibilityState={{ selected: isClubView }}
             >
-              <AppIcon name={isClubView ? 'tab-map' : 'tab-club'} size={38} />
+              {isClubView ? <RankMark tier={ownRank} /> : <AppIcon name="tab-club" size={38} />}
               <View style={styles.viewSwitchLabel}>
                 <Text style={[type.captionMedium, { color: colors.text }]} numberOfLines={1}>
-                  {isClubView ? 'My rank' : 'Club view'}
+                  {isClubView ? `${ownTierLabel} rank` : 'Club view'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1264,8 +1304,12 @@ export default function GlobalMapScreen({ route, navigation }) {
               },
             ]}
           >
-            <Text style={type.heading}>Unclaimed. Be first.</Text>
-            <Text style={[type.caption, { marginTop: 2 }]}>Close a loop here to claim the first land.</Text>
+            <Text style={type.heading}>{isClubView ? 'No club land here yet.' : 'Unclaimed. Be first.'}</Text>
+            <Text style={[type.caption, { marginTop: 2 }]}>
+              {isClubView
+                ? `Switch to ${ownTierLabel} rank to see individual territory.`
+                : 'Close a loop here to claim the first land.'}
+            </Text>
           </View>
         )}
       </ScreenIn>
@@ -1404,11 +1448,30 @@ export default function GlobalMapScreen({ route, navigation }) {
           <Text style={type.heading}>How the map works</Text>
         </View>
         <View style={styles.rankInfoList}>
-          <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>Your rank</Text>
-            <Text style={[type.body, { color: colors.textDim }]}>
-              You compete with runners in {ownTierLabel}. Their land appears here.
+          <View style={[styles.currentRankCard, { borderColor: ownRankColor }]}>
+            <View style={styles.currentRankHead}>
+              <RankMark tier={ownRank} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={[type.labelSm, { color: colors.textMuted }]}>Your rank</Text>
+                <Text style={[type.heading, { color: ownRankColor }]}>{ownTierLabel}</Text>
+              </View>
+              <Text style={[type.bodySmBold, { color: colors.text }]}>{rankPoints.toLocaleString()} pts</Text>
+            </View>
+            <View style={[styles.rankProgressTrack, { borderColor: nbInk(scheme, colors.cardAlt) }]}>
+              <Bar
+                pct={rankProgress}
+                trackStyle={StyleSheet.absoluteFill}
+                fillStyle={[styles.rankProgressFill, { backgroundColor: ownRankColor }]}
+              />
+            </View>
+            <Text style={[type.caption, { color: colors.textDim }]}>
+              {pointsToNext === undefined
+                ? 'Rank progress is loading…'
+                : pointsToNext == null
+                ? 'Top rank reached. Keep defending your place.'
+                : `${pointsToNext.toLocaleString()} points to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
             </Text>
+            <Text style={[type.body, { color: colors.textDim }]}>You compete with runners in this tier. Their land appears on your ranked map.</Text>
           </View>
 
           <View style={styles.rankInfoSection}>
@@ -1444,15 +1507,27 @@ export default function GlobalMapScreen({ route, navigation }) {
             <Text style={[type.caption, { marginTop: 2 }]}>Higher ranks unlock when you reach them.</Text>
           </View>
         </View>
-        <Button
-          title="Done"
-          variant="gradient"
-          onPress={() => {
-            setRankInfoOpen(false);
-            completeRankGuide();
-          }}
-          style={{ marginTop: space.lg }}
-        />
+        <View style={styles.rankInfoActions}>
+          <Button
+            title="Rank standings"
+            variant="secondary"
+            onPress={() => {
+              setRankInfoOpen(false);
+              completeRankGuide();
+              navigation.getParent()?.navigate('Home', { screen: 'Leaderboard' });
+            }}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title="Done"
+            variant="gradient"
+            onPress={() => {
+              setRankInfoOpen(false);
+              completeRankGuide();
+            }}
+            style={{ flex: 1 }}
+          />
+        </View>
       </Sheet>
     </View>
   );
@@ -1543,7 +1618,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   viewSwitchLabel: {
     marginTop: -2,
-    minWidth: 62,
+    minWidth: 76,
+    maxWidth: VIEW_SWITCH_SIZE,
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: radius.pill,
@@ -1575,6 +1651,24 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   clubMark: { width: RANK_MARK, height: RANK_MARK, alignItems: 'center', justifyContent: 'center' },
   rankInfoHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   rankInfoList: { gap: space.sm, marginTop: space.md },
+  currentRankCard: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: radius.md,
+    borderWidth: NB.strokeThin,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  currentRankHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  rankProgressTrack: {
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1,
+    overflow: 'hidden',
+    backgroundColor: colors.card,
+  },
+  rankProgressFill: { height: '100%', borderRadius: 5 },
+  rankInfoActions: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
   rankInfoSection: {
     backgroundColor: colors.cardAlt,
     borderRadius: radius.md,

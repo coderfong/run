@@ -398,16 +398,29 @@ export function MapPoint({ id = 'point', point, color, radius = 7 }) {
 // Many territories from a prebuilt GeoJSON FeatureCollection (Phase 3 uses
 // this for the whole board). Each feature carries `fillColor`/`strokeColor`
 // properties so one source paints every clan.
-export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark = false }) {
+export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark = false, overview = false }) {
   if (!MAPBOX_AVAILABLE) return null;
   if (!featureCollection) return null;
   return (
     <ShapeSource id={`${id}-src`} shape={featureCollection} onPress={onPress}>
-      <FillLayer id={`${id}-fill`} style={{ fillColor: ['get', 'fillColor'], fillOpacity: ['get', 'fillOpacity'] }} />
-      {dark && (
+      <FillLayer
+        id={`${id}-fill`}
+        style={{
+          fillColor: ['get', 'fillColor'],
+          // City-scale Club view is about ownership patterns. Muting the raw
+          // plots keeps their combined footprint readable without making a
+          // dense city look like a bundle of marker strokes.
+          fillOpacity: overview
+            ? ['*', ['get', 'fillOpacity'], 0.62]
+            : ['get', 'fillOpacity'],
+        }}
+      />
+      {dark && !overview && (
         <LineLayer id={`${id}-glow`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 6, lineOpacity: 0.5, lineBlur: 3 }} />
       )}
-      <LineLayer id={`${id}-stroke`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 2.5 }} />
+      {!overview ? (
+        <LineLayer id={`${id}-stroke`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 2.5 }} />
+      ) : null}
     </ShapeSource>
   );
 }

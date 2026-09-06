@@ -175,6 +175,22 @@ describe('HomeScreen', () => {
     expect(labels).toContain('40');
     expect(labels).not.toContain('40/100');
     expect(bar.props.trackStyle).toBe(StyleSheet.absoluteFill);
+
+    const meterStyle = StyleSheet.flatten(meter.props.style);
+    expect(meterStyle).toEqual(expect.objectContaining({ flex: 1, minWidth: 0 }));
+    expect(meterStyle.maxWidth).toBeUndefined();
+    act(() => tree.unmount());
+  });
+
+  it('fills the entire energy track at maximum energy', async () => {
+    mockEnergy = { energy: 100, energy_max: 100, claim_cost: 16 };
+    const tree = mount();
+    await act(async () => {});
+
+    const meter = tree.root.findByType(EnergyMeter);
+    const bar = meter.findByType(Bar);
+
+    expect(bar.props.pct).toBe(1);
     act(() => tree.unmount());
   });
 

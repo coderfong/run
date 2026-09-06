@@ -647,9 +647,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     justifyContent: 'flex-end',
     gap: space.sm,
   },
-  // A real flex item, not intrinsic-width content. This gives the bar the
-  // remaining header space and lets it yield cleanly before the bell.
-  headerEnergy: { flex: 1, minWidth: 0, maxWidth: 150 },
+  // A real flex item, not intrinsic-width content. Let it consume ALL of the
+  // room between the wordmark and bell: the old 150pt cap left a conspicuous
+  // hole in the middle of wider phones and kept even a full Energy track
+  // looking like a short pink dash. `minWidth: 0` still lets it yield cleanly
+  // on narrow screens.
+  headerEnergy: { flex: 1, minWidth: 0 },
   bell: {
     width: 40,
     height: 40,
