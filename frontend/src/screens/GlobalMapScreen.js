@@ -21,6 +21,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useAccent } from '../hooks/useAccent';
+import { useClan } from '../state/clan';
 import { Bar, Pop, ScreenIn, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
@@ -74,7 +75,13 @@ const RANK_VIEWS = BORDER_TIERS.filter((t) => t.key !== 'none');
 // the club holding each plot. It sits before wood because it is the wide view
 // you step in from, and it is the one view that is never locked — there is no
 // rank to be too low for.
-const CLUB_VIEW = -1;
+// The two boards. They are separate LADDERS, not two points on one scale:
+// the solo board is scoped by each runner's own rating, the club board by the
+// owning club's. `CLUB_VIEW` used to be a -1 sentinel on the rank stepper,
+// which meant the clubs view had no tier at all and therefore no scope — every
+// club in the world on one map. Both boards now step 0..9 on their own ladder.
+const SOLO_BOARD = 'solo';
+const CLUB_BOARD = 'club';
 const TOP_VIEW = RANK_VIEWS.length - 1;
 
 // The clubs view's stand-in for a rank colour. A constant near-white, because
@@ -315,7 +322,15 @@ export default function GlobalMapScreen({ route, navigation }) {
     // first board there is anything to see on.
     return i < 0 ? 0 : i;
   }, [rankKey]);
+  // The club board's own tier, defaulted to the tier this runner's CLUB sits
+  // in — which is a different ladder from their own, so a Gold runner in a
+  // Silver club opens the club board on Silver.
+  const { clan } = useClan();
+  const ownClubTier = Math.max(0, Math.min(TOP_VIEW, Number(clan?.rank_tier) || 0));
+  const [boardMode, setBoardMode] = useState(SOLO_BOARD);
   const [viewRankTier, setViewRankTier] = useState(ownTier);
+  const [clubRankTier, setClubRankTier] = useState(ownClubTier);
+  const clubPickedRef = useRef(false);
   const [rankInfoOpen, setRankInfoOpen] = useState(false);
   // Whether the runner has taken the wheel. Until they touch the selector the
   // board follows their own tier as it loads/updates (rankKey arrives async);
@@ -325,6 +340,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   // and onIdle closures the same way zoomRef is — so those callbacks keep their
   // referential identity and Mapbox's PureComponent gate is not defeated.
   const viewRankRef = useRef(ownTier);
+  const clubRankRef = useRef(ownClubTier);
+  const boardRef = useRef(SOLO_BOARD);
   // Which way the last step went, so the incoming frame can arrive from the
   // direction it was scouted in: stepping UP settles a larger frame down onto
   // the board, stepping DOWN grows a smaller one into it. Read during render
@@ -334,13 +351,28 @@ export default function GlobalMapScreen({ route, navigation }) {
   useEffect(() => {
     if (!pickedRef.current) setViewRankTier(ownTier);
   }, [ownTier]);
+  // Same auto-follow for the club board: it tracks the club's tier as
+  // /me/clan lands, until the runner scouts one by hand.
+  useEffect(() => {
+    if (!clubPickedRef.current) setClubRankTier(ownClubTier);
+  }, [ownClubTier]);
   useEffect(() => {
     viewRankRef.current = viewRankTier;
   }, [viewRankTier]);
+  useEffect(() => {
+    clubRankRef.current = clubRankTier;
+  }, [clubRankTier]);
+  useEffect(() => {
+    boardRef.current = boardMode;
+  }, [boardMode]);
 
   // Shared by the board presentation and the controls below. Keeping one
   // derived boolean also makes the overview/detail split explicit.
-  const isClubView = viewRankTier === CLUB_VIEW;
+  const isClubView = boardMode === CLUB_BOARD;
+  // The tier the stepper is currently moving, and the one the board is scoped
+  // to. Each board remembers its own, so switching back and forth does not
+  // reset where you were scouting.
+  const activeTier = isClubView ? clubRankTier : viewRankTier;
 
   // The rank explainer used to be tap-to-open only (the little "?" by the
   // pill), which meant almost nobody who needed it ever found it — rank and
@@ -440,12 +472,15 @@ export default function GlobalMapScreen({ route, navigation }) {
     // Mirrors the backend feature cap (map_zoom_vlow=11): crossing it changes
     // how much comes back, so re-fetch rather than reuse the capped set.
     const capped = (z ?? zoomRef.current) < 11;
-    // The board is scoped to one rank tier; a different tier is a different set
-    // of land, so it joins the cache key. Without it, scouting another rank and
-    // panning back would re-serve the previous tier's cached region.
-    const rank = viewRankRef.current;
+    // The board is scoped to one rank tier ON ONE LADDER; a different tier —
+    // or the same tier number on the other board — is a different set of land,
+    // so BOTH join the cache key. Without the board in it, stepping from solo
+    // Gold to club Gold would re-serve the runners' board as the clubs'.
+    const board = boardRef.current;
+    const rank = board === CLUB_BOARD ? clubRankRef.current : viewRankRef.current;
     const cov = coveredRef.current;
-    if (!force && cov && cov.capped === capped && cov.rank === rank && bboxContains(cov, bbox) && Date.now() - cov.at < 30000) {
+    if (!force && cov && cov.capped === capped && cov.rank === rank && cov.board === board
+        && bboxContains(cov, bbox) && Date.now() - cov.at < 30000) {
       // A pan back into loaded land supersedes an outstanding request elsewhere.
       if (pendingRef.current && !bboxContains(pendingRef.current, bbox)) {
         ++seqRef.current;
@@ -455,8 +490,11 @@ export default function GlobalMapScreen({ route, navigation }) {
     }
 
     const pending = pendingRef.current;
-    if (pending && pending.capped === capped && pending.rank === rank && bboxContains(pending, bbox)) return;
-    const cached = regionsRef.current.find((r) => r.capped === capped && r.rank === rank && bboxContains(r, bbox));
+    if (pending && pending.capped === capped && pending.rank === rank && pending.board === board
+        && bboxContains(pending, bbox)) return;
+    const cached = regionsRef.current.find(
+      (r) => r.capped === capped && r.rank === rank && r.board === board && bboxContains(r, bbox)
+    );
     const seq = ++seqRef.current;
     if (cached) {
       setList(cached.territories);
@@ -468,17 +506,20 @@ export default function GlobalMapScreen({ route, navigation }) {
       }
     }
     const padded = padBbox(bbox);
-    pendingRef.current = { ...padded, capped, rank, seq };
+    pendingRef.current = { ...padded, capped, rank, board, seq };
     try {
-      // CLUB_VIEW sends no rank at all, which is what the endpoint reads as
-      // "every rank". The cache key above still carries -1, so stepping club →
-      // wood → club refetches rather than re-serving the wrong board.
-      const data = await api.mapPolygons(padded, z, {
-        rank: rank === CLUB_VIEW ? undefined : rank,
-      });
+      // Both boards now send a tier. The clubs view used to send none, which
+      // the endpoint read as "every rank" — that is what put every club in the
+      // world on one map. `board` picks which ladder the tier is read against.
+      const data = await api.mapPolygons(padded, z, { rank, board });
       if (seq !== seqRef.current) return; // superseded by a newer viewport
-      const region = { ...padded, capped, rank, territories: data.territories, at: Date.now() };
-      regionsRef.current = [region, ...regionsRef.current.filter((r) => !(r.rank === rank && r.capped === capped && bboxContains(region, r)))].slice(0, 8);
+      const region = { ...padded, capped, rank, board, territories: data.territories, at: Date.now() };
+      regionsRef.current = [
+        region,
+        ...regionsRef.current.filter(
+          (r) => !(r.rank === rank && r.board === board && r.capped === capped && bboxContains(region, r))
+        ),
+      ].slice(0, 8);
       coveredRef.current = region;
       setList(data.territories);
       setLoadError(false);
@@ -536,14 +577,22 @@ export default function GlobalMapScreen({ route, navigation }) {
   useEffect(() => {
     const v = lastViewRef.current;
     if (v) fetchViewport(v.bbox, v.z, true);
-  }, [viewRankTier, fetchViewport]);
+  }, [viewRankTier, clubRankTier, boardMode, fetchViewport]);
 
-  // Move the scoped tier by one step and take the wheel off the auto-follow.
+  // Move the ACTIVE board's tier by one step and take the wheel off its
+  // auto-follow. Stepping no longer falls off the bottom into the clubs view —
+  // that is a board, not a rank below Wood, and the toggle switches it.
   const stepRank = useCallback((dir) => {
-    pickedRef.current = true;
     stepDirRef.current = dir;
     setSelected(null);
-    setViewRankTier((t) => Math.max(CLUB_VIEW, Math.min(TOP_VIEW, t + dir)));
+    const clamp = (t) => Math.max(0, Math.min(TOP_VIEW, t + dir));
+    if (boardRef.current === CLUB_BOARD) {
+      clubPickedRef.current = true;
+      setClubRankTier(clamp);
+    } else {
+      pickedRef.current = true;
+      setViewRankTier(clamp);
+    }
   }, []);
 
   const locateMe = async () => {
@@ -872,17 +921,15 @@ export default function GlobalMapScreen({ route, navigation }) {
   // draws that rank's frame (see RankMark). Tiers above the runner's own are
   // LOCKED — still viewable (you can scout the board ahead), just flagged as
   // not yours.
-  const viewedTier = isClubView
-    ? null
-    : RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, viewRankTier))];
-  // The frame that holds the board, and the one colour the view is said in.
-  // The clubs view has no rank, so it takes the plain NB stroke and a neutral
-  // ink rather than borrowing some tier's frame and colour.
-  const frameArt = viewedTier ? MAP_FRAME_ART[viewedTier.key] : null;
-  // What the frame is keyed on, and so what a change of frame is. The clubs
-  // view has no tier, and it still gets a key of its own so stepping onto it
-  // transitions like every other step.
-  const frameKey = viewedTier ? viewedTier.key : 'clubs';
+  // BOTH boards have a tier now, so both are said in that tier's colour and
+  // held in that tier's frame. The clubs view used to be the one board with no
+  // rank — and therefore no scope, which is what made it unreadable.
+  const viewedTier = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, activeTier))];
+  const frameArt = MAP_FRAME_ART[viewedTier.key];
+  // What the frame is keyed on, and so what counts as a change of frame. The
+  // board is part of it, so switching boards on the same tier still transitions
+  // rather than silently swapping the land underneath an identical frame.
+  const frameKey = `${boardMode}:${viewedTier.key}`;
   // The board is the WHOLE screen, top edge included. It kept the safe area
   // inset off the top, which left the rank's frame floating in a band of bare
   // screen and open along its top rail, the one edge where a frame reads as
@@ -897,11 +944,15 @@ export default function GlobalMapScreen({ route, navigation }) {
   // edge the rail alone no longer clears the clock, so the deeper of the two
   // wins.
   const railTop = Math.max(insets.top, rail) + space.xs;
-  const viewColor = (viewedTier && rankColor(viewedTier)) || CLUB_INK;
-  const viewLabel = viewedTier ? viewedTier.label : 'Clubs';
-  const rankLocked = !isClubView && viewRankTier > ownTier;
-  const atFirstTier = viewRankTier <= CLUB_VIEW;
-  const atLastTier = viewRankTier >= TOP_VIEW;
+  const viewColor = rankColor(viewedTier) || CLUB_INK;
+  // The club board names the tier too, or the runner has no idea which slice
+  // of the clubs they are looking at.
+  const viewLabel = isClubView ? `${viewedTier.label} clubs` : viewedTier.label;
+  // Locked against the ladder the board is actually on: a Wood runner in a
+  // Gold club is not scouting above their station on the club board.
+  const rankLocked = activeTier > (isClubView ? ownClubTier : ownTier);
+  const atFirstTier = activeTier <= 0;
+  const atLastTier = activeTier >= TOP_VIEW;
   const ownTierLabel = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))].label;
   const ownRank = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, ownTier))];
   const rankStats = unlockCtx?.stats;
@@ -918,12 +969,13 @@ export default function GlobalMapScreen({ route, navigation }) {
     ? undefined
     : (nextRankPoints == null ? null : Math.max(0, nextRankPoints - rankPoints));
   const ownRankColor = rankColor(ownRank);
+  // Switch BOARDS. Each keeps the tier it was left on, so flipping across to
+  // check the clubs and back does not lose the rank you were scouting.
   const toggleClubView = () => {
-    pickedRef.current = true;
     stepDirRef.current = isClubView ? 1 : -1;
     setSelected(null);
     setActionsOpen(false);
-    setViewRankTier(isClubView ? ownTier : CLUB_VIEW);
+    setBoardMode((b) => (b === CLUB_BOARD ? SOLO_BOARD : CLUB_BOARD));
   };
 
   return (
@@ -1173,7 +1225,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                   onPress={() => stepRank(-1)}
                   disabled={atFirstTier}
                   accessibilityRole="button"
-                  accessibilityLabel="Scout a lower rank"
+                  accessibilityLabel={isClubView ? 'Scout a lower club rank' : 'Scout a lower rank'}
                   style={[styles.rankStep, atFirstTier && styles.actionOff]}
                 >
                   <ChevronLeft size={22} color={colors.text} strokeWidth={3} />
@@ -1186,20 +1238,14 @@ export default function GlobalMapScreen({ route, navigation }) {
                   }}
                   accessibilityRole="button"
                   accessibilityLabel={
-                    isClubView
-                      ? 'Viewing the clubs board, every rank. Learn how the ranked map works'
-                      : `Viewing ${viewLabel} rank${rankLocked ? ', locked' : ''}. Learn how the ranked map works`
+                    `Viewing ${viewLabel}${rankLocked ? ', locked' : ''}. Learn how the ranked map works`
                   }
                 >
-                  {viewedTier ? (
-                    <RankMark tier={viewedTier} />
-                  ) : (
-                    <View style={styles.clubMark}>
-                      <Users size={22} color={colors.text} strokeWidth={2.6} />
-                    </View>
-                  )}
+                  <RankMark tier={viewedTier} />
                   <View style={styles.rankChoiceText}>
-                    <Text style={[type.labelSm, { color: colors.textMuted }]}>Rank</Text>
+                    <Text style={[type.labelSm, { color: colors.textMuted }]}>
+                      {isClubView ? 'Club rank' : 'Rank'}
+                    </Text>
                     <Text style={[type.bodySmBold, { color: viewColor }]} numberOfLines={1}>
                       {viewLabel}
                     </Text>
@@ -1210,7 +1256,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                   onPress={() => stepRank(1)}
                   disabled={atLastTier}
                   accessibilityRole="button"
-                  accessibilityLabel="Scout a higher rank"
+                  accessibilityLabel={isClubView ? 'Scout a higher club rank' : 'Scout a higher rank'}
                   style={[styles.rankStep, atLastTier && styles.actionOff]}
                 >
                   <ChevronRight size={22} color={colors.text} strokeWidth={3} />
@@ -1304,10 +1350,12 @@ export default function GlobalMapScreen({ route, navigation }) {
               },
             ]}
           >
-            <Text style={type.heading}>{isClubView ? 'No club land here yet.' : 'Unclaimed. Be first.'}</Text>
+            <Text style={type.heading}>
+              {isClubView ? `No ${viewedTier.label} club land here yet.` : 'Unclaimed. Be first.'}
+            </Text>
             <Text style={[type.caption, { marginTop: 2 }]}>
               {isClubView
-                ? `Switch to ${ownTierLabel} rank to see individual territory.`
+                ? 'Scout another club rank, or switch back to the runners board.'
                 : 'Close a loop here to claim the first land.'}
             </Text>
           </View>
@@ -1455,7 +1503,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                 <Text style={[type.labelSm, { color: colors.textMuted }]}>Your rank</Text>
                 <Text style={[type.heading, { color: ownRankColor }]}>{ownTierLabel}</Text>
               </View>
-              <Text style={[type.bodySmBold, { color: colors.text }]}>{rankPoints.toLocaleString()} Elo</Text>
+              <Text style={[type.bodySmBold, { color: colors.text }]}>{rankPoints.toLocaleString()} pts</Text>
             </View>
             <View style={[styles.rankProgressTrack, { borderColor: nbInk(scheme, colors.cardAlt) }]}>
               <Bar
@@ -1469,7 +1517,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                 ? 'Rank progress is loading…'
                 : pointsToNext == null
                 ? 'Top rank reached. Keep defending your place.'
-                : `${pointsToNext.toLocaleString()} Elo to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
+                : `${pointsToNext.toLocaleString()} rank points to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
             </Text>
             <Text style={[type.body, { color: colors.textDim }]}>You compete with runners in this tier. Their land appears on your ranked map.</Text>
           </View>
@@ -1477,12 +1525,12 @@ export default function GlobalMapScreen({ route, navigation }) {
           <View style={styles.rankInfoSection}>
             <Text style={[type.bodySmBold, { color: colors.text }]}>Rank and level are different</Text>
             <Text style={[type.body, { color: colors.textDim }]}>
-              Level grows with distance. Elo moves up or down against the rating of the runner you battle.
+              Level grows with distance and only ever goes up. Rank moves both ways, against the runners you actually battle.
             </Text>
           </View>
 
           <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>How Elo moves</Text>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>How rank moves</Text>
             <View style={styles.rankPointsGrid}>
               {[
                 ['UP', 'Take land'],
@@ -1496,7 +1544,7 @@ export default function GlobalMapScreen({ route, navigation }) {
                 </View>
               ))}
             </View>
-            <Text style={[type.caption, { marginTop: space.xs }]}>Beating a higher-rated rival is worth more. Every gain is matched by the opponent’s loss.</Text>
+            <Text style={[type.caption, { marginTop: space.xs }]}>Beating a stronger rival is worth more. Every gain is matched by the opponent’s loss.</Text>
           </View>
 
           <View style={styles.rankInfoSection}>
@@ -1509,7 +1557,7 @@ export default function GlobalMapScreen({ route, navigation }) {
         </View>
         <View style={styles.rankInfoActions}>
           <Button
-            title="Elo standings"
+            title="Rank standings"
             variant="secondary"
             onPress={() => {
               setRankInfoOpen(false);

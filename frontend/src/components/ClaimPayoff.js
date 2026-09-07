@@ -213,9 +213,9 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
             <View style={[styles.block, styles.eloResult]}>
               <AppIcon name="trophy" size={24} />
               <View>
-                <Text style={[type.bodyBold, { color: colors.text }]}>{`${claim.solo_elo_delta >= 0 ? '+' : ''}${claim.solo_elo_delta || 0} Solo Elo · ${(claim.solo_elo || 1000).toLocaleString()}`}</Text>
+                <Text style={[type.bodyBold, { color: colors.text }]}>{`${claim.solo_elo_delta >= 0 ? '+' : ''}${claim.solo_elo_delta || 0} rank points · ${(claim.solo_elo || 1000).toLocaleString()} total`}</Text>
                 {claim.club_elo != null ? (
-                  <Text style={[type.caption, { color: colors.textMuted }]}>{`${claim.club_elo_delta >= 0 ? '+' : ''}${claim.club_elo_delta || 0} Club Elo · ${claim.club_elo.toLocaleString()}`}</Text>
+                  <Text style={[type.caption, { color: colors.textMuted }]}>{`${claim.club_elo_delta >= 0 ? '+' : ''}${claim.club_elo_delta || 0} club rank points · ${claim.club_elo.toLocaleString()} total`}</Text>
                 ) : null}
               </View>
             </View>

@@ -31,29 +31,14 @@ import { toast } from '../ui/toast';
 import { Arrival, Bar, Pulse, useArrival, useReduceMotion } from '../ui/motion';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
-import EloProgressCard from '../components/EloProgressCard';
+import RankCard from '../components/rank/RankCard';
+import LootboxGamble from '../components/lootbox/LootboxGamble';
+import { standingFrom } from '../config/rankLadder';
+import { rollCosmetic } from '../config/lootboxRoll';
 
-// Roll an unowned shop/stat cosmetic of the box's actual rarity. Pass rewards
-// are never in the pool: a lootbox must not bypass either reward track.
-function rollCosmetic(rarity, isUnlocked) {
-  const pool = [];
-  for (const slot of Object.keys(ITEMS)) {
-    for (const item of ITEMS[slot]) {
-      if (
-        (item.rarity || 'common') === rarity
-        && item.id !== 'none'
-        && !item.unlock?.pass
-        && !item.unlock?.premium
-      ) pool.push({ slot, item });
-    }
-  }
-  if (!pool.length) {
-    throw new Error(`No ${rarity} cosmetics are configured for lootboxes`);
-  }
-  const locked = pool.filter(({ item }) => !isUnlocked(item));
-  const src = locked.length ? locked : pool;
-  return src[Math.floor(Math.random() * src.length)];
-}
+// `rollCosmetic` moved to config/lootboxRoll.js when the daily mission
+// bonus became a second place boxes are opened — two copies of a payout
+// rule is how two screens start quietly paying different things.
 
 // One reward tile on a track. The whole pass state machine renders here:
 //   locked (level unreached)      dim; premium also shows a lock pre-purchase
@@ -299,7 +284,7 @@ const INFO_SECTIONS = [
   },
   {
     title: 'Rank',
-    body: 'Take rival land or successfully defend yours to change Elo. Beating a higher-rated runner is worth more, and every gain is matched by their loss. Your portrait border shows your rank.',
+    body: 'Take rival land or successfully defend yours to move up the ladder. Beating a stronger runner is worth more, and every gain is matched by their loss. Your portrait border shows the tier you are standing in.',
   },
   {
     title: 'Rewards',
@@ -333,7 +318,7 @@ function ProgressionInfoSheet({ visible, onClose }) {
   );
 }
 
-export default function ProgressionScreen() {
+export default function ProgressionScreen({ navigation }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const reducedMotion = useReduceMotion();
@@ -352,29 +337,24 @@ export default function ProgressionScreen() {
   const [sweep, setSweep] = useState(null);
   // What the reveal is currently showing: { rewards, accent, fromLootbox }.
   const [reveal, setReveal] = useState(null);
+  // The server's roll for the box currently being tapped up, or null.
+  const [gamble, setGamble] = useState(null);
 
+  // OPENING IS NOW TWO STEPS, AND THE SPLIT IS THE FEATURE.
+  //
+  // The request settles the box: it is marked opened and its whole gamble is
+  // decided server side in that one transaction (backend/app/lootbox.py). What
+  // comes back is a rarity, one pre rolled outcome per tap, and the rarity it
+  // therefore opens as. Nothing here rolls anything, so there is no re-roll to
+  // be had by backgrounding the app mid sequence.
+  //
+  // Then the gamble screen spends those taps, and `onGambleOpened` below turns
+  // whatever rarity it landed on into an actual item.
   const openBox = async () => {
     if (opening) return;
     setOpening(true);
     try {
-      const { rarity } = await api.openLootbox();
-      const roll = rollCosmetic(rarity, isUnlocked);
-      // The unlock is what you actually keep, so a failure to write it must
-      // not be swallowed by the celebration that follows.
-      await api.addUnlock(roll.item.id);
-      // The box is the lucky-draw moment — `fromLootbox` is what makes the
-      // reveal stage it as one: a shut box first, then the item coming out of
-      // it. Reporting it in a toast that's gone in two seconds is the version
-      // this replaced.
-      setReveal({
-        rewards: [{ kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label }],
-        accent: RARITY_COLOR[rarity] || brand.pink,
-        fromLootbox: true,
-      });
-      // The equippable set changed — without this the item is in your
-      // collection but the studio still shows it locked until a restart.
-      refreshUnlocks?.();
-      await load();
+      setGamble(await api.openLootbox());
     } catch (e) {
       // 404 means the box list on screen is stale (another device opened it,
       // or the claim that granted it never landed) — reload rather than
@@ -387,6 +367,30 @@ export default function ProgressionScreen() {
       }
     } finally {
       setOpening(false);
+    }
+  };
+
+  // The lid came off. `rarity` is what the taps actually bid it up to, not
+  // what the box was granted at.
+  const onGambleOpened = async (rarity) => {
+    setGamble(null);
+    try {
+      const roll = rollCosmetic(rarity, isUnlocked);
+      // The unlock is what you actually keep, so a failure to write it must
+      // not be swallowed by the celebration that follows.
+      await api.addUnlock(roll.item.id);
+      setReveal({
+        rewards: [{ kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label }],
+        accent: RARITY_COLOR[rarity] || brand.pink,
+        fromLootbox: true,
+      });
+      // The equippable set changed — without this the item is in your
+      // collection but the studio still shows it locked until a restart.
+      refreshUnlocks?.();
+      await load();
+    } catch (e) {
+      toast.error(e.message || 'Could not open lootbox');
+      load();
     }
   };
 
@@ -513,6 +517,9 @@ export default function ProgressionScreen() {
   }
 
   const { level, xp_into_level, xp_for_next, ladder, pending_lootboxes, premium_active, claims, rank } = data;
+  // Tier, division and the gap to the next rung, all derived from the one
+  // rank payload the server already sends. See config/rankLadder.js.
+  const standing = standingFrom(rank);
   const showPremium = premium_active || IAP_ENABLED;
   // At the ceiling there is no "next level" to be part-way to, and the server
   // keeps reporting progress toward a level 51 that doesn't exist. A bar
@@ -583,9 +590,9 @@ export default function ProgressionScreen() {
           {/* Rank, not level. At the top tier it is just the name — it used to
               read "Mythic · top rank", which said the same thing twice. */}
           <Text style={[type.caption, styles.headerSubText]}>
-            {rank?.next_rating
-              ? `${(rank.rating || 1000).toLocaleString()} Elo · ${rank?.label || 'Wood'} · ${rank.points_to_next} to ${rank.next_label}`
-              : `${(rank?.rating || 1000).toLocaleString()} Elo · ${rank?.label || 'Wood'}`}
+            {standing.isTop
+              ? standing.name
+              : `${standing.name} · ${Number(standing.toNext).toLocaleString()} to climb`}
           </Text>
           {/* Fills from empty every time you open the screen. You mostly get
               here straight off a finished run, and watching the bar run up to
@@ -608,19 +615,13 @@ export default function ProgressionScreen() {
         </View>
       </Framed>
 
-      <EloProgressCard
-        title="Solo Elo progression"
-        rating={rank?.rating}
-        label={rank?.label}
-        nextRating={rank?.next_rating}
-        nextLabel={rank?.next_label}
-        progress={rank?.progress}
-        matches={rank?.matches}
-        wins={rank?.wins}
-        losses={rank?.losses}
-        draws={rank?.draws}
-        peak={rank?.peak}
-        accent={brand.pink}
+      {/* The ladder in miniature. Tapping it opens the full column — this
+          card answers "what am I", the ladder answers "what is next". */}
+      <RankCard
+        title="Rank"
+        standing={standing}
+        equipped={equipped}
+        onPress={() => navigation?.navigate?.('RankLadder')}
         style={{ marginTop: space.lg }}
       />
 
@@ -806,6 +807,12 @@ export default function ProgressionScreen() {
           (src/pro/ProProvider.js) and is opened with `openPaywall`, so the
           IAP_ENABLED check moved there too. */}
       <ProgressionInfoSheet visible={infoOpen} onClose={() => setInfoOpen(false)} />
+      <LootboxGamble
+        visible={!!gamble}
+        sequence={gamble}
+        onOpened={onGambleOpened}
+        onClose={() => setGamble(null)}
+      />
       <RewardReveal
         visible={!!reveal}
         rewards={reveal?.rewards}

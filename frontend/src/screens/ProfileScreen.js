@@ -1,7 +1,7 @@
 // You — profile + your stats. Header, stat wall, recent runs, and settings.
 // Trophy shelf (PRs + badges) and tap-through run detail arrive in Phase 6.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useIsFocused } from '@react-navigation/native';
@@ -33,7 +33,8 @@ import { COPY as PASERBY_COPY } from '../config/paserby';
 import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
 import EnergyMeter from '../components/EnergyMeter';
-import EloProgressCard from '../components/EloProgressCard';
+import RankRail from '../components/rank/RankRail';
+import { standingFrom } from '../config/rankLadder';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
@@ -141,6 +142,18 @@ export default function ProfileScreen({ navigation }) {
   // grey tiles. `loading` stays true only until the very first successful
   // fetch on a fresh install.
   const { data: stats } = useQuery('me:stats', api.meStats, { fallback: {} });
+  // The ladder's tier thresholds, for the numbers under the rank rail. Cached
+  // hard: it counts every rated player, and a threshold that moved between two
+  // openings of this page would read as noise rather than as a ladder. The
+  // rail draws without it — the nodes simply carry no number yet.
+  const { data: ladder } = useQuery('leaderboard:rank-ladder', api.rankLadder, {
+    staleMs: 5 * 60 * 1000,
+    fallback: null,
+  });
+  const rankFloors = useMemo(
+    () => (ladder?.tiers || []).map((t) => t.floor),
+    [ladder]
+  );
   const { data: runs } = useQuery('me:runs', api.meRuns, { fallback: [] });
   // The wall and the run list fill in independently of each other, so each
   // keeps its own latch — one of them arriving must not fade the other.
@@ -323,6 +336,19 @@ export default function ProfileScreen({ navigation }) {
           </PressableScale>
         )}
 
+        {/* RANK, directly under the runner it belongs to and above the
+            actions. Two ladders, stacked in the order they matter: the XP bar
+            above is the treadmill (distance, one way), this is the fight.
+            Push it sideways to see what is ahead; tap it for the full ladder. */}
+        {stats && (
+          <RankRail
+            standing={standingFrom(stats)}
+            floors={rankFloors}
+            onPress={() => navigation.navigate('RankLadder')}
+            style={styles.rankRail}
+          />
+        )}
+
         {/* the two runner actions sit as a pair; the badge on Add pasers is
             requests waiting on you */}
         <Row gap={space.sm} style={styles.actions}>
@@ -362,25 +388,6 @@ export default function ProfileScreen({ navigation }) {
 
       </Reveal>
 
-      {stats ? (
-        <Reveal delay={70}>
-          <EloProgressCard
-            title="Solo Elo"
-            rating={stats.solo_elo}
-            label={stats.rank_label}
-            nextRating={stats.solo_elo_next}
-            nextLabel={stats.solo_elo_next_label}
-            progress={stats.rank_progress}
-            matches={stats.solo_elo_matches}
-            wins={stats.solo_elo_wins}
-            losses={stats.solo_elo_losses}
-            draws={stats.solo_elo_draws}
-            peak={stats.solo_elo_peak}
-            accent={accent}
-            style={{ marginTop: space.lg }}
-          />
-        </Reveal>
-      ) : null}
 
       {/* stat wall */}
       <Reveal delay={90} style={styles.wall}>
@@ -888,6 +895,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // rather than as its own section. `sm` is measured from the BADGE, which
   // hangs BADGE_OVERHANG above the button it rides on — the gap you see is the
   // one below the overhang, not below the layout box.
+  // The rail carries its own bottom gap so the buttons under it are not
+  // sitting on the tier labels.
+  rankRail: { marginTop: space.lg },
   actions: { marginTop: space.sm + BADGE_OVERHANG },
   // sits over the top-right corner of the Add pasers button
   badge: {

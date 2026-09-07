@@ -17,7 +17,8 @@ import { nbField, space, withAlpha, useTheme, useThemedType, useThemedStyles } f
 import { art } from '../config/onboardingArt';
 import { Screen, Card, Framed, Row, Button, Input, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
-import EloProgressCard from '../components/EloProgressCard';
+import RankCard from '../components/rank/RankCard';
+import { standingFrom } from '../config/rankLadder';
 import { toast } from '../ui/toast';
 import { pickPhoto } from '../ui/photoPicker';
 import { framePose, frameVariant } from '../ui/frameRegistry';
@@ -62,7 +63,7 @@ function ClubIntroOverlay({ step, onNext, accent }) {
         <Text style={styles.introTitle}>{ranking ? 'Club rankings' : 'Club view'}</Text>
         <Text style={styles.introBody}>
           {ranking
-            ? 'See every club’s live Elo rating. Tap one to meet its crew.'
+            ? 'See where every club stands on the ladder. Tap one to meet its crew.'
             : 'Weekly goals, members, chat and invites, all in one place.'}
         </Text>
         <ToonButton title={ranking ? 'Got it' : 'Show me rankings'} onPress={onNext} fill={{ color: accent, border: '#FFFFFF' }} />
@@ -338,7 +339,7 @@ function MemberHub({ clanId, navigation }) {
     <Segmented
       options={[
         { key: 'view', label: 'Club view' },
-        { key: 'rankings', label: 'Club Elo' },
+        { key: 'rankings', label: 'Club rank' },
       ]}
       value={clubView}
       onChange={setClubView}
@@ -353,7 +354,7 @@ function MemberHub({ clanId, navigation }) {
           <Row gap={space.md}>
             <AppIcon name="trophy" size={34} />
             <View style={{ flex: 1 }}>
-              <Text style={type.title}>Club Elo standings</Text>
+              <Text style={type.title}>Club rank standings</Text>
               <Text style={type.caption}>Rated territory battles move both clubs up or down.</Text>
             </View>
           </Row>
@@ -381,11 +382,11 @@ function MemberHub({ clanId, navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>[{entry.tag}] {entry.name}</Text>
                 <Text style={type.caption}>
-                  {entry.elo_label || 'Wood'} · {entry.elo_wins || 0}W {entry.elo_losses || 0}L {entry.elo_draws || 0}D · {entry.member_count} members
+                  {entry.elo_label || 'Wood'} · {entry.member_count} members
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={[type.bodySmBold, { color: entry.color?.stroke || accent }]}>{(entry.elo_rating ?? 1000).toLocaleString()} Elo</Text>
+                <Text style={[type.bodySmBold, { color: entry.color?.stroke || accent }]}>{(entry.elo_rating ?? 1000).toLocaleString()} pts</Text>
                 <Text style={type.caption}>{(entry.total_area_m2 / 1e6).toFixed(2)} km²</Text>
               </View>
             </Row>
@@ -452,19 +453,17 @@ function MemberHub({ clanId, navigation }) {
         </Row>
       </Card>
 
-      <EloProgressCard
-        title="Club Elo"
-        rating={clan.elo_rating}
-        label={clan.elo_label}
-        nextRating={clan.elo_next_rating}
-        nextLabel={clan.elo_next_label}
-        progress={clan.elo_progress}
-        matches={clan.elo_matches}
-        wins={clan.elo_wins}
-        losses={clan.elo_losses}
-        draws={clan.elo_draws}
-        peak={clan.elo_peak}
-        accent={accent}
+      {/* A club stands on the same ten tier ladder its members do. It has no
+          runner to put in the badge, so it wears its own crest instead. */}
+      <RankCard
+        title="Club rank"
+        standing={standingFrom({
+          key: clan.elo_key,
+          points: clan.elo_rating,
+          next_points: clan.elo_next_rating,
+          progress: clan.elo_progress,
+        })}
+        emblem={<ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={70} />}
         style={{ marginTop: space.lg }}
       />
 

@@ -237,6 +237,10 @@ export function updateCached(key, updater) {
 // shows yesterday's numbers straight after a run.
 const AFTER_RUN = [
   'feed', 'me:stats', 'me:runs', 'me:run-days', 'me:progression', 'leaderboard:',
+  // Mission progress is derived from the runs and steals a run just wrote, so
+  // finishing one is exactly when every bar on that screen becomes wrong. The
+  // prefix covers the per day keys the week strip opens.
+  'me:missions',
   // A finished run is exactly when crossed paths appear — Home's badge and the
   // Crossroads list are both wrong the moment /end-run returns.
   'me:paserby',

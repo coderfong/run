@@ -57,6 +57,8 @@ import { ProFrosted, ProLockedSection, ProInlineLock } from '../components/ProLo
 import { useProEntitlement } from '../pro/ProProvider';
 import XpProgress from '../components/XpProgress';
 import LevelUpCelebration from '../components/LevelUpCelebration';
+import RankUpCeremony from '../components/rank/RankUpCeremony';
+import { standingFrom } from '../config/rankLadder';
 import { Image } from '../ui/image';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useAvatar } from '../state/avatar';
@@ -980,6 +982,29 @@ export default function ResultScreen({ navigation, route }) {
   // animation effect; an inline lambda here changed identity on every result
   // screen render and restarted both (including its haptic) mid-celebration.
   const closeLevelUp = useCallback(() => setLevelUp(null), []);
+
+  // PROMOTION. The server decides whether the claim crossed a tier (see
+  // `rank_up` on ClaimResult) — the client never compares thresholds itself,
+  // because two copies of the ladder is how an app celebrates a promotion that
+  // did not happen.
+  //
+  // Held in state rather than read straight off `claim` so dismissing it
+  // sticks: the claim object is still there afterwards, and gating on it alone
+  // would put the ceremony back on screen at the next render.
+  const [rankUp, setRankUp] = useState(null);
+  const rankUpShown = useRef(false);
+  useEffect(() => {
+    if (rankUpShown.current || !claim?.rank_up) return;
+    rankUpShown.current = true;
+    setRankUp({
+      from: standingFrom({ key: claim.rank_key_before }),
+      to: standingFrom({
+        key: claim.rank_key_after,
+        points: claim.solo_elo,
+      }),
+    });
+  }, [claim?.rank_up, claim?.rank_key_before, claim?.rank_key_after, claim?.solo_elo]);
+  const closeRankUp = useCallback(() => setRankUp(null), []);
   const [crossedDone, setCrossedDone] = useState(false);
   const [highFiving, setHighFiving] = useState(false);
   const [highFivedAll, setHighFivedAll] = useState(false);
@@ -1939,6 +1964,20 @@ export default function ResultScreen({ navigation, route }) {
       equipped={equipped}
       accent={team.glow}
       onClose={closeLevelUp}
+    />
+
+    {/* THE RANK, last of all. It is the biggest of these moments and it takes
+        the whole screen, so it queues behind every other overlay INCLUDING the
+        level — two full screen celebrations racing is not a bigger party. */}
+    <RankUpCeremony
+      visible={
+        rankUp != null && levelUp == null
+        && !seq.showPayoff && !seq.showLeaderboard && !crossedOpen
+      }
+      from={rankUp?.from}
+      to={rankUp?.to}
+      equipped={equipped}
+      onDone={closeRankUp}
     />
 
     {showConfetti && <Confetti />}

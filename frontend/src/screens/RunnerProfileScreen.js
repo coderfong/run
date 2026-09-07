@@ -308,7 +308,7 @@ export default function RunnerProfileScreen({ navigation, route }) {
         <StatTile label="Runs" value={String(p.runs_count)} style={styles.tile} />
         <StatTile label="Biggest claim" value={km2(p.biggest_claim_m2)} unit="km²" accent={accent} style={styles.tile} />
         <StatTile label="Zones" value={String(p.territory_count)} style={styles.tile} />
-        <StatTile label="Solo Elo" value={String(p.solo_elo || 1000)} unit={p.solo_elo_label || 'Wood'} accent={accent} style={styles.tile} />
+        <StatTile label="Rank" value={p.solo_elo_label || 'Wood'} unit={`${Number(p.solo_elo || 1000).toLocaleString()} pts`} accent={accent} style={styles.tile} />
       </View>
 
       <SectionHeader title="Recent runs" style={{ marginTop: space.xl, marginBottom: space.md }} />

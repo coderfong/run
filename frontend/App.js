@@ -64,6 +64,8 @@ import SeasonScreen from './src/screens/SeasonScreen';
 import AvatarStudioScreen from './src/screens/AvatarStudioScreen';
 import ShopScreen from './src/screens/ShopScreen';
 import ProgressionScreen from './src/screens/ProgressionScreen';
+import MissionsScreen from './src/screens/MissionsScreen';
+import RankLadderScreen from './src/screens/RankLadderScreen';
 import PasersScreen from './src/screens/PasersScreen';
 import RivalsScreen from './src/screens/RivalsScreen';
 import RivalDetailScreen from './src/screens/RivalDetailScreen';
@@ -193,11 +195,10 @@ function HomeStack() {
   return (
     <HomeStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <HomeStackNav.Screen name="HomeMain" component={HomeScreen} />
-      <HomeStackNav.Screen
-        name="Leaderboard"
-        component={LeaderboardScreen}
-        options={{ headerShown: true, title: 'Leaderboard' }}
-      />
+      {/* Draws its own art panel header (with a back button), like Season,
+          Rivals and Missions — the native one would stack a second bar above
+          it. */}
+      <HomeStackNav.Screen name="Leaderboard" component={LeaderboardScreen} />
       <HomeStackNav.Screen
         name="RunDetail"
         component={RunDetailScreen}
@@ -228,6 +229,11 @@ function HomeStack() {
         component={ProgressionScreen}
         options={{ headerShown: true, title: 'Levels & rewards' }}
       />
+      {/* Missions and the rank ladder draw their own art headers (with a back
+          button), like Season and Rivals — the native one would stack a second
+          bar above them. */}
+      <HomeStackNav.Screen name="Missions" component={MissionsScreen} />
+      <HomeStackNav.Screen name="RankLadder" component={RankLadderScreen} />
       <HomeStackNav.Screen name="Rivals" component={RivalsScreen} />
       <HomeStackNav.Screen
         name="RivalDetail"
@@ -318,6 +324,8 @@ function YouStack() {
       />
       {/* Pasers, Rivals and Crossroads draw their own gradient headers (with a
           back button), so the native one is off. */}
+      <YouStackNav.Screen name="Missions" component={MissionsScreen} />
+      <YouStackNav.Screen name="RankLadder" component={RankLadderScreen} />
       <YouStackNav.Screen name="Pasers" component={PasersScreen} />
       <YouStackNav.Screen name="Rivals" component={RivalsScreen} />
       <YouStackNav.Screen

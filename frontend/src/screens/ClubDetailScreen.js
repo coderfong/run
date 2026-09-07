@@ -14,7 +14,8 @@ import { useClan } from '../state/clan';
 import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
-import EloProgressCard from '../components/EloProgressCard';
+import RankCard from '../components/rank/RankCard';
+import { standingFrom } from '../config/rankLadder';
 import { toast } from '../ui/toast';
 import { Arrival, Bar, Reveal, staggerDelay, useArrival } from '../ui/motion';
 
@@ -113,19 +114,17 @@ export default function ClubDetailScreen({ route, navigation }) {
         <StatValue size="md" label="Members" value={String(clan.member_count)} />
       </Row>
 
-      <EloProgressCard
-        title="Club Elo"
-        rating={clan.elo_rating}
-        label={clan.elo_label}
-        nextRating={clan.elo_next_rating}
-        nextLabel={clan.elo_next_label}
-        progress={clan.elo_progress}
-        matches={clan.elo_matches}
-        wins={clan.elo_wins}
-        losses={clan.elo_losses}
-        draws={clan.elo_draws}
-        peak={clan.elo_peak}
-        accent={accent}
+      {/* A club stands on the same ten tier ladder its members do. It has no
+          runner to put in the badge, so it wears its own crest instead. */}
+      <RankCard
+        title="Club rank"
+        standing={standingFrom({
+          key: clan.elo_key,
+          points: clan.elo_rating,
+          next_points: clan.elo_next_rating,
+          progress: clan.elo_progress,
+        })}
+        emblem={<ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={70} />}
         style={{ marginTop: space.lg }}
       />
 

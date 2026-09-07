@@ -42,7 +42,11 @@ import AppIcon from './AppIcon';
 
 const GOLD = ['#FFD98A', '#F0A93C', '#A8631A'];
 
-function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false }) {
+// `size` is only ever passed for the inline row, and only because the row
+// grew to five: five 64pt tiles do not fit across a 320pt phone. Sized by the
+// caller rather than by a media query here, so the rail stays the one place
+// that knows how many tiles it has.
+function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size }) {
   const src = art(artKey);
   return (
     <View style={[styles.slot, inline && styles.inlineSlot]}>
@@ -50,7 +54,7 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
         onPress={() => { haptic.light(); onPress?.(); }}
         accessibilityRole="button"
         accessibilityLabel={label ? `${label}${badge ? `, ${badge}` : ''}` : 'Open'}
-        style={[styles.tileWrap, inline && styles.inlineTileWrap]}
+        style={[styles.tileWrap, inline && styles.inlineTileWrap, size ? { width: size, height: size } : null]}
       >
         {/* A drawn box, like everything else on this page — not a rounded
             rectangle with a 2.5px border pretending to be one.
@@ -90,6 +94,13 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
 
 export default function SideRail({ navigation, onOpenShop, style, inline = false }) {
   const [claimable, setClaimable] = useState(0);
+  // Today's missions, for the badge. Same rule as the pass tile: the number is
+  // what is WAITING TO BE COLLECTED, not how many missions exist — a badge
+  // that is permanently on says nothing.
+  const { data: missions } = useQuery('me:missions', api.missions);
+  const missionsWaiting = (missions?.missions || [])
+    .filter((m) => m.complete && !m.claimed).length
+    + (missions?.all_complete && !missions?.bonus_claimed ? 1 : 0);
   // PASERBY's entry point. Seeded from cache (useQuery) and refreshed on focus
   // like everything else on the rail, so the "3 NEW" badge is there on the
   // first frame after a run rather than a round trip later.
@@ -119,8 +130,23 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
     }, [])
   );
 
+  // Five across, so the inline tiles come down a few points.
+  const size = inline ? 58 : undefined;
+
   return (
     <View style={[inline ? styles.inlineRail : styles.rail, style]} pointerEvents="box-none">
+      {/* Missions first: it is the only tile whose contents change every day,
+          so it is the one worth looking at on the way past. */}
+      <RailTile
+        icon="verified"
+        artKey="railMissions"
+        label="Missions"
+        badge={missionsWaiting ? String(missionsWaiting) : null}
+        tint={['#A5F3D0', '#3faf74', '#116343']}
+        onPress={() => navigation.navigate('Missions')}
+        inline={inline}
+        size={size}
+      />
       <RailTile
         icon="award"
         artKey="railPass"
@@ -128,6 +154,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         badge={claimable ? String(claimable) : null}
         onPress={() => navigation.navigate('Progression')}
         inline={inline}
+        size={size}
       />
       <RailTile
         icon="energy"
@@ -136,6 +163,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         tint={['#7FF0DE', brand.teal, '#128476']}
         onPress={onOpenShop}
         inline={inline}
+        size={size}
       />
       {/* `railRivals` art doesn't exist yet, so this falls back to the steal
           sticker — the same one RivalCard uses. */}
@@ -146,6 +174,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         tint={['#C4B5FD', brand.purple, '#5B21B6']}
         onPress={() => navigation.navigate('Rivals')}
         inline={inline}
+        size={size}
       />
       {/* Crossed paths. The badge is a REAL state — encounters this runner has
           not looked at yet — never decoration, same rule as the pass tile.
@@ -161,6 +190,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         tint={['#FBA6CD', brand.pink, '#9D1458']}
         onPress={() => navigation.navigate('Crossroads')}
         inline={inline}
+        size={size}
       />
     </View>
   );

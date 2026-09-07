@@ -348,7 +348,30 @@ export const api = {
   // ----- progression + energy ------------------------------------------
   progression: () => request('/me/progression'),
   energyStatus: () => request('/me/energy'),
+  // Opening a box returns its WHOLE gamble: the rarity it was granted at, one
+  // pre rolled outcome per tap, and what it therefore opens as. Every tap on
+  // the gamble screen reveals a step that was already decided here, which is
+  // what makes a tap instant and a re-roll impossible. See backend/app/lootbox.py.
   openLootbox: () => request('/me/lootbox/open', { method: 'POST', body: '{}' }),
+
+  // ----- daily missions --------------------------------------------------
+  // Progress is DERIVED server side from runs, steals and rank events, so the
+  // client never posts a count — it only ever asks to be paid.
+  missions: (day) => request(`/me/missions${day ? `?day=${encodeURIComponent(day)}` : ''}`),
+  claimMission: (missionId, day) =>
+    request('/me/missions/claim', {
+      method: 'POST',
+      body: JSON.stringify({ mission_id: missionId, day: day || undefined }),
+    }),
+  claimMissionBonus: (day) =>
+    request('/me/missions/day-bonus', {
+      method: 'POST',
+      body: JSON.stringify({ day: day || undefined }),
+    }),
+
+  // Per tier player counts, so the ladder's "TOP 12% OF RUNNERS" line is a
+  // measurement rather than a modelled curve baked into the app.
+  rankLadder: () => request('/leaderboard/rank-ladder'),
   addUnlock: (itemId) =>
     request('/me/unlocks', { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
   purchaseEnergy: (productId, receipt, platform) =>
@@ -389,7 +412,7 @@ export const api = {
   syncPro: (purchases) =>
     request('/me/pro/sync', { method: 'POST', body: JSON.stringify({ purchases }) }),
 
-  // Standings by live solo Elo rather than land held.
+  // Standings by rank points rather than land held.
   rankLeaderboard: (limit = 50) => request(`/leaderboard/ranks?limit=${limit}`),
 
   // ----- coin shop -------------------------------------------------------
@@ -540,6 +563,10 @@ export const api = {
     }
     if (zoom != null) parts.push(`zoom=${zoom.toFixed(1)}`);
     if (opts?.rank != null) parts.push(`rank=${opts.rank}`);
+    // Which LADDER the tier is read against: 'solo' scopes by each runner's
+    // own rating, 'club' by the owning club's and returns club held land only.
+    // Omitted for solo so the query string stays what it always was.
+    if (opts?.board === 'club') parts.push('board=club');
     const qs = parts.length ? `?${parts.join('&')}` : '';
     return request(`/map-polygons${qs}`);
   },
