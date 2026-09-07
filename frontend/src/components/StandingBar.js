@@ -18,6 +18,7 @@ import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAccent } from '../hooks/useAccent';
 import { radius, space, withAlpha, useTheme, useThemedType } from '../theme';
+import { Reveal } from '../ui/motion';
 
 function ordinal(n) {
   const rem100 = n % 100;
@@ -67,6 +68,12 @@ export default function StandingBar({ category = 'land', opts = {}, style }) {
 
   const ranked = data.rank != null;
   return (
+    // ARRIVES, rather than appearing. This bar renders nothing at all until
+    // its own request lands (`if (!data) return null`), which on a board you
+    // are already reading means a block of content materialising mid-scroll
+    // with no warning and shoving the rows down. A short fade is the
+    // difference between the answer arriving and the page glitching.
+    <Reveal from="none" duration={260}>
     <View
       style={[
         styles.bar,
@@ -89,6 +96,7 @@ export default function StandingBar({ category = 'land', opts = {}, style }) {
           : `${data.field_size.toLocaleString()} runners on this board`}
       </Text>
     </View>
+    </Reveal>
   );
 }
 

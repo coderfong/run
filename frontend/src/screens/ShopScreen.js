@@ -34,25 +34,30 @@ import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { brand, nbTextOn, radius, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { NB, brand, nbInk, nbRadius, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
 import RewardReveal from '../components/RewardReveal';
 import { Card, Framed, Row, Screen, Skeleton, Button } from '../components/ui';
-import { PartThumb } from '../components/character/CharacterRig';
+import CharacterRig, { PartThumb } from '../components/character/CharacterRig';
 import { getItem, SLOTS } from '../config/cosmetics';
 import { RARITY_COLOR } from '../components/RewardArt';
 import AppIcon from '../components/AppIcon';
 import GameAnimation, { AnimationStack } from '../components/GameAnimation';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import PitStopScene from '../components/shop/PitStopScene';
+import ShopWallet from '../components/shop/ShopWallet';
+import ShopSlotTabs, { ALL_SLOTS } from '../components/shop/ShopSlotTabs';
 import { PIT_STOP_ANIM } from '../config/pitStop';
 import { IAP_ENABLED } from '../config/releaseFeatures';
-import { Arrival, CountUpText, haptic, Reveal, useArrival, useReduceMotion } from '../ui/motion';
+import { haptic, Reveal, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 
 const SLOT_LABEL = Object.fromEntries(SLOTS.map((s) => [s.key, s.label]));
 const SLOT_ORDER = Object.fromEntries(SLOTS.map((s, index) => [s.key, index]));
 const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
+// How tall the runner stands in the fitting mirror. Big enough that a hat
+// reads at a glance, small enough that the stock below it is still on screen.
+const PREVIEW_SIZE = 132;
 
 function useCountdown(expiresAt) {
   const remaining = (expiry) => (expiry ? Math.max(0, expiry * 1000 - Date.now()) : 0);
@@ -205,6 +210,7 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
 const SelectedProductPanel = memo(function SelectedProductPanel({
   item,
   cat,
+  equipped,
   affordable,
   pending,
   celebrating,
@@ -212,13 +218,27 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
   onBuy,
   onClose,
 }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const reduced = useReduceMotion();
   const tint = RARITY_COLOR[item.rarity] || colors.border;
   // Rare and above gets the burst behind the confetti. The gate is what keeps
   // a common restock from looking like a jackpot.
   const rare = item.rarity && item.rarity !== 'common';
+
+  // TRY IT ON. The runner is drawn WEARING the candidate, not standing beside
+  // a picture of it. A cut-out thumbnail tells you what an item is; it cannot
+  // tell you the thing you are actually deciding, which is whether it looks
+  // right on the character you have already dressed. Every shop worth copying
+  // puts the character in the preview for exactly this reason.
+  //
+  // Merged over the live outfit rather than shown alone, so a hat is judged
+  // against your own hair and jacket. Nothing is written anywhere: this is a
+  // render prop, and closing the panel is all it takes to undo.
+  const worn = useMemo(
+    () => ({ ...(equipped || {}), [item.slot]: item.item_id }),
+    [equipped, item.slot, item.item_id]
+  );
 
   const status = item.owned
     ? 'Owned'
@@ -229,49 +249,82 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
   return (
     <Reveal from="down" duration={220}>
       <Card style={styles.panel}>
-        <View style={styles.panelArt}>
-          {/* The glow is the rarity, read at a glance and before the words. */}
+        <View style={styles.panelTop}>
+          {/* The fitting mirror. Tinted in the rarity so the frame round the
+              runner is the same signal the tile carried. */}
           <View
-            style={[styles.panelGlow, { backgroundColor: withAlpha(tint, 0.16), borderColor: withAlpha(tint, 0.5) }]}
-            pointerEvents="none"
-          />
-          <PartThumb slot={item.slot} item={cat} size={64} />
-          {celebrating ? (
-            <AnimationStack
-              names={rare ? ['rewardBurst', 'confettiBurst'] : ['confettiBurst']}
-              size={140}
-              trigger={purchaseTick}
-              style={styles.panelFx}
+            style={[
+              styles.mirror,
+              { backgroundColor: withAlpha(tint, 0.16), borderColor: withAlpha(tint, 0.55) },
+            ]}
+          >
+            <CharacterRig
+              equipped={worn}
+              size={PREVIEW_SIZE}
+              animate={!reduced}
+              animateSwaps={!reduced}
             />
-          ) : null}
-        </View>
-        <View style={{ flex: 1, gap: 2 }}>
-          <Text style={type.bodyBold} numberOfLines={1}>
-            {cat?.label || item.item_id}
-          </Text>
-          <Row gap={6} style={{ alignItems: 'center' }}>
-            {/* Rarity is spelled out, not just tinted — colour alone is not a
-                label. */}
-            <View style={[styles.rarityDot, { backgroundColor: tint }]} />
-            <Text style={[type.caption, { color: colors.textMuted }]}>
-              {item.rarity} · {SLOT_LABEL[item.slot] || item.slot}
-            </Text>
-          </Row>
-          <Row gap={4} style={{ alignItems: 'center' }}>
-            {!item.owned ? <AppIcon name="coin" size={14} /> : null}
-            <Text
+            {celebrating ? (
+              <AnimationStack
+                names={rare ? ['rewardBurst', 'confettiBurst'] : ['confettiBurst']}
+                size={180}
+                trigger={purchaseTick}
+                style={styles.panelFx}
+              />
+            ) : null}
+          </View>
+
+          <View style={styles.panelInfo}>
+            {/* The item on its own, beside the runner wearing it: the cut-out
+                is what you recognise in the grid, the rig is what you are
+                buying it for. */}
+            <View
               style={[
-                type.captionMedium,
-                { color: item.owned || affordable ? colors.textMuted : colors.danger },
+                styles.chip,
+                { backgroundColor: colors.cardAlt, borderColor: nbInk(scheme, colors.cardAlt) },
               ]}
             >
-              {status}
+              <PartThumb slot={item.slot} item={cat} size={40} />
+            </View>
+            <Text style={type.bodyBold} numberOfLines={2}>
+              {cat?.label || item.item_id}
             </Text>
-          </Row>
+            <Row gap={6} style={{ alignItems: 'center' }}>
+              {/* Rarity is spelled out, not just tinted — colour alone is not a
+                  label. */}
+              <View style={[styles.rarityDot, { backgroundColor: tint }]} />
+              <Text style={[type.caption, { color: colors.textMuted }]}>
+                {item.rarity} · {SLOT_LABEL[item.slot] || item.slot}
+              </Text>
+            </Row>
+            <Row gap={4} style={{ alignItems: 'center' }}>
+              {!item.owned ? <AppIcon name="coin" size={14} /> : null}
+              <Text
+                style={[
+                  type.captionMedium,
+                  { color: item.owned || affordable ? colors.textMuted : colors.danger },
+                ]}
+              >
+                {status}
+              </Text>
+            </Row>
+          </View>
         </View>
-        <View style={{ gap: space.sm, alignItems: 'flex-end' }}>
+
+        {/* The buy row runs the full width under the fitting, so the button is
+            a real target rather than something wedged into a third column. */}
+        <View style={styles.panelActions}>
+          <TouchableOpacity
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close item details"
+            hitSlop={10}
+            style={styles.close}
+          >
+            <Text style={[type.captionMedium, { color: colors.textDim }]}>Close</Text>
+          </TouchableOpacity>
           <Button
-            title={item.owned ? 'Owned' : 'Buy'}
+            title={item.owned ? 'Owned' : affordable ? `Buy for ${item.price}` : 'Not enough coins'}
             size="sm"
             full={false}
             variant={item.owned || !affordable ? 'secondary' : 'gradient'}
@@ -279,15 +332,8 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
             disabled={item.owned || !affordable || pending}
             onPress={onBuy}
           />
-          <TouchableOpacity
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close item details"
-            hitSlop={10}
-          >
-            <Text style={[type.caption, { color: colors.textDim }]}>Close</Text>
-          </TouchableOpacity>
         </View>
+
         {reduced ? null : (
           <GameAnimation
             name="coinSpin"
@@ -316,6 +362,9 @@ export default function ShopScreen() {
   // celebration even when the same item is bought twice in a row.
   const [purchase, setPurchase] = useState({ status: 'idle', tick: 0 });
   const [getMore, setGetMore] = useState(false);
+  // Which shelf is on show. Browsing is by SLOT now — see ShopSlotTabs for
+  // why rarity stopped being the thing you navigate by.
+  const [slot, setSlot] = useState(ALL_SLOTS);
   // What the purchase reveal is showing, in the same shape the pass uses.
   const [reveal, setReveal] = useState(null);
   const resetTimer = useRef(null);
@@ -340,14 +389,31 @@ export default function ShopScreen() {
       || (SLOT_ORDER[a.slot] ?? 99) - (SLOT_ORDER[b.slot] ?? 99)
       || (a.cat?.label || a.item_id).localeCompare(b.cat?.label || b.item_id)
     )), [data?.items, isUnlocked]);
-  const sections = useMemo(() => RARITY_ORDER
-    .map((rarity) => ({ rarity, items: items.filter((item) => item.rarity === rarity) }))
-    .filter((section) => section.items.length > 0), [items]);
+  // One tab per slot that actually has stock this window, "All" first. A tab
+  // leading to an empty shelf is a dead end, and the rotation only ever holds
+  // a handful of slots at a time.
+  const tabs = useMemo(() => {
+    const counts = new Map();
+    for (const item of items) counts.set(item.slot, (counts.get(item.slot) || 0) + 1);
+    return [
+      { key: ALL_SLOTS, label: 'All', count: items.length },
+      ...SLOTS
+        .filter((sl) => counts.has(sl.key))
+        .map((sl) => ({ key: sl.key, label: sl.label, count: counts.get(sl.key) })),
+    ];
+  }, [items]);
+
+  // A tab can vanish under you when the shop rotates. Fall back to All rather
+  // than leaving the shelf empty with a tab selected that no longer exists.
+  useEffect(() => {
+    if (slot !== ALL_SLOTS && !tabs.some((t) => t.key === slot)) setSlot(ALL_SLOTS);
+  }, [tabs, slot]);
+
+  const shown = useMemo(
+    () => (slot === ALL_SLOTS ? items : items.filter((item) => item.slot === slot)),
+    [items, slot]
+  );
   const coins = data?.coins ?? 0;
-  // The wallet is held back until the real balance lands (a placeholder 0
-  // reads as "you're broke"), so it is the one block on this screen that
-  // swaps in cold. The item grid arrives on its own Reveals.
-  const walletArriving = useArrival(!data);
 
   const selected = useMemo(
     () => items.find((i) => i.item_id === selectedId) || null,
@@ -365,6 +431,14 @@ export default function ShopScreen() {
   // so the scene's "can't sell you this" branch covers the two cases that do
   // exist: you already own it, or you can't afford it yet.
   const unavailable = !!selected && (selected.owned || !affordable);
+
+  // Changing shelf keeps whatever is selected: the panel is a fitting room,
+  // and having it emptied because you went to look at the hats would undo the
+  // comparison you were in the middle of making.
+  const pickSlot = useCallback((key) => {
+    haptic.light();
+    setSlot(key);
+  }, []);
 
   const select = useCallback((id) => {
     haptic.light();
@@ -454,6 +528,17 @@ export default function ShopScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {/* PINNED. The balance is the number every tile is judged against, so it
+          sits in the chrome and never scrolls away — and it carries the
+          selected item's price beside it, which is the comparison the whole
+          screen exists to support. */}
+      <ShopWallet
+        coins={data ? coins : null}
+        cost={selected && !selected.owned ? selected.price : null}
+        affordable={affordable}
+        onGetMore={IAP_ENABLED ? () => setGetMore(true) : undefined}
+        top={insets.top}
+      />
       <ScrollView
         ref={scroller}
         style={{ flex: 1 }}
@@ -470,6 +555,7 @@ export default function ShopScreen() {
             <SelectedProductPanel
               item={selected}
               cat={selectedCat}
+              equipped={equipped}
               affordable={affordable}
               pending={purchase.status === 'pending'}
               celebrating={purchase.status === 'success'}
@@ -479,90 +565,56 @@ export default function ShopScreen() {
             />
           ) : null}
 
-          {/* balance + top-up. Held back until the real balance arrives — a
-              placeholder 0 reads as "you're broke", not as "still loading". */}
-          {data ? (
-            <Arrival active={walletArriving}>
-            <Card style={styles.wallet}>
-              <Row gap={8} style={{ alignItems: 'center', flex: 1 }}>
-                <AppIcon name="coin" size={28} />
-                <View>
-                  {/* The balance counts down to what a purchase left you with
-                      rather than swapping numbers behind the panel. Spending
-                      is the one thing this screen does, so it should be the
-                      thing you can see happen. */}
-                  <CountUpText
-                    value={coins}
-                    durationMs={620}
-                    style={[type.title, { color: '#eab308' }]}
-                  />
-                  <Text style={[type.caption, { color: colors.textMuted }]}>
-                    Earn coins on every run and level
-                  </Text>
-                </View>
-              </Row>
-              {IAP_ENABLED ? (
-                <Button title="Get more" size="sm" full={false} onPress={() => setGetMore(true)} />
-              ) : null}
-            </Card>
-            </Arrival>
-          ) : (
-            <Skeleton width="100%" height={76} style={{ borderRadius: radius.card }} />
-          )}
-
           {loading ? (
             <>
-              <Skeleton width="100%" height={120} style={{ borderRadius: radius.card }} />
-              <Skeleton width="100%" height={120} style={{ borderRadius: radius.card }} />
+              <Skeleton width="100%" height={44} style={{ borderRadius: radius.pill }} />
+              <Skeleton width="100%" height={200} style={{ borderRadius: radius.card }} />
             </>
           ) : items.length === 0 ? (
             <Text style={[type.body, { color: colors.textMuted, textAlign: 'center', marginTop: space.lg }]}>
               The station is restocking. Check back when the clock runs out.
             </Text>
           ) : (
-            <View style={styles.stock}>
-              {sections.map((section) => {
-                const tint = RARITY_COLOR[section.rarity] || colors.border;
-                return (
-                  <View key={section.rarity} style={styles.stockSection}>
-                    <Row gap={10} style={styles.sectionHead}>
-                      {/* Each rarity gets its OWN framed plate, filled in the
-                          rarity colour and set in a big, bold label — a header
-                          you read as a tier, not a hairline dot beside a word.
-                          Text colour flips to ink on the pale legendary gold so
-                          it stays legible. */}
-                      <Framed
-                        frame={frameVariant('box', `rarity:${section.rarity}`)}
-                        tint={toon.ink}
-                        fill={tint}
-                        weight={INK.base}
-                        pose={framePose(`rarity:${section.rarity}`)}
-                        inset={false}
-                        contentStyle={styles.rarityBadge}
-                      >
-                        <Text style={[toonType.label, styles.rarityBadgeText, { color: nbTextOn(tint) }]}>
-                          {section.rarity.toUpperCase()}
-                        </Text>
-                      </Framed>
-                      <View style={[styles.sectionRule, { backgroundColor: withAlpha(tint, 0.35) }]} />
-                      <Text style={[type.caption, { color: colors.textDim }]}>{section.items.length}</Text>
-                    </Row>
-                    <View style={styles.grid}>
-                      {section.items.map((item) => (
-                        <ShopProductCard
-                          key={item.item_id}
-                          item={item}
-                          cat={item.cat}
-                          selected={selectedId === item.item_id}
-                          disabled={purchase.status === 'pending'}
-                          onSelect={select}
-                        />
-                      ))}
-                    </View>
+            <>
+              {/* Browse by WHAT YOU WANT, not by how rare it is. Rarity is
+                  still the colour of every tile's frame and is spelled out on
+                  the item you pick; it just stopped being the thing you
+                  navigate by. See ShopSlotTabs. */}
+              <ShopSlotTabs tabs={tabs} value={slot} onChange={pickSlot} accent={brand.pink} />
+
+              {/* ONE SHELF, not four rarity bands. The stock is a case of
+                  goods now: a single framed box with the grid inside it, so it
+                  reads as a thing you are shopping FROM rather than as a list
+                  the page happens to end with. */}
+              <Framed
+                frame={frameVariant('box', 'shop-shelf')}
+                tint={colors.border}
+                fill={colors.card}
+                weight={INK.thin}
+                pose={framePose('shop-shelf')}
+                inset={space.sm}
+                contentStyle={styles.shelf}
+              >
+                {shown.length === 0 ? (
+                  <Text style={[type.caption, { color: colors.textMuted, textAlign: 'center', padding: space.md }]}>
+                    Nothing in this shelf today.
+                  </Text>
+                ) : (
+                  <View style={styles.grid}>
+                    {shown.map((item) => (
+                      <ShopProductCard
+                        key={item.item_id}
+                        item={item}
+                        cat={item.cat}
+                        selected={selectedId === item.item_id}
+                        disabled={purchase.status === 'pending'}
+                        onSelect={select}
+                      />
+                    ))}
                   </View>
-                );
-              })}
-            </View>
+                )}
+              </Framed>
+            </>
           )}
 
           {/* The restock clock, LAST. It is a fact about the shop, not an
@@ -595,21 +647,13 @@ export default function ShopScreen() {
 }
 
 const styles = StyleSheet.create({
-  wallet: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   timer: { alignSelf: 'center', marginTop: space.sm },
+  // The case the stock sits in. Its own padding, because the frame's ink
+  // clearance is the shelf's inside edge.
+  shelf: { padding: space.sm },
   grid: {
     flexDirection: 'row', flexWrap: 'wrap', gap: '2.75%',
   },
-  stock: { gap: space.md },
-  stockSection: { gap: 6 },
-  sectionHead: { alignItems: 'center' },
-  // The framed rarity plate: enough padding that the frame reads as a plate
-  // rather than shrink-wrap on the word.
-  rarityBadge: { paddingHorizontal: space.md, paddingVertical: 5, alignItems: 'center', justifyContent: 'center' },
-  // Bigger and bolder than the old caption. toonType.label brings the weight;
-  // this bumps the size and opens the tracking so it reads as a tier heading.
-  rarityBadgeText: { fontSize: 15, letterSpacing: 1.4 },
-  sectionRule: { height: 1, flex: 1 },
   cellWrap: { width: '31.5%' },
   cellTouch: { width: '100%' },
   cell: {
@@ -617,14 +661,31 @@ const styles = StyleSheet.create({
   },
   cellContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, padding: 7 },
   // No border of its own: the Card brings the neo-brutalist stroke. The rarity
-  // read lives on the glow behind the thumb and the spelled-out rarity line.
-  panel: {
-    flexDirection: 'row', alignItems: 'center', gap: space.md,
+  // read lives on the mirror behind the runner and the spelled-out rarity line.
+  panel: { gap: space.md },
+  panelTop: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  // The fitting mirror. A fixed box, so the info column starts in the same
+  // place whatever the item is and the burst has a centre to fire from.
+  mirror: {
+    width: PREVIEW_SIZE * 0.86,
+    height: PREVIEW_SIZE,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    borderRadius: radius.card,
+    borderWidth: 2,
+    overflow: 'hidden',
   },
-  // The art sits in a fixed square so the name column starts in the same place
-  // whatever the item is, and so the burst has a centre to fire from.
-  panelArt: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
-  panelGlow: { ...StyleSheet.absoluteFillObject, borderRadius: radius.card, borderWidth: 1.5 },
+  panelInfo: { flex: 1, gap: 4 },
+  chip: {
+    width: 52,
+    height: 52,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.strokeThin,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panelActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  close: { paddingVertical: 6, paddingHorizontal: space.sm },
   // Overflows its 72pt square on purpose — a burst confined to the art box is
   // a rectangle of confetti, not an explosion.
   panelFx: { position: 'absolute', left: -34, top: -34 },

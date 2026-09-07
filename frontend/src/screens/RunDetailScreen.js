@@ -12,7 +12,7 @@ import { useQuery } from '../hooks/useQuery';
 import { NEUTRAL } from '../state/clan';
 import { NB, nbField, nbInk, nbRadius, radius, space, toonSurface, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, Input, StatValue, Skeleton, HardShadow } from '../components/ui';
-import { Arrival, PressableScale, haptic, useArrival } from '../ui/motion';
+import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
 import GameLottie from '../components/GameLottie';
@@ -334,7 +334,14 @@ export default function RunDetailScreen({ navigation, route }) {
           backend/app/routes/insights.py). Rendering it on a stranger's run
           would show a permanently empty panel, and on a PRO account it would
           look like the analytics had broken. */}
-      {d.is_you ? <TerritoryInsights runId={d.id} style={{ marginTop: space.xl }} /> : null}
+      {d.is_you ? (
+        // Fetches on its own clock and renders nothing until it lands, so
+        // without an entrance it drops into the middle of a page you are
+        // already reading and pushes the comments down.
+        <Reveal from="none" duration={260}>
+          <TerritoryInsights runId={d.id} style={{ marginTop: space.xl }} />
+        </Reveal>
+      ) : null}
 
       {/* comments */}
       <Card

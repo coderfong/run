@@ -93,6 +93,10 @@ export default function RivalDetailScreen({ route, navigation }) {
   return (
     <Screen gutter={false}>
       <ScrollView contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl }}>
+        {/* The headline of the whole page, and the one thing that was still
+            swapping in cold after the skeleton — everything under it already
+            arrives on its own Reveal. */}
+        <Reveal from="none" duration={260}>
         <RivalCard
           rival={rival}
           myAvatar={equipped}
@@ -107,6 +111,7 @@ export default function RivalDetailScreen({ route, navigation }) {
               : undefined
           }
         />
+        </Reveal>
 
         {analytics ? (
           <Reveal delay={80}>
