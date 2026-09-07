@@ -17,8 +17,8 @@ from .config import settings
 from .database import SessionLocal
 from .ratelimit import limiter
 from .routes import (
-    auth, clans, dev, feed, insights, leaderboard, paserby, pasers, pro, profile, progression,
-    rivals, runs, shop, social, territories, users,
+    auth, clans, dev, feed, insights, leaderboard, missions, paserby, pasers, pro, profile,
+    progression, rivals, runs, shop, social, territories, users,
 )
 
 # ---------------------------------------------------------------------------
@@ -152,6 +152,7 @@ app.include_router(feed.router, tags=["feed"])
 app.include_router(profile.router)
 app.include_router(social.router)
 app.include_router(progression.router)
+app.include_router(missions.router)
 app.include_router(pasers.router)
 app.include_router(paserby.router)
 app.include_router(rivals.router)

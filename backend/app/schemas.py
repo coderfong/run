@@ -127,6 +127,13 @@ class TerritoryOut(BaseModel):
     rank_key: str = "wood"
     rank_tier: int = 0
     rank_label: str = "Wood"
+    # The OWNING CLUB's tier, which is a different ladder from the owner's own
+    # (clubs carry their own zero-sum rating). Null for clubless land. The club
+    # board is scoped on this, so a plot can sit in Gold on the solo board and
+    # in Silver on the club one without either being wrong.
+    clan_rank_key: Optional[str] = None
+    clan_rank_tier: Optional[int] = None
+    clan_rank_label: Optional[str] = None
 
 
 class RunResultOut(BaseModel):
@@ -525,6 +532,19 @@ class ClaimOut(BaseModel):
     solo_elo_delta: int = 0
     club_elo: Optional[int] = None
     club_elo_delta: int = 0
+    # PROMOTION, decided here rather than on the device.
+    #
+    # The client could compare the tier before and after itself, but only by
+    # keeping its own copy of the tier thresholds — and the moment those two
+    # copies disagree the app either celebrates a promotion that did not happen
+    # or, worse, stays silent through one that did. The server owns the ladder,
+    # so it owns the answer.
+    #
+    # Both keys are always populated (they are equal on the ordinary claim that
+    # changes nothing); `rank_up` is the flag the ceremony is gated on.
+    rank_up: bool = False
+    rank_key_before: str = "wood"
+    rank_key_after: str = "wood"
 
 
 class LeaderboardEntry(BaseModel):
@@ -1348,3 +1368,10 @@ class MyClan(BaseModel):
     tag: Optional[str] = None
     role: Optional[str] = None
     color: Optional[ClanColor] = None
+    # The club's own standing, so the map can open the club board on the tier
+    # this runner's club actually sits in rather than on every club at once.
+    # Null when they are in no club, which is what puts that board on Wood.
+    rank_key: Optional[str] = None
+    rank_tier: Optional[int] = None
+    rank_label: Optional[str] = None
+    rank_points: Optional[int] = None

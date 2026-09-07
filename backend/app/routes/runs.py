@@ -1583,6 +1583,11 @@ def claim_territory(
     elo_result = elo.record_claim_matches(
         db, user.id, run.id, steal_events, attacker_clan_id=user.clan_id
     )
+    # Did that claim cross a tier boundary? Worked out from the rating either
+    # side of the encounter rather than by re-reading the row, so it cannot
+    # disagree with the numbers reported below.
+    rank_after = elo.tier_for_rating(elo_result["solo_rating"])
+    rank_before = elo.tier_for_rating(elo_result["solo_rating"] - elo_result["solo_delta"])
 
     goal_reached, clan_id = (False, None)
     xp_gain = 0
@@ -1652,6 +1657,9 @@ def claim_territory(
         solo_elo_delta=elo_result["solo_delta"],
         club_elo=elo_result["club_rating"],
         club_elo_delta=elo_result["club_delta"],
+        rank_up=rank_after["tier"] > rank_before["tier"],
+        rank_key_before=rank_before["key"],
+        rank_key_after=rank_after["key"],
     )
     run.claim_result = out.model_dump(mode="json")
 

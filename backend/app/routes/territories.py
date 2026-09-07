@@ -43,6 +43,55 @@ def _simplify_for_zoom(zoom: Optional[float]):
     return settings.map_tol_high, settings.map_cap_low_zoom
 
 
+# TWO BOARDS, TWO LADDERS.
+#
+# The solo board scopes by the OWNER's rating: you see the runners you are
+# actually racing. The club board has to scope by the owning CLUB's rating
+# instead, because a club is what you are looking at — scoping it by each
+# plot's individual owner would show one club's Bronze member and hide their
+# Diamond one, which is not a board of anything.
+#
+# Until this existed the clubs view sent NO rank at all, so every club on the
+# planet landed on one map at once and the view was unreadable at any zoom.
+CLUB_BOARD = "club"
+
+
+def board_scope(board: str, rank: Optional[int]):
+    """The join, the tier filter and its parameters for one board.
+
+    Pulled out of the handler so both halves are testable without a database:
+    the difference between the two boards is entirely in these three values,
+    and getting either the join or the rating column wrong produces a board
+    that looks plausible and is quietly filtering on the wrong ladder.
+
+    The tier filter MUST be SQL rather than a Python post-pass: this endpoint
+    has a LIMIT, and filtering after the fact would return far fewer rows than
+    asked for whenever a tier is sparse.
+    """
+    club_board = board == CLUB_BOARD
+    rating_sql = elo.CLUB_RATING_SQL if club_board else elo.RATING_SQL
+
+    # An INNER join on the club board: land with no club cannot belong to a
+    # club tier, and it used to be fetched only for the client to throw away
+    # (see boardPresentation). Now the LIMIT is spent entirely on rows that
+    # will actually be drawn.
+    clan_join = (
+        "JOIN clans c ON c.id = t.clan_id" if club_board
+        else "LEFT JOIN clans c ON c.id = t.clan_id"
+    )
+
+    params: dict = {}
+    clause = ""
+    if rank is not None:
+        floor, ceil = elo.tier_bounds(rank)
+        clause = f"AND ({rating_sql}) >= :rank_floor"
+        params["rank_floor"] = floor
+        if ceil is not None:
+            clause += f" AND ({rating_sql}) < :rank_ceil"
+            params["rank_ceil"] = ceil
+    return clan_join, clause, params
+
+
 @router.get("/map-polygons", response_model=schemas.MapPolygonsOut)
 def map_polygons(
     db: Session = Depends(get_db),
@@ -54,6 +103,11 @@ def map_polygons(
     rank: Optional[int] = Query(
         None,
         description="scope the board to one rank tier (0=Wood … 9=Mythic); omit for all ranks",
+    ),
+    board: str = Query(
+        "solo",
+        description="'solo' scopes by the OWNER's tier; 'club' by the owning CLUB's tier "
+                    "and returns club held land only",
     ),
     limit: int = Query(2000, ge=1, le=10000),
     viewer: Optional[models.User] = Depends(current_user_optional),
@@ -70,18 +124,7 @@ def map_polygons(
         else ""
     )
 
-    # Scope to one Elo tier when asked. The filter must live in SQL,
-    # not a Python post-pass: this endpoint has a LIMIT, and filtering after the
-    # fact would return far fewer rows than asked whenever the tier is sparse.
-    rank_params = {}
-    rank_clause = ""
-    if rank is not None:
-        floor, ceil = elo.tier_bounds(rank)
-        rank_clause = f"AND ({elo.RATING_SQL}) >= :rank_floor"
-        rank_params["rank_floor"] = floor
-        if ceil is not None:
-            rank_clause += f" AND ({elo.RATING_SQL}) < :rank_ceil"
-            rank_params["rank_ceil"] = ceil
+    clan_join, rank_clause, rank_params = board_scope(board, rank)
 
     rows = db.execute(
         text(
@@ -107,10 +150,14 @@ def map_polygons(
                    )) AS freshness,
                    t.reinforcements,
                    ({elo.RATING_SQL}) AS rank_pts,
+                   -- NULL for clubless land, which is only reachable on the
+                   -- solo board (the club board inner joins).
+                   CASE WHEN t.clan_id IS NULL THEN NULL
+                        ELSE ({elo.CLUB_RATING_SQL}) END AS clan_rank_pts,
                    ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
             FROM territories t
             JOIN users u ON u.id = t.user_id
-            LEFT JOIN clans c ON c.id = t.clan_id
+            {clan_join}
             WHERE (t.verified OR t.user_id = :viewer_id)
               AND now() < COALESCE(t.expires_at, t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400))
               {bbox_clause}
@@ -134,12 +181,14 @@ def map_polygons(
     ).fetchall()
 
     out = []
-    for tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, defenders, strength, avatar, freshness, reinforcements, rank_pts, wkt in rows:
+    for (tid, uid, username, area_m2, created_at, contested, clan_tag, color_key, defenders,
+         strength, avatar, freshness, reinforcements, rank_pts, clan_rank_pts, wkt) in rows:
         geom = shapely_wkt.loads(wkt)
         rings = geometry_to_rings(geom)  # largest-first
         if not rings:
             continue
         rinfo = elo.tier_for_rating(int(rank_pts or elo.INITIAL_RATING))
+        cinfo = (elo.tier_for_rating(int(clan_rank_pts)) if clan_rank_pts is not None else None)
         out.append(
             schemas.TerritoryOut(
                 id=tid,
@@ -160,6 +209,9 @@ def map_polygons(
                 rank_key=rinfo["key"],
                 rank_tier=rinfo["tier"],
                 rank_label=rinfo["label"],
+                clan_rank_key=cinfo["key"] if cinfo else None,
+                clan_rank_tier=cinfo["tier"] if cinfo else None,
+                clan_rank_label=cinfo["label"] if cinfo else None,
             )
         )
 

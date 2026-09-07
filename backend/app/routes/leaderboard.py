@@ -176,6 +176,58 @@ def rank_leaderboard(
     return out
 
 
+@router.get("/leaderboard/rank-ladder")
+def rank_ladder(db: Session = Depends(get_db)):
+    """How many rated players sit in each tier of the ladder.
+
+    This exists so the ladder screen's "TOP 12% OF RUNNERS" line under each
+    tier plaque is a MEASUREMENT rather than a decoration. A modelled curve
+    baked into the client would have looked identical and been a claim about
+    real people that nothing checked, and it would have drifted the first time
+    the tier thresholds moved.
+
+    Bots are excluded. The seeded world exists to make the map look inhabited,
+    and letting it dilute a percentile would mean the number says something
+    about the population rather than about the players in it.
+
+    Returned bottom tier first, each row carrying the share of players at or
+    ABOVE it, which is the direction the plaque reads: reaching a tier is
+    being in the top something.
+    """
+    rows = db.execute(
+        text(
+            f"""
+            SELECT {elo.RATING_SQL} AS rating, COUNT(*)
+            FROM users u
+            WHERE NOT COALESCE(u.is_bot, false)
+              AND (COALESCE(u.solo_elo_matches,0) > 0 OR COALESCE(u.rank_points,0) > 0)
+            GROUP BY 1
+            """
+        )
+    ).fetchall()
+
+    counts = [0] * len(elo.ELO_TIERS)
+    for rating, n in rows:
+        counts[elo.tier_for_rating(int(rating or elo.INITIAL_RATING))["tier"]] += int(n or 0)
+
+    total = sum(counts)
+    out = []
+    for idx, (floor, key, label) in enumerate(elo.ELO_TIERS):
+        at_or_above = sum(counts[idx:])
+        out.append({
+            "tier": idx,
+            "key": key,
+            "label": label,
+            "floor": floor,
+            "players": counts[idx],
+            # Rounded to whole percent: the plaque has room for two digits, and
+            # a percentile that moves by a tenth every time somebody finishes a
+            # run reads as noise rather than as standing.
+            "top_percent": round(100.0 * at_or_above / total) if total else None,
+        })
+    return {"total": total, "tiers": out}
+
+
 @router.get("/leaderboard/season", response_model=List[schemas.SeasonLeaderboardEntry])
 def season_leaderboard(
     scope: SeasonScope = Query("clans"),

@@ -29,6 +29,7 @@ from .. import energy as energy_mod
 from .. import entitlements
 from .. import iap
 from .. import elo
+from .. import lootbox
 from ..progression import (
     MAX_LEVEL,
     level_from_xp,
@@ -299,8 +300,23 @@ def purchase_pass(request: Request, response: Response, body: dict,
 @limiter.limit(settings.rate_limit_default)
 def open_lootbox(request: Request, response: Response,
                  user: models.User = Depends(current_user), db: Session = Depends(get_db)):
-    """Open the oldest unopened box. Returns its rarity; the client rolls a
-    still-locked cosmetic of that rarity and POSTs it to /me/unlocks."""
+    """Open the oldest unopened box, and decide its whole gamble here.
+
+    The response carries the rarity the box was granted at, one pre rolled
+    outcome per tap, and the rarity it therefore opens as. The client spends
+    the taps to REVEAL those outcomes; it never asks for one.
+
+    That is the security property, not a convenience: a per tap endpoint is a
+    re-roll the moment a response is dropped or a request is replayed, and
+    there is no way for the server to tell a retry from a second attempt. Here
+    the sequence and the `opened` flag are written in the same transaction, so
+    a box has exactly one sequence for its whole life and calling this again
+    finds nothing left to open.
+
+    `rarity` stays the box's GRANTED rarity so older clients, which read only
+    that field and know nothing about the gamble, keep working unchanged and
+    simply roll at the floor. New clients read `final_rarity`.
+    """
     box = db.execute(
         text("SELECT id::text, item_id FROM user_unlocks "
              "WHERE user_id = :u AND kind = 'lootbox' AND NOT opened ORDER BY created_at LIMIT 1"),
@@ -309,8 +325,9 @@ def open_lootbox(request: Request, response: Response,
     if not box:
         raise HTTPException(404, "no lootboxes to open")
     db.execute(text("UPDATE user_unlocks SET opened = true WHERE id = :id"), {"id": box[0]})
+    rolled = lootbox.roll_sequence(box[1])
     db.commit()
-    return {"lootbox_id": box[0], "rarity": box[1]}
+    return {"lootbox_id": box[0], **rolled}
 
 
 @router.post("/me/unlocks")

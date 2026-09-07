@@ -112,6 +112,24 @@ def rating_sql(alias: str = "u") -> str:
 
 
 RATING_SQL = rating_sql()
+
+
+def club_rating_sql(alias: str = "c") -> str:
+    """The same expression for a CLUB's rating, over a `clans` alias.
+
+    Clubs carry their own zero-sum rating on `clans.elo_rating`, moved by the
+    club half of `record_claim_matches`. It needs its own accessor because the
+    club board scopes by the CLUB's tier, not by the tier of whichever member
+    happens to own a given plot — see `/map-polygons`'s `board` parameter.
+    Without it the clubs view was the only board in the app with no rank scope
+    at all, so every club in the world landed on one map.
+    """
+    if not alias.replace("_", "").isalnum():
+        raise ValueError("Elo SQL alias must be an identifier")
+    return f"COALESCE({alias}.elo_rating, {INITIAL_RATING})"
+
+
+CLUB_RATING_SQL = club_rating_sql()
 # Two columns keep existing avatar-list SELECT layouts stable while call sites
 # migrate from the old points + timestamp pair to Elo.
 SELECT_COLS = f"{RATING_SQL}, NULL::timestamp"

@@ -900,8 +900,19 @@ def my_clan(user: models.User = Depends(current_user), db: Session = Depends(get
     m = _membership(db, user.id)
     if not m:
         return schemas.MyClan()
-    c = db.execute(text("SELECT tag, color_key FROM clans WHERE id = :cid"), {"cid": m[0]}).fetchone()
-    return schemas.MyClan(clan_id=m[0], tag=c[0], role=m[1], color=_color(c[1]))
+    c = db.execute(
+        text(f"SELECT tag, color_key, ({elo.CLUB_RATING_SQL}) FROM clans c WHERE c.id = :cid"),
+        {"cid": m[0]},
+    ).fetchone()
+    # The club's tier travels with the membership because the map's club board
+    # opens on it, and that board is drawn long before anything else has asked
+    # the server about this club.
+    tier = elo.tier_for_rating(int(c[2] or elo.INITIAL_RATING))
+    return schemas.MyClan(
+        clan_id=m[0], tag=c[0], role=m[1], color=_color(c[1]),
+        rank_key=tier["key"], rank_tier=tier["tier"],
+        rank_label=tier["label"], rank_points=tier["rating"],
+    )
 
 
 @router.post("/admin/recompute-season", dependencies=[Depends(require_admin)])
