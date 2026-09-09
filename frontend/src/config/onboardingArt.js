@@ -89,16 +89,40 @@ const ART = {
   badge3rd: require('../../assets/art/ui/badge-3rd.png'),
 
   // --- Home side rail tiles (components/SideRail.js) ----------------------
-  // The rail is pass · shop · rivals. `railRivals` has no art yet, so that
-  // tile falls back to its sticker icon; boxes and season art are kept wired
-  // but unused since their tiles came off the rail.
+  // The rail is missions · pass · shop · rivals · crossroads, and all five now
+  // have art. Boxes and season are kept wired but unused since their tiles
+  // came off the rail.
+  //
+  // These are CUT-OUTS, made by `scripts/cut-rail-art.py` from the finished
+  // tiles in assets/art/rail/. The masters are drawn as whole tiles — black
+  // frame, flat colour panel, sticker on top — and the rail draws the frame
+  // and the panel itself, so only the sticker is wired here. Regenerate them
+  // from the masters rather than editing any of them by hand; the script also
+  // prints each master's ground colour, which is the tile `tint` the sticker
+  // was drawn to sit on.
+  railMissions: require('../../assets/art/ui/rail-missions.png'),
   railPass: require('../../assets/art/ui/rail-pass.png'),
   railBoxes: require('../../assets/art/ui/rail-boxes.png'),
   railShop: require('../../assets/art/ui/rail-shop.png'),
+  railRivals: require('../../assets/art/ui/rail-rivals.png'),
+  railCrossroads: require('../../assets/art/ui/rail-crossroads.png'),
   railSeason: require('../../assets/art/ui/rail-season.png'),
 
   // --- pass screen chrome (screens/ProgressionScreen.js) ------------------
-  passBanner: require('../../assets/art/ui/pass-banner.png'),
+  // The purple crew banner. UNWIRED: the pass page opens on a flat `panel`
+  // header now (the same format Missions and Rivals wear), so nothing renders
+  // it, and a `require` that nothing draws is a slot off the OTA asset budget.
+  // The file is still in assets/art/ui — uncomment to bring it back.
+  // passBanner: require('../../assets/art/ui/pass-banner.png'),
+  //
+  // The ground the ladder climbs: a painted race plaza — sky, skyline and
+  // start-line hoardings up top, then flat paving all the way down. Drawn
+  // behind the WHOLE page (components/pass/PassBackdrop.js), pinned by its
+  // horizon rather than covered to the window, so the flags land in the same
+  // place on every phone. Its bottom edge is exported below as
+  // PASS_BACKDROP_GROUND — a 50-level ladder is far taller than any one
+  // painting, so the paving has to keep going in a flat colour under it.
+  passBackdrop: require('../../assets/art/pass/backdrop.png'),
   stampClaimed: require('../../assets/art/ui/stamp-claimed.png'),
   paperGrain: require('../../assets/art/ui/paper-grain.png'),
   diamondLocked: require('../../assets/art/pass/diamond-locked.png'),
@@ -123,24 +147,34 @@ const ART = {
   lanePro: require('../../assets/art/pass/lane-pro.png'),
 
   // --- Pit Stop shop scene (components/shop/PitStopScene.js) --------------
-  // OPTIONAL. The station draws itself as vector art (PitStopArt.js), so the
-  // shop is complete without any of these. They exist for the day someone
-  // wants a painted backdrop instead: drop the file in, uncomment the line,
-  // and the scene prefers it — the layer frames in config/pitStop.js keep
-  // owning position, so no animation code changes. Spec: docs/SHOP_ASSETS.md.
-  // pitStopBg: require('../../assets/art/shop/pitstop-bg.png'),
-  // pitStopTent: require('../../assets/art/shop/pitstop-tent.png'),
-  // pitStopBackWall: require('../../assets/art/shop/pitstop-back-wall.png'),
-  // pitStopCounterBase: require('../../assets/art/shop/pitstop-counter-base.png'),
-  // pitStopCounterForeground: require('../../assets/art/shop/pitstop-counter-foreground.png'),
+  // NOT optional, unlike most of this file. The station used to draw its own
+  // environment as vector art and these were an empty seam for painted layers
+  // to land in; the painting landed, and the vector environment is retired, so
+  // the shop scene has no backdrop without them.
   //
-  // Not a backdrop override: a seamlessly tiling strip of cloud, scrolled by
-  // the scene at three speeds for parallax. Generated from the supplied clip
-  // by scripts/convert-scene-animations.py, which crops it to its alpha
-  // bounding box — the strip is positioned by its CLOUDS, and empty sky baked
-  // into the frame would push them out of the sliver the canopy leaves.
+  // TWO PLATES AND THE CREW BETWEEN THEM: `backdrop` is everything behind the
+  // volunteers, `counter` is the counter that cuts them off at the hip. Both
+  // are cut from ONE master (art/src/pitstop-water-point.png) by
+  // scripts/install-pit-stop-art.py, which is also what sizes them — do not
+  // add them to scripts/downscale-art.py. Spec: docs/SHOP_ASSETS.md.
+  pitStopBackdrop: require('../../assets/art/shop/pitstop-backdrop.png'),
+  pitStopCounter: require('../../assets/art/shop/pitstop-counter.png'),
+  //
+  // A seamlessly tiling strip of cloud, generated from a supplied clip by
+  // scripts/convert-scene-animations.py. THE SHOP NO LONGER READS IT — it
+  // drifted three copies across its sky at three speeds, and that sky is
+  // painted now — but the name has outlived the screen: PlazaScene drifts the
+  // same band across the Crossroads plaza, and screenAssets preloads it for
+  // that tab. It stays wired for the plaza, not for the shop.
   pitStopCloudBand: require('../../assets/art/shop/pitstop-cloud-band.png'),
 };
+
+// The paving colour at `passBackdrop`'s bottom edge, sampled off the master.
+// The painting is one screen tall and the ladder under it is fifty levels, so
+// the page is painted in this and the art simply runs out into it — the seam is
+// invisible only while this matches the pixels it continues. Re-sample it if
+// the plaza is ever repainted.
+export const PASS_BACKDROP_GROUND = '#F3E6CA';
 
 // Background colour baked into each story panel — the card fills its letterbox
 // with this so `contain` art reads as edge-to-edge. Keep in sync with the art.

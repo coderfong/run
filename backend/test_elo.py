@@ -44,6 +44,16 @@ def test_progression_ladder():
     assert elo.tier_for_rating(elo.rating_for_tier(3))["tier"] == 3
 
 
+def test_area_rewards_and_caps():
+    for fn, cap in ((elo.steal_gain, 24), (elo.defend_gain, 16), (elo.loss_penalty, 32)):
+        assert 0 < fn(16, 1000) < fn(16, 50000) <= fn(16, 500000) <= cap
+        assert fn(32, 500000) == cap
+    assert elo.loss_penalty(16, 50000) > elo.steal_gain(16, 50000) > elo.defend_gain(16, 50000)
+    assert elo.open_claim_reward(0) == elo.decay_penalty(0) == 0
+    assert elo.open_claim_reward(1000) < elo.open_claim_reward(200000) <= 4
+    assert elo.decay_penalty(1000) < elo.decay_penalty(500000) == 8
+
+
 if __name__ == "__main__":
     tests = [value for name, value in globals().items() if name.startswith("test_")]
     for test in tests:

@@ -1,10 +1,19 @@
 // Pit Stop — the race-day hydration station the shop is staged in.
 //
 // ONE COORDINATE SYSTEM. Every layer in the scene is authored against the
-// reference box below (1536 x 1146, the brief's 1.34 illustration ratio) and
-// scaled uniformly to whatever width the device gives us. Nothing in the
-// scene may carry a device pixel value: a hardcoded `left: 42` reads fine on
-// a 390pt phone and lands in the wrong place on a 320.
+// reference box below and scaled uniformly to whatever width the device gives
+// us. Nothing in the scene may carry a device pixel value: a hardcoded
+// `left: 42` reads fine on a 390pt phone and lands in the wrong place on a
+// 320.
+//
+// THE BOX IS THE PAINTING NOW. The stall used to be drawn as vector layers
+// against an invented 1536x1146; it is a painted illustration since, and every
+// number below is MEASURED OFF THAT PICTURE — the awning's lower outline, the
+// two shelves, the counter's top edge. Change the art and these all move
+// together, which is why `scripts/install-pit-stop-art.py` carries the same
+// crop numbers in source pixels and why the QA compositor
+// (`scripts/gen-pit-stop-preview.py`) draws against the real plates rather
+// than an approximation of them.
 //
 // THE CREW IS NOT NEW ART. The three volunteers are ordinary PASER avatars —
 // real loadouts from the cosmetics catalogue rendered through CharacterRig,
@@ -13,12 +22,10 @@
 // construction: only the face layer changes, so a blink cannot make the head
 // jump (the alignment problem the asset brief spends a section on).
 //
-// The environment (tent, counter, cooler, bunting, props) is drawn as vector
-// art in components/shop/PitStopArt.js rather than shipped as PNG layers.
-// Flat fills inside a heavy black outline is exactly what SVG is good at, it
-// stays crisp at every width, and it means the screen has no missing-art
-// state to degrade into. `PIT_STOP_ART_OVERRIDES` below is the seam for
-// swapping any layer for painted art later without touching animation code.
+// The environment is TWO PAINTED PLATES (see PIT_STOP_PLATES), cut from one
+// illustration by `scripts/install-pit-stop-art.py`. It used to be vector art;
+// that drawing code is still exported from components/shop/PitStopArt.js and
+// still used for the small props, but its five full-scene layers are retired.
 
 import { art } from './onboardingArt';
 
@@ -28,25 +35,22 @@ import { art } from './onboardingArt';
 
 export const SCENE = {
   width: 1536,
-  height: 1146,
-  // Everything standing behind the counter is cut off at this line.
-  counterTop: 830,
-  counterFront: 900,
-  // How much of that height the hero actually SHOWS. The scene is still
-  // authored, drawn and positioned against the full 1146 — this crops the
-  // bottom off, it does not rescale anything, so every frame in the layout
-  // below keeps meaning what it says. The cut lands on the counter skirt's
-  // lower rule (y 1010) plus its stroke, so the purple stripe becomes the
-  // hero's bottom trim instead of a band floating above dead cloth.
-  //
-  // Anything that fills the whole scene must therefore be sized to
-  // SCENE.height explicitly and NOT to the container — see `sceneBox` in
-  // PitStopScene. A full-scene SVG left on `absoluteFill` would shrink its
-  // viewBox to the shorter box and drift out of register with the crew.
-  visibleHeight: 1014,
+  // The painting is close to square once the empty sand below the stall is
+  // dropped — a taller hero than the vector stall it replaces. That is
+  // affordable because the scene is the FIRST thing in a ScrollView, and
+  // picking an item scrolls past it (ShopScreen scrolls to `sceneH`).
+  height: 1490,
+  // The counter's top edge: where the crew is cut off. This is the back edge
+  // of the counter's top surface, not its front — a counter occludes a person
+  // from where the surface starts receding, not from the lip.
+  counterTop: 1188,
+  // Where the top surface ends and the front face begins. Nothing is
+  // positioned against this any more (the plate draws both), but it is what
+  // the stock on the counter is measured down from.
+  counterFront: 1267,
 };
 
-export const SCENE_ASPECT = SCENE.width / SCENE.visibleHeight; // ~1.51
+export const SCENE_ASPECT = SCENE.width / SCENE.height; // ~1.03
 
 /** Reference units -> fraction of the scene box, for percentage layout. */
 export const px = (x) => `${(x / SCENE.width) * 100}%`;
@@ -68,101 +72,104 @@ export const frame = ({ x, y, width, height, anchor }) => {
 // Layout — where every layer sits in reference units
 // ---------------------------------------------------------------------------
 //
+// THE PAINTING'S LANDMARKS, so every frame below can be read against them:
+//
+//   awning        375 .. 563 striped, valance hanging to 671
+//   back wall     673 .. 1188, x 184 .. 1352
+//   shelves       top surface at y 911; left x 199..532, right x 1010..1330
+//   counter       top edge 1188, front lip 1267, lower outline 1479,
+//                 x 87 .. 1445
+//
 // Character frames are sized from CharacterRig's own geometry: the rig draws
 // a body `w` wide and `w * 2.58` tall, plus 14% headroom above it for tall
-// hair. The `y` values below are chosen so the counter line lands just above
-// each volunteer's hips — that overlap is what makes them read as standing
-// BEHIND the counter rather than pasted on top of it.
+// hair. Two consequences are worth writing down because every crew number
+// here follows from them:
+//
+//   hips  = y + 1.79 * w      what the counter has to cut just below
+//   crown = y + 0.18 * w      the top of the headwear, which must clear 673
+//                             or a visor grows into the canopy
+//
+// Those two together are what fixes the crew's SIZE, not taste: the wall is
+// only 515 units tall, so a volunteer whose hips reach the counter and whose
+// hat clears the awning cannot be much wider than 270. They are smaller
+// against this scene than they were against the vector one, and that is the
+// picture being honest about how much room a market stall leaves a person.
 
 export const PIT_STOP_LAYOUT = {
-  keeper: { x: 768, y: 183, width: 330 },      // centre attendant, x = centre
-  restocker: { x: 330, y: 320, width: 260 },   // left
-  helper: { x: 1210, y: 310, width: 265 },     // right
+  keeper: { x: 768, y: 668, width: 265 },      // centre attendant, x = centre
+  restocker: { x: 418, y: 766, width: 215 },   // left
+  helper: { x: 1112, y: 758, width: 220 },     // right
 
-  // Three bodies across a 1536 frame leave exactly two clear lanes of counter
-  // — x 460-603 and x 933-1077 — and every hero prop has to live in one of
-  // them. Anything placed dead centre lands on the attendant's chest and
-  // reads as pinned to them rather than standing on the counter.
+  // Three bodies across the wall leave exactly two clear lanes — x 525..636
+  // and x 900..1002 — and every hanging prop lives in one of them. The lanes
+  // are also the only places on the wall with no shelf beneath, which is why
+  // nothing hanging can collide with anything standing.
   //
-  // Right lane: the cup, just off the attendant's shoulder, where a cup held
-  // out across the counter would actually be.
-  cup: frame({ x: 1005, y: 828, width: 96, height: 132, anchor: 'bottom-center' }),
-  // The LEFT lane used to hold `featured` — the selected product, risen off
-  // the counter. It moved out of the illustration entirely (see PitStopScene),
-  // because the one thing on this screen you have to read should not live in a
-  // decorative layer that takes no touches. The lane stays clear: it is what
-  // keeps the counter from reading as a solid wall of props.
+  // The cup sits just off the attendant's right shoulder, at the counter's
+  // back edge, which is where a cup held out across it would be. Its BOTTOM
+  // is two units above `counterTop`: the counter plate is drawn after this,
+  // so anything lower would be swallowed by it.
+  cup: frame({ x: 960, y: 1186, width: 82, height: 112, anchor: 'bottom-center' }),
 
-  // Hanging props. `y` is the pivot (where the strap meets the frame rail) —
-  // these rotate about their top edge, not their centre.
+  // Hanging props. `y` is the pivot — the canopy's lower edge, where a strap
+  // would be tied — and these rotate about their top edge, not their centre.
   //
-  // The two bottles hang at the tent poles, outside the back wall entirely.
-  // Anywhere else they swing across either a face or the shelf stock: with
-  // three heads and two shelves in the frame there are only two clear lanes
-  // left on the wall (x 476-603 and x 933-1064), and those are spoken for by
-  // the route board and the bib.
-  hangBottleLeft: { x: 56, y: 292, width: 74, height: 210 },
-  // The right cluster keeps a clean 16-unit gap: the medal ends at the tent
-  // pole, while the bottle sits just inside the scene edge. The old bottle
-  // frame ended 18 units off-canvas and visibly lost its right outline at
-  // 320pt.
-  hangMedal: { x: 1342, y: 286, width: 96, height: 232 },
-  hangBottleRight: { x: 1454, y: 292, width: 74, height: 196 },
+  // There used to be a second bottle at the far right. It is gone: the
+  // painting hangs its own pennant banners on both tent poles, so a drawn
+  // bottle swinging there was a second object in the same place doing the
+  // same job.
+  hangBottle: { x: 545, y: 671, width: 66, height: 178 },
+  hangMedal: { x: 918, y: 671, width: 84, height: 196 },
 
-  // Back wall furniture.
+  // The stall's name, on a board across the canopy. It stays inside the
+  // STRIPED band (375..563) rather than crossing the scalloped valance below
+  // it, which is the only part of the awning with a broken edge.
   //
-  // `sign` is the stall's one piece of signage, and it is the OPEN sign: it
-  // hangs from the peak of the tent where a painted banner used to, dead
-  // centre, and it is drawn last so nothing in the scene crosses it. Square,
-  // because the art is — the badge fills the width and the string it hangs
-  // from occupies the air above.
-  //
-  // It is deliberately wide enough to clip the top corner of the route board
-  // and to hang in front of the garland. A sign that cleared every other
-  // object would have to be small enough not to read.
-  sign: frame({ x: 768, y: 368, width: 340, height: 340, anchor: 'bottom-center' }),
+  // The back wall was the other candidate and it does not work: the crew's
+  // heads start at ~700, so a board wide enough to read would hang behind
+  // them.
+  sign: { x: 553, y: 435, width: 430, height: 118 },
 
-  routeBoard: { x: 486, y: 360, width: 128, height: 114 },
-  raceBib: { x: 946, y: 372, width: 128, height: 116 },
-  shelfLeft: { x: 116, y: 520, width: 360, height: 18 },
-  shelfRight: { x: 1064, y: 520, width: 360, height: 18 },
-  // A real PASER icon standing on the shelf, rather than a drawn lookalike —
-  // see PIT_STOP_ICON_PROPS. It goes at the LEFT end because the supports
-  // occlude the middle of both shelves; x 116-200 is the only strip of the
-  // left shelf an audience ever sees.
-  stopwatch: frame({ x: 166, y: 522, width: 100, height: 100, anchor: 'bottom-center' }),
+  // Real PASER icons standing on the painted shelves, one per side. Both go
+  // at the shelf ends the crew does NOT stand in front of — the restocker
+  // covers the left shelf from x 311, the helper the right one to x 1222 —
+  // which leaves one usable pocket on each.
+  //
+  // THE ICON FILES CARRY PADDING and `contain` keeps it, so a frame whose
+  // bottom is the shelf line leaves the drawing hovering above the shelf by
+  // however much empty canvas the file ends with. Each frame is therefore
+  // sunk by that padding — 10.4% of the timer's height, 14.6% of the
+  // trophy's — which is what lands the INK on the shelf.
+  stopwatch: frame({ x: 252, y: 920, width: 88, height: 88, anchor: 'bottom-center' }),
+  trophy: frame({ x: 1276, y: 924, width: 88, height: 88, anchor: 'bottom-center' }),
 
   // On the counter, IN FRONT of the crew — this is what sells the depth.
   //
-  // THE STOCK IS ALL REAL ART NOW. The drawn towels, cooler, gel tray and
-  // fruit bowl are gone; what stands on the counter is the supplied clips,
-  // sized to be read rather than to keep out of the way. Every master is
-  // SQUARE, so every frame here is square: GameAnimation sizes by width and
-  // lets the asset's own aspect set the height, and a frame that disagreed
-  // would just move the art off its mark.
+  // Every master is SQUARE, so every frame here is square: GameAnimation
+  // sizes by width and lets the asset's own aspect set the height, and a
+  // frame that disagreed would just move the art off its mark.
+  //
+  // They stand a few units BELOW the front lip (1267) rather than on the top
+  // surface, because the surface is only 79 units deep at this angle: a base
+  // sitting inside it reads as floating behind the counter rather than
+  // standing on it.
   //
   // Left to right: coconut, lootbox, [clear], watermelon, [the offered cup],
-  // soda. The gap at x 444-620 is the old featured-product lane and the one at
-  // x 957-1053 is where the attendant holds a cup out — a prop parked in
-  // either would be drawn over, or would crowd the hand offering the cup.
+  // soda. The gap at x 508..666 keeps the two halves of the counter from
+  // reading as one wall of stock, and the one at x 870..1207 is where the
+  // attendant holds a cup out.
   //
-  // `watermelon` sits in front of the ATTENDANT, which the lane comment above
-  // warns off, and it is the biggest prop on the counter. It works because the
-  // prop is SHORT relative to where the crew's faces are: at 250 it spans
-  // y 656-906 against a counter top at 830, so it reaches their hip and stops
-  // well below the chest. That is the line the warning is really drawing —
-  // grow this past ~280 and it starts eating the attendant's torso.
-  coconut: frame({ x: 150, y: 906, width: 220, height: 220, anchor: 'bottom-center' }),
-  lootbox: frame({ x: 330, y: 902, width: 132, height: 132, anchor: 'bottom-center' }),
-  watermelon: frame({ x: 760, y: 906, width: 250, height: 250, anchor: 'bottom-center' }),
+  // `watermelon` sits in front of the ATTENDANT and is the biggest prop on
+  // the counter. It works because it is SHORT relative to where the faces
+  // are: at 204 its top lands just above the keeper's hips and well below the
+  // chest. Grow it past ~230 and it starts eating their torso.
+  coconut: frame({ x: 236, y: 1272, width: 186, height: 186, anchor: 'bottom-center' }),
+  // Sunk by its own 14.6% of bottom padding, same as the shelf icons.
+  lootbox: frame({ x: 452, y: 1288, width: 112, height: 112, anchor: 'bottom-center' }),
+  watermelon: frame({ x: 768, y: 1272, width: 204, height: 204, anchor: 'bottom-center' }),
   // This is the prop the helper raises on `presentBeat`, so it has to stay in
   // their lane.
-  sodaBottles: frame({ x: 1400, y: 906, width: 220, height: 220, anchor: 'bottom-center' }),
-
-  // `balloons` was here — a clip in the top-left pocket of air. It is gone:
-  // the canopy's bunting is the tent's decoration, and the balloons were the
-  // one prop on this screen that neither held stock nor reacted to anything,
-  // so they cost a looping decoder for nothing.
+  sodaBottles: frame({ x: 1300, y: 1272, width: 186, height: 186, anchor: 'bottom-center' }),
 };
 
 // ---------------------------------------------------------------------------
@@ -203,6 +210,13 @@ export const PIT_STOP_CREW = {
     equipped: {
       face: 'content',
       hair: 'curls', hairColor: 0,
+      // The visor, and it only works because the CATALOGUE was fixed: it used
+      // to hang at `top: 0.0327`, which put its brim across the eyes at body
+      // y 127 with the eyes at 108-120. That blindfolded every runner wearing
+      // one, and on this character it switched off the scene — every blink
+      // and three of the four rungs of the expression ladder are read off
+      // these eyes. See the note on `visor` in config/cosmetics.js. If that
+      // layout is ever touched again, look at THIS face first.
       headwear: 'visor', headwearColor: 9,
       glasses: 'none', glassesColor: 1,
       top: 'polo', topColor: 6,
@@ -276,53 +290,26 @@ export const PIT_STOP_ANIM = {
   restock: { minGap: 8000, maxGap: 13000, duration: 1400 },
   present: { minGap: 9000, maxGap: 15000, duration: 1500 },
 
-  // Hanging props.
+  // Hanging props. Two of them now, one per clear lane on the wall.
   sway: {
-    bottleLeft: { duration: 3100, from: -2.5, to: 2.5 },
-    bottleRight: { duration: 3500, from: 2, to: -2 },
+    bottle: { duration: 3100, from: -2.5, to: 2.5 },
     medal: { duration: 4100, from: -1.5, to: 1.5 },
-    bunting: { duration: 4800, travel: 1.5 },
   },
 
-  // Ambient backdrop — the moving parts behind the crew.
+  // AMBIENT MOTION IS THE PAINTING'S JOB NOW, and it does none — which is the
+  // right answer for what used to live here.
   //
-  // A garland used to live here: thirteen flags reading one shared 0->1 ramp,
-  // each offset by its index so the row rippled instead of flapping as a sheet.
-  // It was replaced by a supplied clip and then dropped altogether, so both the
-  // ramp and the per-flag geometry are gone. The back wall carries no flags now
-  // — the tent's own bunting on the canopy is the scene's only garland.
-  ambient: {
-    // Cloud drift on the far side of the course. Three SEAMLESSLY TILING
-    // strips of the same band, not three lone puffs crossing the sky: the
-    // supplied clip was a rigid scroll of a repeating band, so it ships as one
-    // still frame (art `pitStopCloudBand`) and the scroll happens in the
-    // scene. That is what lets one asset serve three layers at three speeds —
-    // an animated clip drifts only at the rate it was authored at.
-    //
-    // `width` is therefore a TILE width, not a cloud width, and each strip
-    // repeats it across the scene.
-    //
-    // `speed` MUST BE A POSITIVE INTEGER. The strips share one ramp, and a
-    // strip's offset is `(clock * speed + offset) % 1`. When the ramp resets
-    // from 1 to 0 that expression only lands back where it was if `speed` is a
-    // whole number of cycles — at 1.4 the strip jumps 40% of a tile sideways
-    // every time the clock wraps. Bigger and faster reads as nearer, so the
-    // three are ordered far to near.
-    //
-    // The opacities are higher than the vector puffs they replace (0.09-0.15),
-    // which were tuned for flat shapes and made real cloud art invisible — but
-    // only about twice as high, not five times. THESE THREE STACK: the strips
-    // overlap in the same sliver of sky the canopy leaves, so opacities that
-    // each look reasonable alone compound into a grey smear across the top of
-    // the tent. What should survive is a peek of cloud tops, not a sky anyone
-    // can study.
-    clouds: [
-      { y: 8, width: 220, speed: 1, offset: 0.45, opacity: 0.14 },
-      { y: 3, width: 330, speed: 2, offset: 0.0, opacity: 0.2 },
-      { y: 0, width: 460, speed: 3, offset: 0.78, opacity: 0.28 },
-    ],
-    cloudTravel: 96000,
-  },
+  // Two things were in this block. A vector garland, thirteen flags rippling
+  // off one shared ramp, dropped when the canopy grew its own bunting. And
+  // three seamlessly tiling cloud strips drifting at three speeds behind the
+  // tent, which the painted sky retires for a reason worth keeping: the
+  // painting's sky is not a strip of sky, it is a picture with trees in the
+  // top corners and a sun in it. A cloud band crossing that would slide
+  // clouds in front of the treetops.
+  //
+  // `art/shop/pitstop-cloud-band.png` is still installed and still wired in
+  // config/onboardingArt.js — PlazaScene is the pattern if anything ever wants
+  // a drifting sky again — but nothing in the shop reads it.
 
   // Interaction feedback.
   select: { rise: 180, glow: 250, react: 320 },
@@ -346,9 +333,24 @@ export const REVEAL_INTENSITY = {
 // Off-white tent fabric, teal hydration, warm orange for the food end of the
 // counter, PASER pink for the event branding — all inside the same heavy ink
 // outline the character art uses, so the crew doesn't look pasted in.
+//
+// MOST OF THIS IS NOW THE PROPS' PALETTE, not the stall's: the painting brings
+// its own colours, and the layers these were mixed for are retired. The three
+// that still describe the SCENE are `plateSky` and `signBoard` (both sampled
+// off the painting) and `ink`. The rest dress the small vector props that
+// still draw — the hanging bottle, the medal, the offered cup, the sparkles —
+// and the reveal glows.
 
 export const PIT_STOP_COLORS = {
   ink: '#0C0C10',
+  // Sampled off the top of the painted sky. This is what shows for the frame
+  // before the backdrop plate decodes, so it has to be the plate's own colour
+  // and not the old night-teal, or the shop opens with a dark flash.
+  plateSky: '#55C1FD',
+  // The station sign's board, sampled off the counter's deeper blue so the
+  // one drawn object on the canopy belongs to the same picture.
+  signBoard: '#1173AE',
+
   skyTop: '#16273D',
   skyBottom: '#0F3946',
 
@@ -395,22 +397,28 @@ export const REVEAL_GLOW = {
 };
 
 // ---------------------------------------------------------------------------
-// Optional painted-art overrides
+// The painted plates
 // ---------------------------------------------------------------------------
 //
-// The scene draws itself. If painted layers land later, register them in
-// config/onboardingArt.js under these keys and the scene prefers them — no
-// animation code changes, because the frames above stay the source of truth
-// for position. `art()` returns null for anything missing, which is the
-// "graceful handling of missing artwork" path: today, every one of these is
-// null and every layer falls back to vector.
+// TWO DEPTHS, AND THE CREW STANDS BETWEEN THEM. That is the whole reason the
+// illustration is cut in two rather than shipped whole:
+//
+//   backdrop  sky, canopy, back wall, both shelves, the counter's top surface
+//   counter   the counter from its back edge down — drawn AFTER the crew, so
+//             it cuts them off at the hip the way a real counter would
+//
+// Both are the full scene box and both come out of one resize of one crop
+// (scripts/install-pit-stop-art.py), so they register exactly. There is no
+// vector fallback behind them any more: this art ships, and a `require` that
+// cannot resolve fails the build rather than degrading at runtime.
+//
+// The five old override keys (`pitStopBg`, `pitStopTent`, `pitStopBackWall`,
+// `pitStopCounterBase`, `pitStopCounterForeground`) were the seam this arrived
+// through and are gone with the layers they replaced.
 
-export const PIT_STOP_ART_OVERRIDES = {
-  background: () => art('pitStopBg'),
-  tent: () => art('pitStopTent'),
-  backWall: () => art('pitStopBackWall'),
-  counterBase: () => art('pitStopCounterBase'),
-  counterForeground: () => art('pitStopCounterForeground'),
+export const PIT_STOP_PLATES = {
+  backdrop: () => art('pitStopBackdrop'),
+  counter: () => art('pitStopCounter'),
 };
 
 /** Props drawn from icon art the app already ships (see components/AppIcon). */

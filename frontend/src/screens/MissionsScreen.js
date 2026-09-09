@@ -27,7 +27,8 @@ import { useQuery } from '../hooks/useQuery';
 import { useAccent } from '../hooks/useAccent';
 import { useAvatar } from '../state/avatar';
 import AppIcon from '../components/AppIcon';
-import { Card, Row, Screen, Skeleton, ToonHeader } from '../components/ui';
+import GameAnimation from '../components/GameAnimation';
+import { Card, HardShadow, PANEL_INK, Row, Screen, Skeleton, ToonHeader } from '../components/ui';
 import { ProgressTrack } from '../components/ui/toon';
 import DayStrip from '../components/missions/DayStrip';
 import MissionCard from '../components/missions/MissionCard';
@@ -36,9 +37,10 @@ import LootboxGamble from '../components/lootbox/LootboxGamble';
 import RewardReveal from '../components/RewardReveal';
 import { RARITY_COLOR } from '../components/RewardArt';
 import { rollCosmetic } from '../config/lootboxRoll';
+import { art } from '../config/onboardingArt';
 import { toast } from '../ui/toast';
-import { PressableScale, Pulse, Reveal, haptic } from '../ui/motion';
-import { brand, fonts, nbInk, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
+import { Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
+import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -57,14 +59,29 @@ function dayName(iso, today) {
  * finished state impossible to walk past.
  */
 function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const type = useThemedType();
+  const reduced = useReduceMotion();
   const ready = state.all_complete && !state.bonus_claimed;
   const done = state.bonus_claimed;
 
+  // THE SAME BOX THE PASS DRAWS. This banner used to show the per-rarity crate
+  // PNG, which is the one place in the app still doing that — the pass's
+  // pending-box row and every lootbox reward tile moved to the animated gift
+  // box long ago (see RewardArt), so the box you tap here looked nothing like
+  // the box you get. It moves only when there is one to collect: a chest
+  // jiggling at 0/4 is advertising something you cannot have yet.
+  //
+  // `still` rather than nothing under Reduce Motion, and whenever the day is
+  // unfinished — the box IS the reward, so it has to be on screen either way.
   const chest = (
     <View ref={chestRef} collapsable={false} style={styles.chestSlot}>
-      <AppIcon name={`lootbox-${state.bonus_rarity || 'rare'}`} size={54} />
+      <GameAnimation
+        name="giftBox"
+        size={54}
+        loop={ready && !reduced}
+        still={!ready || reduced}
+      />
     </View>
   );
 
@@ -109,7 +126,7 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
 }
 
 export default function MissionsScreen({ navigation }) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();
   const accent = useAccent();
@@ -219,6 +236,39 @@ export default function MissionsScreen({ navigation }) {
     [state?.day, state?.today]
   );
 
+  // What this day has actually paid. The purse used to read the WORD "Coins"
+  // under a coin, which is a label with nothing to say — and it is the thing
+  // the collected coins fly into, so it has to be worth landing on. Derived
+  // from the missions already on screen rather than from the balance endpoint:
+  // the claim response rewrites this day in place, so the number ticks up on
+  // the frame the coins leave the card, with no second request and nothing to
+  // go stale.
+  const collected = useMemo(
+    () => (state?.missions || []).reduce((sum, m) => (m.claimed ? sum + (m.reward || 0) : sum), 0),
+    [state?.missions]
+  );
+
+  // The flight's landing pad. It is in the header because a target that scrolls
+  // away mid flight leaves the coins landing on nothing, and UNDER the title
+  // row because the right of that row belongs to the cut-out. Left edge on the
+  // gutter, which is where the back tile starts — the header's real edge, the
+  // indent past it being the compact format's own doing.
+  const purse = (
+    <HardShadow offset={NB.offsetSm} radius={nbRadius.sm} on="#fff" style={styles.purseWrap}>
+      <View
+        ref={purseRef}
+        collapsable={false}
+        onLayout={measurePurse}
+        style={styles.purse}
+        accessible
+        accessibilityLabel={`${collected} coins collected ${label === 'today' ? 'today' : `on ${label}`}`}
+      >
+        <AppIcon name="coin" size={18} />
+        <Text style={styles.purseText}>{collected}</Text>
+      </View>
+    </HardShadow>
+  );
+
   return (
     <Screen gutter={false} edges={[]}>
       <ToonHeader
@@ -232,15 +282,13 @@ export default function MissionsScreen({ navigation }) {
         titleStyle={type.display}
         eyebrowStyle={type.labelSm}
         onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined}
+        // The board the two of them are reading IS this page. Null until the
+        // cut-out is installed (see config/onboardingArt.js), and the header is
+        // a complete panel without it.
+        art={art('panelMissions')}
         style={{ marginBottom: space.md }}
       >
-        {/* The purse. It is in the header because that is where the coins are
-            flying TO, and a target that scrolls off screen mid flight would
-            leave them landing on nothing. */}
-        <View ref={purseRef} collapsable={false} onLayout={measurePurse} style={styles.purse}>
-          <AppIcon name="coin" size={20} />
-          <Text style={[styles.purseText, { color: colors.text }]}>Coins</Text>
-        </View>
+        {purse}
       </ToonHeader>
 
       <Screen
@@ -338,8 +386,22 @@ const styles = StyleSheet.create({
   skeletons: { marginTop: space.sm },
   error: { marginTop: space.md },
 
-  purse: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.sm },
-  purseText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
+  purseWrap: { alignSelf: 'flex-start', marginTop: space.sm },
+  // The same white tile the panel's back chevron wears, for the same reason:
+  // a panel is a saturated brand fill in both schemes, so its controls are
+  // fixed white-on-ink rather than themed.
+  purse: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    height: 36,
+    paddingHorizontal: space.sm,
+    backgroundColor: '#fff',
+    borderColor: PANEL_INK,
+    borderWidth: NB.stroke,
+    borderRadius: nbRadius.sm,
+  },
+  purseText: { fontFamily: fonts.bold, fontSize: 15, color: PANEL_INK },
 
   banner: { padding: space.md, borderWidth: 2 },
   bannerRow: { alignItems: 'center' },

@@ -6,6 +6,7 @@ import { InteractionManager } from 'react-native';
 import { ICONS } from '../components/AppIcon';
 import { preloadImages } from '../utils/imagePreload';
 import { art } from './onboardingArt';
+import { RANK_ART_SOURCES } from './rankArt';
 import { SEASON_CATEGORY_ART, SEASON_SCOPE_ART } from './seasonArt';
 
 const present = (sources) => sources.flat(Infinity).filter(Boolean);
@@ -70,7 +71,14 @@ const SCREEN_IMAGE_ASSETS = {
   ]),
   Progression: present([
     artKeys(
-      'passBanner',
+      // The plaza the whole page stands on — first in the group because it is
+      // the biggest decode here and the only one whose pop is a full screen
+      // rather than a 76pt tile.
+      'passBackdrop',
+      // The page header's cut-out — the same scroll the Home rail's pass tile
+      // wears, which is why it is usually warm before this list runs. The
+      // purple crew banner it replaced is no longer drawn anywhere.
+      'railPass',
       'stampClaimed',
       'diamondLocked',
       'diamondReached',
@@ -83,6 +91,16 @@ const SCREEN_IMAGE_ASSETS = {
     ),
   ]),
   Shop: present([
+    // The two painted plates the whole tab opens on. They are the heaviest
+    // thing on the screen and they cover it edge to edge, so a cold decode is
+    // the shop appearing as a flat blue rectangle and then snapping into a
+    // stall — exactly the pop this warming exists to remove.
+    artKeys('pitStopBackdrop', 'pitStopCounter'),
+    // Standing in the scene: two shelf props and the reward box on the
+    // counter. Small, but they land in the middle of the illustration.
+    ICONS.timer,
+    ICONS.trophy,
+    ICONS.lootbox,
     ICONS.coin,
     ICONS['coin-pouch'],
     ICONS['coin-sack'],
@@ -114,6 +132,12 @@ const SCREEN_IMAGE_ASSETS = {
   // badge on the rail, and a backdrop that decodes while it is fading in is
   // exactly the pop this warming exists to remove.
   Crossroads: present([artKeys('panelCrossroads', 'paserbyPlaza', 'pitStopCloudBand')]),
+  // Ten full-bleed illustrations, one per rung, all of them on screen inside
+  // one flick of the ladder. This is the heaviest group in the app and it is
+  // warmed as a group on purpose: decoding them as they scroll into view is a
+  // column of tier-coloured rectangles filling in one after another, which is
+  // the exact pop the warming exists to remove.
+  RankLadder: present([RANK_ART_SOURCES]),
   Notifications: present([
     require('../../assets/art/empty-notifications.png'),
   ]),

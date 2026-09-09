@@ -11,6 +11,16 @@
 // a board rather than as a settings list, which is the entire visual idea of
 // the reference and costs one SVG path.
 //
+// IT SITS ABOVE THE CARD, NOT INSIDE IT. The tab used to be an absolutely
+// positioned child of the card, drawn a pixel down from its top edge as a
+// CLOSED box in a contrasting fill — so it read as a small rectangle stamped
+// over the card's own outline and sliced off by it, which is not a tab, it is
+// a fragment. It is now a sibling laid out ABOVE the card in the same fill,
+// with its bottom two points tucked under the card's top border: the card's
+// own outline draws the tab's mouth, and the two shapes share one silhouette.
+// A sibling rather than a protruding absolute child because a card that grows
+// out of its own bounds is at the mercy of the platform's clipping.
+//
 // PROGRESS IS STATED TWICE, ON PURPOSE: the bar is the feel and the fraction
 // is the fact. "3/24" over a bar that has barely moved is honest in a way that
 // either one alone is not.
@@ -40,14 +50,23 @@ function formatPair(mission) {
   return `${Math.floor(value)} / ${goal}`;
 }
 
+// How far the tab stands above the card. TUCK is how much of it the card then
+// covers — enough to bury the two open ends of the path under the card's own
+// 2pt border.
+const TAB_H = 14;
+const TAB_TUCK = 2;
+
 /** The tab pinning the card to the board. */
-function Clip({ color, ink }) {
+function Clip({ fill, ink }) {
   return (
     <View style={styles.clipWrap} pointerEvents="none">
-      <Svg width={38} height={16} viewBox="0 0 38 16">
+      {/* No `Z`. Closing the path would stroke a line across the bottom, which
+          is the seam that made this look cut off; left open, it is filled as
+          if closed but drawn only where a tab has edges. */}
+      <Svg width={40} height={TAB_H} viewBox="0 0 40 14">
         <Path
-          d="M 6 16 L 6 6 Q 6 1 11 1 L 27 1 Q 32 1 32 6 L 32 16 Z"
-          fill={color}
+          d="M 7 14 L 7 6 Q 7 1.5 11.5 1.5 L 28.5 1.5 Q 33 1.5 33 6 L 33 14"
+          fill={fill}
           stroke={ink}
           strokeWidth={2}
           strokeLinejoin="round"
@@ -74,57 +93,57 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
   const edge = claimable ? colors.ok : nbInk(scheme, fill);
 
   const body = (
-    <View
-      style={[styles.card, { backgroundColor: fill, borderColor: edge, opacity: done ? 0.55 : 1 }]}
-      onLayout={onLayout}
-    >
-      <Clip color={claimable ? colors.ok : colors.cardAlt} ink={edge} />
-
-      <View style={styles.left}>
-        <Text style={[type.bodyBold, { color: colors.text }]} numberOfLines={2}>
-          {mission.text}
-        </Text>
-        <View style={styles.trackRow}>
-          <ProgressTrack
-            value={mission.progress}
-            height={16}
-            fill={claimable ? colors.ok : accent || brand.pink}
-            on={fill}
-            style={styles.track}
-          />
-          <Text style={[styles.pair, { color: colors.textMuted }]}>{formatPair(mission)}</Text>
-        </View>
-      </View>
-
-      <View style={styles.rewardWrap}>
-        <View
-          style={[
-            styles.reward,
-            { backgroundColor: colors.cardAlt, borderColor: nbInk(scheme, colors.cardAlt) },
-          ]}
-        >
-          <AppIcon name="coin" size={22} />
-          <Text style={[styles.rewardText, { color: colors.text }]}>{mission.reward}</Text>
-        </View>
-        {claimable ? (
-          <View style={[styles.claimTab, { backgroundColor: colors.ok }]}>
-            <Text style={styles.claimText}>Claim</Text>
+    <View style={[styles.wrap, { opacity: done ? 0.55 : 1 }]} onLayout={onLayout}>
+      {/* The tab wears the CARD's fill, so the two read as one shape rather
+          than as a differently coloured chip sitting on top of a box. */}
+      <Clip fill={fill} ink={edge} />
+      <View style={[styles.card, { backgroundColor: fill, borderColor: edge }]}>
+        <View style={styles.left}>
+          <Text style={[type.bodyBold, { color: colors.text }]} numberOfLines={2}>
+            {mission.text}
+          </Text>
+          <View style={styles.trackRow}>
+            <ProgressTrack
+              value={mission.progress}
+              height={16}
+              fill={claimable ? colors.ok : accent || brand.pink}
+              on={fill}
+              style={styles.track}
+            />
+            <Text style={[styles.pair, { color: colors.textMuted }]}>{formatPair(mission)}</Text>
           </View>
-        ) : null}
-        {done ? (
-          <View style={styles.tick}>
-            <Svg width={18} height={18} viewBox="0 0 24 24">
-              <Path
-                d="M5 13 L10 18 L19 6"
-                stroke={colors.ok}
-                strokeWidth={3.2}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
+        </View>
+
+        <View style={styles.rewardWrap}>
+          <View
+            style={[
+              styles.reward,
+              { backgroundColor: colors.cardAlt, borderColor: nbInk(scheme, colors.cardAlt) },
+            ]}
+          >
+            <AppIcon name="coin" size={22} />
+            <Text style={[styles.rewardText, { color: colors.text }]}>{mission.reward}</Text>
           </View>
-        ) : null}
+          {claimable ? (
+            <View style={[styles.claimTab, { backgroundColor: colors.ok }]}>
+              <Text style={styles.claimText}>Claim</Text>
+            </View>
+          ) : null}
+          {done ? (
+            <View style={styles.tick}>
+              <Svg width={18} height={18} viewBox="0 0 24 24">
+                <Path
+                  d="M5 13 L10 18 L19 6"
+                  stroke={colors.ok}
+                  strokeWidth={3.2}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </View>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -146,17 +165,20 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
 }
 
 const styles = StyleSheet.create({
+  // The gap a reader sees between two cards is this minus the tab, so the
+  // spacing keeps the page's rhythm rather than the tab stealing from it.
+  wrap: { marginTop: space.md + TAB_H },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
     padding: space.md,
-    paddingTop: space.lg,
     borderRadius: nbRadius.sm,
     borderWidth: 2,
-    marginTop: space.md,
   },
-  clipWrap: { position: 'absolute', top: -1, alignSelf: 'center', left: 0, right: 0, alignItems: 'center' },
+  // Laid out, not floated. The negative margin is what slides the card's top
+  // border over the tab's two open ends.
+  clipWrap: { alignSelf: 'center', marginBottom: -TAB_TUCK },
 
   left: { flex: 1 },
   trackRow: { marginTop: space.sm, justifyContent: 'center' },

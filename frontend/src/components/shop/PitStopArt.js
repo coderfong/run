@@ -1,15 +1,23 @@
 // PitStopArt — the hydration station itself, drawn as vector art.
 //
-// WHY VECTOR AND NOT PNG LAYERS. The PASER house style is flat matte fills
-// inside a heavy black outline with no gradients or texture detail, which is
-// the one illustration style SVG reproduces exactly. Drawing it here means
-// the scene is crisp at 320pt and at 430pt, has no decode cost, no missing
-// asset state, and no 9-slice problem (the trap documented in
-// docs/SHOP_ASSETS.md that left the pass frames unused). Painted layers can
-// still replace any of this later — see PIT_STOP_ART_OVERRIDES.
+// THE FULL-SCENE LAYERS IN HERE NO LONGER RENDER. The stall is a painted
+// illustration now, cut into two plates by scripts/install-pit-stop-art.py and
+// laid down by PitStopScene, so `BackgroundLayer`, `TentLayer`,
+// `BackWallLayer`, `CounterBaseLayer`, `CounterFrontLayer`, `BuntingArt` and
+// `SignArt` are all dead — kept, like the towels and the cooler before them,
+// because they are a complete drawing of this scene and cost nothing to leave
+// exported. They are still authored against `SCENE`, which has since been
+// re-measured against the painting, so any one of them brought back would need
+// its geometry redone first.
+//
+// WHAT IS STILL LIVE is the second list below: the small props. The house
+// style is flat matte fills inside a heavy black outline with no gradients,
+// which is the one illustration style SVG reproduces exactly — so the bottle,
+// the medal, the cup and the sparkles stay crisp at every width, cost no
+// decode, and can be tinted from the palette instead of re-exported.
 //
 // Two kinds of component live here:
-//   * full-scene layers  — authored in the 1536x1146 reference box
+//   * full-scene layers  — retired, see above
 //   * props              — authored in their OWN box, sized in the same units
 //                          as their frame, so stroke weights match the rest
 //                          of the scene once positioned

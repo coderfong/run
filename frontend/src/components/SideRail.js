@@ -15,7 +15,10 @@
 // grids. The label is still passed for the accessibility name.
 //
 // Art is optional: each tile falls back to its sticker icon until the framed
-// art lands (docs/ONBOARDING_ASSETS.md §7).
+// art lands (docs/ONBOARDING_ASSETS.md §7). All five have their own drawing
+// now — cut off the tile masters by `scripts/cut-rail-art.py`, which prints the
+// ground each was drawn on. THAT GROUND IS THE TILE'S `tint` MIDDLE STOP: the
+// sticker is lit and shadowed for it, so the two are changed together.
 //
 // NO TILE CROSSES INTO ANOTHER TAB. Each one pushes onto the stack it was
 // tapped from (App.js registers Progression, Rivals and Crossroads on the Home
@@ -136,7 +139,12 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
   return (
     <View style={[inline ? styles.inlineRail : styles.rail, style]} pointerEvents="box-none">
       {/* Missions first: it is the only tile whose contents change every day,
-          so it is the one worth looking at on the way past. */}
+          so it is the one worth looking at on the way past.
+          GREEN, though the clipboard master is drawn on yellow: the pass tile
+          next to it is gold, and two yellows in a row read as one wide tile
+          rather than two. Green is also the colour this tile has always worn.
+          The clipboard's ink is black outlines with a blue clip and a pink
+          star, none of which the swap touches. */}
       <RailTile
         icon="verified"
         artKey="railMissions"
@@ -165,8 +173,6 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         inline={inline}
         size={size}
       />
-      {/* `railRivals` art doesn't exist yet, so this falls back to the steal
-          sticker — the same one RivalCard uses. */}
       <RailTile
         icon="steal"
         artKey="railRivals"

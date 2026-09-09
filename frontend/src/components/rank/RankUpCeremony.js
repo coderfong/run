@@ -15,6 +15,16 @@
 //   4. HOLD      "Tap to continue". Nothing auto dismisses. A promotion that
 //                takes itself off screen is a notification.
 //
+// THE WORLD ARRIVES WITH THE PLAQUE, NOT BEFORE IT. The new tier's
+// illustration (config/rankArt.js) rises across the middle of the screen as
+// the light falls away — a window into the place you have just climbed into,
+// with your badge standing in the middle of it. It is held at zero opacity for
+// the whole flood on purpose: a promotion whose destination is on screen before
+// the badge turns has given the ending away, and the turn is the only surprise
+// this screen has. The band is centred ON THE BADGE so the illustration's own
+// runner is behind it — two runners at the same size, one of them not you, is
+// the one composition this art cannot survive.
+//
 // THE LIGHT IS A COLUMN, NOT A GLOW. A radial burst behind a badge reads as a
 // highlight on a badge. A vertical shaft with the badge inside it reads as the
 // badge being lifted through something, which is the whole metaphor of a rank
@@ -41,6 +51,8 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import RankBadge, { RankPlaque } from './RankBadge';
 import { tierAt } from '../../config/rankLadder';
+import { rankArt } from '../../config/rankArt';
+import { Image } from '../../ui/image';
 import { Confetti, haptic, useReduceMotion } from '../../ui/motion';
 import { fonts, space, withAlpha } from '../../theme';
 
@@ -49,6 +61,21 @@ const FLOOD_MS = 620;      // the light rushing in
 const TURN_AT = 900;       // the badge changes at the brightest point
 const LAND_AT = 1500;      // the light begins to fall away
 const LAND_MS = 620;
+
+// The badge at the centre of it all. Named because the tier's illustration is
+// centred on THIS, not on the stage — the stage also holds the plaque below,
+// so its own centre sits some forty points low.
+const BADGE = 150;
+
+// The window's shape, and it is SHALLOWER than the art's own 16:9 on purpose.
+// A band cut to the illustration's full height puts its runner's head a few
+// points above the badge that is meant to be standing in front of it — two
+// figures, one of them not you. Cropping top and bottom takes the head under
+// the badge and loses only sky and ground, and a letterbox reads as a window
+// into somewhere rather than a photograph laid on the screen. The tiers whose
+// character wears a crown or a halo still crest the badge, which is the one
+// version of this that is worth keeping.
+const BAND_ASPECT = 2.2;
 
 /** The shaft of light. Bright core, tier coloured shoulders, hard top and bottom. */
 function LightColumn({ width, height, tint, glow }) {
@@ -90,6 +117,10 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
   const flood = useSharedValue(0);
   const badge = useSharedValue(0);
   const settle = useSharedValue(0);
+  // The tier's world coming up behind the badge. Its own value rather than a
+  // read of `flood`: flood is zero at rest AND zero before the light rushes
+  // in, and the whole point is that the world is absent for the second one.
+  const world = useSharedValue(0);
 
   // Keyed on `visible` and Reduce Motion only. The shared values are left out
   // deliberately: this effect drives the four beats AND the two pieces of
@@ -109,6 +140,7 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
       flood.value = 0;
       badge.value = 0;
       settle.value = 1;
+      world.value = 1;
       haptic.success();
       return undefined;
     }
@@ -116,6 +148,7 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
     setTurned(false);
     setLanded(false);
     settle.value = 0;
+    world.value = 0;
 
     // 1. FLOOD
     flood.value = withSequence(
@@ -126,6 +159,12 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
     badge.value = withSequence(
       withTiming(1, { duration: FLOOD_MS, easing: Easing.out(Easing.quad) }),
       withDelay(LAND_AT - FLOOD_MS, withSpring(0, { damping: 12, stiffness: 150 }))
+    );
+    // The world comes up as the light starts to go, and takes slightly longer
+    // than the light takes to leave — so the two cross rather than hand over.
+    world.value = withDelay(
+      LAND_AT,
+      withTiming(1, { duration: LAND_MS + 220, easing: Easing.out(Easing.quad) })
     );
     haptic.medium();
 
@@ -148,6 +187,7 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
       cancelAnimation(flood);
       cancelAnimation(badge);
       cancelAnimation(settle);
+      cancelAnimation(world);
     };
   }, [visible, reduced]);
 
@@ -162,6 +202,7 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
       { scale: 1 + 0.18 * badge.value },
     ],
   }));
+  const worldStyle = useAnimatedStyle(() => ({ opacity: world.value }));
   const settleStyle = useAnimatedStyle(() => ({
     opacity: settle.value,
     transform: [{ translateY: 14 * (1 - settle.value) }],
@@ -172,6 +213,13 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
   const shown = turned ? to : (from || to);
   const shownTier = tierAt(shown.tier);
   const newTier = tierAt(to.tier);
+
+  // Full width, cropped to the window's shape. Filling the whole portrait
+  // screen instead would show a quarter of the illustration's width blown up
+  // four times over — neither the composition nor a resolution the source can
+  // carry — which is why the backdrop is a band and not an absoluteFill.
+  const newArt = rankArt(newTier.key);
+  const bandH = Math.round(width / BAND_ASPECT);
 
   return (
     <Modal visible transparent={false} animationType="fade" statusBarTranslucent onRequestClose={onDone}>
@@ -192,16 +240,50 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
             <LightColumn width={width * 0.72} height={height} tint={newTier.color} glow={newTier.glow} />
           </Animated.View>
 
-          <Animated.View style={badgeStyle}>
-            <RankBadge
-              tierKey={shownTier.key}
-              equipped={equipped}
-              size={150}
-              division={shown.division}
-              color={shownTier.color}
-              showStars={landed || reduced}
-            />
-          </Animated.View>
+          {/* The window into the new tier, with the badge standing in it. The
+              badge is a child of the band rather than a sibling so the two are
+              centred on each other by layout, with no measured offsets to
+              drift apart. */}
+          <View style={[styles.worldRow, { width, height: bandH }]}>
+            {newArt ? (
+              <Animated.View style={[StyleSheet.absoluteFill, worldStyle]} pointerEvents="none">
+                <Image
+                  source={newArt.source}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                  transition={0}
+                  accessible={false}
+                />
+                {/* Feathered into the page at the top and bottom edges, in the
+                    page's own ink, so the band is a window rather than a
+                    photograph laid on the screen. The middle keeps a light
+                    wash of the same ink: the confetti and the plaque have to
+                    read over Gold and Platinum as well as over Onyx. */}
+                <Svg width={width} height={bandH} style={StyleSheet.absoluteFill}>
+                  <Defs>
+                    <LinearGradient id="worldfade" x1="0" y1="0" x2="0" y2="1">
+                      <Stop offset="0" stopColor={newTier.ink} stopOpacity="1" />
+                      <Stop offset="0.24" stopColor={newTier.ink} stopOpacity="0.2" />
+                      <Stop offset="0.76" stopColor={newTier.ink} stopOpacity="0.2" />
+                      <Stop offset="1" stopColor={newTier.ink} stopOpacity="1" />
+                    </LinearGradient>
+                  </Defs>
+                  <Rect x="0" y="0" width={width} height={bandH} fill="url(#worldfade)" />
+                </Svg>
+              </Animated.View>
+            ) : null}
+
+            <Animated.View style={badgeStyle}>
+              <RankBadge
+                tierKey={shownTier.key}
+                equipped={equipped}
+                size={BADGE}
+                division={shown.division}
+                color={shownTier.color}
+                showStars={landed || reduced}
+              />
+            </Animated.View>
+          </View>
 
           {/* Everything under the badge arrives only once the light is gone —
               a plaque legible through the glare would mean the glare was not
@@ -238,6 +320,7 @@ const styles = StyleSheet.create({
   page: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   stage: { alignItems: 'center', justifyContent: 'center' },
   shaft: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  worldRow: { alignItems: 'center', justifyContent: 'center' },
 
   settled: { alignItems: 'center', marginTop: space.xl },
   percentile: {

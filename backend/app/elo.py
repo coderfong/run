@@ -1,4 +1,4 @@
-"""Zero-sum Elo ratings for solo runners and clubs.
+"""Area-weighted solo ratings and zero-sum club Elo ratings.
 
 One claim can touch several territory rows owned by the same rival.  That is
 still one encounter, not several rating opportunities, so events are grouped
@@ -23,6 +23,67 @@ INITIAL_RATING = 1000
 MIN_RATING = 100
 K_FACTOR = 32
 MIN_MATCH_AREA_M2 = 25.0
+
+# ---------------------------------------------------------------------------
+# What each outcome is worth
+# ---------------------------------------------------------------------------
+#
+# The scoring underneath is unchanged: `rating_delta` is still Elo, so the
+# rating gap still decides how much an encounter was worth and beating someone
+# above you still pays more than beating someone below. What sits on top of it
+# is deliberately NOT symmetric any more, because a ladder that pays the same
+# for every kind of outcome cannot say which of them the game is about:
+#
+#   losing ground   > taking ground   > holding ground off an attacker
+#                                     > painting empty map
+#
+# Taking land is the act the whole game is built around, so it pays the most
+# of anything you can go out and do. A successful defence pays real points but
+# less than an attack, because the defender did not choose the fight and the
+# ground was already theirs. Losing land is the heaviest single move on the
+# board: it is the only one that can be done TO you, and it is what stops the
+# ladder from being a slower level.
+#
+# THIS IS NO LONGER ZERO SUM, which the old engine deliberately was. A steal
+# now costs the victim more than it pays the attacker, so PvP drains rating
+# from the pool overall, and open claims trickle a little back in. That is a
+# real change of character: tier floors are absolute, so a deflationary ladder
+# makes the climb harder over a season rather than everybody drifting up.
+# `WEIGHT_STEAL` against `WEIGHT_LOSS` is the dial for it.
+WEIGHT_STEAL = 0.75    # you took ground off somebody
+WEIGHT_DEFEND = 0.50   # their attack bounced off your land
+WEIGHT_FAILED = 0.50   # your attack bounced (the mirror of DEFEND: that pair
+                       # stays zero sum, so a bounced raid moves nothing net)
+WEIGHT_LOSS = 1.00     # they took ground off you
+
+# The most any single outcome can move, so a help screen can state a range and
+# be telling the truth. K_FACTOR is still the ceiling of the fight itself; the
+# weights scale it, and the caps are what the app shows.
+CAP_STEAL = int(round(K_FACTOR * WEIGHT_STEAL))    # 24
+CAP_DEFEND = int(round(K_FACTOR * WEIGHT_DEFEND))  # 16
+CAP_LOSS = int(round(K_FACTOR * WEIGHT_LOSS))      # 32
+CAP_CLAIM_OPEN = 4                                 # the smallest move on the board
+CAP_DECAY = 8                                      # land lost to the clock, not to a rival
+
+# How much ground was involved, not just who won it. `rating_delta` scores the
+# SHARE of the contested area an attacker took, which says nothing about
+# whether the fight was over a car park or half a suburb. This scales the
+# result by the absolute size, on a square root so that ten times the ground is
+# worth about three times the points rather than ten.
+#
+# Two references because the two things are different sizes: a fight is over
+# the overlap between two claims, while an open claim (and the plot that later
+# decays) is a whole run's worth of ground — 75 m² per territorial metre, so a
+# 2.5 km run is about 200,000 m².
+AREA_REF_FIGHT_M2 = 50_000.0
+AREA_REF_CLAIM_M2 = 200_000.0
+AREA_FACTOR_MIN = 0.4
+AREA_FACTOR_MAX = 1.5
+
+# What an open claim pays and what decay costs, before the area scale. Both are
+# small on purpose: neither is a fight.
+CLAIM_OPEN_BASE = 3
+DECAY_BASE = 5
 
 # Keys deliberately match the portrait-border assets already used by the app.
 # A new runner starts in Wood, close enough to Bronze that the first few real
@@ -63,6 +124,85 @@ def rating_delta(rating: int, opponent_rating: int, score: float) -> int:
     lower = MIN_RATING - int(rating)
     upper = int(opponent_rating) - MIN_RATING
     return int(max(lower, min(upper, delta)))
+
+
+def area_factor(area_m2: float, reference: float = AREA_REF_FIGHT_M2) -> float:
+    """How much the SIZE of the ground scales a result, square rooted."""
+    area = max(0.0, float(area_m2 or 0.0))
+    if area <= 0:
+        return AREA_FACTOR_MIN
+    return max(AREA_FACTOR_MIN, min(AREA_FACTOR_MAX, math.sqrt(area / max(1.0, reference))))
+
+
+def _scaled(base: int, weight: float, cap: int, area_m2: float) -> int:
+    """One side's move: the Elo swing, weighted by role and by ground."""
+    value = abs(int(base)) * float(weight) * area_factor(area_m2)
+    out = int(math.floor(value + 0.5))
+    if base and out == 0:
+        out = 1  # a fight that scored at all is never worth nothing
+    return min(cap, out)
+
+
+def steal_gain(base: int, area_m2: float) -> int:
+    """Points the attacker wins for taking ground."""
+    return _scaled(base, WEIGHT_STEAL, CAP_STEAL, area_m2)
+
+
+def loss_penalty(base: int, area_m2: float) -> int:
+    """Points the victim pays for ground taken off them (positive)."""
+    return _scaled(base, WEIGHT_LOSS, CAP_LOSS, area_m2)
+
+
+def defend_gain(base: int, area_m2: float) -> int:
+    """Points the defender wins when an attack bounces."""
+    return _scaled(base, WEIGHT_DEFEND, CAP_DEFEND, area_m2)
+
+
+def failed_attack_penalty(base: int, area_m2: float) -> int:
+    """Points the attacker pays for a raid that bounced (positive).
+
+    The mirror of `defend_gain`, so that exchange stays zero sum.
+    """
+    return _scaled(base, WEIGHT_FAILED, CAP_DEFEND, area_m2)
+
+
+def open_claim_reward(area_m2: float) -> int:
+    """Points for painting ground nobody held. The smallest move there is."""
+    if not area_m2 or area_m2 < MIN_MATCH_AREA_M2:
+        return 0
+    scale = area_factor(area_m2, AREA_REF_CLAIM_M2)
+    return max(1, min(CAP_CLAIM_OPEN, int(math.floor(CLAIM_OPEN_BASE * scale + 0.5))))
+
+
+def decay_penalty(area_m2: float) -> int:
+    """Points for land that expired under you (positive).
+
+    Losing ground to the clock has to cost something — an empire that shrinks
+    while you sit still is not the same standing as one that holds — but far
+    less than losing it to a runner, which is a fight you were in and lost.
+    """
+    if not area_m2 or area_m2 < MIN_MATCH_AREA_M2:
+        return 0
+    scale = area_factor(area_m2, AREA_REF_CLAIM_M2)
+    return max(1, min(CAP_DECAY, int(math.floor(DECAY_BASE * scale + 0.5))))
+
+
+def apply_land_delta(db, user_id, delta: int) -> int:
+    """Apply a non-combat change atomically without changing match counts."""
+    return db.execute(text(
+        "UPDATE users SET solo_elo=GREATEST(:floor, solo_elo+:delta), "
+        "solo_elo_peak=GREATEST(solo_elo_peak, solo_elo+:delta) "
+        "WHERE id=CAST(:id AS uuid) RETURNING solo_elo"
+    ), {"id": str(user_id), "delta": delta, "floor": MIN_RATING}).scalar()
+
+
+def record_expired_land(db, rows):
+    """Charge only deleted rows, once, aggregated by owner per sweep."""
+    areas = defaultdict(float)
+    for uid, area in rows:
+        areas[str(uid)] += float(area or 0)
+    for uid in sorted(areas):
+        apply_land_delta(db, uid, -decay_penalty(areas[uid]))
 
 
 def tier_for_rating(rating: int) -> dict:
@@ -209,12 +349,19 @@ def _group_by_opponent(events) -> dict[str, dict[str, float]]:
     return dict(grouped)
 
 
-def record_claim_matches(db, attacker_id, run_id, events, attacker_clan_id=None) -> dict:
+def record_claim_matches(db, attacker_id, run_id, events, attacker_clan_id=None,
+                         club_match: bool = True) -> dict:
     """Apply one claim's solo and club Elo matches; caller commits.
 
     Returns the attacker's aggregate movement and final ratings for immediate
     claim feedback. A player facing several rivals can gain and lose rating in
     the same claim, hence aggregate deltas rather than a win-only number.
+
+    `club_match=False` plays the solo half only. A claim off a run the club did
+    not do together is not the club's fight: it wins the club no land (see
+    app/club_runs.py), so it must not move the club's rating either, or the
+    ladder the club board is scoped by would be measuring something that is
+    not on it. The attacker's own rating always moves — they still ran.
     """
     grouped = _group_by_opponent(events)
     if not grouped:
@@ -245,8 +392,24 @@ def record_claim_matches(db, attacker_id, run_id, events, attacker_clan_id=None)
         score = grouped[victim_id]["won"] / max(1.0, grouped[victim_id]["total"])
         before_a = people[attacker_key]["rating"]
         before_b = people[victim_id]["rating"]
-        delta = rating_delta(before_a, before_b, score)
-        after_a, after_b = before_a + delta, before_b - delta
+        # The Elo swing for the encounter, then each side's own price for it.
+        # The two are no longer the same number: see the weights at the top of
+        # this module. Ground taken is what the fight was over, so it is what
+        # the size scales by.
+        base = rating_delta(before_a, before_b, score)
+        contested = grouped[victim_id]["total"]
+        if base > 0:
+            delta = steal_gain(base, grouped[victim_id]["won"])
+            victim_delta = -loss_penalty(base, grouped[victim_id]["won"])
+        elif base < 0:
+            delta = -failed_attack_penalty(base, contested)
+            victim_delta = defend_gain(base, contested)
+        else:
+            delta = victim_delta = 0
+        # Each side independently respects the rating floor.
+        delta = max(delta, MIN_RATING - before_a)
+        victim_delta = max(victim_delta, MIN_RATING - before_b)
+        after_a, after_b = before_a + delta, before_b + victim_delta
         people[attacker_key]["rating"] = after_a
         people[victim_id]["rating"] = after_b
         solo_delta_total += delta
@@ -275,9 +438,14 @@ def record_claim_matches(db, attacker_id, run_id, events, attacker_clan_id=None)
         )
 
     # Aggregate every opposing member touched into one result per club.
+    #
+    # The CLUB ladder stays plain zero sum. The weights above are about what a
+    # runner's own week should feel like — a raid on you hurting more than your
+    # raid on somebody else pays — and a club board is a table of clubs against
+    # each other, where a rating that leaks would just tilt the whole table.
     club_grouped = defaultdict(lambda: {"won": 0.0, "total": 0.0})
     attacker_clan = str(attacker_clan_id) if attacker_clan_id else people[attacker_key]["clan_id"]
-    if attacker_clan:
+    if attacker_clan and club_match:
         for victim_id, result in grouped.items():
             victim_clan = people.get(victim_id, {}).get("clan_id")
             if victim_clan and victim_clan != attacker_clan:

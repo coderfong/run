@@ -118,6 +118,42 @@ portrait; keep stroke ≤8% of diameter. Drop static PNGs in
 
 ---
 
+## 3b. Rank tier scenes — DELIVERED, wired
+
+Ten wide illustrations, one per tier, each of them the runner AT that tier
+(woods and a bark shield at Wood, banner and medal at Bronze, crown on a coin
+pile at Gold, cape over a crystal field at Diamond, floating islands at
+Mythic). They are drawn on three surfaces, all off one registry
+(`src/config/rankArt.js`):
+
+| Surface | How the art is used |
+|---|---|
+| `components/rank/RankLadder.js` | The rung itself — full bleed, ~1.5:1, the badge and plaque laid over it |
+| `components/rank/RankUpCeremony.js` | The promotion backdrop — a full-width 2.2:1 window that rises as the light falls away, your badge standing in the middle of it |
+| `components/rank/RankCard.js` | A 100pt column flush to the card's right edge, cropped to the figure; the copy stops before it, so nothing overlaps the runner |
+
+Installed by `frontend/scripts/install-rank-art.py`, which reads
+`assets/art/rank/_src/<tier>.png` (generation-size exports, not in the repo)
+and writes the capped, indexed copies under `assets/art/rank/<tier>.png`.
+
+**Spec for a re-export**, because the ladder's layout is measured against it:
+
+| Constraint | Why |
+|---|---|
+| 16:9, background baked in | The scene fills the rung edge to edge; there is nothing to cut out |
+| Character CENTRED | Three different crops rely on it: the rung takes ~8% off each side, the ceremony's window takes ~10% off the top and bottom, and the card's column keeps only the middle ~40% of the width |
+| Top-left and top-right corners kept clear | Your rank badge sits in one, the "TOP n% OF RUNNERS" chip in the other |
+| Bottom ~23% is overlaid | A band carrying the plaque and the gap to the next tier runs along it |
+| The figure no wider than ~30% of the frame | The card's column shows the middle ~40% of the width and must contain the whole runner; the flag at Bronze and the wings at Silver reach further out and are meant to be trimmed |
+| The character's HEAD low enough to sit inside the middle square | The ceremony puts a 150pt badge over the character on purpose — a crown or a halo cresting it reads as an aura, a second head does not |
+| Named `<tier>.png` | wood, bronze, silver, gold, platinum, diamond, onyx, ember, prismatic, mythic |
+
+Export at generation size and let the installer cap it: it trims to 1024px on
+the long side (3x the ~300pt a rung draws at) and quantizes to an indexed
+palette, which is what keeps ten full-bleed illustrations under 3 MB.
+
+---
+
 ## 4. Claim explosion animations (P1)
 
 Play when a claim lands. Wired already — drop the file in and uncomment its line

@@ -3,14 +3,22 @@
 This is deliberately a static compositor, not a second implementation. It
 mirrors the frames in config/pitStop.js and CharacterRig's layer math closely
 enough to catch crop, collision, and visual-hierarchy mistakes when a browser
-or simulator is unavailable. Output is ignored under scripts/qa-pit-stop/.
+or simulator is unavailable.
+
+IT DRAWS THE REAL PLATES. The stall used to be re-drawn here in ImageDraw
+primitives, which meant this mirror could agree with itself and still disagree
+with the app. Now that the environment is two painted files, the mirror opens
+those files — so the only things approximated are the crew (rebuilt from the
+same catalogue PNGs the rig composes) and the small vector props, which are
+stand-in shapes at their real frames. A collision this shows is a real one.
 
 Run from frontend/:
 
     python scripts/gen-pit-stop-preview.py
+
+Output is ignored under scripts/qa-pit-stop/.
 """
 
-import math
 import os
 
 from PIL import Image, ImageDraw
@@ -18,30 +26,24 @@ from PIL import Image, ImageDraw
 
 FE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CH = os.path.join(FE, "assets", "character")
+FE_ASSETS = os.path.join(FE, "assets")
 OUT = os.path.join(FE, "scripts", "qa-pit-stop")
 
-W, H = 1536, 1146
-# What the hero SHOWS. The scene is still drawn against the full H; the bottom
-# of the counter skirt is cropped off, matching SCENE.visibleHeight.
-VISIBLE_H = 1014
+# The reference box from config/pitStop.js. The plates are cut at this aspect
+# and are upscaled to it here, which is exactly what the scene does on device.
+W, H = 1536, 1490
+COUNTER_TOP = 1188
+
 INK = "#0C0C10"
-SKY_TOP = "#16273D"
-SKY_BOTTOM = "#0F3946"
-FABRIC = "#F5EFE6"
-FABRIC_SHADE = "#E2D8C8"
-FABRIC_DEEP = "#CFC2AE"
+SIGN_BOARD = "#1173AE"
+PLATE_SKY = "#55C1FD"
 TEAL = "#2DD4BF"
-PINK = "#EC4899"
 GOLD = "#F5C451"
 PAPER = "#FAF7F2"
-BOARD = "#123243"
-COUNTER_TOP = "#1C5B69"
-COUNTER_FACE = "#12414E"
-PURPLE = "#8B5CF6"
 
 BODY_W, BODY_H = 248, 640
 HEADROOM = round(BODY_H * 0.14)
-HAIR_LIFT = -0.05
+HAIR_LIFT = -0.02
 LAYOUT = {
     "face": {"w": 0.3735, "top": (8 + 0.34 * 218) / 640},
     "hair": {"w": 0.92, "top": -0.025},
@@ -51,57 +53,48 @@ LAYOUT = {
     "accessory": {"w": 0.9, "top": 0.32},
 }
 
+# The painted plates, in draw order around the crew.
+PLATES = (
+    os.path.join(FE_ASSETS, "art", "shop", "pitstop-backdrop.png"),
+    os.path.join(FE_ASSETS, "art", "shop", "pitstop-counter.png"),
+)
 
-FE_ASSETS = os.path.join(FE, "assets")
-
-# Layers that are no longer drawn here at all, because real art now ships for
-# them: the supplied clips are pasted straight in at their first frame, which
-# makes this preview a truer mirror of the screen than an approximation of them
-# could be. Frames mirror PIT_STOP_LAYOUT in config/pitStop.js.
+# Supplied clips, at PIT_STOP_LAYOUT's frames (left, top, right, bottom).
 PROP_CLIPS = {
-    "coconut": ("animations/prop-coconut.webp", (40, 686, 260, 906)),
-    "watermelon": ("animations/prop-watermelon.webp", (635, 656, 885, 906)),
-    "sodaBottles": ("animations/prop-soda-bottles.webp", (1290, 686, 1510, 906)),
-    # `balloons` was here — dropped from the scene, so dropped from the mirror.
-    "openSign": ("animations/open-sign.webp", (598, 28, 938, 368)),
+    "coconut": ("animations/prop-coconut.webp", (143, 1086, 329, 1272)),
+    "watermelon": ("animations/prop-watermelon.webp", (666, 1068, 870, 1272)),
+    "sodaBottles": ("animations/prop-soda-bottles.webp", (1207, 1086, 1393, 1272)),
 }
 
-# y, tile width, opacity — the three sky strips in PIT_STOP_ANIM.ambient.clouds.
-CLOUD_STRIPS = ((8, 220, 0.14), (3, 330, 0.20), (0, 460, 0.28))
+# Icon art standing in the scene: the two shelf props and the reward box.
+ICON_PROPS = {
+    "stopwatch": ("icons/timer.png", (208, 832, 296, 920)),
+    "trophy": ("icons/trophy.png", (1232, 836, 1320, 924)),
+    "lootbox": ("icons/lootbox.png", (396, 1176, 508, 1288)),
+}
+
+CREW = (
+    ("restocker", 418, 766, 215),
+    ("helper", 1112, 758, 220),
+    ("keeper", 768, 668, 265),
+)
 
 
 def rgba(path):
     return Image.open(path).convert("RGBA")
 
 
-def paste_clip(canvas, rel, box):
-    """First frame of a shipped clip, scaled into its layout frame."""
-    path = os.path.join(FE_ASSETS, rel)
+def paste_fitted(canvas, path, box):
+    """One asset scaled into its layout frame, keeping its own aspect."""
     if not os.path.exists(path):
         return
-    with Image.open(path) as clip:
-        frame = clip.convert("RGBA")
+    with Image.open(path) as src:
+        art = src.convert("RGBA")
     left, top, right, bottom = box
-    frame = frame.resize((right - left, bottom - top), Image.Resampling.LANCZOS)
-    canvas.alpha_composite(frame, (left, top))
-
-
-def paste_cloud_strips(canvas):
-    """The tiling sky band, laid across the scene at its three parallax sizes."""
-    path = os.path.join(FE_ASSETS, "art", "shop", "pitstop-cloud-band.png")
-    if not os.path.exists(path):
-        return
-    band = rgba(path)
-    for y, tile_w, opacity in CLOUD_STRIPS:
-        tile_h = round(tile_w * band.height / band.width)
-        tile = band.resize((tile_w, tile_h), Image.Resampling.LANCZOS)
-        tile.putalpha(tile.getchannel("A").point(lambda a: round(a * opacity)))
-        for x in range(0, W + tile_w, tile_w):
-            canvas.alpha_composite(tile, (x, y))
-
-
-def asset(folder, name):
-    return rgba(os.path.join(CH, folder, name))
+    width = right - left
+    height = round(art.height * width / art.width)
+    art = art.resize((width, max(1, height)), Image.Resampling.LANCZOS)
+    canvas.alpha_composite(art, (left, top))
 
 
 def place(canvas, im, slot, layout=None):
@@ -117,32 +110,45 @@ def place(canvas, im, slot, layout=None):
     canvas.alpha_composite(im, (round(left), round(top + HEADROOM)))
 
 
+def asset(folder, name):
+    return rgba(os.path.join(CH, folder, name))
+
+
 def crew_avatar(role):
-    """The three exact loadouts declared in PIT_STOP_CREW."""
+    """The three exact loadouts declared in PIT_STOP_CREW.
+
+    Art filenames and layouts are copied from the catalogue entries in
+    config/cosmetics.js, colour suffix included — `_6` is CLOTH_COLORS teal,
+    `_9` pink, `_0` white/black. Keep them in step: a stale layout here is a
+    mirror that disagrees with the screen it exists to check.
+
+    NOBODY WEARS BOTTOMS. All three crew are `bottom: 'none'` — everything
+    below the hip is behind the counter, so the slot would ship art nobody can
+    see. The restocker's hair is likewise absent: `cap` is `hidesBulky` and
+    `curls` is `bulky`, so the rig hides it, and drawing it here would put a
+    head in this preview that the app does not draw.
+    """
     specs = {
         "keeper": {
-            "face": "faceN22.png",
+            "face": "faceN23.png",
             "hair": ("hairM5_0.png", {"top": -0.045}),
-            "hat": ("hat11_9.png", "hat11b_9.png", {}),
+            "hat": ("hat11_9.png", "hat11b_9.png", {"w": 0.6133, "top": -0.010, "dx": -0.005}),
             "top": ("top13_6.png", {"w": 0.95, "top": 0.3021}),
-            "bottom": ("bottom5_1.png", {"w": 0.66}),
-            "acc": ("acc2.png", None, {"w": 0.84, "top": 0.3328}),
+            "acc": ("acc2.png", None, {"w": 0.64, "top": 0.3276}),
         },
         "restocker": {
             "face": "faceN23.png",
-            "hair": ("hairX22.png", {"w": 1.168, "top": 0.0022}),
-            "hat": ("hat1_6.png", None, {}),
-            "top": ("top14_3.png", {"w": 0.98, "top": 0.3002}),
-            "bottom": ("bottom9_1.png", {"w": 0.62}),
+            "hair": None,
+            "hat": ("hat1_6.png", None, {"w": 0.6567, "top": -0.0571, "dx": -0.0033}),
+            "top": ("top14_3.png", {"w": 0.98, "top": 0.2744}),
             "acc": None,
         },
         "helper": {
             "face": "faceN23.png",
             "hair": ("hairW8_4.png", {"w": 1.0, "top": -0.06}),
-            "hat": ("hat5_0.png", "hat5b_0.png", {"w": 0.68, "top": 0.045}),
-            "top": ("top12_9.png", {"w": 0.75, "top": 0.3021}),
-            "bottom": ("bottom7_8.png", {"w": 0.6}),
-            "acc": ("acc7.png", "acc7b.png", {"w": 0.26, "top": 0.2853}),
+            "hat": ("hat5_0.png", "hat5b_0.png", {"w": 0.6234, "top": 0.0579, "dx": -0.0017}),
+            "top": ("top12_9.png", {"w": 0.6233, "top": 0.3356, "dx": 0.0067}),
+            "acc": ("acc7.png", "acc7b.png", {"w": 0.37, "top": 0.2608, "dx": 0.005}),
         },
     }[role]
 
@@ -155,8 +161,6 @@ def crew_avatar(role):
         place(c, asset("headwear", hat_back), "headwear", hat_layout)
 
     c.alpha_composite(asset("body", "body.png"), (0, HEADROOM))
-    bottom, bottom_layout = specs["bottom"]
-    place(c, asset("outfit", bottom), "bottom", bottom_layout)
     top, top_layout = specs["top"]
     place(c, asset("outfit", top), "top", top_layout)
     if specs["acc"]:
@@ -167,125 +171,88 @@ def crew_avatar(role):
     # layer, which is the jaw-ordering fix this preview must preserve.
     c.alpha_composite(asset("body", "head.png"), (0, HEADROOM))
     place(c, asset("face", specs["face"]), "face")
-    hair, hair_layout = specs["hair"]
-    place(c, asset("hair", hair), "hair", hair_layout)
+    if specs["hair"]:
+        hair, hair_layout = specs["hair"]
+        place(c, asset("hair", hair), "hair", hair_layout)
     place(c, asset("headwear", hat), "headwear", hat_layout)
     return c
 
 
-def rounded(draw, box, radius, fill, outline=INK, width=8):
-    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+def plate(path):
+    if not os.path.exists(path):
+        raise SystemExit(f"missing plate {path} — run scripts/install-pit-stop-art.py")
+    return rgba(path).resize((W, H), Image.Resampling.LANCZOS)
+
+
+def hanging_bottle(d, box, colour):
+    left, top, right, bottom = box
+    mid = (left + right) // 2
+    d.line((mid, top, mid, top + 40), fill=INK, width=6)
+    d.rounded_rectangle((left, top + 40, right, bottom), radius=20, fill=colour,
+                        outline=INK, width=6)
+    d.rectangle((left + 8, top + 78, right - 8, top + 108), fill=PAPER)
+
+
+def hanging_medal(d, box):
+    left, top, right, bottom = box
+    mid = (left + right) // 2
+    d.line((mid, top, left + 12, top + 96), fill="#EC4899", width=14)
+    d.line((mid, top, right - 12, top + 96), fill="#EC4899", width=14)
+    d.ellipse((left, bottom - (right - left), right, bottom), fill=GOLD,
+              outline=INK, width=7)
+
+
+def offer_cup(d, box):
+    left, top, right, bottom = box
+    d.rounded_rectangle(box, radius=12, fill=PAPER, outline=INK, width=8)
+    d.polygon([(left + 8, top + 26), (right - 8, top + 26),
+               (right - 16, bottom - 10), (left + 16, bottom - 10)], fill="#93C5FD")
+
+
+def station_sign(d):
+    left, top, width, height = 553, 435, 430, 118
+    d.rounded_rectangle((left, top, left + width, top + height), radius=14,
+                        fill=SIGN_BOARD, outline=INK, width=8)
+    # The real screen sets this in type; a bar stands in for the word so the
+    # board's footprint is what gets checked, not the font.
+    d.rectangle((left + 40, top + 46, left + width - 40, top + height - 46),
+                fill="#FFFFFF")
 
 
 def draw_scene():
-    im = Image.new("RGBA", (W, H), SKY_BOTTOM)
-    px = im.load()
-    top = tuple(int(SKY_TOP[i:i + 2], 16) for i in (1, 3, 5))
-    bottom = tuple(int(SKY_BOTTOM[i:i + 2], 16) for i in (1, 3, 5))
-    for y in range(H):
-        t = y / (H - 1)
-        col = tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)) + (255,)
-        for x in range(W):
-            px[x, y] = col
-    # Sky strips go down before the canopy, which is what crops them — only
-    # the tops of the clouds survive above the tent, and that is the effect.
-    paste_cloud_strips(im)
+    im = Image.new("RGBA", (W, H), PLATE_SKY)
+
+    # 01 backdrop, and the two icons standing on its shelves.
+    im.alpha_composite(plate(PLATES[0]))
+    for key in ("stopwatch", "trophy"):
+        rel, box = ICON_PROPS[key]
+        paste_fitted(im, os.path.join(FE_ASSETS, rel), box)
+
     d = ImageDraw.Draw(im)
 
-    # Tent and back wall.
-    d.rectangle((96, 250, 126, H), fill=FABRIC_SHADE, outline=INK, width=8)
-    d.rectangle((1410, 250, 1440, H), fill=FABRIC_SHADE, outline=INK, width=8)
-    d.polygon([(-30, 268), (-30, 132), (768, 34), (1566, 132), (1566, 268)], fill=FABRIC, outline=INK)
-    for i in range(13):
-        x = -30 + i * 128
-        d.rectangle((x, 112, x + 64, 264), fill=TEAL if i % 2 == 0 else PINK)
-    d.line([(-30, 268), (-30, 132), (768, 34), (1566, 132), (1566, 268)], fill=INK, width=8, joint="curve")
-    rounded(d, (110, 262, 1426, 884), 2, FABRIC_SHADE, width=8)
-    for x in (260, 470, 700, 940, 1180):
-        d.line((x, 270, x + 14, 876), fill=FABRIC_DEEP, width=14)
+    # 02 hanging props, in the two clear lanes.
+    hanging_bottle(d, (545, 671, 611, 849), TEAL)
+    hanging_medal(d, (918, 671, 1002, 867))
 
-    # Shelves and deliberately separated stock.
-    for x in (116, 1064):
-        rounded(d, (x, 520, x + 360, 538), 6, BOARD, width=5)
-        d.rectangle((x + 26, 538, x + 42, 572), fill=BOARD, outline=INK, width=5)
-        d.rectangle((x + 318, 538, x + 334, 572), fill=BOARD, outline=INK, width=5)
-    for x, col in ((230, PINK), (286, "#60A5FA")):
-        rounded(d, (x, 446, x + 40, 520), 12, col, width=5)
-        rounded(d, (x + 12, 428, x + 28, 448), 4, PAPER, width=5)
-    for i in range(3):
-        rounded(d, (342, 494 - i * 22, 462, 516 - i * 22), 6, TEAL if i == 1 else PAPER, width=5)
-    for x in (1180, 1248):
-        d.polygon([(x, 442), (x + 52, 442), (x + 44, 520), (x + 8, 520)], fill=PAPER, outline=INK)
-
-    # Wall props.
-    rounded(d, (486, 360, 614, 474), 12, BOARD, width=6)
-    d.line((510, 446, 548, 414, 576, 390), fill=TEAL, width=8)
-    rounded(d, (946, 372, 1074, 488), 10, PAPER, width=6)
-    d.rectangle((968, 398, 1052, 412), fill=PINK)
-    rounded(d, (126, 432, 206, 512), 40, "#60A5FA", width=7)
-
-    # Hanging props behind the crew.
-    def bottle(x, y, h, col):
-        d.line((x + 37, y, x + 37, y + 62), fill=INK, width=6)
-        rounded(d, (x + 6, y + 62, x + 68, y + h - 6), 22, col, width=6)
-        d.rectangle((x + 14, y + 96, x + 60, y + 126), fill=PAPER)
-
-    bottle(56, 292, 210, TEAL)
-
-    # Counter top. Nothing stands on it behind the crew any more — the drawn
-    # cooler shared a lane with the featured item and was covered by it.
-    d.polygon([(20, 830), (1516, 830), (1516, 900), (20, 900)], fill=COUNTER_TOP, outline=INK)
-    rounded(d, (457, 702, 607, 738), 12, TEAL, width=8)
-
-    # Exact catalogue avatars.
-    for role, cx, y, width in (
-        ("restocker", 330, 320, 260),
-        ("helper", 1210, 310, 265),
-        ("keeper", 768, 183, 330),
-    ):
+    # 03-04 the crew, drawn back to front (the attendant last).
+    for role, cx, y, width in CREW:
         av = crew_avatar(role)
         ah = round(av.height * width / av.width)
         av = av.resize((width, ah), Image.Resampling.LANCZOS)
         im.alpha_composite(av, (round(cx - width / 2), y))
 
-    # Offered cup, resting just above the counter.
-    rounded(d, (967, 714, 1043, 828), 12, PAPER, width=8)
-    d.polygon([(974, 740), (1036, 740), (1028, 820), (982, 820)], fill="#93C5FD")
+    # The offered cup, resting at the counter's back edge.
+    offer_cup(ImageDraw.Draw(im), (919, 1074, 1001, 1186))
 
-    # Counter front, then the foreground stock row.
-    d.rectangle((20, 900, 1516, H + 10), fill=COUNTER_FACE, outline=INK, width=8)
-    d.rectangle((20, 914, 1516, H), fill=TEAL)
-    d.rectangle((20, 984, 1516, 1010), fill=PURPLE)
-    d.line((20, 914, 1516, 914), fill=INK, width=5)
-    d.line((20, 984, 1516, 984), fill=INK, width=5)
-    d.line((20, 1010, 1516, 1010), fill=INK, width=5)
+    # 05 the counter, then the stock standing on it.
+    im.alpha_composite(plate(PLATES[1]))
+    for rel, box in PROP_CLIPS.values():
+        paste_fitted(im, os.path.join(FE_ASSETS, rel), box)
+    rel, box = ICON_PROPS["lootbox"]
+    paste_fitted(im, os.path.join(FE_ASSETS, rel), box)
 
-    # Towels and the reward box are still drawn; the rest of the front row is
-    # shipped art, pasted below.
-    rounded(d, (264, 770, 396, 902), 18, PURPLE, width=8)
-    d.line((330, 770, 330, 902), fill=GOLD, width=14)
-    for slot in ("coconut", "watermelon", "sodaBottles"):
-        paste_clip(im, *PROP_CLIPS[slot])
-
-    # Right cluster in its corrected, fully visible frames.
-    d.line((1390, 286, 1360, 418), fill=PINK, width=16)
-    d.line((1390, 286, 1420, 418), fill=PINK, width=16)
-    d.ellipse((1342, 418, 1438, 514), fill=GOLD, outline=INK, width=7)
-    bottle(1454, 292, 196, PINK)
-
-    # High bunting and sign are the final foreground layers.
-    pts = []
-    for x in range(-40, W + 41, 118):
-        lift = math.sin((x / W) * math.pi) * 92
-        y = 180 - lift
-        pts.append((x, y))
-    d.line(pts, fill=INK, width=7)
-    palette = (TEAL, PINK, GOLD, PAPER)
-    for i, (x, y) in enumerate(pts):
-        d.polygon([(x, y), (x + 72, y), (x + 36, y + 70)], fill=palette[i % 4], outline=INK)
-    # The OPEN sign is last of all: it is the nearest object in the scene, in
-    # front of the counter and the bunting both.
-    paste_clip(im, *PROP_CLIPS["openSign"])
+    # 07 the sign, last, so nothing crosses it.
+    station_sign(ImageDraw.Draw(im))
     return im
 
 
@@ -293,12 +260,14 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     scene = draw_scene()
     for width in (320, 390, 430):
-        height = round(VISIBLE_H * width / W)
-        full_h = round(H * width / W)
-        out = scene.resize((width, full_h), Image.Resampling.LANCZOS).crop((0, 0, width, height)).convert("RGB")
+        height = round(H * width / W)
+        out = scene.resize((width, height), Image.Resampling.LANCZOS).convert("RGB")
         path = os.path.join(OUT, f"pit-stop-{width}.png")
         out.save(path, quality=94)
         print("wrote", path, out.size)
+    full = os.path.join(OUT, "pit-stop-full.png")
+    scene.convert("RGB").save(full)
+    print("wrote", full, scene.size)
 
 
 if __name__ == "__main__":

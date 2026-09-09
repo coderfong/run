@@ -8,6 +8,7 @@
 
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from '../ui/image';
 import { Check, Info, Lock, X } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
@@ -16,10 +17,21 @@ import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
 import { NB, brand, fonts, nbRadius, radius, shadow, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
-import { Card, Framed, Row, Sheet, Skeleton, Screen, OutlinedText, ToonButton } from '../components/ui';
-import { CharacterBust } from '../components/character/CharacterRig';
-import PortraitBorder from '../components/PortraitBorder';
+import {
+  Card,
+  Framed,
+  HardShadow,
+  Row,
+  Sheet,
+  Skeleton,
+  Screen,
+  OutlinedText,
+  PANEL_INK,
+  ToonButton,
+  ToonHeader,
+} from '../components/ui';
 import GameAnimation from '../components/GameAnimation';
+import PassBackdrop from '../components/pass/PassBackdrop';
 import RewardArt, { RARITY_COLOR } from '../components/RewardArt';
 import RewardReveal from '../components/RewardReveal';
 import { useProEntitlement } from '../pro/ProProvider';
@@ -31,9 +43,7 @@ import { toast } from '../ui/toast';
 import { Arrival, Bar, Pulse, useArrival, useReduceMotion } from '../ui/motion';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
-import RankCard from '../components/rank/RankCard';
 import LootboxGamble from '../components/lootbox/LootboxGamble';
-import { standingFrom } from '../config/rankLadder';
 import { rollCosmetic } from '../config/lootboxRoll';
 
 // `rollCosmetic` moved to config/lootboxRoll.js when the daily mission
@@ -273,18 +283,14 @@ function Spine({ level, reached, current, claimable = false }) {
   );
 }
 
-// What Level, Rank and the two reward tracks actually mean. The header shows
-// both numbers side by side with no explanation of why they move differently
-// (level only ever climbs, rank can fall) or what claiming even does, so this
-// is one tap away rather than a wall of text on a page that's mostly ladder.
+// What a level is and what the two reward tracks pay. It used to explain rank
+// as well, because the header carried a rank number beside the level with
+// nothing saying why the two move differently — this page is levels only now,
+// and rank has a whole screen of its own to explain itself on.
 const INFO_SECTIONS = [
   {
     title: 'Level',
     body: 'Run to earn XP and level up. Your level never goes down.',
-  },
-  {
-    title: 'Rank',
-    body: 'Take rival land or successfully defend yours to move up the ladder. Beating a stronger runner is worth more, and every gain is matched by their loss. Your portrait border shows the tier you are standing in.',
   },
   {
     title: 'Rewards',
@@ -298,7 +304,7 @@ function ProgressionInfoSheet({ visible, onClose }) {
   return (
     <Sheet visible={visible} onClose={onClose}>
       <Row between style={{ marginBottom: space.sm }}>
-        <Text style={type.heading}>Level, rank and rewards</Text>
+        <Text style={type.heading}>Levels and rewards</Text>
         <TouchableOpacity
           onPress={onClose}
           hitSlop={10}
@@ -318,8 +324,98 @@ function ProgressionInfoSheet({ visible, onClose }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// PassHeader — the page's stylised top, in the flat `panel` format every other
+// pushed page in the app wears (Missions, Rivals, Crossroads, the rank ladder):
+// ink copy on a saturated brand fill, the cut-out on the right, one stroke
+// along the bottom edge.
+//
+// It replaces the purple crew banner that used to open this screen, which sat
+// under the native title bar (two bars stacked) and carried the runner's
+// portrait in a RANK border with the rank tier written under the level. Nothing
+// on this page says rank now — it is levels and what they pay out.
+//
+// Because the header carries its own back tile, the native stack header is off
+// for this route (see App.js).
+// ---------------------------------------------------------------------------
+function PassHeader({ top, onBack, onInfo, level, subtitle, pct }) {
+  const type = useThemedType();
+  return (
+    <ToonHeader
+      panel
+      // `compact`, for the reason Crossroads is: there is a painted plaza
+      // behind this page now, and the header is chrome over it. At full size
+      // the panel is about 260pt tall and the painting's horizon sits at 269,
+      // so the whole scene — sun, clouds, flags, skyline, hoardings — was
+      // behind the pink and the reader got the bare paving. Compact gives
+      // ninety points back and the skyline band comes out from under it.
+      compact
+      eyebrow="Rewards"
+      title={level == null ? 'Levels' : `Level ${level}`}
+      subtitle={subtitle}
+      // The line swaps as the page loads, and again at the ceiling. Reserving
+      // it stops the header changing height under the reader's thumb.
+      subtitleLines={1}
+      solid={brand.pink}
+      art={art('railPass')}
+      top={top}
+      titleStyle={type.display}
+      eyebrowStyle={type.labelSm}
+      onBack={onBack}
+    >
+      {/* The XP bar and the info tile share one line under the title, and the
+          LINE IS DRAWN IN EVERY STATE whether or not it has anything in it.
+          Two reasons, both new with the plaza behind the page. The info tile
+          used to be absolutely positioned on the back tile's line; `compact`
+          moves the back tile inline with the title, so there is no longer a
+          line up there for it to sit on. And a header that is one height while
+          it loads and another once it has data would slide the painted horizon
+          out from under itself as the page settles — the one place a few points
+          of empty pink is cheaper than the alternative. */}
+      <View style={styles.headerLine}>
+        {pct == null ? null : (
+          // The outline rides on the WRAPPER and the track is the absolute fill
+          // inside it: a bordered track measures its own width including the
+          // border, which leaves the fill permanently short of the end (see
+          // Bar).
+          <View style={styles.xpWrap}>
+            <Bar
+              pct={pct}
+              // Fills from empty every time you open the screen. You mostly get
+              // here straight off a finished run, and watching the bar run up to
+              // where your XP landed is the whole point of the number; the delay
+              // lets the header settle first.
+              animateOnMount
+              delay={260}
+              durationMs={700}
+              trackStyle={StyleSheet.absoluteFill}
+              fillStyle={styles.xpFill}
+            />
+          </View>
+        )}
+        {onInfo ? (
+          // The same white square the back tile wears, at the other end of the
+          // line. It has a hard drop: over the old busy banner art a shadow read
+          // as muck, but on a flat panel it reads as depth.
+          <HardShadow offset={NB.offsetSm} radius={nbRadius.sm} on="#fff">
+            <TouchableOpacity
+              onPress={onInfo}
+              style={styles.infoTile}
+              accessibilityRole="button"
+              accessibilityLabel="How levels and rewards work"
+            >
+              <Info size={20} color={PANEL_INK} />
+            </TouchableOpacity>
+          </HardShadow>
+        ) : null}
+      </View>
+    </ToonHeader>
+  );
+}
+
 export default function ProgressionScreen({ navigation }) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const type = useThemedType();
   const reducedMotion = useReduceMotion();
   const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
@@ -337,6 +433,14 @@ export default function ProgressionScreen({ navigation }) {
   const [sweep, setSweep] = useState(null);
   // What the reveal is currently showing: { rewards, accent, fromLootbox }.
   const [reveal, setReveal] = useState(null);
+  // The measured height of the panel, which is what tells the plaza behind it
+  // how far to push its start line down. It changes with the reader's text
+  // size, so it is measured rather than assumed — see PassBackdrop.
+  const [headerH, setHeaderH] = useState(null);
+  const onHeaderLayout = (e) => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    setHeaderH((prev) => (prev === h ? prev : h));
+  };
   // The server's roll for the box currently being tapped up, or null.
   const [gamble, setGamble] = useState(null);
 
@@ -503,23 +607,43 @@ export default function ProgressionScreen({ navigation }) {
   // Only a failure with NOTHING cached is a dead end; a failed refresh over a
   // ladder that's already on screen leaves the ladder alone.
   const arriving = useArrival(loading);
+  const goBack = navigation?.canGoBack?.() ? () => navigation.goBack() : undefined;
 
+  // The header is drawn in EVERY state, not just the loaded one: it is the only
+  // back button on the route now that the native bar is off, so a failed read
+  // must not leave the page with no way out of it. The plaza is drawn in every
+  // state for the same reason it is drawn at all — it is the page's floor, and
+  // a page that only grows one once its request lands flashes a flat grey
+  // rectangle at every reader on every visit.
   if (loading && error) {
-    return <Screen center><Text style={type.body}>Couldn’t load progression.</Text></Screen>;
+    return (
+      <View style={styles.page}>
+        <PassBackdrop headerHeight={headerH} />
+        <View onLayout={onHeaderLayout}>
+          <PassHeader top={insets.top} onBack={goBack} subtitle="Couldn’t load your ladder" />
+        </View>
+        <Screen center edges={['bottom']} style={styles.transparent}>
+          <Text style={type.body}>Couldn’t load progression.</Text>
+        </Screen>
+      </View>
+    );
   }
   if (loading) {
     return (
-      <Screen>
-        <Skeleton width="100%" height={180} style={{ borderRadius: radius.card, marginTop: space.md }} />
-        <Skeleton width="100%" height={400} style={{ borderRadius: radius.card, marginTop: space.md }} />
-      </Screen>
+      <View style={styles.page}>
+        <PassBackdrop headerHeight={headerH} />
+        <View onLayout={onHeaderLayout}>
+          <PassHeader top={insets.top} onBack={goBack} subtitle="Counting up your XP" />
+        </View>
+        <Screen edges={['bottom']} style={styles.transparent}>
+          <Skeleton width="100%" height={180} style={{ borderRadius: radius.card, marginTop: space.md }} />
+          <Skeleton width="100%" height={400} style={{ borderRadius: radius.card, marginTop: space.md }} />
+        </Screen>
+      </View>
     );
   }
 
-  const { level, xp_into_level, xp_for_next, ladder, pending_lootboxes, premium_active, claims, rank } = data;
-  // Tier, division and the gap to the next rung, all derived from the one
-  // rank payload the server already sends. See config/rankLadder.js.
-  const standing = standingFrom(rank);
+  const { level, xp_into_level, xp_for_next, ladder, pending_lootboxes, premium_active, claims } = data;
   const showPremium = premium_active || IAP_ENABLED;
   // At the ceiling there is no "next level" to be part-way to, and the server
   // keeps reporting progress toward a level 51 that doesn't exist. A bar
@@ -540,90 +664,13 @@ export default function ProgressionScreen({ navigation }) {
   // Bound and wrapped at the end rather than in place: the ladder is 250 lines
   // of JSX and re-indenting it for one parent would bury the change.
   const page = (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.bg }} contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}>
-      {/* The header IS the banner. The purple crew art used to be a separate
-          strip above a plain card, so the screen opened with two stacked
-          blocks saying the same thing; now the card sits ON the art and the
-          portrait has something to sit against. */}
-      <Framed
-        frame={frameVariant('header', 'levels-and-rewards')}
-        tint={brand.pink}
-        weight={INK.medium}
-        pose={framePose('levels-and-rewards')}
-        // The one frame on this screen that boils. Fifty tiles down the page
-        // is not a place for a crawling line on each of them, but the page's
-        // single hero card can carry the hand animated look on its own.
-        boil
-        inset={false}
-        style={styles.header}
-        contentStyle={styles.headerClip}
-      >
-        {art('passBanner') && (
-          <Image
-            source={art('passBanner')}
-            style={StyleSheet.absoluteFill}
-            resizeMode="cover"
-            fadeDuration={0}
-          />
-        )}
-        {/* The art is busy behind type — this keeps the copy legible without
-            hiding the crew, and it is always dark, so the text below is always
-            white regardless of theme. */}
-        <View style={[StyleSheet.absoluteFill, styles.headerScrim]} pointerEvents="none" />
-        <TouchableOpacity
-          style={styles.infoBtn}
-          onPress={() => setInfoOpen(true)}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel="How level, rank and rewards work"
-        >
-          {/* A squared white NB tile, not the translucent black disc it was —
-              the same call the back button made. No drop: it floats over busy
-              header art, where a hard shadow reads as muck. */}
-          <Info size={18} color={NB.ink} />
-        </TouchableOpacity>
-        <View style={styles.headerInner}>
-          <PortraitBorder borderKey={rank?.key || 'wood'} size={104}>
-            <CharacterBust equipped={equipped} size={104} bg={withAlpha('#000000', 0.35)} />
-          </PortraitBorder>
-          <Text style={[type.title, styles.headerText, { marginTop: space.sm }]}>Level {level}</Text>
-          {/* Rank, not level. At the top tier it is just the name — it used to
-              read "Mythic · top rank", which said the same thing twice. */}
-          <Text style={[type.caption, styles.headerSubText]}>
-            {standing.isTop
-              ? standing.name
-              : `${standing.name} · ${Number(standing.toNext).toLocaleString()} to climb`}
-          </Text>
-          {/* Fills from empty every time you open the screen. You mostly get
-              here straight off a finished run, and watching the bar run up to
-              where your XP landed is the whole point of the number; the small
-              delay lets the header settle first so the fill isn't competing
-              with the card's own entrance. */}
-          <Bar
-            pct={pct}
-            animateOnMount
-            delay={260}
-            durationMs={700}
-            trackStyle={[styles.xpTrack, { backgroundColor: withAlpha('#000000', 0.45) }]}
-            fillStyle={styles.xpFill}
-          />
-          <Text style={[type.caption, styles.headerSubText, { marginTop: 6 }]}>
-            {maxed
-              ? 'Max level reached'
-              : `${xp_into_level.toLocaleString()} / ${xp_for_next.toLocaleString()} XP to level ${level + 1}`}
-          </Text>
-        </View>
-      </Framed>
-
-      {/* The ladder in miniature. Tapping it opens the full column — this
-          card answers "what am I", the ladder answers "what is next". */}
-      <RankCard
-        title="Rank"
-        standing={standing}
-        equipped={equipped}
-        onPress={() => navigation?.navigate?.('RankLadder')}
-        style={{ marginTop: space.lg }}
-      />
+    // Transparent, not `colors.bg`: the plaza is behind the whole page and a
+    // scroll view that paints its own background would cover it with the flat
+    // colour this screen used to be.
+    <ScrollView style={styles.page} contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}>
+      {/* The level, the XP line and the bar all live in the page header now
+          (PassHeader, above), so the scroll starts on what there is to collect
+          rather than on a second block repeating the first one. */}
 
       {/* What there is to collect, and one button that collects it. This used
           to be a small pill under the portrait, which is a strange way to
@@ -825,7 +872,25 @@ export default function ProgressionScreen({ navigation }) {
   );
 
   return (
-    <Arrival active={arriving} style={{ flex: 1 }}>
+    <Arrival active={arriving} style={styles.page}>
+      {/* The floor, under the header as well as under the ladder: the painting
+          is a whole scene and it places its own start line against the panel it
+          is measuring. See components/pass/PassBackdrop.js. */}
+      <PassBackdrop headerHeight={headerH} />
+      <View onLayout={onHeaderLayout}>
+        <PassHeader
+          top={insets.top}
+          onBack={goBack}
+          onInfo={() => setInfoOpen(true)}
+          level={level}
+          subtitle={
+            maxed
+              ? 'Max level reached'
+              : `${xp_into_level.toLocaleString()} / ${xp_for_next.toLocaleString()} XP to level ${level + 1}`
+          }
+          pct={pct}
+        />
+      </View>
       {page}
     </Arrival>
   );
@@ -850,36 +915,53 @@ const GEM_LINE = 22;
 const LANE_H = 48;
 
 const styles = StyleSheet.create({
-  // The banner art is the card. `overflow: hidden` is what lets a cover image
-  // sit under the rounded corners instead of squaring them off.
-  header: {
-    minHeight: 248,
+  // Every layer of the page is see-through now — the plaza is painted once,
+  // underneath all of it, and anything that paints `colors.bg` on top of it
+  // paints the plaza out.
+  page: { flex: 1, backgroundColor: 'transparent' },
+  transparent: { backgroundColor: 'transparent' },
+
+  // The one line under the title: the XP bar, then the info tile. Its height is
+  // the TILE's, fixed and independent of what is in it, so the header measures
+  // the same in every state — see the note at the call site.
+  headerLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 40,
+    gap: space.md,
+    marginTop: space.md,
   },
-  headerClip: { flex: 1, borderRadius: radius.card, overflow: 'hidden' },
-  headerScrim: { backgroundColor: 'rgba(14,10,28,0.52)' },
-  infoBtn: {
-    position: 'absolute', top: space.md, right: space.md, zIndex: 1,
-    width: 32, height: 32, borderRadius: nbRadius.sm,
+  infoTile: {
+    width: 40, height: 40, borderRadius: nbRadius.sm,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#fff',
-    borderWidth: NB.strokeThin, borderColor: NB.ink,
+    borderWidth: NB.stroke, borderColor: PANEL_INK,
   },
-  headerInner: { alignItems: 'center', padding: space.lg },
-  // Always white: the panel underneath is the purple art plus a dark scrim in
-  // both themes, so this can't take the theme's text colour.
-  headerText: { color: '#ffffff' },
-  headerSubText: { color: 'rgba(255,255,255,0.78)' },
 
   claimAllBtn: { minWidth: 132 },
-  claimBar: { marginTop: space.lg },
+  // No top margin: this is the first thing in the scroll now that the level
+  // card has moved into the page header, and the scroll's own gutter is
+  // already the gap between it and the header's bottom edge.
+  claimBar: { marginTop: 0 },
   claimBarContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.lg,
   },
 
-  xpTrack: { height: 10, borderRadius: 5, overflow: 'hidden', alignSelf: 'stretch', marginTop: space.md },
-  xpFill: { height: '100%', borderRadius: 5, backgroundColor: brand.pink },
+  // The XP track, on the header's flat pink panel — where a pink fill would
+  // disappear. White fill on an ink track at low alpha is the same pair the
+  // panel's own white tiles make against it.
+  xpWrap: {
+    flex: 1,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: NB.strokeThin,
+    borderColor: PANEL_INK,
+    backgroundColor: withAlpha(PANEL_INK, 0.18),
+    overflow: 'hidden',
+  },
+  xpFill: { height: '100%', backgroundColor: '#ffffff' },
   boxCard: { marginTop: space.md },
   boxCardContent: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   passBanner: { marginTop: space.md },

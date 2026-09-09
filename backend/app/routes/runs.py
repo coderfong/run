@@ -26,6 +26,7 @@ from shapely.geometry import LineString
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .. import club_runs
 from .. import coins as coins_mod
 from .. import economy
 from .. import elo
@@ -36,7 +37,7 @@ from .. import territory_history
 from .. import fitness, models, schemas
 from ..anticheat import is_verified, validate_run
 from ..notifications import notify
-from .clans import add_clan_xp, clan_member_ids, record_clan_activity
+from .clans import clan_member_ids
 from .progression import sync_level_rewards
 from ..config import settings
 from ..database import get_db
@@ -334,16 +335,35 @@ def end_run(
         db, run.id, run.user_id, cleaned, run.distance_m, area, run.verified
     )
 
-    # Advance the runner's clan weekly goal + season stats (no-op if clanless).
-    # Flagged (unverified) runs never contribute to clan stats, goals, or XP.
-    # Claim + steal credit lands at /claim-territory when the ground is taken.
-    goal_reached, clan_id = (False, None)
+    # Was this a CLUB run? Only a route the club ran together counts for the
+    # club (app/club_runs.py) — a solo run still earns the runner everything
+    # below, and earns their club nothing. Logged before the credit is paid,
+    # so clubmates who finished earlier, and so had nobody to match when they
+    # came in, are caught up by `sync_credit` further down.
+    #
+    # Gated on the REWARD BAR as well as the flag, exactly like every other
+    # payout below: a run too short or too slow to earn its own runner
+    # anything cannot earn their club anything either, or walking fifty metres
+    # with a clubmate ten times a day would be the cheapest club goal in the
+    # game. Every anti-cheat rule already folded into `tier` gates this too.
+    club_id, club_partners = (None, [])
+    if run.verified and economy.rewards_earned(tier):
+        # The probe reads `runs` in SQL and the session does not autoflush, so
+        # the path and the end time this handler just set are still sitting in
+        # the identity map. Unflushed, the run has no route to match on and
+        # every club run in the game would come back solo.
+        db.flush()
+        club_id, club_partners, _newly = club_runs.log_run(
+            db, run.id, run.user_id, user.clan_id
+        )
+
+    # Advance the club's weekly goal + season stats (no-op if this was not a
+    # club run). Flagged (unverified) runs never contribute to clan stats,
+    # goals, or XP. Claim + steal credit lands at /claim-territory when the
+    # ground is taken.
     xp_gain = 0
     award = {"coins": 0, "energy": 0, "coins_capped": False, "energy_capped": False}
     if economy.rewards_earned(tier):
-        goal_reached, clan_id = record_clan_activity(
-            db, user, distance_m=run.distance_m, closed_loop=False, stolen=0.0
-        )
         xp_gain = round((run.distance_m / 1000.0) * settings.xp_per_km)
         # Every payout is reserved against a run-derived key before any
         # balance moves. A retry collides on the key and pays nothing; the
@@ -355,8 +375,7 @@ def end_run(
                 text("UPDATE users SET xp = xp + :g WHERE id = :uid"),
                 {"g": xp_gain, "uid": user.id},
             )
-            # Distance XP also advances the runner's club.
-            add_clan_xp(db, clan_id or user.clan_id, xp_gain)
+
         # Both scale with the run and are capped daily, so going further is
         # worth more and going out ten times is not worth more than going far.
         award = economy.award_for_run(
@@ -374,6 +393,12 @@ def end_run(
     run.reward_coins = award["coins"]
     run.reward_energy = award["energy"]
     run.reward_xp = xp_gain
+    db.flush()
+    # One place pays the club, for BOTH finishers, once each: the runner who
+    # came in first had nobody to match at the time and is caught up here.
+    goal_reached, clan_id = club_runs.sync_credit(
+        db, [run.id] + [p["run_id"] for p in club_partners], club_id
+    )
 
     # PASERBY: sample this route into the short-lived trace table so a later
     # run can be matched against it. A no-op unless the run is verified, past
@@ -442,8 +467,10 @@ def run_expiry_sweep(db: Session) -> dict:
     """
     params = {"life_per": settings.territory_life_days_per_strength}
     expired = db.execute(
-        text("DELETE FROM territories t WHERE NOT (" + _live("t") + ")"), params
-    ).rowcount
+        text("DELETE FROM territories t WHERE NOT (" + _live("t") + ") RETURNING user_id, area_m2"), params
+    ).fetchall()
+    elo.record_expired_land(db, expired)
+    expired = len(expired)
 
     # UPDATE ... RETURNING is both the worklist and the guard: the rows that
     # were actually stamped are exactly the ones this run may pay for, so a
@@ -543,6 +570,8 @@ def _club_support_sql(
     overlap_expr: str,
     source: str = "territories",
     rank_clause: str = "",
+    owner_clan: str | None = None,
+    support_clan: str | None = None,
 ) -> str:
     """The strengths of every clubmate territory overlapping this ground.
 
@@ -551,18 +580,30 @@ def _club_support_sql(
     have meant two copies of the rule, one of them untestable without a
     database, which is exactly the split that let the client and server drift
     apart over the claim formula.
+
+    CLUBMATES ARE PEOPLE, NOT PLOTS. Both sides of the comparison are a
+    RUNNER's club, read off `users`, never the club denormalized onto the
+    territory row. Those stopped being the same thing when club land became
+    something a club has to run together for (app/club_runs.py): most of a
+    club's members hold ground with no club on it at all, and comparing the
+    rows would have quietly turned every clubmate into a rival with no
+    defence to lend.
     """
     extra = "" if source != "territories" else f" AND t2.verified AND {_live('t2')}"
-    # ``local`` is already rank-filtered by _placement_breakdown. The live
-    # territory table needs its owner's user row so cross-tier clubmates cannot
-    # lend defence into a fight they are not eligible to join.
-    rank_join = " JOIN users support_u ON support_u.id = t2.user_id" if rank_clause else ""
+    # ``local`` is already rank-filtered by _placement_breakdown, and carries
+    # its owner's club. The live territory table needs its owner's user row,
+    # both for that club and so cross-tier clubmates cannot lend defence into
+    # a fight they are not eligible to join.
+    needs_user = source == "territories"
+    rank_join = " JOIN users support_u ON support_u.id = t2.user_id" if needs_user else ""
     rank_filter = f" AND {rank_clause}" if rank_clause else ""
+    owner_clan = owner_clan or f"{owner}.clan_id"
+    support_clan = support_clan or ("support_u.clan_id" if needs_user else "t2.clan_id")
     return f"""COALESCE((
         SELECT array_agg(t2.strength ORDER BY t2.strength DESC)
         FROM {source} t2{rank_join}
-        WHERE {owner}.clan_id IS NOT NULL
-          AND t2.clan_id = {owner}.clan_id
+        WHERE {owner_clan} IS NOT NULL
+          AND {support_clan} = {owner_clan}
           AND t2.id <> {owner}.id{extra}
           {rank_filter}
           AND ST_Intersects(t2.polygon, {overlap_expr})
@@ -572,6 +613,37 @@ def _club_support_sql(
 def _defence_params() -> dict:
     """Bind parameters every defence query needs."""
     return {"life_per": settings.territory_life_days_per_strength}
+
+
+def _record_beats(db, beats: dict, *, actor_id, run_id) -> None:
+    """Write one history row per PERSON a claim took ground from, not one per
+    row it took it out of.
+
+    A runner's holding is several territory rows now — the claim engine keeps
+    each run's footprint separable so a solo run's ground and a club run's
+    ground never merge into one indivisible plot. That is a fact about
+    storage. Reading it back out of the log would say a single claim raided
+    the same neighbour twice, which is not a thing that happened.
+
+    The geometries were captured before the differences below removed them
+    from the victim's rows, and they are unioned here as literals, so this
+    can run after the loop without asking the table for ground that is gone.
+    """
+    for (kind, victim_id), beat in beats.items():
+        wkts = [w for w in beat["wkts"] if w]
+        ground = wkts[0] if len(wkts) == 1 else None
+        if len(wkts) > 1:
+            ground = db.execute(
+                text(
+                    "SELECT ST_AsText(ST_Union(ARRAY(SELECT ST_GeomFromText(w, 4326) "
+                    "FROM unnest(CAST(:wkts AS text[])) AS w)))"
+                ),
+                {"wkts": wkts},
+            ).scalar()
+        territory_history.record(
+            db, kind=kind, actor_id=actor_id, victim_id=victim_id,
+            run_id=run_id, area_m2=beat["area_m2"], ground_wkt=ground,
+        )
 
 
 def club_support_falloff(strengths) -> float:
@@ -790,8 +862,11 @@ def _placement_breakdown(
             -- Narrow to the neighbourhood ONCE, so the per-candidate join
             -- walks a handful of rows instead of re-probing the whole table
             -- for every position and heading.
+            -- `u.clan_id`, not `t.clan_id`: who a runner's clubmates are is a
+            -- fact about the runner, not about the ground. See
+            -- `_club_support_sql`.
             local AS MATERIALIZED (
-                SELECT t.id, t.user_id, t.clan_id, t.strength, t.polygon
+                SELECT t.id, t.user_id, u.clan_id, t.strength, t.polygon
                 FROM territories t
                 JOIN users u ON u.id = t.user_id
                 CROSS JOIN env
@@ -1389,11 +1464,11 @@ def claim_territory(
     if route:
         lons = [p[0] for p in route]
         lats = [p[1] for p in route]
-        db.execute(
+        expired_rows = db.execute(
             text(
                 "DELETE FROM territories t WHERE NOT (" + _live("t") + ") "
                 "AND ST_Intersects(t.polygon, ST_MakeEnvelope("
-                "  :min_lon, :min_lat, :max_lon, :max_lat, 4326))"
+                "  :min_lon, :min_lat, :max_lon, :max_lat, 4326)) RETURNING user_id, area_m2"
             ),
             {
                 # Padded by roughly a kilometre of degrees so the envelope
@@ -1402,7 +1477,8 @@ def claim_territory(
                 "max_lon": max(lons) + 0.01, "max_lat": max(lats) + 0.01,
                 "life_per": settings.territory_life_days_per_strength,
             },
-        )
+        ).fetchall()
+        elo.record_expired_land(db, expired_rows)
 
     # The area /end-run froze for this run, which is its slice of the day's
     # entitlement. Recomputing here would let a run claimed tomorrow be sized
@@ -1483,6 +1559,24 @@ def claim_territory(
             raise HTTPException(422, "run has no usable route to claim from")
         claim_poly = circle_polygon_wgs(lat, lon, claim_radius_m(run.distance_m))
 
+    # Whose land is this? The runner's always; their CLUB's only if the club
+    # ran the route together (app/club_runs.py). Re-checked here rather than
+    # trusted from /end-run because a clubmate can cross the line in between:
+    # this is the last moment before the ground is written, so it is the
+    # moment with the most of the group in it.
+    club_id, club_partners = (None, [])
+    if run.verified:
+        club_id, club_partners, _newly = club_runs.log_run(
+            db, run.id, run.user_id, user.clan_id
+        )
+        # Land a partner already claimed off the same route, handed to the
+        # club now that there is a group to hand it to. Only ever fills a
+        # blank: land that already belongs to a club stays where it is.
+        if club_id:
+            club_runs.attribute_territories(
+                db, [p["run_id"] for p in club_partners], club_id
+            )
+
     territory_out, stolen_m2, stolen_from, steal_events, ground = _claim_territory(
         db=db,
         user_id=run.user_id,
@@ -1491,7 +1585,8 @@ def claim_territory(
         initial_area_m2=area,
         strength=claim_strength(run.distance_m, run.duration_s),
         verified=run.verified,
-        clan_id=user.clan_id,
+        clan_id=club_id,
+        member_clan_id=user.clan_id,
         rank_tier=rank_tier,
         lifetime_for=lambda r: claim_lifetime_days(run.distance_m, run.duration_s, r),
     )
@@ -1577,19 +1672,24 @@ def claim_territory(
             ranks.award(db, user.id, ranks.steal_reward(rank_tier), "steal")
             ranks.award(db, ev["victim_id"], ranks.loss_penalty(rank_tier), "lost_ground")
 
-    # One zero-sum rated encounter per rival, plus one per opposing club.
+    # One weighted solo encounter per rival, plus one per opposing club.
     # This stays inside the claim transaction: a rating can never move for a
     # territory update that later rolls back.
     elo_result = elo.record_claim_matches(
-        db, user.id, run.id, steal_events, attacker_clan_id=user.clan_id
+        db, user.id, run.id, steal_events, attacker_clan_id=club_id,
+        club_match=bool(club_id),
     )
+    open_area = max(0.0, ground["gained_m2"] - stolen_m2)
+    open_points = elo.open_claim_reward(open_area)
+    if open_points:
+        elo_result["solo_rating"] = elo.apply_land_delta(db, user.id, open_points)
+        elo_result["solo_delta"] += open_points
     # Did that claim cross a tier boundary? Worked out from the rating either
     # side of the encounter rather than by re-reading the row, so it cannot
     # disagree with the numbers reported below.
     rank_after = elo.tier_for_rating(elo_result["solo_rating"])
     rank_before = elo.tier_for_rating(elo_result["solo_rating"] - elo_result["solo_delta"])
 
-    goal_reached, clan_id = (False, None)
     xp_gain = 0
     # Snapshot XP before the award so the payoff screen can fill the bar from
     # where it was, and know whether this claim crossed a level.
@@ -1598,9 +1698,6 @@ def claim_territory(
         or 0
     )
     if run.verified:
-        goal_reached, clan_id = record_clan_activity(
-            db, user, distance_m=0.0, closed_loop=True, stolen=stolen_m2
-        )
         # Area-scaled reward: bigger claims — and bigger steals — earn more.
         # `claim_area_m2` is the ground this run's claim covers (not the merged
         # total), so re-claiming your own land can't farm XP.
@@ -1626,8 +1723,8 @@ def claim_territory(
                 text("UPDATE users SET xp = xp + :g WHERE id = :uid"),
                 {"g": xp_gain, "uid": user.id},
             )
-            # Claims + steals also advance the runner's club.
-            add_clan_xp(db, clan_id or user.clan_id, xp_gain)
+            # Claims + steals also advance the club — when the club ran it.
+
 
     new_xp = xp_before + xp_gain
     level_before, new_level = level_from_xp(xp_before), level_from_xp(new_xp)
@@ -1662,6 +1759,10 @@ def claim_territory(
         rank_key_after=rank_after["key"],
     )
     run.claim_result = out.model_dump(mode="json")
+    db.flush()
+    goal_reached, clan_id = club_runs.sync_credit(
+        db, [run.id] + [p["run_id"] for p in club_partners], club_id
+    )
 
     # ONE commit for the whole claim: ownership changes, the energy spend, the
     # rivalry ledger, XP, rank, the recorded action AND the stored result land
@@ -2018,6 +2119,7 @@ def _claim_territory(
     strength: float = 1.0,
     verified: bool = True,
     clan_id: str | None = None,
+    member_clan_id: str | None = None,
     lifetime_days: float | None = None,
     lifetime_for=None,
     rank_tier: int | None = None,
@@ -2026,6 +2128,14 @@ def _claim_territory(
 
     Rules (strength model):
       * Every claim carries a pace-based `strength`.
+      * TWO CLANS, TWO JOBS. `clan_id` is what this claim is WORTH to a club:
+        it is written onto the row, it is what the club board draws, and it is
+        None unless the club ran the route together (app/club_runs.py).
+        `member_clan_id` is who the claimer's CLUBMATES are, which is a fact
+        about the runner and has nothing to do with what any run was worth. It
+        is the second one that decides who may be attacked and whose defence
+        stacks; passing the first would make clubmates rivals the moment
+        either of them went out alone.
       * RIVALS = other users OUTSIDE the claimer's club AND inside the
         claimer's live rank tier. Each rank is its own board — the same board
         `/map-polygons` draws — so a claim never sees, steals from, or is
@@ -2114,7 +2224,10 @@ def _claim_territory(
     )
 
     # Pull rivals that intersect: other users OUTSIDE the claimer's club and
-    # INSIDE the claimer's rank tier.
+    # INSIDE the claimer's rank tier. `ru.clan_id` — the OWNER's club, not the
+    # club stamped on the plot. Most land carries no club now (see the
+    # docstring), and reading it off the row would put every clubmate's
+    # ordinary solo territory on the target list.
     rivals = db.execute(
         text(
             """
@@ -2123,14 +2236,16 @@ def _claim_territory(
             JOIN users ru ON ru.id = t.user_id
             WHERE t.user_id <> :uid
               AND t.verified
-              AND (CAST(:clan_id AS uuid) IS NULL OR t.clan_id IS NULL OR t.clan_id <> :clan_id)
+              AND (CAST(:member_clan_id AS uuid) IS NULL
+                   OR ru.clan_id IS NULL
+                   OR ru.clan_id <> CAST(:member_clan_id AS uuid))
               AND """ + rival_rank_clause + """
               AND """ + _live("t") + """
               AND ST_Intersects(t.polygon, ST_GeomFromText(:wkt, 4326))
             """
         ),
         {
-            "uid": user_id, "wkt": new_geom_wkt, "clan_id": clan_id,
+            "uid": user_id, "wkt": new_geom_wkt, "member_clan_id": member_clan_id,
             **_defence_params(), **rival_rank_params,
         },
     ).fetchall()
@@ -2146,6 +2261,9 @@ def _claim_territory(
     stolen_from = None
     defended_ids = []
     events = []
+    # (kind, victim) -> the whole of what this claim did to that person. See
+    # `_record_beats`: the loop below walks ROWS, the log records PEOPLE.
+    beats: dict = {}
     # Ground won off rivals, in claim coordinates. Fed to `_claim_ground` so a
     # takeback on a square the runner also held reads as won, not reinforced.
     taken_wkts = []
@@ -2164,6 +2282,7 @@ def _claim_territory(
                 + _club_support_sql(
                     "t", "ST_Intersection(t.polygon, ST_GeomFromText(:wkt, 4326))",
                     rank_clause=support_rank_clause,
+                    owner_clan="u.clan_id",
                 )
                 + """ AS club_support
                 FROM territories t JOIN users u ON u.id = t.user_id
@@ -2188,10 +2307,11 @@ def _claim_territory(
             defended_ids.append(rid)
             _chip_defence(db, rid, strength)
             events.append({"victim_id": _ruid, "area_m2": float(steal[0]), "defended": True})
-            territory_history.record(
-                db, kind=territory_history.DEFEND, actor_id=user_id, victim_id=_ruid,
-                run_id=run_id, area_m2=float(steal[0]), ground_wkt=contested,
+            beat = beats.setdefault(
+                (territory_history.DEFEND, _ruid), {"area_m2": 0.0, "wkts": []}
             )
+            beat["area_m2"] += float(steal[0])
+            beat["wkts"].append(contested)
             continue
 
         stolen_total += float(steal[0])
@@ -2203,13 +2323,15 @@ def _claim_territory(
             best_steal = float(steal[0])
             stolen_from = steal[1]
         events.append({"victim_id": _ruid, "area_m2": float(steal[0]), "defended": False})
-        # Recorded BEFORE the difference below removes it from the victim's
+        # Captured BEFORE the difference below removes it from the victim's
         # row: after that statement the geometry this event describes no
-        # longer exists anywhere to be read back.
-        territory_history.record(
-            db, kind=territory_history.STEAL, actor_id=user_id, victim_id=_ruid,
-            run_id=run_id, area_m2=float(steal[0]), ground_wkt=contested,
+        # longer exists in the table to be read back. Written out by
+        # `_record_beats` once the loop has seen every row of every victim.
+        beat = beats.setdefault(
+            (territory_history.STEAL, _ruid), {"area_m2": 0.0, "wkts": []}
         )
+        beat["area_m2"] += float(steal[0])
+        beat["wkts"].append(contested)
 
         # Subtract the new polygon from the rival's territory. ALL surviving
         # fragments are kept as one MultiPolygon — only sub-1m² slivers are
@@ -2256,6 +2378,8 @@ def _claim_territory(
             ),
             {"wkt": new_geom_wkt, "rid": rid, "min_area": 1.0},
         )
+
+    _record_beats(db, beats, actor_id=user_id, run_id=run_id)
 
     # Drop rival rows that became empty/sliver after subtraction.
     db.execute(
@@ -2333,7 +2457,8 @@ def _claim_territory(
             """
             SELECT ST_AsText(ST_Union(polygon)),
                    COALESCE(SUM(strength), 0),
-                   COALESCE(MAX(reinforcements), 0)
+                   COALESCE(MAX(reinforcements), 0),
+                   MAX(clan_id::text)
             FROM territories
             WHERE user_id = :uid
               AND verified
@@ -2356,102 +2481,59 @@ def _claim_territory(
     # the land it joined.
     ground = _claim_ground(db, new_geom_wkt, same_user_union, taken_wkts)
 
-    if same_user_union is not None:
-        # Replace existing same-user overlapping rows with a single merged row.
-        db.execute(
-            text(
-                """
-                DELETE FROM territories
-                WHERE user_id = :uid
-                  AND verified
-                  AND ST_Intersects(polygon, ST_GeomFromText(:wkt, 4326))
-                """
-            ),
-            {"uid": user_id, "wkt": new_geom_wkt},
+    # Keep each run's footprint separable. Merging the whole holding under
+    # the latest run would promote old solo land when a clubmate finishes.
+    # Preserve existing club attribution where a solo claim reinforces it.
+    new_row = db.execute(text("""
+        WITH footprint AS (
+            SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(
+                ST_GeomFromText(:wkt, 4326)), 3)) AS g
+        ), old AS MATERIALIZED (
+            SELECT t.* FROM territories t, footprint f
+            WHERE t.user_id = :uid AND t.verified
+              AND ST_Intersects(t.polygon, f.g)
+        ), kept_clubs AS (
+            SELECT o.clan_id, ST_Union(ST_Intersection(o.polygon, f.g)) AS g
+            FROM old o CROSS JOIN footprint f
+            WHERE o.clan_id IS NOT NULL AND CAST(:cid AS uuid) IS NULL
+            GROUP BY o.clan_id
+        ), pieces AS (
+            SELECT CAST(:cid AS uuid) AS clan_id,
+                   ST_Difference(f.g, COALESCE(
+                       (SELECT ST_Union(g) FROM kept_clubs),
+                       ST_GeomFromText('MULTIPOLYGON EMPTY', 4326))) AS g
+            FROM footprint f
+            UNION ALL SELECT clan_id, g FROM kept_clubs
+        ), removed AS (
+            DELETE FROM territories WHERE id IN (SELECT id FROM old)
+        ), remainder AS (
+            INSERT INTO territories (id, user_id, run_id, polygon, area_m2,
+                created_at, verified, clan_id, strength, reinforcements, expires_at)
+            -- `d.g`, qualified: `footprint` is in scope here too and also
+            -- names its geometry `g`, so a bare one is ambiguous and Postgres
+            -- refuses the whole statement — which is every claim in the game.
+            SELECT gen_random_uuid(), o.user_id, o.run_id, d.g,
+                   ST_Area(d.g::geography), o.created_at, o.verified, o.clan_id,
+                   o.strength, o.reinforcements, o.expires_at
+            FROM old o CROSS JOIN footprint f
+            CROSS JOIN LATERAL (SELECT ST_Multi(ST_CollectionExtract(
+                ST_Difference(o.polygon, f.g), 3)) AS g) d
+            WHERE NOT ST_IsEmpty(d.g)
         )
-        # Union new polygon with the existing same-user union. ST_Union may
-        # naturally yield a MultiPolygon (e.g. the new run doesn't bridge
-        # two previously disjoint territories) — we keep every piece.
-        new_row = db.execute(
-            text(
-                """
-                WITH merged AS (
-                    SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_Union(
-                        ST_GeomFromText(:new_wkt, 4326),
-                        ST_GeomFromText(:old_wkt, 4326)
-                    )), 3)) AS g
-                )
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at,
-                                         verified, clan_id, strength, reinforcements, expires_at)
-                SELECT gen_random_uuid(), :uid, :rid, g,
-                       ST_Area(g::geography), now(), true, :clan_id, :strength,
-                       :reinforcements,
-                       now() + make_interval(secs => :life_secs)
-                FROM merged
-                RETURNING id, area_m2, created_at
-                """
-            ),
-            {
-                "uid": user_id,
-                "rid": run_id,
-                "new_wkt": new_geom_wkt,
-                "old_wkt": same_user_union,
-                "clan_id": clan_id,
-                "strength": merged_strength,
-                "reinforcements": merged_reinforcements,
-                "life_secs": lifetime_for(merged_reinforcements) * 86400,
-            },
-        ).fetchone()
-    else:
-        # Repaired on the way in, exactly as the union branch above does it.
-        #
-        # This branch used to insert `new_geom_wkt` raw. That WKT is what is
-        # left of the claim after every rival's ground has been differenced
-        # out of it, and a difference against a neighbour can shave off a
-        # hair-thin sliver whose ring collapses to fewer than four points
-        # once it has been through ST_AsText. The result is a MultiPolygon
-        # with one degenerate component: ST_IsValidReason says "Too few
-        # points in geometry component", `territories_polygon_valid` rejects
-        # it, and the claim fails outright.
-        #
-        # It takes tightly packed contested neighbours to reach, which is why
-        # it went unseen — but nothing about it is specific to simulated
-        # players, and a busy real map arrives at the same state. ST_MakeValid
-        # is a no-op on geometry that is already valid, so this cannot change
-        # any claim that succeeds today; CollectionExtract(3) drops the
-        # collapsed pieces and keeps the polygons.
-        new_row = db.execute(
-            text(
-                """
-                WITH cleaned AS (
-                    SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(
-                        ST_GeomFromText(:wkt, 4326)
-                    ), 3)) AS g
-                )
-                INSERT INTO territories (id, user_id, run_id, polygon, area_m2, created_at,
-                                         verified, clan_id, strength, reinforcements, expires_at)
-                SELECT
-                    gen_random_uuid(),
-                    :uid,
-                    :rid,
-                    g,
-                    ST_Area(g::geography),
-                    now(),
-                    true,
-                    :clan_id,
-                    :strength,
-                    0,
-                    now() + make_interval(secs => :life_secs)
-                FROM cleaned
-                RETURNING id, area_m2, created_at
-                """
-            ),
-            {
-                "uid": user_id, "rid": run_id, "wkt": new_geom_wkt,
-                "clan_id": clan_id, "strength": strength,
-                "life_secs": lifetime_for(0) * 86400,
-            },
-        ).fetchone()
+        INSERT INTO territories (id, user_id, run_id, polygon, area_m2,
+            created_at, verified, clan_id, strength, reinforcements, expires_at)
+        SELECT gen_random_uuid(), :uid, :rid,
+               ST_Multi(ST_CollectionExtract(g, 3)), ST_Area(g::geography),
+               now(), true, clan_id, :strength, :reinforcements,
+               now() + make_interval(secs => :life_secs)
+        FROM pieces WHERE NOT ST_IsEmpty(g)
+        RETURNING id, area_m2, created_at
+    """), {
+        "uid": user_id, "rid": run_id, "wkt": new_geom_wkt, "cid": clan_id,
+        "strength": merged_strength if same_user_union else strength,
+        "reinforcements": merged_reinforcements if same_user_union else 0,
+        "life_secs": lifetime_for(merged_reinforcements if same_user_union else 0) * 86400,
+    }).fetchone()
 
     # The actor's own beat — as TWO rows where the claim did two things.
     #

@@ -54,6 +54,11 @@ frontend/scripts/premium*.txt
 # eat the garment.
 frontend/assets/character/_src/
 
+# The rank tier illustrations at generation size (1672px truecolour, 15 MB).
+# `scripts/install-rank-art.py` reads from here and writes the capped, indexed
+# copies that ship under assets/art/rank/ — same arrangement as the line above.
+frontend/assets/art/rank/_src/
+
 # Fit Studio working files (backups of the catalogue, trashed art, edit logs)
 frontend/scripts/fit-studio/backups/
 frontend/scripts/fit-studio/deleted-art/

@@ -11,6 +11,7 @@ import { Image } from '../ui/image';
 import { BORDER_TIERS } from '../config/progression';
 import { BORDER_ART } from '../config/borderArt';
 import { MAP_FRAME_ART, rankColor } from '../config/mapFrameArt';
+import { RANK_RANGES } from '../config/rankLadder';
 import PortraitBorder from '../components/PortraitBorder';
 
 import { api } from '../api/client';
@@ -110,7 +111,10 @@ const LOCATE_SIZE = 60;
 
 // A direct view switch in the other thumb corner. Club view used to be hidden
 // one step left of Wood inside the actions menu; a labelled sticker makes the
-// view discoverable and gives the runner a one-tap route back to their rank.
+// view discoverable. It names the BOARD it switches to, solo or club, and
+// nothing else: it used to read back the runner's own tier ("Wood rank"),
+// which put a rank on a control that does not change the rank, and left the
+// two states of one switch labelled in two different languages.
 const VIEW_SWITCH_SIZE = 104;
 
 function RankMark({ tier }) {
@@ -1169,13 +1173,13 @@ export default function GlobalMapScreen({ route, navigation }) {
               onPress={toggleClubView}
               activeOpacity={0.78}
               accessibilityRole="button"
-              accessibilityLabel={isClubView ? `Return to my rank, ${ownTierLabel}` : 'Open Club view'}
+              accessibilityLabel={isClubView ? 'Switch to Solo view' : 'Switch to Club view'}
               accessibilityState={{ selected: isClubView }}
             >
-              {isClubView ? <RankMark tier={ownRank} /> : <AppIcon name="tab-club" size={38} />}
+              <AppIcon name={isClubView ? 'tab-you' : 'tab-club'} size={38} />
               <View style={styles.viewSwitchLabel}>
                 <Text style={[type.captionMedium, { color: colors.text }]} numberOfLines={1}>
-                  {isClubView ? `${ownTierLabel} rank` : 'Club view'}
+                  {isClubView ? 'Solo view' : 'Club view'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1512,47 +1516,70 @@ export default function GlobalMapScreen({ route, navigation }) {
                 fillStyle={[styles.rankProgressFill, { backgroundColor: ownRankColor }]}
               />
             </View>
-            <Text style={[type.caption, { color: colors.textDim }]}>
+            <Text style={type.caption}>
               {pointsToNext === undefined
                 ? 'Rank progress is loading…'
                 : pointsToNext == null
                 ? 'Top rank reached. Keep defending your place.'
                 : `${pointsToNext.toLocaleString()} rank points to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
             </Text>
-            <Text style={[type.body, { color: colors.textDim }]}>You compete with runners in this tier. Their land appears on your ranked map.</Text>
-          </View>
-
-          <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>Rank and level are different</Text>
-            <Text style={[type.body, { color: colors.textDim }]}>
-              Level grows with distance and only ever goes up. Rank moves both ways, against the runners you actually battle.
+            <Text style={[type.body, { color: colors.textMuted }]}>
+              The map shows {ownTierLabel} runners only. You take land off them, they take it off you.
             </Text>
           </View>
 
+          {/* THE RULES, one to a line, each with the points it is worth. This
+              was a two by two grid of a word and a fragment ("UP / Take land"),
+              which reads as a table of nothing in particular: it never said who
+              takes land from whom, it never said what any of it was worth, and
+              the "no change" case was an em dash. Direction, outcome, price,
+              read straight down.
+
+              Ranges show the solo outcome caps. */}
           <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>How rank moves</Text>
-            <View style={styles.rankPointsGrid}>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>What moves your rank</Text>
+            <Text style={[type.body, { color: colors.textMuted }]}>
+              Solo points vary with area and opponent rank. Ranges are per rival or land update;
+              mixed results can cancel out. Your rating cannot fall below 100.
+            </Text>
+            <View style={styles.rankRules}>
               {[
-                ['UP', 'Take land'],
-                ['UP', 'Defend'],
-                ['—', 'Claim open land'],
-                ['DOWN', 'Lose land'],
-              ].map(([points, label]) => (
-                <View key={label} style={styles.rankPoint}>
-                  <Text style={[type.bodyBold, { color: colors.text }]}>{points}</Text>
-                  <Text style={[type.caption, styles.rankPointLabel]}>{label}</Text>
+                { key: 'take', badge: 'UP', fill: colors.ok, text: 'Take land off a runner', pts: RANK_RANGES.take },
+                { key: 'hold', badge: 'UP', fill: colors.ok, text: 'Hold off an attack', pts: RANK_RANGES.hold },
+                { key: 'open', badge: 'UP', fill: colors.ok, text: 'Claim empty land', pts: RANK_RANGES.open },
+                { key: 'lose', badge: 'DOWN', fill: colors.danger, text: 'A runner takes your land', pts: RANK_RANGES.lose },
+                { key: 'decay', badge: 'DOWN', fill: colors.danger, text: 'Your land decays', pts: RANK_RANGES.decay },
+                { key: 'failed', badge: 'DOWN', fill: colors.danger, text: 'Your attack is held off', pts: RANK_RANGES.failed },
+              ].map(({ key, badge, fill, text, pts }) => (
+                <View key={key} style={styles.rankRule}>
+                  <View style={[styles.ruleBadge, { backgroundColor: fill, borderColor: nbInk(scheme, fill) }]}>
+                    <Text style={[type.labelSm, styles.ruleBadgeText, { color: nbInk(scheme, fill) }]}>{badge}</Text>
+                  </View>
+                  <Text style={[type.body, styles.ruleText]}>{text}</Text>
+                  <Text style={[type.bodySmBold, styles.rulePts]}>{pts} pts</Text>
                 </View>
               ))}
             </View>
-            <Text style={[type.caption, { marginTop: space.xs }]}>Beating a stronger rival is worth more. Every gain is matched by the opponent’s loss.</Text>
+          </View>
+
+          {/* The one thing about the club board nobody can work out by looking
+              at it. Club land is now won TOGETHER (see backend club_runs.py),
+              so a runner in a club who never runs with anyone sees an empty
+              board and no reason for it. Said here, in the sheet that already
+              explains what the board is showing. */}
+          <View style={styles.rankInfoSection}>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>Club land</Text>
+            <Text style={[type.body, { color: colors.textMuted }]}>
+              A run counts for your club when two or more of you run the same route at
+              the same time. Tap Club view to see what your club holds.
+            </Text>
           </View>
 
           <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>Change the view</Text>
-            <Text style={[type.body, { color: colors.textDim }]}>
-              Use the arrows for another rank. Tap Club view to see every club.
+            <Text style={[type.bodySmBold, { color: colors.text }]}>Look at other ranks</Text>
+            <Text style={[type.body, { color: colors.textMuted }]}>
+              Use the arrows to see another rank.
             </Text>
-            <Text style={[type.caption, { marginTop: 2 }]}>Higher ranks unlock when you reach them.</Text>
           </View>
         </View>
         <View style={styles.rankInfoActions}>
@@ -1717,22 +1744,39 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   rankProgressFill: { height: '100%', borderRadius: 5 },
   rankInfoActions: { flexDirection: 'row', gap: space.sm, marginTop: space.lg },
+  // The box needs its own EDGE, not just a fill. On light the section sits on
+  // a white sheet and the cream fill is the boundary; on dark the sheet is
+  // `raised` and the fill is `high`, two steps that are four points of
+  // lightness apart, so unbordered these read as one undivided grey wall and
+  // the sheet loses its structure exactly where it is hardest to read.
   rankInfoSection: {
     backgroundColor: colors.cardAlt,
     borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
     gap: 2,
   },
-  rankPointsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    columnGap: space.sm,
-    rowGap: space.xs,
-    marginTop: space.xs,
+  // One rule to a row. The badge column is a FIXED width so the four sentences
+  // start on the same left edge and the eye can run straight down them; the
+  // badges themselves are the app's ordinary block-with-a-stroke, not tinted
+  // type, because green or red at 12pt on a cream card is barely a colour.
+  rankRules: { gap: space.xs, marginTop: space.xs, marginBottom: space.xs },
+  rankRule: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  ruleBadge: {
+    width: 62,
+    paddingVertical: 3,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.strokeThin,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rankPoint: { width: '47%', flexDirection: 'row', alignItems: 'baseline', gap: space.xs },
-  rankPointLabel: { flex: 1, color: colors.textDim },
+  ruleBadgeText: { letterSpacing: 0.4 },
+  ruleText: { flex: 1, minWidth: 0, color: colors.text },
+  // Right-aligned and tabular so the four prices stack into a column the eye
+  // can compare without reading them.
+  rulePts: { color: colors.text, textAlign: 'right', fontVariant: ['tabular-nums'] },
 
   // The locked board. The scrim is a separate absolutely-filled child rather
   // than a background on the wrapper so it can carry its own opacity without

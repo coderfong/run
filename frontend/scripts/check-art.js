@@ -8,6 +8,7 @@ const path = require('path');
 const files = [
   'src/config/onboardingArt.js',
   'src/config/borderArt.js',
+  'src/config/rankArt.js',
   'src/components/PortraitBorder.js',
   'src/components/AppIcon.js',
   'src/components/RewardArt.js',

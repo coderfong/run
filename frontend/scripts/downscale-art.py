@@ -66,6 +66,13 @@ TARGETS = [
 
     ("art/season/*.png", 1024, "full-bleed board header, cropped from a square"),
 
+    # The ladder's tier scenes. `install-rank-art.py` is their owner and caps
+    # them at the same 1024 (a rung draws ~300pt wide, and 3x that is the most
+    # a display can resolve); this rule is only here so an export dropped
+    # straight into the shipped folder is trimmed rather than falling through
+    # to the 640 card rule below and turning to mush.
+    ("art/rank/*.png", 1024, "ladder rung scene, drawn ~300pt wide"),
+
     # The cap is on the LONGEST side, and stage.png is portrait (1170x1400) —
     # capping it at FULLBLEED would trim its height to 1290 and take its WIDTH
     # down to 1078, under the 1290 the full-window backdrop needs. It is left
@@ -76,6 +83,9 @@ TARGETS = [
 
     # art/ui/pro-banner.png is deliberately absent: `install-pro-art.py`
     # generates it at its card size, same one-owner rule as art/panel/**.
+    # art/shop/pitstop-*.png is absent for the same reason — `install-pit-stop-art.py`
+    # cuts both plates and ships them at FULLBLEED itself. Adding them here
+    # would resize on every run what that script already sized once.
     ("art/ui/header-pasers.png", 1024, "full-bleed page header, cropped from a square"),
     ("art/ui/header-rivals.png", 1024, "full-bleed page header, cropped from a square"),
     ("art/ui/header-crossroads.png", 1024, "full-bleed page header, cropped from a square"),
@@ -83,6 +93,13 @@ TARGETS = [
     # The CROSSED PATHS stage, drawn `cover` at the whole window — a portrait
     # backdrop, so FULLBLEED caps its HEIGHT and the width follows.
     ("art/paserby/plaza.png", FULLBLEED, "PlazaScene backdrop, absoluteFill at window size"),
+
+    # The pass plaza. Same trap as onboarding/stage.png, one notch worse: it is
+    # 853x1844, so capping the LONGEST side at FULLBLEED would take its width
+    # down to about 600 — half the 1290 a full-window backdrop needs. Listed at
+    # its own height so the entry is a documented no-op rather than a hole a
+    # future `art/pass/*` rule could fall through.
+    ("art/pass/backdrop.png", 1844, "portrait backdrop — already under width; do not trim"),
     ("art/ui/burst-rays.png", 512, "reward burst behind a 156pt badge"),
     ("art/ui/pass-banner.png", FULLBLEED, "full window width"),
     ("art/ui/profile-banner.png", FULLBLEED, "full window width"),

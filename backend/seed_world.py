@@ -323,7 +323,16 @@ def _seed_one_run(db, *, user_id, clan_id, home_lat, home_lon, land, started_at,
             initial_area_m2=claim_area_m2(distance_m),
             strength=claim_strength(distance_m, duration_s),
             verified=True,
-            clan_id=clan_id,
+            # Seeded land carries NO club. A club only holds ground it ran for
+            # together (app/club_runs.py) and seeding does not simulate group
+            # runs, so stamping a club here would put land on the club board
+            # that nobody ran together for — exactly what migration 0043
+            # cleared off it. The club board fills back in from the bot cron,
+            # which does pair clubmates onto one route.
+            clan_id=None,
+            # Clubmates still never fight each other. That is membership, not
+            # attribution — see _claim_territory's docstring.
+            member_clan_id=clan_id,
             rank_tier=rank_tier,
             lifetime_for=lambda r, d=distance_m, du=duration_s: claim_lifetime_days(d, du, r),
         )

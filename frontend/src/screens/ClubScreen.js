@@ -480,7 +480,8 @@ function MemberHub({ clanId, navigation }) {
           ) : null}
           <SectionHeader title="Weekly goal" action={goal.reached ? '✓ reached' : undefined} />
           <Text style={[type.caption, { marginTop: 4, marginBottom: space.md }]}>
-            Hit it together for a badge frame. Your share highlighted.
+            Two or more of you on the same route at the same time. Hit it together
+            for a badge frame.
           </Text>
           <GoalBar label={`Distance ${km(goal.progress_distance_m)}/${km(goal.target_distance_m)} km`} pct={distPct} accent={accent} mine={goal.my_distance_m / Math.max(1, goal.target_distance_m)} />
           <GoalBar label={`Claims ${goal.progress_claims}/${goal.target_claims}`} pct={claimPct} accent={accent} mine={goal.my_claims / Math.max(1, goal.target_claims)} />

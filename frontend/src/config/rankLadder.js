@@ -23,6 +23,11 @@
 // plaque stack taller than the screen.
 export const DIVISIONS = 3;
 
+// Solo outcome ranges mirror backend/app/elo.py.
+export const RANK_SWING = 16;
+export const RANK_SWING_MAX = 32;
+export const RANK_RANGES = { take: '+1–24', hold: '+1–16', open: '+1–4', lose: '−1–32', decay: '−1–8', failed: '−1–16' };
+
 // Roman numerals, and only ever these three. Written out rather than computed
 // because a numeral function is a lot of code to produce a list of length 3.
 const NUMERALS = ['I', 'II', 'III'];
@@ -84,7 +89,7 @@ export function standingFrom(rank) {
 
   const points = Math.max(0, Number(source.points ?? source.rating ?? source.rank_points) || 0);
   const nextRaw = source.next_points ?? source.next_rating ?? source.rank_next_points;
-  const next = Number.isFinite(Number(nextRaw)) ? Number(nextRaw) : null;
+  const next = nextRaw != null && Number.isFinite(Number(nextRaw)) ? Number(nextRaw) : null;
 
   // A MISSING THRESHOLD IS NOT THE TOP OF THE LADDER. Only Mythic has nothing
   // above it; every other tier with a null `next` is simply a payload that did
@@ -101,7 +106,7 @@ export function standingFrom(rank) {
   // a supplied progress is what stops the profile card showing everybody at
   // division one, nought percent — which is what a missing floor silently
   // produces if you treat it as equal to the points.
-  const hasFloor = Number.isFinite(Number(source.floor));
+  const hasFloor = source.floor != null && Number.isFinite(Number(source.floor));
   const floor = hasFloor ? Number(source.floor) : points;
   const suppliedProgress = Number(source.progress ?? source.rank_progress);
 

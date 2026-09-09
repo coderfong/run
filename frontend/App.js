@@ -224,14 +224,10 @@ function HomeStack() {
           opened from Home is pushed onto Home's own stack, so back is Home.
           The You tab keeps its own copies for the routes reached from the
           profile, and each instance carries its own navigation state. */}
-      <HomeStackNav.Screen
-        name="Progression"
-        component={ProgressionScreen}
-        options={{ headerShown: true, title: 'Levels & rewards' }}
-      />
-      {/* Missions and the rank ladder draw their own art headers (with a back
-          button), like Season and Rivals — the native one would stack a second
-          bar above them. */}
+      {/* Levels & rewards, missions and the rank ladder all draw their own
+          panel headers (with a back button), like Season and Rivals — the
+          native one would stack a second bar above them. */}
+      <HomeStackNav.Screen name="Progression" component={ProgressionScreen} />
       <HomeStackNav.Screen name="Missions" component={MissionsScreen} />
       <HomeStackNav.Screen name="RankLadder" component={RankLadderScreen} />
       <HomeStackNav.Screen name="Rivals" component={RivalsScreen} />
@@ -307,11 +303,8 @@ function YouStack() {
   return (
     <YouStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
-      <YouStackNav.Screen
-        name="Progression"
-        component={ProgressionScreen}
-        options={{ headerShown: true, title: 'Levels & rewards' }}
-      />
+      {/* Draws its own panel header (with a back button) — see HomeStack. */}
+      <YouStackNav.Screen name="Progression" component={ProgressionScreen} />
       <YouStackNav.Screen
         name="AvatarStudio"
         component={AvatarStudioScreen}

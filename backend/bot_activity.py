@@ -36,19 +36,17 @@ import os
 import random
 import sys
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 
 from fastapi import HTTPException
 from shapely.geometry import MultiPolygon, Polygon
 from sqlalchemy import text
 
 import bot_world
-from app import economy, elo, ranks
+from app import club_runs, economy, elo, ranks
 from app.config import settings
 from app.database import SessionLocal
 from app.geospatial import claim_area_m2
 from app.notifications import notify
-from app.routes.clans import record_clan_activity
 from app.routes.runs import (
     STEAL_LEDGER_MIN_M2,
     _claim_territory,
@@ -92,6 +90,19 @@ RIVAL_RADIUS_M = 5000
 # A bot's home-turf run starts within this radius of its home point, so its
 # territory drifts and occasionally bumps a neighbour rather than teleporting.
 HOME_JITTER_M = 900.0
+
+# Chance a due bot with a club offers its route to the club, for the next due
+# clubmate in the same tick to run with it. Club land only exists where a club
+# ran TOGETHER now (app/club_runs.py), so without this the seeded world would
+# hold no club territory at all and the club board would be permanently empty
+# — not because the rule is wrong, but because nothing in the simulation was
+# ever written to satisfy it.
+CLUB_RUN_CHANCE = 0.45
+
+# How far apart the two starts are. Comfortably inside the tolerance the
+# matcher allows, because this is meant to be a group run, not a test of where
+# the threshold sits.
+CLUB_RUN_START_SKEW_S = 90
 
 _REGION_FILE = os.path.join(os.path.dirname(__file__), "sg_regions.json")
 _regions_cache: dict | None = None
@@ -239,7 +250,9 @@ def _jitter(lat: float, lon: float, metres: float, rng: random.Random) -> tuple[
     )
 
 
-def _run_one(db, bot_row, background_notifies: list) -> None:
+def _run_one(db, bot_row, background_notifies: list, shared=None):
+    """One bot's run. Returns the route it ran, so main() can offer it to a
+    clubmate; `shared` is that offer coming back the other way."""
     user_id, username, clan_id, avatar, home_lat, home_lon, attacker, region_key = bot_row
     rng = random.Random()
 
@@ -248,29 +261,41 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     # scenery to the claim engine, so selecting one cannot create a rivalry.
     bot_rank_tier = elo.solo_status(db, user_id)["tier"]
 
-    # Where does this run start?
-    start_lat, start_lon = _jitter(home_lat, home_lon, HOME_JITTER_M, rng)
-    target = (
-        _target_territory(db, bot_rank_tier)
-        if attacker and rng.random() < ATTACK_CHANCE
-        else None
-    )
-    if target is not None:
-        start_lat, start_lon = _jitter(target[0], target[1], 150, rng)
-    elif rng.random() < RIVAL_CHANCE:
-        rival = _rival_territory(
-            db, home_lat, home_lon, clan_id, user_id, bot_rank_tier,
-            prefer_rematch=rng.random() < REMATCH_CHANCE,
+    if shared is not None:
+        # Running with the club: the route and the hour are the clubmate's,
+        # only the pace is this bot's. Nothing is chosen here — a group run
+        # that quietly picked its own rival to raid would not be the same run.
+        path = shared["path"]
+        start_lat, start_lon = path[0][1], path[0][0]
+        distance_m = bot_world.route_length_m(path)
+        duration_s = distance_m / 1000.0 * pace_s_per_km
+        started_at = shared["started_at"] + timedelta(
+            seconds=rng.uniform(-CLUB_RUN_START_SKEW_S, CLUB_RUN_START_SKEW_S)
         )
-        if rival is not None:
-            start_lat, start_lon = _jitter(rival[0], rival[1], 200, rng)
+    else:
+        # Where does this run start?
+        start_lat, start_lon = _jitter(home_lat, home_lon, HOME_JITTER_M, rng)
+        target = (
+            _target_territory(db, bot_rank_tier)
+            if attacker and rng.random() < ATTACK_CHANCE
+            else None
+        )
+        if target is not None:
+            start_lat, start_lon = _jitter(target[0], target[1], 150, rng)
+        elif rng.random() < RIVAL_CHANCE:
+            rival = _rival_territory(
+                db, home_lat, home_lon, clan_id, user_id, bot_rank_tier,
+                prefer_rematch=rng.random() < REMATCH_CHANCE,
+            )
+            if rival is not None:
+                start_lat, start_lon = _jitter(rival[0], rival[1], 200, rng)
 
-    path = bot_world.synth_route(
-        start_lat, start_lon, distance_m, rng, land=_land_for(region_key)
-    )
-    distance_m = bot_world.route_length_m(path)
-    duration_s = distance_m / 1000.0 * pace_s_per_km
-    started_at = datetime.utcnow() - timedelta(seconds=duration_s)
+        path = bot_world.synth_route(
+            start_lat, start_lon, distance_m, rng, land=_land_for(region_key)
+        )
+        distance_m = bot_world.route_length_m(path)
+        duration_s = distance_m / 1000.0 * pace_s_per_km
+        started_at = datetime.utcnow() - timedelta(seconds=duration_s)
 
     run_id = bot_world.record_run(db, user_id, path, distance_m, duration_s, started_at)
     poly = bot_world.claim_polygon(path, distance_m, start_lat, start_lon)
@@ -291,6 +316,16 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     # defend rewards below key off. Left implicit, `_claim_territory` would
     # compute the identical number itself, but this way there is one query
     # and one value in use for the whole call.
+    # Same rule a human claim runs under: this land is the CLUB's only if the
+    # club ran the route together. For a bot that means the clubmate this tick
+    # handed it the route, or the one it is about to hand it to — whoever
+    # claims second is what makes it a club run for both (app/club_runs.py).
+    club_id, club_partners, _newly = club_runs.log_run(db, run_id, user_id, clan_id)
+    if club_id:
+        club_runs.attribute_territories(
+            db, [p["run_id"] for p in club_partners], club_id
+        )
+
     bounced = False
     try:
         territory_out, _stolen_m2, _stolen_from, steal_events, ground = _claim_territory(
@@ -301,7 +336,8 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
             initial_area_m2=claim_area_m2(distance_m),
             strength=claim_strength(distance_m, duration_s),
             verified=True,
-            clan_id=clan_id,
+            clan_id=club_id,
+            member_clan_id=clan_id,
             rank_tier=bot_rank_tier,
             lifetime_for=lambda r: claim_lifetime_days(distance_m, duration_s, r),
         )
@@ -317,22 +353,9 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
         {"g": round(distance_m / 1000.0 * settings.xp_per_km), "u": user_id},
     )
 
-    # Club season stats and the weekly goal, which /end-run advances and this
-    # never did. The club leaderboard ranks on `clan_season_stats.area_current`,
-    # and nothing was writing it for simulated play — 24 clubs held 700
-    # territories between them and the board was empty. Seeding can backfill
-    # it once, but only this keeps it true as bots take and lose ground.
-    #
-    # Takes a stub rather than a User row because it only reads `.id`, and
-    # loading the ORM object per bot per tick is a query for nothing.
-    if not bounced and clan_id:
-        try:
-            record_clan_activity(
-                db, SimpleNamespace(id=user_id),
-                distance_m=distance_m, closed_loop=True, stolen=_stolen_m2 or 0.0,
-            )
-        except Exception as exc:  # noqa: BLE001 — club bookkeeping must not sink a run
-            print(f"clan activity FAILED for {username}: {exc}", file=sys.stderr)
+    db.execute(text("UPDATE runs SET reward_xp = :xp WHERE id = :rid"),
+               {"xp": round(distance_m / 1000.0 * settings.xp_per_km), "rid": run_id})
+    club_runs.sync_credit(db, [run_id] + [p["run_id"] for p in club_partners], club_id)
 
     # Rank points, mirroring the block in routes/runs.py. This was missing
     # entirely, and its absence was not just a gap in the bots' own standing:
@@ -427,13 +450,21 @@ def _run_one(db, bot_row, background_notifies: list) -> None:
     # transaction as the territory and steal ledger so a rolled-back claim can
     # never leave either solo or club Elo behind.
     elo.record_claim_matches(
-        db, user_id, run_id, steal_events, attacker_clan_id=clan_id
+        db, user_id, run_id, steal_events, attacker_clan_id=club_id,
+        club_match=bool(club_id),
     )
 
     db.execute(
         text("UPDATE bot_accounts SET next_run_at = :n WHERE user_id = :u"),
         {"n": bot_world.next_run_at(rng), "u": user_id},
     )
+
+    # The route, for a clubmate later in this tick to run with. Offered only
+    # by a bot that ran its own route: passing a shared one along again would
+    # build a chain rather than a group.
+    if clan_id and shared is None:
+        return {"path": path, "started_at": started_at, "clan_id": str(clan_id)}
+    return None
 
 
 def main() -> int:
@@ -443,10 +474,20 @@ def main() -> int:
     notifies: list = []
     try:
         due = _due_bots(db, BATCH_SIZE)
+        # One open offer per club at a time: the first due member offers its
+        # route, the next due member of that club runs it, and the pair is a
+        # club run. Due order is by `next_run_at`, so clubmates are rarely
+        # adjacent in the batch — the offer waits, which is the point.
+        rng = random.Random()
+        offers: dict = {}
         for row in due:
+            clan_id = row[2]
+            shared = offers.pop(str(clan_id), None) if clan_id else None
             try:
-                _run_one(db, row, notifies)
+                route = _run_one(db, row, notifies, shared=shared)
                 db.commit()
+                if route is not None and rng.random() < CLUB_RUN_CHANCE:
+                    offers[route["clan_id"]] = route
                 processed += 1
             except Exception as exc:  # noqa: BLE001 — one bad bot must not sink the tick
                 db.rollback()

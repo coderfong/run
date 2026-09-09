@@ -200,13 +200,20 @@ def _require_role(db, clan_id, user_id, allowed):
 # claim-time hooks (imported by runs.py)
 # ---------------------------------------------------------------------------
 
-def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool, stolen: float):
-    """On end-run: advance the weekly goal + season stats for the runner's
-    clan. Returns (goal_reached_now, clan_id) so the caller can notify."""
-    m = _membership(db, user.id)
-    if not m:
+def record_clan_activity(db: Session, user_id, clan_id, distance_m: float,
+                         closed_loop: bool, stolen: float):
+    """On end-run: advance the weekly goal + season stats for a club run.
+
+    `clan_id` is the club the RUN counted for, which is not the same thing as
+    the club the runner belongs to: only a run the club did together counts,
+    and working out which those are belongs to app/club_runs.py, not here.
+    None means the run was not a club run and nothing is recorded.
+
+    Returns (goal_reached_now, clan_id) so the caller can notify.
+    """
+    if not clan_id:
         return (False, None)
-    clan_id = m[0]
+    clan_id = str(clan_id)
     goal, ws = _ensure_week_goal(db, clan_id)
     was_reached = bool(goal[5])
     db.execute(
@@ -219,7 +226,7 @@ def record_clan_activity(db: Session, user, distance_m: float, closed_loop: bool
                           claims = clan_week_contrib.claims + :c
             """
         ),
-        {"gid": goal[0], "uid": user.id, "d": distance_m, "c": 1 if closed_loop else 0},
+        {"gid": goal[0], "uid": user_id, "d": distance_m, "c": 1 if closed_loop else 0},
     )
     db.execute(
         text(
@@ -303,18 +310,18 @@ def rebuild_clan_season_stats(db) -> int:
                 GROUP BY clan_id
             ),
             took AS (
-                SELECT u.clan_id, COUNT(*) AS steals
-                FROM territory_steals ts JOIN users u ON u.id = ts.attacker_id
-                WHERE u.clan_id IS NOT NULL AND NOT ts.defended
+                SELECT cr.clan_id, COUNT(*) AS steals
+                FROM territory_steals ts JOIN club_run_logs cr ON cr.run_id = ts.run_id
+                WHERE NOT ts.defended
                   AND ts.created_at >= (SELECT starts_at FROM seasons WHERE id = :sid)
-                GROUP BY u.clan_id
+                GROUP BY cr.clan_id
             ),
             ran AS (
-                SELECT u.clan_id, COALESCE(SUM(r.distance_m), 0) AS dist
-                FROM runs r JOIN users u ON u.id = r.user_id
-                WHERE u.clan_id IS NOT NULL
+                SELECT cr.clan_id, COALESCE(SUM(r.distance_m), 0) AS dist
+                FROM runs r JOIN club_run_logs cr ON cr.run_id = r.id
+                WHERE r.verified
                   AND r.started_at >= (SELECT starts_at FROM seasons WHERE id = :sid)
-                GROUP BY u.clan_id
+                GROUP BY cr.clan_id
             )
             INSERT INTO clan_season_stats (season_id, clan_id, area_current, area_peak,
                                            steals, distance_sum)
@@ -715,8 +722,11 @@ def clan_feed(clan_id: str, limit: int = Query(20, ge=1, le=50),
                    (t.id IS NOT NULL)
             FROM runs r
             JOIN users u ON u.id = r.user_id
-            JOIN clan_members cm ON cm.user_id = r.user_id AND cm.clan_id = :cid
-            LEFT JOIN territories t ON t.run_id = r.id
+            JOIN club_run_logs cr ON cr.run_id = r.id AND cr.clan_id = :cid
+            LEFT JOIN LATERAL (
+                SELECT MIN(id::text) AS id, SUM(area_m2) AS area_m2
+                FROM territories WHERE run_id = r.id
+            ) t ON true
             WHERE r.ended_at IS NOT NULL AND r.verified
             ORDER BY r.ended_at DESC LIMIT :limit
             """

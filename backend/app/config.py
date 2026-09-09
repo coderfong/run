@@ -377,6 +377,35 @@ class Settings(BaseSettings):
     # here exposes location — flip to False for opt-in-only.
     paserby_default_enabled: bool = True
 
+    # ---- CLUB RUNS (run together, or it is not a club run) ----------------
+    # A run counts for a club only when at least this many OTHER members of
+    # that club ran the same route at the same time — see app/club_runs.py.
+    # One partner means two people, which is the rule as stated: a club run is
+    # a run the club did together. Nothing a solo run earns for the RUNNER
+    # changes; what it stops producing is club land, club XP, weekly goal
+    # progress, season area and club rating movement.
+    club_run_min_partners: int = 1
+    # How far apart two runners may be and still be together. Wider than
+    # PASERBY's 40 m crossing radius would be wrong in spirit — that is one
+    # moment, this is a whole route — but it has to clear a dual carriageway,
+    # because two people either side of one are running together and their
+    # phones disagree by about thirty metres.
+    club_run_path_tolerance_m: float = 35.0
+    # ...and for how much of the route. Measured BOTH ways, so a 10 km run
+    # that happens to contain a clubmate's 2 km loop is not a club run for
+    # either of them.
+    club_run_min_shared_frac: float = 0.60
+    # An absolute floor as well as a fraction: two 200 m shuffles round the
+    # same block share 100% of themselves and are not a club run.
+    club_run_min_shared_m: float = 400.0
+    # Watches get started by hand, so the two windows only have to overlap
+    # once this much slack is allowed at each end.
+    club_run_time_grace_s: int = 600
+    # Ceiling on how many clubmates one run is measured against. A whole club
+    # turning out together is a group run, not a reason to run the geometry
+    # fifty times.
+    club_run_max_partners: int = 20
+
     # ---- In-app purchases (PASER PRO + energy packs) ----------------------
     # MUST be true in production. With it off, /me/pass/purchase and
     # /me/energy/purchase grant their goods to any authenticated caller with

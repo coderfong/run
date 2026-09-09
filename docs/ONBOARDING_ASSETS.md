@@ -212,18 +212,31 @@ so it plays on the map when a claim lands, plus a 512² PNG still for the tile:
 | `fireworks` | Three staggered pops in pink / purple / teal with falling trails. |
 | `supernova` | White core flash → gold expanding ring → slow glitter fallout. |
 
-### 6c. Side-rail tiles (P1 — 4 files)
+### 6c. Side-rail tiles (complete — 5 files)
 
-`assets/art/ui/rail-{pass,boxes,shop,season}.png`, 256², transparent. They sit
-inside a gold/pink/teal/purple frame the code already draws, so deliver the
-**contents only**, no frame, no text:
+The rail is missions · pass · shop · rivals · crossroads, and all five are
+drawn. `assets/art/ui/rail-{missions,pass,shop,rivals,crossroads}.png`, 320px
+on the long side, transparent.
+
+They are NOT delivered in that shape. Each one is generated as a FINISHED
+TILE — black rounded frame, flat colour panel, sticker on top, 1254² — kept in
+`assets/art/rail/`, and `scripts/cut-rail-art.py` lifts the sticker off the
+panel. The rail draws its own hand-drawn frame and fills it with the tile's
+`tint`, so art that brought its own frame and ground would print a second
+square-cornered box inside the first one. To redraw a tile, replace its master
+and re-run the script; it prints the ground it keyed off, which is the `tint`
+middle stop in `components/SideRail.js` and has to keep matching.
 
 | key | Brief |
 |---|---|
-| `rail-pass` | A rolled pass ticket with a crown stamp, seen at a slight angle. |
-| `rail-boxes` | Three stacked lootboxes, the top one ajar. |
-| `rail-shop` | An energy bolt over a small shopfront awning. |
-| `rail-season` | A trophy on a plinth with a laurel. |
+| `rail-missions` | A clipboard at a slight angle, top item ticked, a star bursting off the lower corner. |
+| `rail-pass` | A rolled parchment pass, ribbon tie, a wax seal with a star pressed into it. |
+| `rail-shop` | A small shopfront with a striped awning, blank sign board, grass at its feet. |
+| `rail-rivals` | A gloved hand lifting a gem, motion marks behind it. |
+| `rail-crossroads` | A green island of ground with a path running through it, a map pin and two flags. |
+
+Kept but unused since their tiles came off the rail: `rail-boxes` (three
+stacked lootboxes, the top one ajar), `rail-season` (a trophy on a plinth).
 
 ### 6d. Premium-exclusive cosmetics (complete)
 
@@ -301,7 +314,7 @@ Progress checklist — tick as they land:
 - [ ] 8e App-screen art (10)
 - [x] 8f PRO exclusive cosmetics (17)
 - [ ] 8g Lootbox rarities (4)
-- [ ] 8h Side-rail tiles (4)
+- [x] 8h Side-rail tiles (5)
 - [ ] 8i Optional polish (2)
 
 ---
@@ -496,18 +509,11 @@ where a claim lands, so the motion must read at ~120 px.
 Send them and I'll wire `CLAIM_FX_SOURCES` (it's an empty registry waiting for
 exactly these four keys).
 
-## 8i. Side-rail tiles — 4 files
+## 8i. Side-rail tiles — done, see §6c
 
-`assets/art/ui/rail-{pass,boxes,shop,season}.png`, generate 512², deliver 256²,
-**transparent, contents only** — the code draws the coloured frame around
-them, so don't include a frame, a background or any text.
-
-| file | Prompt |
-|---|---|
-| `rail-pass` | A rolled parchment pass ticket at a slight angle, a crown stamp pressed into the centre, ribbon tie. |
-| `rail-boxes` | Three lootboxes stacked in a pyramid, the top one ajar with light escaping. |
-| `rail-shop` | A single energy bolt in front of a small striped shop awning. |
-| `rail-season` | A trophy on a short plinth with a laurel branch curving up one side. |
+All five tiles are drawn. They are generated as finished tiles at 1254² into
+`assets/art/rail/` and cut down by `scripts/cut-rail-art.py`; §6c has the
+briefs and the rule about the ground colour matching the tile `tint`.
 
 ## 8j. Optional polish
 

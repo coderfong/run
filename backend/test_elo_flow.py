@@ -58,8 +58,8 @@ try:
         attacker_clan_id=clan_a,
     )
     db.commit()
-    assert won == {"solo_rating": 1016, "solo_delta": 16, "club_rating": 1016, "club_delta": 16}
-    assert elo.solo_status(db, runner_b)["rating"] == 984
+    assert won == {"solo_rating": 1005, "solo_delta": 5, "club_rating": 1016, "club_delta": 16}
+    assert elo.solo_status(db, runner_b)["rating"] == 994
     assert elo.club_status(db, clan_b)["rating"] == 984
 
     held = elo.record_claim_matches(
@@ -71,7 +71,7 @@ try:
     )
     db.commit()
     assert held["solo_delta"] < 0 and held["club_delta"] < 0
-    assert held["solo_rating"] + elo.solo_status(db, runner_b)["rating"] == 2000
+    assert held["solo_rating"] + elo.solo_status(db, runner_b)["rating"] == 1999
     assert held["club_rating"] + elo.club_status(db, clan_b)["rating"] == 2000
     assert elo.solo_status(db, runner_a)["matches"] == 2
     assert elo.solo_status(db, runner_a)["wins"] == 1
@@ -84,6 +84,17 @@ try:
         {"a": runner_a, "b": runner_b, "ca": clan_a, "cb": clan_b},
     ).scalar()
     assert event_count == 4
+
+    # Non-combat changes preserve match counts and roll back with territory work.
+    before = elo.solo_status(db, runner_a)
+    assert elo.apply_land_delta(db, runner_a, elo.open_claim_reward(200000)) == before["rating"] + 3
+    elo.record_expired_land(db, [(runner_a, 100000), (runner_a, 100000)])
+    assert elo.solo_status(db, runner_a)["rating"] == before["rating"] - 2
+    elo.record_expired_land(db, [])
+    assert elo.solo_status(db, runner_a)["matches"] == before["matches"]
+    assert elo.apply_land_delta(db, runner_a, -10000) == elo.MIN_RATING
+    db.rollback()
+    assert elo.solo_status(db, runner_a)["rating"] == before["rating"]
 
     # Public API serializers carry the same live rating and progression data.
     runner = db.get(models.User, runner_a)

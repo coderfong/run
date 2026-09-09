@@ -154,7 +154,15 @@ export default function ProfileScreen({ navigation }) {
     () => (ladder?.tiers || []).map((t) => t.floor),
     [ladder]
   );
-  const { data: runs } = useQuery('me:runs', api.meRuns, { fallback: [] });
+  // `select` is a GUARD, not a transform: the list is rendered with
+  // `runs.slice`, and a payload that is not a list (an error body, a cache
+  // entry written by an older shape) throws mid render. A throw here is not a
+  // missing run list — it is the whole You page replaced by the tab's error
+  // boundary, which is a page of settings and stats lost to one bad response.
+  const { data: runs } = useQuery('me:runs', api.meRuns, {
+    fallback: [],
+    select: (d) => (Array.isArray(d) ? d : []),
+  });
   // The wall and the run list fill in independently of each other, so each
   // keeps its own latch — one of them arriving must not fade the other.
   const statsArriving = useArrival(!stats);
@@ -202,6 +210,10 @@ export default function ProfileScreen({ navigation }) {
       'Pasers',
       'Rivals',
       'Crossroads',
+      // The ten tier scenes. Last in the queue because it is the heaviest
+      // group in the app, and this is the only page that opens the ladder —
+      // the rail below the portrait is the tap that leads there.
+      'RankLadder',
     ]);
   }, [scheme]);
 

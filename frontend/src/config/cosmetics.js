@@ -148,7 +148,13 @@ export const ITEMS = {
     { id: 'snapback', label: 'Backwards cap', img: require('../../assets/character/headwear/hat2.png'), hidesBulky: true, layout: { w: 0.68, top: -0.0584, dx: -0.005 }, rarity: 'common', unlock: zones(3, 'Hold 3 zones') },
     { id: 'bucket', label: 'Bucket hat', img: require('../../assets/character/headwear/hat10.png'), hideHair: true, layout: { top: -0.0687 }, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
     { id: 'pombeanie', label: 'Pom beanie', img: require('../../assets/character/headwear/hat4.png'), backImg: require('../../assets/character/headwear/hat4b.png'), layout: { w: 0.7567, top: -0.1253, dx: 0.0067 }, hideHair: true, rarity: 'rare', unlock: passOnly },
-    { id: 'visor', label: 'Visor', img: require('../../assets/character/headwear/hat11.png'), backImg: require('../../assets/character/headwear/hat11b.png'), layout: { w: 0.6133, top: 0.0327, dx: -0.005 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
+    // `top` was 0.0327, which put the brim ON THE EYES. hat11's ink runs to
+    // the bottom of its canvas, so at that height it reached body y 127 while
+    // the face's eyes sit at 108-120 — every runner wearing the visor was
+    // blindfolded by it, and on the shop attendant it hid the blinks and three
+    // of the four expressions the Pit Stop scene is built around. -0.010 lands
+    // the ink at y 99.7, the same brow line the sweatband sits on.
+    { id: 'visor', label: 'Visor', img: require('../../assets/character/headwear/hat11.png'), backImg: require('../../assets/character/headwear/hat11b.png'), layout: { w: 0.6133, top: -0.010, dx: -0.005 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'skatehelmet', label: 'Skate helmet', img: require('../../assets/character/headwear/hat9.png'), layout: { w: 0.82, top: -0.0661, dx: 0.0033 }, hideHair: true, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'hardhat', label: 'Hard hat', img: require('../../assets/character/headwear/hat12.png'), layout: { top: -0.095 }, hidesBulky: true, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
     { id: 'bikehelmet', label: 'Bike helmet', img: require('../../assets/character/headwear/hat8.png'), layout: { top: -0.085 }, hideHair: true, rarity: 'epic', unlock: passOnly },
