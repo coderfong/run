@@ -1,7 +1,15 @@
 # Files EAS should not upload into the build archive.
 # None of these are needed to build; they were adding ~hundreds of MB to
 # every upload. See docs/APP_STORE.md housekeeping note.
+#
+# THIS FILE REPLACES .gitignore FOR EAS, it does not add to it. Anything
+# gitignored but not listed here is still uploaded, which is why the archive
+# kept growing after this file was created: the two `_src` trees below are
+# generation-size originals that the install scripts read from, they are out of
+# the repo, and EAS was shipping all 72 MB of them to the builder every time.
 .history/
 dist/
 .expo-export-check/
 .expo-export-check*/
+assets/character/_src/
+assets/art/rank/_src/
