@@ -154,6 +154,7 @@ class Run(Base):
 
     # The cleaned/simplified path the runner actually traced.
     path = Column(Geometry(geometry_type="LINESTRING", srid=4326), nullable=True)
+    together_trace = Column(JSONB, nullable=True)
 
     # Cached metrics — recomputed at end-run time from the projected geometry.
     distance_m = Column(Float, nullable=True)

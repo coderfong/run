@@ -60,6 +60,12 @@ class GpsPoint(BaseModel):
             return datetime.utcfromtimestamp(v / 1000.0 if v > 1e12 else v)
         return v
 
+    @field_validator("t")
+    @classmethod
+    def _normalise_t(cls, v):
+        # Match the server's naive UTC clock, including mixed ISO/epoch input.
+        return v.astimezone(timezone.utc).replace(tzinfo=None) if v.tzinfo else v
+
 
 class StartRunIn(BaseModel):
     started_at: Optional[UtcDatetime] = None
@@ -401,6 +407,13 @@ class ClaimOptionsOut(BaseModel):
     # comparing numbers, rather than by hardcoding the threshold or by matching
     # on the wording of a refusal message.
     min_route_attachment: float = 0.0
+    # The rank tier this claim FIGHTS ON (0=Wood … 9=Mythic). Combat is scoped
+    # to one tier, so a runner can only take ground off holders in this band —
+    # everyone else's land is invisible to the claim. Sent so the placement map
+    # can be drawn from the same board (`/map-polygons?rank=`) the breakdown is
+    # computed against. Without it the map painted every tier at once while the
+    # numbers counted one, and a circle sitting on six plots reported one rival.
+    rank_tier: int = 0
     # What the run qualified as, repeated here so a client that only fetches
     # options still knows why it may not be able to claim.
     tier: str = "qualified_for_claim"

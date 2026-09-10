@@ -214,6 +214,43 @@ export const GAME_ANIMATIONS = {
     aspect: 1,
     selfLooping: true,
   },
+
+  // --- podium badges -------------------------------------------------------
+  //
+  // The 1st/2nd/3rd stickers on a standings row. Scenery rather than
+  // reactions, and for once that is not a stylistic call: a rank badge is the
+  // row's rank. It has to be on screen the whole time the row is, it must not
+  // replay on a timer while the list scrolls past it, and under Reduce Motion
+  // it has to become a still badge rather than vanish and leave rank 1 blank.
+  // `selfLooping: true` is what buys all three.
+  //
+  // These replace the three static PNGs in assets/art/ui (`badge1st` and
+  // friends in config/onboardingArt.js). Those files stay — nothing else
+  // references them, but they are the fallback if these ever have to come out.
+  //
+  // !! placeSecond and placeThird carry an iconscout preview watermark across
+  // the medal face, exactly like the Pit Stop props above, and cannot go in a
+  // store build as they are. Replace assets/animations/place-2nd.webp and
+  // place-3rd.webp with licensed downloads (same filenames) and nothing here
+  // changes. placeFirst was supplied clean.
+  placeFirst: {
+    source: require('../../assets/animations/place-1st.webp'),
+    duration: 4917,
+    aspect: 1,
+    selfLooping: true,
+  },
+  placeSecond: {
+    source: require('../../assets/animations/place-2nd.webp'),
+    duration: 1000,
+    aspect: 1,
+    selfLooping: true,
+  },
+  placeThird: {
+    source: require('../../assets/animations/place-3rd.webp'),
+    duration: 1000,
+    aspect: 1,
+    selfLooping: true,
+  },
 };
 
 export function animationSpec(name) {

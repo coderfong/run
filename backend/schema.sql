@@ -38,6 +38,7 @@ CREATE TABLE runs (
     started_at   TIMESTAMP NOT NULL DEFAULT now(),
     ended_at     TIMESTAMP,
     path         geometry(LineString, 4326),
+    together_trace JSONB,
     distance_m   DOUBLE PRECISION,
     duration_s   DOUBLE PRECISION,
     -- Anti-cheat shadow flag: flagged runs look normal to the submitter but

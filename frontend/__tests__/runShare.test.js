@@ -11,7 +11,7 @@
 // screen can actually hand it.
 
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 import { Path as SvgPath } from 'react-native-svg';
 
@@ -333,8 +333,8 @@ describe('the run share card', () => {
   });
 
   // With no route to stand on the figure is the subject, not a detail stuck at
-  // the end of an invisible line. The "Character showcase" preset is exactly
-  // this combination, and it used to render no character at all.
+  // the end of an invisible line. Turning the Route chip off is exactly this
+  // combination, and it used to render no character at all.
   test('still draws the runner with the route switched off', () => {
     let tree;
     act(() => {
@@ -452,8 +452,47 @@ describe('the share sheet', () => {
       expect(labels).not.toContain('Dark');
       expect(labels).not.toContain('Flowers');
       // The controls that DO ship are still there.
-      expect(labels).toContain('Centre');
+      expect(labels).not.toContain('Centre');
+      expect(labels).not.toContain('Flip');
+      expect(labels).not.toContain('Neon');
+      expect(labels).toContain('Classic');
+      expect(labels).toContain('Clean');
       expect(labels).toContain('Instagram Story');
+      act(() => tree.unmount());
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // ONE SCREEN. The sheet is a preview, three short rows and the share buttons,
+  // and all of it has to be reachable without scrolling: the destinations are
+  // the POINT of the screen, and a body that scrolls puts them below the fold
+  // on the phones with the least room. Both scrollers are gone — the body, and
+  // the horizontal one the accent swatches sat in — so the way to keep them
+  // gone is to assert that the sheet mounts no ScrollView at all. A new control
+  // row that does not fit has to be cut, not scrolled to.
+  test('fits on one screen, with nothing to scroll', () => {
+    jest.useFakeTimers();
+    let tree;
+    try {
+      act(() => {
+        tree = renderer.create(
+          <RunShareSheet visible onClose={() => {}} team={TEAM} path={PATH} rings={RINGS} run={RUN} />
+        );
+      });
+      act(() => jest.runOnlyPendingTimers());
+      act(() => jest.runOnlyPendingTimers());
+
+      expect(tree.root.findAllByType(ScrollView)).toHaveLength(0);
+
+      // And the rows that were cut to make it fit stay cut. Each of these was a
+      // wrapped chip row over the same three numbers.
+      const labels = tree.root
+        .findAll((n) => !!n.props?.accessibilityLabel)
+        .map((n) => n.props.accessibilityLabel);
+      ['Centre', 'Right', 'Flip', 'Neon', 'Character showcase', 'Elev gain', 'Climb / km']
+        .forEach((gone) => expect(labels).not.toContain(gone));
+
       act(() => tree.unmount());
     } finally {
       jest.useRealTimers();

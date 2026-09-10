@@ -21,9 +21,8 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import AppIcon from '../AppIcon';
-import { Button } from '../ui';
-import { CountUpText } from '../../ui/motion';
-import { NB, nbInk, nbRadius, space, useTheme, useThemedType, withAlpha } from '../../theme';
+import { CountUpText, PressableScale } from '../../ui/motion';
+import { NB, brand, nbInk, nbRadius, nbTextOn, space, useTheme, useThemedType } from '../../theme';
 
 const GOLD = '#eab308';
 
@@ -31,6 +30,10 @@ const GOLD = '#eab308';
  * `coins` is null until the real balance lands. That is not the same as zero
  * and must not be drawn as zero: a placeholder 0 on a shop reads as "you are
  * broke", which is a worse lie than saying nothing yet.
+ *
+ * `top` is for a host screen with NO native header. The shop has one, so it
+ * passes nothing: a screen under a native header that also pays the safe-area
+ * inset pays it twice (see the double-inset note in the repo docs).
  */
 export default function ShopWallet({ coins = null, cost = null, affordable = true, onGetMore, top = 0 }) {
   const { colors, scheme } = useTheme();
@@ -69,6 +72,24 @@ export default function ShopWallet({ coins = null, cost = null, affordable = tru
           )}
         </View>
 
+        {onGetMore ? (
+          // A round PLUS on the purse, not a "Get coins" button off to the
+          // side. Topping up belongs to the balance — every arcade cabinet in
+          // the world puts the coin slot next to the credit counter — and the
+          // text button was the widest thing in a bar whose whole job is to
+          // stay short. The label is still spelled out for a screen reader:
+          // a bare "+" is a shape, not a word.
+          <PressableScale
+            onPress={onGetMore}
+            scaleTo={0.92}
+            accessibilityRole="button"
+            accessibilityLabel="Get more coins"
+            style={[styles.plus, { borderColor: nbInk(scheme, brand.teal) }]}
+          >
+            <Text style={[styles.plusMark, { color: nbTextOn(brand.teal) }]}>+</Text>
+          </PressableScale>
+        ) : null}
+
         {!short ? (
           <View style={styles.sum}>
             <Text style={[type.caption, { color: colors.textMuted }]}>Price</Text>
@@ -84,10 +105,6 @@ export default function ShopWallet({ coins = null, cost = null, affordable = tru
               </Text>
             </View>
           </View>
-        ) : null}
-
-        {onGetMore ? (
-          <Button title="Get coins" size="sm" full={false} onPress={onGetMore} />
         ) : null}
       </View>
 
@@ -117,6 +134,19 @@ const styles = StyleSheet.create({
     borderRadius: nbRadius.pill,
     borderWidth: 2,
   },
+  // Sized off the purse's own height so the two read as one control rather
+  // than as a pill with a button parked beside it.
+  plus: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    backgroundColor: brand.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Nudged up: the glyph's own bearing sits it low in a circle this small.
+  plusMark: { fontSize: 24, fontWeight: '900', lineHeight: 26, marginTop: -2 },
   sum: { flex: 1, alignItems: 'flex-end' },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   short: { marginTop: 4, textAlign: 'right' },

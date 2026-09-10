@@ -18,7 +18,7 @@
 // pile of coins.
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
@@ -28,7 +28,7 @@ import { useAccent } from '../hooks/useAccent';
 import { useAvatar } from '../state/avatar';
 import AppIcon from '../components/AppIcon';
 import GameAnimation from '../components/GameAnimation';
-import { Card, HardShadow, PANEL_INK, Row, Screen, Skeleton, ToonHeader } from '../components/ui';
+import { BackButton, Card, HardShadow, PANEL_INK, Row, Screen, Skeleton } from '../components/ui';
 import { ProgressTrack } from '../components/ui/toon';
 import DayStrip from '../components/missions/DayStrip';
 import MissionCard from '../components/missions/MissionCard';
@@ -37,7 +37,6 @@ import LootboxGamble from '../components/lootbox/LootboxGamble';
 import RewardReveal from '../components/RewardReveal';
 import { RARITY_COLOR } from '../components/RewardArt';
 import { rollCosmetic } from '../config/lootboxRoll';
-import { art } from '../config/onboardingArt';
 import { toast } from '../ui/toast';
 import { Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
 import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
@@ -248,11 +247,7 @@ export default function MissionsScreen({ navigation }) {
     [state?.missions]
   );
 
-  // The flight's landing pad. It is in the header because a target that scrolls
-  // away mid flight leaves the coins landing on nothing, and UNDER the title
-  // row because the right of that row belongs to the cut-out. Left edge on the
-  // gutter, which is where the back tile starts — the header's real edge, the
-  // indent past it being the compact format's own doing.
+  // Keep the coin-flight destination in the fixed header.
   const purse = (
     <HardShadow offset={NB.offsetSm} radius={nbRadius.sm} on="#fff" style={styles.purseWrap}>
       <View
@@ -271,25 +266,29 @@ export default function MissionsScreen({ navigation }) {
 
   return (
     <Screen gutter={false} edges={[]}>
-      <ToonHeader
-        panel
-        compact
-        eyebrow="Missions"
-        title={state?.day === state?.today ? 'Today' : label.charAt(0).toUpperCase() + label.slice(1)}
-        subtitle="Finish all four for a box"
-        solid={brand.purple}
-        top={insets.top}
-        titleStyle={type.display}
-        eyebrowStyle={type.labelSm}
-        onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined}
-        // The board the two of them are reading IS this page. Null until the
-        // cut-out is installed (see config/onboardingArt.js), and the header is
-        // a complete panel without it.
-        art={art('panelMissions')}
-        style={{ marginBottom: space.md }}
-      >
-        {purse}
-      </ToonHeader>
+      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerCopy}>
+            {navigation?.canGoBack?.() ? (
+              <BackButton onPress={() => navigation.goBack()} fill="#fff" ink={PANEL_INK} size={36} style={styles.back} />
+            ) : null}
+            <Text style={[type.labelSm, styles.eyebrow]}>MISSIONS</Text>
+            <Text style={[type.display, styles.title]}>
+              {state?.day === state?.today ? 'Today' : label.charAt(0).toUpperCase() + label.slice(1)}
+            </Text>
+          </View>
+          <Image
+            source={require('../../assets/art/panel/missions.png')}
+            style={styles.headerArt}
+            resizeMode="contain"
+            accessible={false}
+          />
+        </View>
+        <View style={styles.headerFooter}>
+          <Text style={styles.subtitle}>Finish all four for a box</Text>
+          {purse}
+        </View>
+      </View>
 
       <Screen
         scroll
@@ -382,11 +381,29 @@ export default function MissionsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   body: { flex: 1 },
-  strip: { marginBottom: space.lg },
+  strip: { marginBottom: space.md },
   skeletons: { marginTop: space.sm },
   error: { marginTop: space.md },
 
-  purseWrap: { alignSelf: 'flex-start', marginTop: space.sm },
+  header: {
+    backgroundColor: brand.purple,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.md,
+    marginBottom: space.md,
+    borderBottomWidth: NB.stroke,
+    borderBottomColor: PANEL_INK,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
+  headerCopy: { flex: 1, minWidth: 0 },
+  back: { alignSelf: 'flex-start', marginBottom: space.sm },
+  eyebrow: { color: PANEL_INK, opacity: 0.75 },
+  title: { color: PANEL_INK, fontSize: 30, lineHeight: 36, marginTop: 2 },
+  headerArt: { width: 90, height: 152, borderRadius: 14 },
+  headerFooter: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
+  subtitle: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 20, color: PANEL_INK },
+  purseWrap: { flexShrink: 0 },
   // The same white tile the panel's back chevron wears, for the same reason:
   // a panel is a saturated brand fill in both schemes, so its controls are
   // fixed white-on-ink rather than themed.

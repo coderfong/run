@@ -34,7 +34,15 @@ from .shop_catalog import SHOP_ITEMS, price_of
 ROTATION_HOURS = 12
 # Rarity mix per window — enough commons to always be affordable, one
 # legendary so there's something to save for.
-FEATURED_MIX = {"common": 5, "rare": 4, "epic": 2, "legendary": 1}
+#
+# NINE, NOT TWELVE. The shelf is drawn as three rows of three under the
+# painted stall, and nine is what fills that grid exactly: twelve left a
+# ragged fourth row that pushed the last three items under the fold, so the
+# stock you could see depended on how far you had scrolled. The client caps
+# the shelf at nine as well (see ShopScreen's SHELF_MIX) because the app
+# talks to a deployed backend that may still be serving the old twelve.
+FEATURED_MIX = {"common": 4, "rare": 3, "epic": 1, "legendary": 1}
+FEATURED_COUNT = sum(FEATURED_MIX.values())  # 9
 
 
 def current_window(now: float | None = None) -> int:

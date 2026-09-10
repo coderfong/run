@@ -43,6 +43,7 @@ import TerritoryPlanner from '../components/map/TerritoryPlanner';
 import { EVENTS, track } from '../analytics';
 import { layerByKey, layerFeatureCollection } from '../map/intelligence';
 import { boardPresentation } from '../map/presentation';
+import { createViewportCache, selectPortraits } from '../map/viewportCache';
 import { analyseRoute } from '../map/planner';
 import { isDrag, shouldSample, strokeToRoute } from '../map/freehand';
 import { useProEntitlement } from '../pro/ProProvider';
@@ -117,6 +118,19 @@ const LOCATE_SIZE = 60;
 // two states of one switch labelled in two different languages.
 const VIEW_SWITCH_SIZE = 104;
 
+const LandPortrait = React.memo(function LandPortrait({ marker: m, accent, bg, onSelect }) {
+  const onPress = useCallback(() => onSelect(m.userId), [onSelect, m.userId]);
+  return (
+    <UserMarker point={m.at} onPress={onPress}>
+      <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={bg} />
+    </UserMarker>
+  );
+}, (a, b) => a.marker.id === b.marker.id && a.marker.avatar === b.marker.avatar
+  && a.marker.userId === b.marker.userId && a.marker.mine === b.marker.mine
+  && a.marker.ring === b.marker.ring && a.marker.at.latitude === b.marker.at.latitude
+  && a.marker.at.longitude === b.marker.at.longitude && a.accent === b.accent
+  && a.bg === b.bg && a.onSelect === b.onSelect);
+
 function RankMark({ tier }) {
   const art = BORDER_ART[tier.key];
   if (!art) return <PortraitBorder tier={tier} size={RANK_MARK - 6} />;
@@ -181,37 +195,7 @@ function toFeatures(territories, userId, playerAccent) {
   return features;
 }
 
-// We fetch a REGION bigger than the screen and remember exactly what it covers.
-// (The old code keyed a cache on the bbox rounded to 2dp / zoom rounded to an
-// int — two genuinely different viewports collapsed to the same key, so a pan
-// early-returned and the newly revealed strip, which was never fetched, drew
-// empty. Land "disappearing" while panning was that.)
-const VIEW_PAD = 0.6; // fetch 60% beyond each edge so small pans are pre-loaded
-// Portraits help up close but cover territory silhouettes when the camera
-// pulls back. Below this zoom, only a small player-location dot remains.
 const PORTRAIT_MIN_ZOOM = 13.25;
-
-function padBbox(b, f = VIEW_PAD) {
-  const dLon = (b.maxLon - b.minLon) * f;
-  const dLat = (b.maxLat - b.minLat) * f;
-  return {
-    minLon: b.minLon - dLon,
-    minLat: b.minLat - dLat,
-    maxLon: b.maxLon + dLon,
-    maxLat: b.maxLat + dLat,
-  };
-}
-
-// Is `inner` fully inside `outer`? Only then can we skip a refetch.
-function bboxContains(outer, inner) {
-  return (
-    !!outer &&
-    inner.minLon >= outer.minLon &&
-    inner.maxLon <= outer.maxLon &&
-    inner.minLat >= outer.minLat &&
-    inner.maxLat <= outer.maxLat
-  );
-}
 
 // How the contested outline breathes. The band is narrow on purpose, see the
 // note on HeatOutline.
@@ -281,13 +265,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   // a mount-time reveal would have finished long before anyone looked at it.
   const focused = useIsFocused();
   const mapRef = useRef(null);
-  // The padded region we've already loaded: { minLon,minLat,maxLon,maxLat, capped }.
-  const coveredRef = useRef(null);
-  const regionsRef = useRef([]);
-  const pendingRef = useRef(null);
-  // Latest in-flight request wins — stops a slow older response (fetched for a
-  // smaller bbox) from landing last and wiping out land.
-  const seqRef = useRef(0);
+  const viewportCacheRef = useRef(null);
+  const [portraitBounds, setPortraitBounds] = useState(null);
   // Last viewport the map settled on, so we can refetch on focus without a move.
   const lastViewRef = useRef(null);
 
@@ -472,70 +451,19 @@ export default function GlobalMapScreen({ route, navigation }) {
   // useCallback with a stable identity (`zoomRef` instead of the `zoom` state
   // for the fallback) — onIdle below closes over this function, and a plain
   // per-render redefinition here would have made that closure stale.
-  const fetchViewport = useCallback(async (bbox, z, force = false) => {
-    // Mirrors the backend feature cap (map_zoom_vlow=11): crossing it changes
-    // how much comes back, so re-fetch rather than reuse the capped set.
-    const capped = (z ?? zoomRef.current) < 11;
-    // The board is scoped to one rank tier ON ONE LADDER; a different tier —
-    // or the same tier number on the other board — is a different set of land,
-    // so BOTH join the cache key. Without the board in it, stepping from solo
-    // Gold to club Gold would re-serve the runners' board as the clubs'.
+  useEffect(() => {
+    viewportCacheRef.current = createViewportCache({
+      request: (bbox, z, scope) => api.mapPolygons(bbox, z, scope),
+      onData: (territories) => { setList(territories); setLoadError(false); },
+      onError: () => setLoadError(true),
+    });
+    return () => viewportCacheRef.current?.dispose();
+  }, []);
+
+  const fetchViewport = useCallback((bbox, z, force = false) => {
     const board = boardRef.current;
     const rank = board === CLUB_BOARD ? clubRankRef.current : viewRankRef.current;
-    const cov = coveredRef.current;
-    if (!force && cov && cov.capped === capped && cov.rank === rank && cov.board === board
-        && bboxContains(cov, bbox) && Date.now() - cov.at < 30000) {
-      // A pan back into loaded land supersedes an outstanding request elsewhere.
-      if (pendingRef.current && !bboxContains(pendingRef.current, bbox)) {
-        ++seqRef.current;
-        pendingRef.current = null;
-      }
-      return;
-    }
-
-    const pending = pendingRef.current;
-    if (pending && pending.capped === capped && pending.rank === rank && pending.board === board
-        && bboxContains(pending, bbox)) return;
-    const cached = regionsRef.current.find(
-      (r) => r.capped === capped && r.rank === rank && r.board === board && bboxContains(r, bbox)
-    );
-    const seq = ++seqRef.current;
-    if (cached) {
-      setList(cached.territories);
-      setLoadError(false);
-      coveredRef.current = cached;
-      if (!force && Date.now() - cached.at < 30000) {
-        pendingRef.current = null;
-        return;
-      }
-    }
-    const padded = padBbox(bbox);
-    pendingRef.current = { ...padded, capped, rank, board, seq };
-    try {
-      // Both boards now send a tier. The clubs view used to send none, which
-      // the endpoint read as "every rank" — that is what put every club in the
-      // world on one map. `board` picks which ladder the tier is read against.
-      const data = await api.mapPolygons(padded, z, { rank, board });
-      if (seq !== seqRef.current) return; // superseded by a newer viewport
-      const region = { ...padded, capped, rank, board, territories: data.territories, at: Date.now() };
-      regionsRef.current = [
-        region,
-        ...regionsRef.current.filter(
-          (r) => !(r.rank === rank && r.board === board && r.capped === capped && bboxContains(region, r))
-        ),
-      ].slice(0, 8);
-      coveredRef.current = region;
-      setList(data.territories);
-      setLoadError(false);
-    } catch {
-      if (seq !== seqRef.current) return;
-      // Leave coveredRef untouched so the next idle retries instead of
-      // believing this region is loaded.
-      setLoadError(true);
-      setList((prev) => prev || []);
-    } finally {
-      if (pendingRef.current?.seq === seq) pendingRef.current = null;
-    }
+    viewportCacheRef.current?.load(bbox, z ?? zoomRef.current, { rank, board, force });
   }, []);
 
   // useCallback with a stable identity (no `zoom` in deps — `zoomRef` covers
@@ -558,12 +486,22 @@ export default function GlobalMapScreen({ route, navigation }) {
     };
     const zz = z ?? zoomRef.current;
     lastViewRef.current = { bbox, z: zz };
+    setPortraitBounds(bbox);
     fetchViewport(bbox, zz);
   }, [fetchViewport]);
 
   // Start loading while the camera moves, before it settles on fresh ground.
   const onViewportChange = useCallback(({ bounds, zoom: z }) => {
-    fetchViewport({ minLon: bounds.sw[0], minLat: bounds.sw[1], maxLon: bounds.ne[0], maxLat: bounds.ne[1] }, z);
+    const bbox = { minLon: bounds.sw[0], minLat: bounds.sw[1], maxLon: bounds.ne[0], maxLat: bounds.ne[1] };
+    if (z != null) {
+      const crossedDetail = (zoomRef.current < PORTRAIT_MIN_ZOOM) !== (z < PORTRAIT_MIN_ZOOM);
+      zoomRef.current = z;
+      // Only the visibility boundary needs a render during a pinch.
+      if (crossedDetail) setZoom(z);
+    }
+    lastViewRef.current = { bbox, z: z ?? zoomRef.current };
+    setPortraitBounds(bbox);
+    fetchViewport(bbox, z);
   }, [fetchViewport]);
 
   // Coming back to the map (e.g. straight after claiming) refetches the current
@@ -653,9 +591,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   // loadout. Capped + shown only when zoomed in enough to avoid clutter/perf.
   const landPortraits = useMemo(() => {
     if ((isClubView && !planning) || (zoom || 0) < PORTRAIT_MIN_ZOOM) return [];
-    return (list || [])
+    return selectPortraits((list || [])
       .filter((t) => t.user_id === user.id ? equipped : t.avatar)
-      .slice().sort((a, b) => (b.area_m2 || 0) - (a.area_m2 || 0)).slice(0, 40)
       .map((t) => ({
         id: t.id,
         userId: t.user_id,
@@ -665,10 +602,8 @@ export default function GlobalMapScreen({ route, navigation }) {
         area: t.area_m2 || 0,
         at: ringCentroid(territoryRings(t)[0]),
       }))
-      .filter((m) => m.at && m.avatar)
-      .sort((a, b) => b.area - a.area)
-      .slice(0, 40);
-  }, [list, user.id, equipped, zoom, isClubView, planning]);
+      .filter((m) => m.at && m.avatar), portraitBounds);
+  }, [list, user.id, equipped, zoom, isClubView, planning, portraitBounds]);
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
@@ -1040,9 +975,7 @@ export default function GlobalMapScreen({ route, navigation }) {
             : null}
           {/* owner portrait in the middle of every territory in view */}
           {landPortraits.map((m) => (
-            <UserMarker key={m.id} point={m.at} onPress={() => setProfileUserId(m.userId)}>
-              <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={colors.card} />
-            </UserMarker>
+            <LandPortrait key={m.id} marker={m} accent={accent} bg={colors.card} onSelect={setProfileUserId} />
           ))}
           {/* Keep location visible when pulled back without covering the land. */}
           {myLoc && (
@@ -1516,71 +1449,69 @@ export default function GlobalMapScreen({ route, navigation }) {
                 fillStyle={[styles.rankProgressFill, { backgroundColor: ownRankColor }]}
               />
             </View>
+            {/* The bar's label, and nothing else. It used to carry a second
+                sentence of encouragement at the top rank, which is the kind of
+                line a first-run sheet can least afford. */}
             <Text style={type.caption}>
               {pointsToNext === undefined
-                ? 'Rank progress is loading…'
+                ? 'Loading…'
                 : pointsToNext == null
-                ? 'Top rank reached. Keep defending your place.'
-                : `${pointsToNext.toLocaleString()} rank points to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
+                ? 'Top rank.'
+                : `${pointsToNext.toLocaleString()} pts to ${RANK_VIEWS[Math.min(TOP_VIEW, ownTier + 1)].label}`}
             </Text>
+            {/* The one sentence that has to be here: what this map is showing. */}
             <Text style={[type.body, { color: colors.textMuted }]}>
-              The map shows {ownTierLabel} runners only. You take land off them, they take it off you.
+              You see {ownTierLabel} runners only. Take their land, they take yours.
             </Text>
           </View>
 
-          {/* THE RULES, one to a line, each with the points it is worth. This
-              was a two by two grid of a word and a fragment ("UP / Take land"),
-              which reads as a table of nothing in particular: it never said who
-              takes land from whom, it never said what any of it was worth, and
-              the "no change" case was an em dash. Direction, outcome, price,
-              read straight down.
+          {/* THE RULES, one to a line, each with the points it is worth.
+              Direction, outcome, price, read straight down.
+
+              The rows say the OUTCOME and nothing more ("Lose land", not "A
+              runner takes your land"): who did it to whom is already in the
+              UP/DOWN column, and the long forms turned a table you scan into
+              six sentences you read. The scale note that sat above them (area,
+              opponent rank, the floor of 100) is true but is detail for the
+              standings screen, not for the sheet that opens on first use.
 
               Ranges show the solo outcome caps. */}
           <View style={styles.rankInfoSection}>
             <Text style={[type.bodySmBold, { color: colors.text }]}>What moves your rank</Text>
-            <Text style={[type.body, { color: colors.textMuted }]}>
-              Solo points vary with area and opponent rank. Ranges are per rival or land update;
-              mixed results can cancel out. Your rating cannot fall below 100.
-            </Text>
             <View style={styles.rankRules}>
               {[
-                { key: 'take', badge: 'UP', fill: colors.ok, text: 'Take land off a runner', pts: RANK_RANGES.take },
-                { key: 'hold', badge: 'UP', fill: colors.ok, text: 'Hold off an attack', pts: RANK_RANGES.hold },
+                { key: 'take', badge: 'UP', fill: colors.ok, text: 'Take land', pts: RANK_RANGES.take },
+                { key: 'hold', badge: 'UP', fill: colors.ok, text: 'Defend your land', pts: RANK_RANGES.hold },
                 { key: 'open', badge: 'UP', fill: colors.ok, text: 'Claim empty land', pts: RANK_RANGES.open },
-                { key: 'lose', badge: 'DOWN', fill: colors.danger, text: 'A runner takes your land', pts: RANK_RANGES.lose },
-                { key: 'decay', badge: 'DOWN', fill: colors.danger, text: 'Your land decays', pts: RANK_RANGES.decay },
-                { key: 'failed', badge: 'DOWN', fill: colors.danger, text: 'Your attack is held off', pts: RANK_RANGES.failed },
+                { key: 'lose', badge: 'DOWN', fill: colors.danger, text: 'Lose land', pts: RANK_RANGES.lose },
+                { key: 'decay', badge: 'DOWN', fill: colors.danger, text: 'Land decays', pts: RANK_RANGES.decay },
+                { key: 'failed', badge: 'DOWN', fill: colors.danger, text: 'Failed attack', pts: RANK_RANGES.failed },
               ].map(({ key, badge, fill, text, pts }) => (
                 <View key={key} style={styles.rankRule}>
                   <View style={[styles.ruleBadge, { backgroundColor: fill, borderColor: nbInk(scheme, fill) }]}>
                     <Text style={[type.labelSm, styles.ruleBadgeText, { color: nbInk(scheme, fill) }]}>{badge}</Text>
                   </View>
                   <Text style={[type.body, styles.ruleText]}>{text}</Text>
-                  <Text style={[type.bodySmBold, styles.rulePts]}>{pts} pts</Text>
+                  <Text style={[type.bodySmBold, styles.rulePts]}>{pts}</Text>
                 </View>
               ))}
             </View>
           </View>
 
           {/* The one thing about the club board nobody can work out by looking
-              at it. Club land is now won TOGETHER (see backend club_runs.py),
-              so a runner in a club who never runs with anyone sees an empty
-              board and no reason for it. Said here, in the sheet that already
-              explains what the board is showing. */}
-          <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>Club land</Text>
-            <Text style={[type.body, { color: colors.textMuted }]}>
-              A run counts for your club when two or more of you run the same route at
-              the same time. Tap Club view to see what your club holds.
-            </Text>
-          </View>
+              at it. Club land is won TOGETHER (see backend club_runs.py), so a
+              runner in a club who never runs with anyone sees an empty board
+              and no reason for it. It is a footnote now, not a boxed section
+              of its own: the rule is one clause long and it was carrying a
+              heading and a second sentence telling the runner to tap a tab
+              that is already on screen.
 
-          <View style={styles.rankInfoSection}>
-            <Text style={[type.bodySmBold, { color: colors.text }]}>Look at other ranks</Text>
-            <Text style={[type.body, { color: colors.textMuted }]}>
-              Use the arrows to see another rank.
-            </Text>
-          </View>
+              "Look at other ranks: use the arrows" went with it. The arrows
+              are visible, labelled with the rank they step to, and were the
+              third box in a sheet whose problem was boxes. */}
+          <Text style={[type.caption, styles.rankInfoNote]}>
+            Club land needs two clubmates on one run.
+          </Text>
         </View>
         <View style={styles.rankInfoActions}>
           <Button
@@ -1758,6 +1689,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     paddingVertical: space.sm,
     gap: 2,
   },
+  // A footnote, not a section: no fill and no border, so the sheet reads as one
+  // card and one table with a line under them rather than a stack of boxes.
+  rankInfoNote: { paddingHorizontal: space.xs, marginTop: 2 },
   // One rule to a row. The badge column is a FIXED width so the four sentences
   // start on the same left edge and the eye can run straight down them; the
   // badges themselves are the app's ordinary block-with-a-stroke, not tinted

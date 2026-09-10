@@ -21,14 +21,21 @@ import { EmptyState } from './ui';
 import StandingBar from './StandingBar';
 import { toast } from '../ui/toast';
 import { art } from '../config/onboardingArt';
+import GameAnimation from './GameAnimation';
 import GameLottie from './GameLottie';
 
-// Rank -> place sticker. Null entries fall back to the plain "#n" text.
-const PLACE_BADGE = {
-  1: art('badge1st'),
-  2: art('badge2nd'),
-  3: art('badge3rd'),
-};
+// Rank -> place badge. Animated (config/gameAnimations.js), self-looping, and
+// held as a still under Reduce Motion — a rank badge is the row's rank, so the
+// one thing it may never do is disappear. Ranks outside the podium fall back to
+// the plain "#n" text.
+//
+// These replaced the static badge-1st/2nd/3rd PNGs. `art('badge1st')` and its
+// two siblings are still in the registry and still point at real files; they
+// are simply no longer what a standings row draws.
+const PLACE_BADGE = { 1: 'placeFirst', 2: 'placeSecond', 3: 'placeThird' };
+// Same width the "#n" text reserves (`rank` below), so a podium row and an
+// ordinary one line their names up at the same x.
+const PLACE_BADGE_SIZE = 38;
 
 // Exported so the post-claim leaderboard transition reads the SAME snapshot
 // this screen writes — "your rank last time you looked" is the only honest
@@ -70,14 +77,13 @@ export function LeaderboardRow({ item, isMe = false, board = 'land', celebrateDe
         style,
       ]}
     >
-      {/* Top three get the comic place sticker instead of "#n" — the art has
-          the ordinal lettering baked in. */}
+      {/* Top three get the medal instead of "#n" — the art has the ordinal
+          baked into its face. */}
       {PLACE_BADGE[item.rank] ? (
-        <Image
-          source={PLACE_BADGE[item.rank]}
+        <GameAnimation
+          name={PLACE_BADGE[item.rank]}
+          size={PLACE_BADGE_SIZE}
           style={styles.placeBadge}
-          resizeMode="contain"
-          fadeDuration={0}
           accessibilityLabel={`Rank ${item.rank}`}
         />
       ) : (
@@ -92,7 +98,13 @@ export function LeaderboardRow({ item, isMe = false, board = 'land', celebrateDe
         <Text style={type.caption}>
           {board === 'rank'
             ? `${item.rank_label || 'Wood'} · ${item.elo_matches || 0} rated ${item.elo_matches === 1 ? 'battle' : 'battles'}`
-            : `${item.clan_tag ? 'club' : 'solo'} · ${item.territory_count} territories`}
+            : `${item.clan_tag ? 'club' : 'solo'}${
+                // Null for the synthetic row the post-claim board builds for a
+                // runner below the fetched page: /leaderboard/standing knows
+                // their rank and their land, not how many pieces it is in.
+                // Saying nothing beats saying "undefined territories".
+                item.territory_count != null ? ` · ${item.territory_count} territories` : ''
+              }`}
         </Text>
       </View>
       <Text style={[styles.area, { color: c.stroke }]}>
@@ -264,7 +276,15 @@ export default function LeaderboardView({ board = 'land' }) {
                 {(r.username || '?').slice(0, 2).toUpperCase()}
               </Text>
             </View>
-            <Text style={[type.caption, { marginTop: 6 }]}>#{r.rank}</Text>
+            {/* The medal, where the podium used to print "#1" under the
+                avatar. The rank is what these three columns ARE, so the badge
+                is the caption rather than an ornament beside one. */}
+            <GameAnimation
+              name={PLACE_BADGE[r.rank]}
+              size={isFirst ? 44 : 34}
+              style={styles.podiumBadge}
+              accessibilityLabel={`Rank ${r.rank}`}
+            />
             <Text style={type.bodySmBold} numberOfLines={1}>
               {r.username}
             </Text>
@@ -369,7 +389,11 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderColor: nbInk(scheme, colors.card),
   },
   rank: { ...type.statSm, width: 36 },
-  placeBadge: { width: 36, height: 30, marginRight: 2 },
+  // The square the medal is drawn in. The badges are square assets where the
+  // old stickers were wide, so this is a box rather than a strip — 38 keeps the
+  // row at the height two lines of text already gave it.
+  placeBadge: { marginRight: 2 },
+  podiumBadge: { marginTop: 4 },
   deltaSlot: { width: 14, alignItems: 'center', justifyContent: 'center' },
   delta: { ...type.caption },
   rankFx: { position: 'absolute' },

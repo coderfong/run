@@ -21,6 +21,11 @@ short run against the long one would call it one. Time is checked the same way,
 as an overlap of the two windows with a grace either side, because watches get
 started by hand.
 
+Timestamped GPS fixes must also put both runners within 35 metres for at
+least 60% of the longer recording. Missing traces and GPS gaps earn no shared
+time. This rejects opposite-direction runs and runners following minutes
+apart even when their route shapes and overall time windows match.
+
 The metres are measured on a geography cast, so they are metres, not degrees.
 The clip itself is planar in 4326, which at these distances is a rounding
 error on a threshold that is already a judgement call.
@@ -32,12 +37,15 @@ once, and returns the ones it logged for the first time so the caller can pay
 the club credit those runs missed. The table is what makes that idempotent: a
 run is logged for a club exactly once, however many clubmates finish after it.
 
-Nothing here is a privacy surface. It reads `runs.path`, which the app already
-stores, inside one query, and returns run ids to the caller — never a
+The private matching query reads `runs.path` and `runs.together_trace`,
+and returns run ids to the caller — never a
 coordinate, never a route, and nothing about a runner outside the club.
 """
 
 from sqlalchemy import text
+from bisect import bisect_left
+from datetime import timezone
+from math import radians, sin, cos, asin, sqrt
 
 from .config import settings
 
@@ -49,14 +57,19 @@ from .config import settings
 _PARTNER_SQL = """
 WITH mine AS (
     SELECT path                              AS path,
+           together_trace,
            ST_Length(path::geography)        AS len_m,
            started_at                        AS started_at,
            COALESCE(ended_at, started_at)    AS ended_at
     FROM runs
     WHERE id = CAST(:run_id AS uuid)
       AND path IS NOT NULL
+      AND verified AND ended_at IS NOT NULL
+      AND user_id = CAST(:user_id AS uuid)
 )
 SELECT r.id::text      AS run_id,
+       mine.together_trace AS mine_trace,
+       r.together_trace AS theirs_trace,
        r.user_id::text AS user_id,
        COALESCE(r.distance_m, 0) AS distance_m,
        ST_Length(ST_CollectionExtract(ST_Intersection(
@@ -96,6 +109,53 @@ LIMIT :cap
 def partner_sql() -> str:
     """The probe, exposed so a test can hold the rules to it without a database."""
     return _PARTNER_SQL
+
+
+def record_trace(points):
+    """Keep one private timestamped fix per five seconds for club matching."""
+    trace = []
+    for p in sorted(points, key=lambda p: p.t):
+        t = p.t.replace(tzinfo=timezone.utc).timestamp()
+        if p.accuracy_m is not None and p.accuracy_m > 35:
+            continue
+        if not trace or t - trace[-1][0] >= 5:
+            trace.append([t, p.lat, p.lon])
+    return trace
+
+
+def nearby_in_time(mine, theirs):
+    """Require nearby fixes throughout both recordings; gaps earn no credit.
+
+    Sample time uniformly so a burst of GPS fixes cannot outweigh minutes
+    apart. Missing historical traces fail closed.
+    """
+    if not mine or not theirs or len(mine) < 2 or len(theirs) < 2:
+        return False
+    duration = max(mine[-1][0] - mine[0][0], theirs[-1][0] - theirs[0][0])
+    start, end = max(mine[0][0], theirs[0][0]), min(mine[-1][0], theirs[-1][0])
+    if duration <= 0 or end <= start:
+        return False
+    times = [[p[0] for p in trace] for trace in (mine, theirs)]
+    shared = 0
+    t = start
+    while t + 10 <= end:
+        fixes = []
+        for trace, stamps in zip((mine, theirs), times):
+            i = bisect_left(stamps, t)
+            candidates = trace[max(0, i - 1):i + 1]
+            fix = min(candidates, key=lambda p: abs(p[0] - t))
+            if abs(fix[0] - t) > 10:
+                break
+            fixes.append(fix)
+        if len(fixes) == 2:
+            a, b = fixes
+            lat1, lat2 = radians(a[1]), radians(b[1])
+            h = sin((lat2 - lat1) / 2)**2 + cos(lat1) * cos(lat2) * sin(radians(b[2] - a[2]) / 2)**2
+            distance = 6371000 * 2 * asin(sqrt(min(1, h)))
+            if distance <= settings.club_run_path_tolerance_m:
+                shared += 10
+        t += 10
+    return shared / duration >= settings.club_run_min_shared_frac
 
 
 def shared_fraction(shared_m, length_m) -> float:
@@ -150,7 +210,7 @@ def partners_for(db, run_id, user_id, clan_id) -> list[dict]:
         mine = shared_fraction(row.mine_shared_m, row.mine_len_m)
         theirs = shared_fraction(row.theirs_shared_m, row.theirs_len_m)
         shared_m = min(float(row.mine_shared_m or 0.0), float(row.theirs_shared_m or 0.0))
-        if ran_together(mine, theirs, shared_m):
+        if ran_together(mine, theirs, shared_m) and nearby_in_time(row.mine_trace, row.theirs_trace):
             found.append(
                 {
                     "run_id": row.run_id,

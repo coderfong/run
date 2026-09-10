@@ -70,7 +70,12 @@ const ART = {
   // only ever be shown full-bleed behind a scrim; `scripts/cut-header-art.py`
   // keys that ground out and trims to the ink.
   panelPasers: require('../../assets/art/panel/pasers.png'),
-  panelRivals: require('../../assets/art/panel/rivals.png'),
+  // UNWIRED, same rule as `passBanner` below: Rivals is a painted park now and
+  // its header is transparent chrome standing in the treeline, so nothing
+  // draws the flag-planting cut-out any more, and a `require` nothing draws is
+  // a slot off the OTA asset budget. The cut-out and its square original are
+  // both still in assets/art — uncomment to bring it back.
+  // panelRivals: require('../../assets/art/panel/rivals.png'),
   // PASERBY — two runners passing each other, cut off the flat yellow ground
   // the master is painted on. The Crossroads header wears that same yellow
   // (#FDC302, 11.4:1 against the panel's ink copy), which is also what hides
@@ -167,6 +172,56 @@ const ART = {
   // same band across the Crossroads plaza, and screenAssets preloads it for
   // that tab. It stays wired for the plaza, not for the shop.
   pitStopCloudBand: require('../../assets/art/shop/pitstop-cloud-band.png'),
+
+  // --- Rivals park (components/rivals/RivalsBackdrop.js) ------------------
+  // The dog park the rivalry cards sit in: a canopy of trees across the top
+  // and the skyline, hedges, grass and two dogs pulling on the same bone
+  // across the bottom. ONE FILE, TWO BANDS, STACKED — the flat cream field
+  // that separates them in the master is not in the asset at all, because the
+  // page paints it (RIVALS_PARK.ground) and stretches it to whatever height
+  // the window has left. Cut and measured by
+  // scripts/install-rivals-backdrop.py, which also sizes it — leave it out of
+  // scripts/downscale-art.py, the same one-owner rule as the pit stop plates.
+  rivalsPark: require('../../assets/art/rivals/park.png'),
+
+  // --- Home street (components/home/HomeBackdrop.js) ----------------------
+  // The outdoors the feed happens in: open sky across the top, then the city
+  // behind a hedgerow across the bottom. Built and drawn exactly like the
+  // rivals park above — two bands stacked in one file, the flat cream field
+  // between them left out and painted by the page (HOME_STREET.ground) — but
+  // it earns that construction more than any other backdrop, because Home is
+  // the one page that SCROLLS: the sky stays behind the header and the hedge
+  // stays above the tab bar while the feed runs through the field between.
+  // Cut and measured by scripts/install-home-backdrop.py, which also sizes
+  // it — leave it out of scripts/downscale-art.py.
+  homeStreet: require('../../assets/art/home/backdrop.png'),
+};
+
+// The Rivals park, as the page has to know it. PRINTED BY THE INSTALL SCRIPT —
+// paste, don't hand-edit: `ground` is sampled off the master's flat field,
+// `sky` off its very top edge, and the two fractions are measured from the
+// first and last row that is the field colour all the way across. `top` and
+// `bottom` are each band's height as a fraction of the picture's WIDTH, which
+// is the only scale the page draws it at, so a band is `width x fraction`
+// points tall on any phone.
+export const RIVALS_PARK = {
+  ground: '#FEFDF2',
+  sky: '#6DC6FD',
+  top: 0.3804,
+  bottom: 0.5728,
+};
+
+// The Home street, on the same terms as the park above — PRINTED BY
+// scripts/install-home-backdrop.py, paste rather than hand-edit. `ground` is
+// the flat field the feed scrolls through, `sky` is the colour the top band
+// opens on (a window taller than the picture leaves a strip above it, and that
+// strip has to be sky, not field), and the two fractions are each band's height
+// as a fraction of the picture's WIDTH — the only scale the page draws it at.
+export const HOME_STREET = {
+  ground: '#FDFAEF',
+  sky: '#8BCDFD',
+  top: 0.4463,
+  bottom: 0.2349,
 };
 
 // The paving colour at `passBackdrop`'s bottom edge, sampled off the master.

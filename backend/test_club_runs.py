@@ -29,6 +29,8 @@ def _row(mine_shared, theirs_shared, mine_len, theirs_len, run="r1", user="u1", 
         run_id=run, user_id=user, distance_m=dist,
         mine_shared_m=mine_shared, theirs_shared_m=theirs_shared,
         mine_len_m=mine_len, theirs_len_m=theirs_len,
+        mine_trace=[[t, 1.3, 103.8 + t / 100000] for t in range(0, 601, 5)],
+        theirs_trace=[[t, 1.3, 103.8 + t / 100000] for t in range(0, 601, 5)],
     )
 
 
@@ -68,6 +70,24 @@ def test_two_people_is_one_partner():
     assert settings.club_run_min_partners == 1
     assert club_runs.enough([{"run_id": "a", "user_id": "u"}])
     assert not club_runs.enough([])
+
+
+def test_timed_positions_confirm_running_together():
+    trace = [[t, 1.3, 103.8 + t / 100000] for t in range(0, 601, 5)]
+    assert club_runs.nearby_in_time(trace, trace)
+    assert club_runs.nearby_in_time(trace, [[t, lat + .0001, lon] for t, lat, lon in trace])
+
+
+def test_same_route_at_different_times_does_not_qualify():
+    trace = [[t, 1.3, 103.8 + t / 100000] for t in range(0, 601, 5)]
+    assert not club_runs.nearby_in_time(trace, [[t + 120, lat, lon] for t, lat, lon in trace])
+    assert not club_runs.nearby_in_time(trace, [[t, lat, 207.606 - lon] for t, lat, lon in trace])
+
+
+def test_missing_or_sparse_evidence_does_not_qualify():
+    trace = [[t, 1.3, 103.8] for t in range(0, 601, 5)]
+    assert not club_runs.nearby_in_time(trace, None)
+    assert not club_runs.nearby_in_time(trace, [trace[0], trace[-1]])
 
 
 def test_running_the_same_route_together_is_a_club_run():

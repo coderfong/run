@@ -1,11 +1,17 @@
 // ShopScreen — the PASER water point: a race-day hydration station where the
 // rotating stock is sold over the counter.
 //
-// Twelve items at a time on a 12-hour clock, not the whole catalogue: a shop
+// NINE ITEMS at a time on a 12-hour clock, not the whole catalogue: a shop
 // you can exhaust in one sitting has no reason to be
 // revisited, and everything looks equally unremarkable when it's all on
 // display at once. The selection is derived from the window index server-side
 // (coins.py) so it needs no state and can't drift between client and server.
+//
+// NINE, AND NO FILTERS. The stock used to be twelve items behind a row of
+// slot tabs, which is two pieces of furniture solving a problem nine tiles
+// don't have: three rows of three is the whole shop, on one screen, with
+// nothing to narrow down. The tabs also lied about the size of the place —
+// a "Hats 2" chip implies there is more behind it. There isn't.
 //
 // Prices come from the SERVER catalogue — the numbers here are decoration.
 // Buying an item that has since rotated out returns 410, which is handled by
@@ -45,7 +51,6 @@ import GameAnimation, { AnimationStack } from '../components/GameAnimation';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import PitStopScene from '../components/shop/PitStopScene';
 import ShopWallet from '../components/shop/ShopWallet';
-import ShopSlotTabs, { ALL_SLOTS } from '../components/shop/ShopSlotTabs';
 import { PIT_STOP_ANIM } from '../config/pitStop';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { haptic, Reveal, useReduceMotion } from '../ui/motion';
@@ -58,6 +63,19 @@ const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
 // How tall the runner stands in the fitting mirror. Big enough that a hat
 // reads at a glance, small enough that the stock below it is still on screen.
 const PREVIEW_SIZE = 132;
+
+// THE SHELF IS ALWAYS THIS BIG. Three rows of three, every window, whatever
+// the server sends.
+const SHELF_SIZE = 9;
+// Which nine, when the server sends more. The app talks to a DEPLOYED backend
+// (see the prod-deploy note in the repo docs), so it will keep receiving the
+// old twelve until the new coins.py ships — and a plain slice of a
+// rarity-sorted list would hand back nine commons and rares and drop the
+// legendary, which is the one item on the shelf anybody is saving for.
+//
+// This mirrors coins.py's FEATURED_MIX. Both being 9 is the point: once the
+// backend rotates nine, every item it sends survives this filter untouched.
+const SHELF_MIX = { common: 4, rare: 3, epic: 1, legendary: 1 };
 
 function useCountdown(expiresAt) {
   const remaining = (expiry) => (expiry ? Math.max(0, expiry * 1000 - Date.now()) : 0);
@@ -174,7 +192,7 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
         >
           {/* Rarity remains both a section heading and the card's tinted
               frame now that the name is gone from the tile itself. */}
-          <PartThumb slot={item.slot} item={cat} size={52} />
+          <PartThumb slot={item.slot} item={cat} size={68} />
           {item.owned ? (
             <Text style={[type.caption, { color: colors.textMuted }]}>Owned</Text>
           ) : (
@@ -362,9 +380,6 @@ export default function ShopScreen() {
   // celebration even when the same item is bought twice in a row.
   const [purchase, setPurchase] = useState({ status: 'idle', tick: 0 });
   const [getMore, setGetMore] = useState(false);
-  // Which shelf is on show. Browsing is by SLOT now — see ShopSlotTabs for
-  // why rarity stopped being the thing you navigate by.
-  const [slot, setSlot] = useState(ALL_SLOTS);
   // What the purchase reveal is showing, in the same shape the pass uses.
   const [reveal, setReveal] = useState(null);
   const resetTimer = useRef(null);
@@ -389,41 +404,42 @@ export default function ShopScreen() {
       || (SLOT_ORDER[a.slot] ?? 99) - (SLOT_ORDER[b.slot] ?? 99)
       || (a.cat?.label || a.item_id).localeCompare(b.cat?.label || b.item_id)
     )), [data?.items, isUnlocked]);
-  // One tab per slot that actually has stock this window, "All" first. A tab
-  // leading to an empty shelf is a dead end, and the rotation only ever holds
-  // a handful of slots at a time.
-  const tabs = useMemo(() => {
-    const counts = new Map();
-    for (const item of items) counts.set(item.slot, (counts.get(item.slot) || 0) + 1);
-    return [
-      { key: ALL_SLOTS, label: 'All', count: items.length },
-      ...SLOTS
-        .filter((sl) => counts.has(sl.key))
-        .map((sl) => ({ key: sl.key, label: sl.label, count: counts.get(sl.key) })),
-    ];
+  // NINE, filled by the mix above. A shelf that is sometimes nine and
+  // sometimes twelve is a shelf whose last row you learn to scroll for, so
+  // the cap is applied here rather than left to whatever the server sends.
+  const shown = useMemo(() => {
+    if (items.length <= SHELF_SIZE) return items;
+    const room = { ...SHELF_MIX };
+    const keep = new Set();
+    for (const item of items) {
+      if (keep.size >= SHELF_SIZE) break;
+      if (!(room[item.rarity] > 0)) continue;
+      room[item.rarity] -= 1;
+      keep.add(item.item_id);
+    }
+    // Top up in catalogue order with whatever the mix passed over: a window
+    // short on one rarity must still fill all nine cells rather than leave a
+    // hole where the epic would have been.
+    for (const item of items) {
+      if (keep.size >= SHELF_SIZE) break;
+      keep.add(item.item_id);
+    }
+    return items.filter((i) => keep.has(i.item_id));
   }, [items]);
-
-  // A tab can vanish under you when the shop rotates. Fall back to All rather
-  // than leaving the shelf empty with a tab selected that no longer exists.
-  useEffect(() => {
-    if (slot !== ALL_SLOTS && !tabs.some((t) => t.key === slot)) setSlot(ALL_SLOTS);
-  }, [tabs, slot]);
-
-  const shown = useMemo(
-    () => (slot === ALL_SLOTS ? items : items.filter((item) => item.slot === slot)),
-    [items, slot]
-  );
   const coins = data?.coins ?? 0;
 
+  // Looked up in the SHELF, not the whole window: an item the cap left off is
+  // not on sale as far as this screen is concerned, and must never end up in
+  // the panel with a live buy button.
   const selected = useMemo(
-    () => items.find((i) => i.item_id === selectedId) || null,
-    [items, selectedId]
+    () => shown.find((i) => i.item_id === selectedId) || null,
+    [shown, selectedId]
   );
   // A rotation can land while the panel is open — drop a selection that is no
   // longer on sale rather than leaving a dead buy button on screen.
   useEffect(() => {
-    if (selectedId && data && !items.some((i) => i.item_id === selectedId)) setSelectedId(null);
-  }, [items, selectedId, data]);
+    if (selectedId && data && !shown.some((i) => i.item_id === selectedId)) setSelectedId(null);
+  }, [shown, selectedId, data]);
 
   const selectedCat = selected?.cat || null;
   const affordable = !!selected && coins >= selected.price;
@@ -431,14 +447,6 @@ export default function ShopScreen() {
   // so the scene's "can't sell you this" branch covers the two cases that do
   // exist: you already own it, or you can't afford it yet.
   const unavailable = !!selected && (selected.owned || !affordable);
-
-  // Changing shelf keeps whatever is selected: the panel is a fitting room,
-  // and having it emptied because you went to look at the hats would undo the
-  // comparison you were in the middle of making.
-  const pickSlot = useCallback((key) => {
-    haptic.light();
-    setSlot(key);
-  }, []);
 
   const select = useCallback((id) => {
     haptic.light();
@@ -532,12 +540,16 @@ export default function ShopScreen() {
           sits in the chrome and never scrolls away — and it carries the
           selected item's price beside it, which is the comparison the whole
           screen exists to support. */}
+      {/* NO TOP INSET. The shop is pushed with a native header (App.js gives
+          it the "Water point" title and the back chevron), and that header has
+          already cleared the status bar. Passing the inset in here added it a
+          SECOND time, which is the band of empty background that used to sit
+          between the title and the balance. */}
       <ShopWallet
         coins={data ? coins : null}
         cost={selected && !selected.owned ? selected.price : null}
         affordable={affordable}
         onGetMore={IAP_ENABLED ? () => setGetMore(true) : undefined}
-        top={insets.top}
       />
       <ScrollView
         ref={scroller}
@@ -566,55 +578,34 @@ export default function ShopScreen() {
           ) : null}
 
           {loading ? (
-            <>
-              <Skeleton width="100%" height={44} style={{ borderRadius: radius.pill }} />
-              <Skeleton width="100%" height={200} style={{ borderRadius: radius.card }} />
-            </>
-          ) : items.length === 0 ? (
+            <View style={styles.grid}>
+              {Array.from({ length: SHELF_SIZE }, (_, i) => (
+                <View key={i} style={styles.cellWrap}>
+                  <Skeleton width="100%" height={116} style={{ borderRadius: radius.card }} />
+                </View>
+              ))}
+            </View>
+          ) : shown.length === 0 ? (
             <Text style={[type.body, { color: colors.textMuted, textAlign: 'center', marginTop: space.lg }]}>
               The station is restocking. Check back when the clock runs out.
             </Text>
           ) : (
-            <>
-              {/* Browse by WHAT YOU WANT, not by how rare it is. Rarity is
-                  still the colour of every tile's frame and is spelled out on
-                  the item you pick; it just stopped being the thing you
-                  navigate by. See ShopSlotTabs. */}
-              <ShopSlotTabs tabs={tabs} value={slot} onChange={pickSlot} accent={brand.pink} />
-
-              {/* ONE SHELF, not four rarity bands. The stock is a case of
-                  goods now: a single framed box with the grid inside it, so it
-                  reads as a thing you are shopping FROM rather than as a list
-                  the page happens to end with. */}
-              <Framed
-                frame={frameVariant('box', 'shop-shelf')}
-                tint={colors.border}
-                fill={colors.card}
-                weight={INK.thin}
-                pose={framePose('shop-shelf')}
-                inset={space.sm}
-                contentStyle={styles.shelf}
-              >
-                {shown.length === 0 ? (
-                  <Text style={[type.caption, { color: colors.textMuted, textAlign: 'center', padding: space.md }]}>
-                    Nothing in this shelf today.
-                  </Text>
-                ) : (
-                  <View style={styles.grid}>
-                    {shown.map((item) => (
-                      <ShopProductCard
-                        key={item.item_id}
-                        item={item}
-                        cat={item.cat}
-                        selected={selectedId === item.item_id}
-                        disabled={purchase.status === 'pending'}
-                        onSelect={select}
-                      />
-                    ))}
-                  </View>
-                )}
-              </Framed>
-            </>
+            /* THE WHOLE SHOP, in one grid. No tabs above it and no case
+               around it: nine tiles is small enough to be its own index, and
+               the framed box the grid used to sit in only added a second
+               border round things that already have one. */
+            <View style={styles.grid}>
+              {shown.map((item) => (
+                <ShopProductCard
+                  key={item.item_id}
+                  item={item}
+                  cat={item.cat}
+                  selected={selectedId === item.item_id}
+                  disabled={purchase.status === 'pending'}
+                  onSelect={select}
+                />
+              ))}
+            </View>
           )}
 
           {/* The restock clock, LAST. It is a fact about the shop, not an
@@ -648,18 +639,21 @@ export default function ShopScreen() {
 
 const styles = StyleSheet.create({
   timer: { alignSelf: 'center', marginTop: space.sm },
-  // The case the stock sits in. Its own padding, because the frame's ink
-  // clearance is the shelf's inside edge.
-  shelf: { padding: space.sm },
+  // Three across, three down, on the page itself. The row gap is a real point
+  // value rather than a percentage: a percentage gap resolves against the
+  // container's WIDTH in both axes, so the vertical spacing grew with the
+  // phone and the grid got baggy on a big screen.
   grid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: '2.75%',
+    flexDirection: 'row', flexWrap: 'wrap', columnGap: '3%', rowGap: space.sm,
   },
-  cellWrap: { width: '31.5%' },
+  cellWrap: { width: '31.3%' },
   cellTouch: { width: '100%' },
+  // Taller than the old twelve-item tile, because nine of them fit. The art
+  // is what you are shopping by, so the art is what got the extra room.
   cell: {
-    width: '100%', minHeight: 92,
+    width: '100%', minHeight: 116,
   },
-  cellContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, padding: 7 },
+  cellContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, padding: 8 },
   // No border of its own: the Card brings the neo-brutalist stroke. The rarity
   // read lives on the mirror behind the runner and the spelled-out rarity line.
   panel: { gap: space.md },

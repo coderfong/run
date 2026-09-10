@@ -13,6 +13,15 @@
 // rung's floor. That is what turns a list of names into a distance: you can
 // see that Gold is close and Diamond is not.
 //
+// SO IT IS DRAWN, NOT HINTED. It was a bare six point bar with the thresholds
+// centred ON it, which struck every number through with its own line. It is
+// now a stroked track held to the right of the column, a notch cut across it
+// at each tier's floor with the number printed clear of it, and your own total
+// on a chip stemmed off the track at your exact height. The chip is CLAMPED
+// INSIDE ITS RUNG: placed at a raw percentage it walked off the end of the
+// rung, and at the top of the ladder, where progress is 1 by definition, it
+// left the ladder entirely and hid behind the page header.
+//
 // TIERS YOU HAVE PASSED STAY BRIGHT. The obvious build dims everything except
 // the current tier, and it is wrong — the rungs below are the climb you
 // already did, and greying them out throws away the only part of the ladder
@@ -42,7 +51,17 @@ import { Reveal, useReduceMotion } from '../../ui/motion';
 // Fixed rung height, because the rail has to be a straight line through all
 // ten of them and a rung that grew with its copy would put kinks in it.
 const RUNG_H = 208;
-const RAIL_W = 66;
+const RAIL_W = 78;
+// The track: a drawn bar with an ink stroke down each side, held to the RIGHT
+// of the rail column so the thresholds have clear paper to print on.
+const TRACK_W = 12;
+const TRACK_RIGHT = 14;
+// The "you are here" chip. Fixed rather than measured, because the rail has to
+// clamp it inside its rung before layout and cannot ask how tall it came out.
+const YOU_H = 24;
+// How close that chip may come to either end of its rung: enough to clear the
+// threshold printed on the floor line at each end.
+const YOU_PAD = 9;
 // The band along the bottom of each scene, carrying the plaque and the gap.
 const BAND_H = 46;
 // The badge over the scene's top left corner. Smaller than the 92 it was when
@@ -66,6 +85,15 @@ function Rung({ rung, standing, equipped, colors, scheme }) {
   // rung you are part way through is filled from its bottom edge to here.
   const fillPct = isCurrent ? standing.progress : reached ? 1 : 0;
 
+  // Kept inside the rung whatever the fill says. See the note at the top: a
+  // percentage put the Mythic runner's own points above the ladder entirely.
+  const youBottom = Math.max(
+    YOU_PAD,
+    Math.min(RUNG_H - YOU_H - YOU_PAD, Math.round(fillPct * RUNG_H - YOU_H / 2))
+  );
+
+  const ink = nbInk(scheme, colors.bg);
+
   // Null for a tier with no illustration in the build — the rung falls back to
   // the flat tier wash it was drawn with before the art landed, rather than
   // borrowing another tier's world. See config/rankArt.js.
@@ -75,26 +103,61 @@ function Rung({ rung, standing, equipped, colors, scheme }) {
     <View style={[styles.rung, { height: RUNG_H }]}>
       {/* --- the rail ------------------------------------------------- */}
       <View style={[styles.rail, { width: RAIL_W }]}>
-        <View style={[styles.track, { backgroundColor: withAlpha(colors.text, 0.12) }]} />
+        {/* Stroked down BOTH SIDES and across neither end, so ten of these
+            stack into one unbroken drawn rail instead of printing a line
+            across the track at every tier boundary. */}
         <View
           style={[
-            styles.trackFill,
-            { height: `${Math.round(fillPct * 100)}%`, backgroundColor: rung.color },
+            styles.track,
+            {
+              right: TRACK_RIGHT,
+              width: TRACK_W,
+              backgroundColor: withAlpha(colors.text, 0.1),
+              borderColor: ink,
+            },
           ]}
-        />
-        {/* The threshold, sitting on this rung's floor line. */}
+        >
+          <View
+            style={[
+              styles.trackFill,
+              { height: `${Math.round(fillPct * 100)}%`, backgroundColor: rung.color },
+            ]}
+          />
+        </View>
+
+        {/* The threshold on this rung's floor line: a notch cut across the
+            rail, and the number printed beside it rather than over it. */}
         {rung.floor != null ? (
-          <Text style={[styles.floor, { color: reached ? colors.text : colors.textDim }]}>
-            {fmt(rung.floor)}
-          </Text>
+          <>
+            <View
+              style={[
+                styles.notch,
+                { right: TRACK_RIGHT - 4, width: TRACK_W + 8, backgroundColor: ink },
+              ]}
+            />
+            <Text
+              style={[
+                styles.floor,
+                {
+                  right: TRACK_RIGHT + TRACK_W + 6,
+                  color: reached ? colors.text : colors.textDim,
+                },
+              ]}
+            >
+              {fmt(rung.floor)}
+            </Text>
+          </>
         ) : null}
 
-        {/* Your own marker, placed at your exact height inside your tier. */}
+        {/* Your own total, stemmed off the track at your exact height so it
+            reads as a reading TAKEN from the rail rather than a label parked
+            beside it. */}
         {isCurrent ? (
-          <View style={[styles.youWrap, { bottom: `${Math.round(standing.progress * 100)}%` }]}>
-            <View style={[styles.you, { backgroundColor: rung.color, borderColor: nbInk(scheme, rung.color) }]}>
+          <View style={[styles.youWrap, { bottom: youBottom, right: TRACK_RIGHT }]}>
+            <View style={[styles.you, { backgroundColor: rung.color, borderColor: ink }]}>
               <Text style={[styles.youText, { color: rung.ink }]}>{fmt(standing.points)}</Text>
             </View>
+            <View style={[styles.youStem, { backgroundColor: ink }]} />
           </View>
         ) : null}
       </View>
@@ -234,29 +297,50 @@ export default function RankLadder({ standing, floors, shares, equipped, style, 
 
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
-  content: { paddingBottom: space.huge },
+  content: { paddingTop: space.sm, paddingBottom: space.huge },
 
   rung: { flexDirection: 'row', alignItems: 'stretch' },
 
-  rail: { alignItems: 'center', justifyContent: 'flex-end' },
-  // One straight line the full height of every rung, so ten of them stack
-  // into a single unbroken track.
-  track: { position: 'absolute', top: 0, bottom: 0, width: 6, borderRadius: 3 },
-  trackFill: { position: 'absolute', bottom: 0, width: 6, borderRadius: 3 },
+  rail: { justifyContent: 'flex-end' },
+  // One straight line the full height of every rung, so ten of them stack into
+  // a single unbroken track. It clips its own fill, which is why the fill is a
+  // child of it rather than a second absolute bar laid over the top.
+  track: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderLeftWidth: NB.strokeThin,
+    borderRightWidth: NB.strokeThin,
+    overflow: 'hidden',
+  },
+  trackFill: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  // The tier boundary, cut across the rail and overhanging it either side.
+  notch: { position: 'absolute', bottom: -1, height: NB.strokeThin },
   floor: {
     position: 'absolute',
     bottom: -7,
+    left: 0,
+    textAlign: 'right',
     fontFamily: fonts.bodyMedium,
     fontSize: 11,
     letterSpacing: 0.2,
   },
-  youWrap: { position: 'absolute', alignItems: 'center' },
-  you: {
-    paddingHorizontal: space.sm,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-    borderWidth: 2,
+  youWrap: {
+    position: 'absolute',
+    left: 0,
+    height: YOU_H,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
+  you: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    borderWidth: NB.strokeThin,
+  },
+  // Joins the chip to the track, tucked a point under the chip's own stroke so
+  // the two read as one mark rather than as a chip and a dash beside it.
+  youStem: { flex: 1, height: NB.strokeThin, marginLeft: -1 },
   youText: { fontFamily: fonts.bold, fontSize: 12 },
 
   // The scene. Clipped, stroked and filled with the art's own ground — every

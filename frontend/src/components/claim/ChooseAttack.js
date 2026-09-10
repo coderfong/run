@@ -58,6 +58,26 @@ const ACTION_LABEL = {
   fortified: 'Storm a defended border',
 };
 
+// Who is under the claim, in one line: how many lose ground and how many hold.
+// Both halves are said whenever both exist, because the map is showing the
+// runner every one of those plots and a sentence that counts only half of them
+// reads as a miscount. Kept to counts rather than names — three faces sit
+// beside it, and the ledger after the claim names everybody. The mixed line
+// drops "here": it shares a single row with the move and three portraits, and
+// the word it can afford to lose is the one the whole panel already implies.
+export function rivalNote(takeable, held) {
+  if (takeable > 0 && held > 0) {
+    return `${takeable} lose ground · ${held} hold${held === 1 ? 's' : ''}`;
+  }
+  if (takeable > 0) {
+    return takeable === 1
+      ? '1 runner loses ground here'
+      : `${takeable} runners lose ground here`;
+  }
+  if (held > 0) return 'defence holds here';
+  return '';
+}
+
 function GroundMetric({ label, value, color, dim }) {
   const { colors: D } = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -392,10 +412,16 @@ export default function ChooseAttack({
   // each other, so the cap would eat exactly the contested ground this
   // number exists to promise.
   const gained = (p?.new_m2 || 0) + (p?.enemy_m2 || 0) + (p?.ally_m2 || 0);
+  // EVERYONE UNDER THE CLAIM, not only the ones who lose. The row used to
+  // drop the defended half whenever anything at all was takeable, so a pose
+  // covering four borders where one gives way said "1 runner lose ground
+  // here" and showed one face — and the runner, looking at four plots on the
+  // map, read the breakdown as broken rather than as the fight it describes.
+  // Server order is takeable first, so the faces that matter survive the cap.
   const rivals = p?.rivals || [];
   const takeable = rivals.filter((r) => !r.defended);
   const held = rivals.filter((r) => r.defended);
-  const shownRivals = (takeable.length > 0 ? takeable : held).slice(0, 3);
+  const shownRivals = rivals.slice(0, 3);
   const MoveIcon = p?.action === 'attack' || p?.action === 'fortified'
     ? Swords
     : p?.action === 'reinforce'
@@ -520,9 +546,7 @@ export default function ChooseAttack({
           )}
           {rivals.length > 0 && (
             <Text style={styles.moveNote} numberOfLines={1}>
-              {takeable.length > 0
-                ? `${takeable.length} runner${takeable.length === 1 ? '' : 's'} lose ground here`
-                : 'defence holds here'}
+              {rivalNote(takeable.length, held.length)}
             </Text>
           )}
         </View>

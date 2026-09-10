@@ -60,9 +60,9 @@ describe('what PASER PRO buys on the share card', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  test('locks the colour, the placement and the stats, and nothing else', () => {
+  test('locks accent customization and keeps the simplified controls free', () => {
     const tree = openSheet();
-    expect(lockedRows(tree).sort()).toEqual(['Accent', 'Placement', 'Stats']);
+    expect(lockedRows(tree).sort()).toEqual(['Accent']);
     act(() => tree.unmount());
   });
 

@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from '../ui/image';
-import { Check, Info, Lock, X } from 'lucide-react-native';
+import { Check, Info, Lock } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
@@ -303,17 +303,9 @@ function ProgressionInfoSheet({ visible, onClose }) {
   const type = useThemedType();
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <Row between style={{ marginBottom: space.sm }}>
-        <Text style={type.heading}>Levels and rewards</Text>
-        <TouchableOpacity
-          onPress={onClose}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-        >
-          <X size={22} color={colors.textMuted} />
-        </TouchableOpacity>
-      </Row>
+      {/* No close button of its own any more: Sheet draws one for every sheet
+          in the app, and two would be two answers to the same question. */}
+      <Text style={[type.heading, { marginBottom: space.sm }]}>Levels and rewards</Text>
       {INFO_SECTIONS.map((section) => (
         <View key={section.title} style={{ marginBottom: space.md }}>
           <Text style={[type.bodySmBold, { color: brand.pink, marginBottom: 2 }]}>{section.title}</Text>

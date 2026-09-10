@@ -8,7 +8,7 @@
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 
 import RankLadder from '../src/components/rank/RankLadder';
 import RankUpCeremony from '../src/components/rank/RankUpCeremony';
@@ -56,6 +56,41 @@ describe('the ladder', () => {
     // Never a placeholder number: the line is a measurement or it is absent.
     const tree = render(<RankLadder standing={GOLD} floors={[]} shares={[]} equipped={{}} />);
     expect(texts(tree).join('|')).not.toContain('OF RUNNERS');
+  });
+
+  test('keeps your own total inside its rung at the top of the ladder', () => {
+    // Positioned as a percentage of the rung, the chip sat at bottom: '100%'
+    // for a Mythic runner — whose progress is 1 by definition — which put it
+    // entirely above the ladder, behind the page header. The one number that
+    // runner opened the screen to read was the one number not on it.
+    const top = standingFrom({ key: 'mythic', points: 3000, floor: 2400, next_points: null });
+    const tree = render(
+      <RankLadder standing={top} floors={FLOORS} shares={SHARES} equipped={{}} />
+    );
+
+    const label = tree.root
+      .findAllByType(Text)
+      .find((n) => String(n.props.children ?? '') === '3,000');
+    expect(label).toBeTruthy();
+
+    // Walk out of the chip to the box that places it, and then to the rung
+    // that box has to stay inside — rather than restating either height here,
+    // where it would go stale the moment the layout is retuned.
+    let marker = null;
+    let rung = null;
+    for (let up = label.parent; up; up = up.parent) {
+      const flat = StyleSheet.flatten(up.props.style) || {};
+      if (!marker && typeof flat.bottom === 'number' && typeof flat.height === 'number') {
+        marker = flat;
+      } else if (marker && typeof flat.height === 'number' && flat.bottom == null) {
+        rung = flat;
+        break;
+      }
+    }
+    expect(marker).toBeTruthy();
+    expect(rung).toBeTruthy();
+    expect(marker.bottom).toBeGreaterThanOrEqual(0);
+    expect(marker.bottom + marker.height).toBeLessThanOrEqual(rung.height);
   });
 
   test('renders for a runner at the very bottom and the very top', () => {

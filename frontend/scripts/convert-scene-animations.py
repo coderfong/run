@@ -41,6 +41,10 @@ these:
             everything printed on it sit under blue 46, and the strokes are
             the only white on the frame. Alpha is that channel, rescaled.
 
+`phase` rotates the finished cycle so a chosen frame becomes frame one. Free in
+playback for a self-looping asset, and the only fix for a clip whose frame one
+is not a usable STILL — see the note where it is applied.
+
 `still` alongside a mode takes ONE frame instead of the whole clip, cropped to
 its alpha bounding box. That is the right answer for a clip whose only motion
 is a rigid scroll: the scene can drift a still image itself, at three different
@@ -244,6 +248,67 @@ SOURCES = [
         "mode": "white",
         "quality": 40,
         "note": "counter front row, rides presentBeat — replaces the vector GelsArt",
+        "watermarked": True,
+    },
+
+    # --- podium badges -----------------------------------------------------
+    #
+    # The 1st/2nd/3rd stickers on a standings row (components/LeaderboardView
+    # LeaderboardRow), replacing the three static PNGs in assets/art/ui.
+    #
+    # These are FURNITURE, not reactions: a rank badge is on screen for as long
+    # as the row is, so they encode with an infinite loop count and their
+    # catalogue entries carry `selfLooping: true` — which is also what makes
+    # Reduce Motion hold frame one rather than delete the badge. Frame one of
+    # all three is the medal at rest, so that still is a real badge.
+    #
+    # `edge` is 144 against a ~40pt slot: 3.6x, so the badge stays sharp on a
+    # 3x display and there is headroom if the slot ever grows.
+    {
+        # The one clean source of the three. VP8 WITH a side alpha track, so
+        # there is nothing to key — `explode_frames` decodes it through
+        # libvpx, which is the path that keeps that track.
+        "key": "placeFirst",
+        "src": os.path.join(DOWNLOADS, "Achievement.webm"),
+        "out": os.path.join(ANIM_DIR, "place-1st.webp"),
+        "mode": "alpha",
+        # 12fps, where the other two run at 20. Its master is a five-second
+        # SLOW rotation with no fast beat in it, and at 20fps that is 98 frames
+        # and 364 KB of badge for a 40pt slot. Halving the rate is invisible on
+        # a turn this gentle and costs a third of the bytes.
+        "fps": 12,
+        "work_edge": 150,
+        "edge": 144,
+        "quality": 55,
+        "note": "standings row, rank 1",
+    },
+    {
+        # White-card MP4 — the flood-fill key, not a colour key: the medal
+        # carries a white sparkle over its face, and a global white key would
+        # punch it out.
+        "key": "placeSecond",
+        "src": os.path.join(DOWNLOADS, "second-animation-gif-download-10995841.mp4"),
+        "out": os.path.join(ANIM_DIR, "place-2nd.webp"),
+        "mode": "white",
+        "fps": 20,
+        "edge": 144,
+        # The medal SPINS, and its master starts on the blank back of the disc.
+        # Frame 8 of the 20-frame cycle is the numeral square-on and upright.
+        "phase": 8,
+        "quality": 55,
+        "note": "standings row, rank 2",
+        "watermarked": True,
+    },
+    {
+        "key": "placeThird",
+        "src": os.path.join(DOWNLOADS, "bronze-animation-gif-download-10995823.mp4"),
+        "out": os.path.join(ANIM_DIR, "place-3rd.webp"),
+        "mode": "white",
+        "fps": 20,
+        "edge": 144,
+        "phase": 8,
+        "quality": 55,
+        "note": "standings row, rank 3",
         "watermarked": True,
     },
 ]
@@ -572,6 +637,25 @@ def convert_cropped(entry):
                 print(f"    one cycle is {kept} frames — dropping {len(frames) - kept} repeats")
                 for name in frames[kept:]:
                     os.remove(os.path.join(tmp, name))
+
+        # `phase` ROTATES the trimmed cycle so a chosen frame becomes frame
+        # one. It is free in playback — a self-looping WebP has no first frame,
+        # only a seam, and a rotation moves the seam rather than the motion —
+        # and it is the only thing that fixes the STILL. `GameAnimation` holds
+        # frame one under Reduce Motion, and the medals are authored SPINNING:
+        # frame one of both is the blank back of the disc. A rank badge with no
+        # rank printed on it is not a calmer screen, it is a missing answer.
+        #
+        # It also biases what the eye catches mid-spin, which matters at a
+        # 38pt badge: starting on the numeral means the badge reads as its
+        # number for the first beat it is on screen.
+        phase = entry.get("phase")
+        if phase:
+            paths = [os.path.join(tmp, f) for f in sorted(os.listdir(tmp)) if f.endswith(".png")]
+            with_frames = [Image.open(path).copy() for path in paths]
+            turn = phase % len(with_frames)
+            for index, img in enumerate(with_frames[turn:] + with_frames[:turn]):
+                img.save(os.path.join(tmp, f"{index + 1:05d}.png"))
 
         # Scenery loops forever in the decoder (and its catalogue entry must
         # carry `selfLooping: true` — otherwise Reduce Motion removes the object

@@ -95,8 +95,13 @@ export const CLAIM_TIMING = {
   victoryBeat: Math.round(1500 * DRAMA_SCALE),
   payoffEntrance: 800,
   leaderboardWipe: 1200,
-  rowStagger: 110,
-  playerRowEmphasis: 900,
+  // The board no longer lands its rows one at a time. It arrives whole and
+  // then TRAVELS — scrolling from the podium down to the runner's own slot,
+  // where their row drops in (LeaderboardTransition TravelBoard). `travelLead`
+  // is the pause between the board arriving and the scroll setting off; the
+  // journey's own length is derived from how far it has to go, because a
+  // fixed duration reads as a crawl at rank 4 and a blur at rank 400.
+  travelLead: 500,
 };
 
 // Reduced motion keeps every phase and every piece of information — the beats
@@ -122,8 +127,10 @@ export const CLAIM_TIMING_REDUCED = {
   victoryBeat: 320,
   payoffEntrance: 200,
   leaderboardWipe: 220,
-  rowStagger: 12,
-  playerRowEmphasis: 180,
+  // Reduce Motion keeps the DESTINATION and drops the journey: the board jumps
+  // straight to the runner's row with it already in place. Nothing is lost —
+  // the travel was never carrying information the arrival does not.
+  travelLead: 0,
 };
 
 export const timingFor = (reduced) => (reduced ? CLAIM_TIMING_REDUCED : CLAIM_TIMING);

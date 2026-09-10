@@ -9,6 +9,7 @@ import GameMap, {
 import { CharacterBust } from '../components/character/CharacterRig';
 import DevRunSimulator from '../components/DevRunSimulator';
 import { useAvatar } from '../state/avatar';
+import { tierByKey } from '../config/rankLadder';
 import * as Location from 'expo-location';
 import { Pedometer } from 'expo-sensors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -278,7 +279,7 @@ export default function RunningScreen({ navigation }) {
   const { user } = useAuth();
   const { setRecording } = useRecording();
   const { color } = useClan();
-  const { equipped } = useAvatar();
+  const { equipped, rankKey } = useAvatar();
   const { trailGlowColor } = useSettings();
   const accent = trailGlowColor || color.stroke;
 
@@ -426,15 +427,26 @@ export default function RunningScreen({ navigation }) {
 
   // Nearby claimed land (others'), so a runner sees whose turf they're crossing
   // and where there's land to steal. Refetched only when they drift ~600m.
+  //
+  // Scoped to the runner's own rank tier, because "land to steal" is a claim
+  // for the claim to make and a claim only ever fights its own band (backend
+  // `_rank_scope_sql`). Drawn unscoped this map promised turf the run could
+  // never take, and the promise came due on the result screen when the
+  // breakdown counted a single rival under a circle covering half a dozen
+  // plots. Same board the global map and the claim chooser draw.
   const [board, setBoard] = useState(null);
   const [boardPortraits, setBoardPortraits] = useState([]);
   const boardCenterRef = useRef(null);
+  const boardRank = tierByKey(rankKey).tier;
 
   useEffect(() => {
     if (!currentLocation) return;
     const last = boardCenterRef.current;
-    if (last && distanceMeters(last, currentLocation) < 600) return;
-    boardCenterRef.current = currentLocation;
+    // A tier change is a different board, not a different place: the drift
+    // gate would otherwise hold the previous band's land on screen until the
+    // runner moved 600m.
+    if (last?.rank === boardRank && distanceMeters(last, currentLocation) < 600) return;
+    boardCenterRef.current = { ...currentLocation, rank: boardRank };
     const d = 0.02; // ~2.2km half-box around the runner
     const bbox = {
       minLon: currentLocation.longitude - d,
@@ -443,7 +455,7 @@ export default function RunningScreen({ navigation }) {
       maxLat: currentLocation.latitude + d,
     };
     api
-      .mapPolygons(bbox, 16)
+      .mapPolygons(bbox, 16, { rank: boardRank })
       .then((data) => {
         const feats = [];
         const portraits = [];
@@ -478,7 +490,7 @@ export default function RunningScreen({ navigation }) {
         rivalTerritoriesRef.current = rivalTerritories;
       })
       .catch(() => {});
-  }, [currentLocation, user.id, accent, equipped]);
+  }, [currentLocation, user.id, accent, equipped, boardRank]);
 
   useEffect(() => {
     if (!isRunning || !currentLocation) return;

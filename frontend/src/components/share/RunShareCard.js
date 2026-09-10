@@ -815,8 +815,8 @@ export default function RunShareCard({
       : width * 0.21;
   const runner = (() => {
     if (!showCharacter || !equipped) return null;
-    // NOTHING TO STAND ON. The route is off (the "Character showcase" preset
-    // is exactly this) or there was never one to draw, so the figure stands in
+    // NOTHING TO STAND ON. The route is off (the sheet's Route chip does
+    // exactly this) or there was never one to draw, so the figure stands in
     // the middle of the space the route would have had. It used to keep
     // standing wherever the INVISIBLE line ended, which put a mascot at a
     // random point of somebody's story with nothing to explain it.

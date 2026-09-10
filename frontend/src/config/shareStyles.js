@@ -1,4 +1,4 @@
-// Share card styles — named looks for the card, free and PRO.
+// Share card styles — the named looks the sheet offers for the card.
 //
 // A STYLE IS A PRESET, NOT A NEW RENDERER. Every value below sets controls
 // RunShareCard already has: accent, alignment, whether the route is drawn,
@@ -9,23 +9,22 @@
 // a crash history (see docs/SHARING.md and the share flag harness), so adding
 // a second rendering path to it to sell a subscription would be a bad trade.
 //
-// A FREE PRESET MAY SET A PRO CONTROL, and that is on purpose. Accent,
-// placement and the choice of stats are padlocked as CONTROLS (2026-08-24), but
-// "Clean" is a curated look that happens to be centred, and gating the free
-// looks behind the same padlock would leave one free style that changes
-// nothing. The line is: you cannot dial your own colour and position without
-// PRO; you can always pick a look somebody drew for you.
+// TWO LOOKS, AND THE SHEET FITS ON ONE SCREEN. This list was five: Classic,
+// Clean, and three PRO presets (Neon, Character showcase, Rival battle). They
+// went on 2026-09-10, along with the Placement, Stats, Trail and Flip rows,
+// because the sheet had become a settings page. Five named looks over the same
+// three numbers are not five cards; they are one card in five accent colours,
+// and each one cost a wrapped chip row on a screen that had to scroll past its
+// own preview to reach the share buttons. Two looks — the card as it comes, and
+// a centred one with the runner taken off — is the whole difference worth
+// naming, and the rows underneath still reach the rest in one tap.
 //
-// PREVIEW IS ALWAYS FREE. Selecting a PRO style applies it to the real card,
-// with the runner's real run, at full size. The gate is on EXPORT — saving,
-// posting or sending it. Somebody has to see the thing on their own run to
-// want it, and a blurred thumbnail sells nothing.
+// The deleted presets are in git (this file at 2280d89) if a curated look is
+// ever worth bringing back. Bring back at most one, and only into a row that
+// does not wrap.
 //
-// "GOLD" IS NOT HERE ANY MORE. It was a centred card in the gold accent, which
-// is a swatch and a placement — two controls a runner already has — sold as a
-// third PRO style. Cut 2026-08-25: a preset that adds nothing the PRO looks
-// beside it do not already do just pads the row and makes the padlock look
-// greedy.
+// WHAT PRO BUYS ON THIS SHEET is the Accent row: your own colour instead of
+// your clan's. Picking a look has always been free, and now every look is.
 //
 // STYLES THAT ARE NOT HERE. "Animated", "Season Recap" and "Territory
 // Takeover" were all asked for and none of them is a preset: the first needs a
@@ -47,14 +46,12 @@
 const CORE_STATS = ['distance', 'pace', 'time'];
 
 export const SHARE_STYLES = [
-  // --- free ---------------------------------------------------------------
   {
     key: 'classic',
     label: 'Classic',
     pro: false,
-    // null = leave the control exactly where the runner put it. The free
-    // default deliberately changes nothing at all, so the card everybody has
-    // always had is still one tap away after this feature exists.
+    // Empty on purpose: Classic changes nothing, so the card as the sheet
+    // first drew it is always one tap back.
     preset: {},
   },
   {
@@ -68,60 +65,21 @@ export const SHARE_STYLES = [
       statKeys: CORE_STATS,
     },
   },
-
-  // --- PRO ----------------------------------------------------------------
-  {
-    key: 'neon',
-    label: 'Neon',
-    pro: true,
-    preset: {
-      accent: '#2DD4BF',
-      align: 'left',
-      showRoute: true,
-      showCharacter: true,
-    },
-  },
-  {
-    key: 'showcase',
-    label: 'Character showcase',
-    pro: true,
-    // The runner, big, with the numbers pulled back to the three that fit
-    // beside them. The one card that is about the person rather than the run.
-    preset: {
-      accent: '#8B5CF6',
-      align: 'center',
-      showRoute: false,
-      showCharacter: true,
-      statKeys: CORE_STATS,
-    },
-  },
-  {
-    key: 'battle',
-    label: 'Rival battle',
-    pro: true,
-    preset: {
-      accent: '#EC4899',
-      align: 'left',
-      showRoute: true,
-      showCharacter: true,
-    },
-    // Only offered on a run that actually took ground off somebody. A "Rival
-    // battle" card for a quiet solo jog is a lie about the run, and the
-    // runner's followers are the ones being told it.
-    availableFor: (run) => Number(run?.stolen_m2 || 0) > 0 || Number(run?.rivals_taken || 0) > 0,
-  },
 ];
-
-export const PRO_SHARE_STYLES = SHARE_STYLES.filter((s) => s.pro);
 
 export function shareStyleByKey(key) {
   return SHARE_STYLES.find((s) => s.key === key) || SHARE_STYLES[0];
 }
 
 /**
- * The styles offered for THIS run. A style whose `availableFor` says no is
+ * The styles offered for THIS run.
+ *
+ * `availableFor` is the seam for a look that only makes sense on some runs —
+ * "Rival battle" used it, so that it never appeared on a quiet solo jog — and
+ * it is kept because a style that cannot honestly describe the run has to be
  * left out entirely rather than shown disabled: there is nothing the runner
- * could do about it, and a permanently greyed row just looks broken.
+ * could do about it, and a permanently greyed chip just looks broken. Neither
+ * of the two looks here sets it, so today this returns both of them.
  */
 export function stylesForRun(run) {
   return SHARE_STYLES.filter((s) => !s.availableFor || s.availableFor(run));

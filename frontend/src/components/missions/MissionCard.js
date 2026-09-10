@@ -6,21 +6,6 @@
 // card goes green, the reward chip grows a Claim tab, and the row is the only
 // one on screen that can be pressed.
 //
-// THE CLIP IS NOT DECORATION. Every card carries the same small tab at its top
-// edge. It is what makes a column of these read as a stack of tasks pinned to
-// a board rather than as a settings list, which is the entire visual idea of
-// the reference and costs one SVG path.
-//
-// IT SITS ABOVE THE CARD, NOT INSIDE IT. The tab used to be an absolutely
-// positioned child of the card, drawn a pixel down from its top edge as a
-// CLOSED box in a contrasting fill — so it read as a small rectangle stamped
-// over the card's own outline and sliced off by it, which is not a tab, it is
-// a fragment. It is now a sibling laid out ABOVE the card in the same fill,
-// with its bottom two points tucked under the card's top border: the card's
-// own outline draws the tab's mouth, and the two shapes share one silhouette.
-// A sibling rather than a protruding absolute child because a card that grows
-// out of its own bounds is at the mercy of the platform's clipping.
-//
 // PROGRESS IS STATED TWICE, ON PURPOSE: the bar is the feel and the fraction
 // is the fact. "3/24" over a bar that has barely moved is honest in a way that
 // either one alone is not.
@@ -50,32 +35,6 @@ function formatPair(mission) {
   return `${Math.floor(value)} / ${goal}`;
 }
 
-// How far the tab stands above the card. TUCK is how much of it the card then
-// covers — enough to bury the two open ends of the path under the card's own
-// 2pt border.
-const TAB_H = 14;
-const TAB_TUCK = 2;
-
-/** The tab pinning the card to the board. */
-function Clip({ fill, ink }) {
-  return (
-    <View style={styles.clipWrap} pointerEvents="none">
-      {/* No `Z`. Closing the path would stroke a line across the bottom, which
-          is the seam that made this look cut off; left open, it is filled as
-          if closed but drawn only where a tab has edges. */}
-      <Svg width={40} height={TAB_H} viewBox="0 0 40 14">
-        <Path
-          d="M 7 14 L 7 6 Q 7 1.5 11.5 1.5 L 28.5 1.5 Q 33 1.5 33 6 L 33 14"
-          fill={fill}
-          stroke={ink}
-          strokeWidth={2}
-          strokeLinejoin="round"
-        />
-      </Svg>
-    </View>
-  );
-}
-
 export default function MissionCard({ mission, accent, onClaim, busy, onLayout }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
@@ -93,10 +52,7 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
   const edge = claimable ? colors.ok : nbInk(scheme, fill);
 
   const body = (
-    <View style={[styles.wrap, { opacity: done ? 0.55 : 1 }]} onLayout={onLayout}>
-      {/* The tab wears the CARD's fill, so the two read as one shape rather
-          than as a differently coloured chip sitting on top of a box. */}
-      <Clip fill={fill} ink={edge} />
+    <View style={[styles.wrap, { opacity: done ? 0.75 : 1 }]} onLayout={onLayout}>
       <View style={[styles.card, { backgroundColor: fill, borderColor: edge }]}>
         <View style={styles.left}>
           <Text style={[type.bodyBold, { color: colors.text }]} numberOfLines={2}>
@@ -110,7 +66,7 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
               on={fill}
               style={styles.track}
             />
-            <Text style={[styles.pair, { color: colors.textMuted }]}>{formatPair(mission)}</Text>
+            <Text style={[styles.pair, { color: colors.text }]}>{formatPair(mission)}</Text>
           </View>
         </View>
 
@@ -165,22 +121,17 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
 }
 
 const styles = StyleSheet.create({
-  // The gap a reader sees between two cards is this minus the tab, so the
-  // spacing keeps the page's rhythm rather than the tab stealing from it.
-  wrap: { marginTop: space.md + TAB_H },
+  wrap: { marginTop: space.md },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
     padding: space.md,
+    minHeight: 96,
     borderRadius: nbRadius.sm,
     borderWidth: 2,
   },
-  // Laid out, not floated. The negative margin is what slides the card's top
-  // border over the tab's two open ends.
-  clipWrap: { alignSelf: 'center', marginBottom: -TAB_TUCK },
-
-  left: { flex: 1 },
+  left: { flex: 1, minWidth: 0 },
   trackRow: { marginTop: space.sm, justifyContent: 'center' },
   track: { width: '100%' },
   pair: {

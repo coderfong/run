@@ -88,7 +88,7 @@ def main():
         lambda: (
             check("empty configured list grants no ordinary account", not devtools.is_dev_account(ALICE)),
             check("...not even by id", not devtools.is_dev_account(MALLORY)),
-            check("jonfong78 is always a dev account", devtools.is_dev_account(JON)),
+            check("former pinned username grants no privileges", not devtools.is_dev_account(JON)),
         ),
     )
 
@@ -100,8 +100,8 @@ def main():
 
     # Named accounts, in the forms a person actually types.
     check(
-        "matches a username case-insensitively",
-        with_allowlist("alice", lambda: devtools.is_dev_account(ALICE)),
+        "username cannot grant privileges",
+        not with_allowlist("alice", lambda: devtools.is_dev_account(ALICE)),
     )
     check(
         "matches an id case-insensitively",
@@ -109,14 +109,14 @@ def main():
     )
     check(
         "reads a list with stray whitespace",
-        with_allowlist("someone-else, alice ", lambda: devtools.is_dev_account(ALICE)),
+        with_allowlist(f"someone-else, {ALICE.id} ", lambda: devtools.is_dev_account(ALICE)),
     )
 
     # The one that matters: naming one account must not name another.
     check(
         "naming one account grants only that account",
         with_allowlist(
-            "alice",
+            ALICE.id,
             lambda: devtools.is_dev_account(ALICE) and not devtools.is_dev_account(MALLORY),
         ),
     )
@@ -136,11 +136,11 @@ def main():
     )
     check(
         "/me reports dev_tools true once named",
-        with_allowlist("alice", lambda: _user_dict(ALICE)["dev_tools"]) is True,
+        with_allowlist(ALICE.id, lambda: _user_dict(ALICE)["dev_tools"]) is True,
     )
 
     dev_energy = with_allowlist(
-        "", lambda: energy.status_for_user(_EnergyDb(value=7), JON)
+        JON.id, lambda: energy.status_for_user(_EnergyDb(value=7), JON)
     )
     check(
         "dev energy is projected at the full level cap",
@@ -151,7 +151,7 @@ def main():
     check(
         "every dev claim action is priced at zero",
         with_allowlist(
-            "",
+            JON.id,
             lambda: all(
                 _claim_energy_cost(JON, action, first) == 0
                 for action in (

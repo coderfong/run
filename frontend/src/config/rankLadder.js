@@ -187,3 +187,99 @@ export function ladderRungs({ floors = [], shares = [] } = {}) {
 export function numeral(division) {
   return NUMERALS[Math.max(1, Math.min(DIVISIONS, division)) - 1];
 }
+
+// ---------------------------------------------------------------------------
+// The bar the payoff moves.
+//
+// Everywhere else on the ladder the thresholds arrive from the server
+// (/leaderboard/rank-ladder) and this file only draws them — a screen can
+// afford to wait a request for a number it is going to print. The claim payoff
+// cannot: it is four seconds long, it opens on top of a celebration, and a bar
+// that starts blank and snaps into place once a request lands is worse than no
+// bar at all. So the floors are mirrored here for THAT one use, and every
+// caller may still pass the measured ones in.
+//
+// Mirrors ELO_TIERS in backend/app/elo.py, tier for tier, in the same order as
+// RANK_TIERS above.
+// ---------------------------------------------------------------------------
+
+export const RANK_FLOORS = [800, 1050, 1200, 1350, 1500, 1650, 1800, 1950, 2150, 2400];
+
+/**
+ * The ladder cut into its DIVISION bands, bottom first.
+ *
+ * One entry per rung a bar can be part-way up: thirty of them, or twenty-eight
+ * plus Mythic, which has nothing above it and is therefore one whole band that
+ * always reads as full.
+ */
+export function rankBands(floors) {
+  const src = Array.isArray(floors) && floors.length === RANK_TIERS.length ? floors : RANK_FLOORS;
+  const bands = [];
+  RANK_TIERS.forEach((tier, index) => {
+    const above = src[index + 1];
+    if (above == null) {
+      bands.push({
+        ...tier,
+        tier: index,
+        division: DIVISIONS,
+        name: `${tier.label} ${NUMERALS[DIVISIONS - 1]}`,
+        lo: src[index],
+        hi: null,
+      });
+      return;
+    }
+    for (let d = 1; d <= DIVISIONS; d += 1) {
+      bands.push({
+        ...tier,
+        tier: index,
+        division: d,
+        name: `${tier.label} ${NUMERALS[d - 1]}`,
+        lo: divisionFloor(src, index, d),
+        hi: divisionFloor(src, index, d + 1),
+      });
+    }
+  });
+  return bands;
+}
+
+/** The band a points total stands on. Below the ladder's floor is still Wood I. */
+export function bandAt(points, bands) {
+  let index = 0;
+  for (let i = 0; i < bands.length; i += 1) {
+    if (points >= bands[i].lo) index = i;
+  }
+  return index;
+}
+
+/** Where inside its own band a points total sits, 0…1. */
+function bandFraction(points, band) {
+  if (band.hi == null) return 1;
+  const span = Math.max(1, band.hi - band.lo);
+  return Math.max(0, Math.min(1, (points - band.lo) / span));
+}
+
+/**
+ * The move from one standing to another, as passes over ONE track.
+ *
+ * The same shape `xpSteps` produces, and for the same reason: a bar that jumps
+ * to a percentage says where you ended up, and this has to say what happened.
+ * The difference is that rank falls as well as climbs — a lost defence empties
+ * the track back through the division below — so the passes run in whichever
+ * direction the points went, and `from`/`to` are not ordered.
+ */
+export function rankSteps(fromPoints, toPoints, bands) {
+  if (!bands?.length) return [];
+  const first = bandAt(fromPoints, bands);
+  const last = bandAt(toPoints, bands);
+  const dir = last >= first ? 1 : -1;
+  const out = [];
+  for (let i = first; dir > 0 ? i <= last : i >= last; i += dir) {
+    const band = bands[i];
+    out.push({
+      band,
+      from: i === first ? bandFraction(fromPoints, band) : (dir > 0 ? 0 : 1),
+      to: i === last ? bandFraction(toPoints, band) : (dir > 0 ? 1 : 0),
+    });
+  }
+  return out;
+}

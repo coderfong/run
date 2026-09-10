@@ -1,9 +1,9 @@
 // The shop, after the browse redesign.
 //
 // Three things changed and all three are behavioural, not decorative: the
-// wallet is pinned instead of scrolling away, browsing is by SLOT instead of
-// by rarity, and selecting an item puts it ON the runner. These press the real
-// screen and assert on what a shopper would see.
+// wallet is pinned instead of scrolling away, the shelf is a fixed NINE with
+// nothing to filter it by, and selecting an item puts it ON the runner. These
+// press the real screen and assert on what a shopper would see.
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
@@ -12,7 +12,6 @@ import { NavigationContext } from '@react-navigation/native';
 
 import ShopScreen from '../src/screens/ShopScreen';
 import ShopWallet from '../src/components/shop/ShopWallet';
-import ShopSlotTabs, { ALL_SLOTS } from '../src/components/shop/ShopSlotTabs';
 import CharacterRig from '../src/components/character/CharacterRig';
 import { api } from '../src/api/client';
 import { invalidate } from '../src/api/cache';
@@ -44,6 +43,27 @@ const SHOP = {
   ],
 };
 
+// A window from the OLD twelve-item rotation, in the mix it used to send:
+// five common, four rare, two epic, one legendary. Real catalogue ids, so the
+// tiles resolve to the labels a shopper reads.
+const WIDE = {
+  ...SHOP,
+  items: [
+    ['greenscarf', 'accessory', 'common'],
+    ['tealscarf', 'accessory', 'common'],
+    ['gaiter', 'accessory', 'common'],
+    ['pearls', 'accessory', 'common'],
+    ['charmchain', 'accessory', 'common'],
+    ['starnecklace', 'accessory', 'rare'],
+    ['lacecollar', 'accessory', 'rare'],
+    ['dogtags', 'accessory', 'rare'],
+    ['pearlcollar', 'accessory', 'rare'],
+    ['cape', 'accessory', 'epic'],
+    ['angelwings', 'accessory', 'epic'],
+    ['fairywings', 'accessory', 'legendary'],
+  ].map(([item_id, slot, rarity]) => ({ item_id, slot, rarity, price: 150, owned: false })),
+};
+
 function texts(tree) {
   return tree.root.findAllByType(Text).map((n) => {
     const c = n.props.children;
@@ -51,11 +71,33 @@ function texts(tree) {
   }).join('|');
 }
 
-function byLabel(tree, match) {
+function pressablesByLabel(tree, match) {
   return tree.root.findAll(
     (n) => typeof n.props?.onPress === 'function'
       && String(n.props?.accessibilityLabel || '').includes(match)
-  )[0];
+  );
+}
+
+function byLabel(tree, match) {
+  return pressablesByLabel(tree, match)[0];
+}
+
+/**
+ * The LABELS of the matching pressables, deduplicated.
+ *
+ * `findAll` returns the composite element and its host view for the same
+ * button, so counting nodes counts every tile twice. One tile is one label.
+ */
+function labelsFor(tree, match) {
+  return [...new Set(
+    pressablesByLabel(tree, match).map((n) => String(n.props.accessibilityLabel))
+  )];
+}
+
+/** Every product tile on the shelf, found by the rarity in its label. */
+function tiles(tree) {
+  return ['common', 'rare', 'epic', 'legendary']
+    .flatMap((rarity) => labelsFor(tree, `, ${rarity},`));
 }
 
 // `useIsFocused` and `useQuery` both reach for the navigation object through
@@ -119,31 +161,38 @@ describe('the pinned wallet', () => {
   });
 });
 
-describe('browsing by slot', () => {
-  test('a tab per slot with stock, counted, All first', async () => {
+describe('the shelf', () => {
+  test('nine items, even when the server still sends twelve', async () => {
+    // The app talks to a deployed backend, so it goes on receiving the old
+    // twelve-item window until the new coins.py ships. The shelf is nine
+    // either way.
+    jest.spyOn(api, 'shop').mockResolvedValue(WIDE);
     const tree = await mountShop();
-    const t = texts(tree);
-    expect(t).toContain('All');
-    expect(t).toContain('Hats');
-    expect(t).toContain('Glasses');
-    expect(t).toContain('Tops');
-    // Nothing in stock for these, so no dead-end tabs.
-    expect(t).not.toContain('Shoes');
+    expect(tiles(tree)).toHaveLength(9);
   });
 
-  test('picking a slot narrows the shelf to it', async () => {
+  test('the cap keeps one of every rarity, not the first nine', async () => {
+    // A plain slice of a rarity-sorted list would hand back commons and rares
+    // and drop the legendary, which is the one item anybody is saving for.
+    jest.spyOn(api, 'shop').mockResolvedValue(WIDE);
     const tree = await mountShop();
-    // Four items on All; two of them are hats.
-    expect(byLabel(tree, ', rare,')).toBeTruthy();
-    await act(async () => { byLabel(tree, 'Hats, 2 items').props.onPress(); });
-    expect(byLabel(tree, ', rare,')).toBeFalsy();
-    expect(byLabel(tree, 'Cap, common')).toBeTruthy();
+    expect(labelsFor(tree, ', common,')).toHaveLength(4);
+    expect(labelsFor(tree, ', rare,')).toHaveLength(3);
+    expect(labelsFor(tree, ', epic,')).toHaveLength(1);
+    expect(labelsFor(tree, ', legendary,')).toHaveLength(1);
   });
 
-  test('an empty tab list renders nothing at all', () => {
-    let tree;
-    act(() => { tree = renderer.create(<ShopSlotTabs tabs={[]} value={ALL_SLOTS} />); });
-    expect(tree.toJSON()).toBeNull();
+  test('a short window is shown whole rather than padded', async () => {
+    const tree = await mountShop();
+    expect(tiles(tree)).toHaveLength(SHOP.items.length);
+  });
+
+  test('nothing filters it', async () => {
+    // The slot tabs are gone: nine tiles is small enough to be its own index,
+    // and a "Hats 2" chip implies there is more behind it.
+    const tree = await mountShop();
+    expect(byLabel(tree, 'Hats, 2 items')).toBeFalsy();
+    expect(byLabel(tree, 'All, 4 items')).toBeFalsy();
   });
 });
 

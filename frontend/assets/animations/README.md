@@ -129,6 +129,34 @@ They are wired up and correct in every other respect, but they cannot go in a
 store build as they are. Replace the files under the same names and nothing
 else needs to change.
 
+## Podium badges
+
+`placeFirst`, `placeSecond` and `placeThird` are the 1st/2nd/3rd medals on a
+standings row (`LeaderboardRow`) and under the three podium columns on the
+leaderboard screen. They replaced the static `badge-1st/2nd/3rd.png` stickers;
+those files are still in `assets/art/ui` and still registered in
+`config/onboardingArt.js`, they are simply no longer what a row draws.
+
+They are **scenery, not reactions**, and that is not a stylistic call: a rank
+badge *is* the row's rank. It has to stay on screen for as long as the row does,
+it must not replay on a timer while the list scrolls past it, and under Reduce
+Motion it has to become a still badge rather than vanish and leave rank 1 blank.
+`selfLooping: true` buys all three.
+
+**Frame one has to be a readable badge**, because that is the frame Reduce
+Motion holds. Both medal clips are authored spinning and their masters open on
+the blank BACK of the disc, so the conversion rotates the finished cycle with
+`phase` — free in playback, since a self-looping asset has a seam rather than a
+first frame. Anything added here that spins needs the same treatment; check it
+by opening frame 0 of the `.webp` rather than by watching it play.
+
+**`placeSecond` and `placeThird` are watermarked**, the same way the three props
+above are: Iconscout PREVIEW downloads with the mark baked across the medal
+face, where no honest key can leave it behind. They cannot go in a store build
+as they are — replace the two files under the same names and re-run the script.
+`placeFirst` was supplied clean, as a VP8 WebM that already carried its own
+alpha (`mode: "alpha"` — nothing to key).
+
 ## Regenerating
 
 `scripts/convert-scene-animations.py` converts every supplied clip in this set,

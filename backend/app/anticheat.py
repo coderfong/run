@@ -20,13 +20,14 @@ only. All thresholds live in config.Settings.
 from __future__ import annotations
 
 import math
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 from .config import settings
 from .schemas import GpsPoint
 
 # Reasons that unverify a run on their own.
-HARD_REASONS = {"mocked_points", "teleport", "pace_too_fast", "stride_implausible"}
+HARD_REASONS = {"mocked_points", "teleport", "pace_too_fast", "stride_implausible", "invalid_run_time"}
 
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -145,11 +146,24 @@ def validate_run(
     points: List[GpsPoint],
     distance_m: float,
     step_count: Optional[int] = None,
+    *,
+    started_at: Optional[datetime] = None,
+    ended_at: Optional[datetime] = None,
 ) -> List[str]:
     """Return all flag reasons for a submitted run (possibly empty)."""
     if len(points) < 2:
         return []
     reasons = []
+    # GPS time is client-controlled. Historical/future traces must not earn
+    # rewards just because their internal pace looks plausible. Allow modest
+    # phone clock drift and the cached fix commonly returned at run start.
+    tolerance = timedelta(seconds=30)
+    if (
+        (started_at is not None and any(p.t < started_at - tolerance for p in points))
+        or (ended_at is not None and any(p.t > ended_at + tolerance for p in points))
+        or any(b.t < a.t for a, b in zip(points, points[1:]))
+    ):
+        reasons.append("invalid_run_time")
     for check in (
         _check_mocked(points),
         _check_teleport(points),

@@ -231,14 +231,19 @@ unused, so skip unless you decide to build the feature first:
 
 ---
 
-## 6. Layout note — the grid is 12, not 2
+## 6. Layout note — the grid is 9, not 2
 
-The reference sells two big offers. PASER's window is **12 items** (5 common,
-4 rare, 2 epic, 1 legendary — `FEATURED_MIX`), so the board holds a 3-column
-grid of small cells, not two hero cards. `shop-cell.png` is specified at 4:5
-for that grid. If you'd rather have the reference's two-up hero layout, the
-rotation mix has to shrink first — that's a backend change, and worth deciding
-before generating cell art at the wrong shape.
+The reference sells two big offers. PASER's window is **9 items** (4 common,
+3 rare, 1 epic, 1 legendary — `FEATURED_MIX`), so the board holds a 3-column
+grid of small cells, not two hero cards — three rows of three, exactly.
+`shop-cell.png` is specified at 4:5 for that grid. If you'd rather have the
+reference's two-up hero layout, the rotation mix has to shrink further —
+that's a backend change, and worth deciding before generating cell art at the
+wrong shape.
+
+The window used to be 12 and the client caps at 9 regardless (`SHELF_MIX` in
+`ShopScreen.js`), because the app talks to a deployed backend that may still
+be serving the old mix.
 
 Cells show **art and price only** — no item name, per the art-only rule in
 `ShopScreen.js`. That means the cell needs less vertical room than the

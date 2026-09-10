@@ -47,7 +47,10 @@ const SCREEN_IMAGE_ASSETS = {
     require('../../assets/art/card-clubs.png'),
     require('../../assets/art/card-solo.png'),
     require('../../assets/art/empty-runs.png'),
-    artKeys('railPass', 'railShop'),
+    // The painted street the whole tab stands on. It covers the window edge to
+    // edge, so a cold decode is Home appearing as a flat cream rectangle and
+    // then growing a sky — exactly the pop this warming exists to remove.
+    artKeys('homeStreet', 'railPass', 'railShop'),
   ]),
   Club: present([
     require('../../assets/art/club-crew.png'),
@@ -122,11 +125,15 @@ const SCREEN_IMAGE_ASSETS = {
     artKeys('profileBanner', 'stage'),
     ICONS.randomize,
   ]),
-  // Both pages draw one cut-out on a flat `panel` header. The full-bleed
-  // headerPasers/headerRivals squares they used to show are no longer rendered
-  // by either screen, so warming them would be two decodes for nothing.
+  // Pasers draws one cut-out on a flat `panel` header. The full-bleed
+  // headerPasers square it used to show is no longer rendered, so warming it
+  // would be a decode for nothing.
   Pasers: present([artKeys('panelPasers')]),
-  Rivals: present([artKeys('panelRivals')]),
+  // Rivals is a painted park now, and its header is transparent chrome over
+  // it rather than a panel with a cut-out — so what has to be warm on arrival
+  // is the park itself. It is the page's ground: decoding it after the cards
+  // have drawn is the whole screen changing colour under the reader.
+  Rivals: present([artKeys('rivalsPark')]),
   // The plaza is warmed with the Crossroads header because the two arrive
   // together in practice: the reveal that opens the plaza is also what puts a
   // badge on the rail, and a backdrop that decodes while it is fading in is

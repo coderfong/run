@@ -12,8 +12,11 @@ planet. This pins the contract that makes that possible:
   * `?rank=N` filters the board to exactly tier N, and the LIMIT is respected
     (the filter is in SQL, so a sparse tier still fills its page rather than
     returning whatever survived a post-fetch trim);
-  * omitting `rank` returns every tier, because the claim-placement callers
-    (result / running screens) need all nearby land regardless of who holds it.
+  * omitting `rank` returns every tier — the shape of the endpoint, kept for
+    a caller that genuinely wants the whole world. It is NOT what the game
+    boards ask for: claim combat is rank scoped, so the result and running
+    screens send their own tier too (see test_claim_board_matches.py) and a
+    map drawn without one would paint land the claim cannot touch.
 
 Runs against the local dev Postgres, like the other route tests here.
 """

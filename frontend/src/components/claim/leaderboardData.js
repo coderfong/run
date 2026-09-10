@@ -27,6 +27,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { api } from '../../api/client';
+import { getCached } from '../../api/cache';
 import { RANKS_KEY } from '../LeaderboardView';
 
 // The shape of the board this beat shows.
@@ -47,6 +48,38 @@ const OFF_BOARD_ROWS = 10;
 // A break in the rank sequence. Rendered as a "N more runners" divider rather
 // than letting #38 sit directly under #3 as though it followed it.
 export const GAP_ID = '__gap__';
+
+/**
+ * Put a runner who is BELOW the fetched page onto the board anyway.
+ *
+ * /leaderboard is a top fifty. Everybody outside it used to get the top ten
+ * and nothing else — a standings screen with the runner's own name nowhere on
+ * it, which is both the wrong answer and the reason there was nothing for the
+ * board to travel to. `/leaderboard/standing` knows their place at any depth
+ * (it is free for exactly this reason), so the row is built from that and
+ * stitched on under a gap marker.
+ *
+ * Pure, and separate from `buildBoardRows`, because the two answer different
+ * questions: that one windows a page it can see, this one appends a row that
+ * is not on the page at all.
+ *
+ * Returns `rows` untouched when there is nothing trustworthy to append — no
+ * standing, no rank, or a rank that claims to be inside the slice we already
+ * have (which would mean the page and the standing disagree, and inventing a
+ * duplicate row is worse than showing neither).
+ */
+export function appendOffBoardPlayer(rows, playerRow) {
+  if (!playerRow || !playerRow.rank || !rows.length) return rows;
+  const last = rows[rows.length - 1];
+  if (!last || !last.rank || playerRow.rank <= last.rank) return rows;
+
+  const skipped = playerRow.rank - last.rank - 1;
+  return [
+    ...rows,
+    ...(skipped > 0 ? [{ user_id: GAP_ID, gap: skipped }] : []),
+    playerRow,
+  ];
+}
 
 async function readPreviousRank(userId) {
   try {
@@ -104,14 +137,37 @@ export async function loadClaimLeaderboard(userId) {
 
   const worldwideRows = (rows || []).map((row, index) => ({ ...row, rank: index + 1 }));
   const playerIndex = worldwideRows.findIndex((row) => row.user_id === userId);
-  const playerRow = playerIndex >= 0 ? worldwideRows[playerIndex] : null;
+  const pagedRow = playerIndex >= 0 ? worldwideRows[playerIndex] : null;
   // The page first, because it is the same number the rows are showing. The
   // standing endpoint only has to answer for runners below the page.
-  const newRank = playerRow ? playerRow.rank : (standing?.rank ?? null);
+  const newRank = pagedRow ? pagedRow.rank : (standing?.rank ?? null);
 
   // Only a real before AND a real after make a real delta.
   const rankDelta =
     previousRank != null && newRank != null ? previousRank - newRank : null;
+
+  // The runner's row, whether or not the page had it. Off the page it is built
+  // from `standing` plus the cached club membership — the same two fields
+  // LeaderboardRow needs to draw the tag and the colour dot, read from the
+  // cache the ClanProvider already keeps rather than costing this beat a
+  // fourth request. `territory_count` is deliberately absent rather than
+  // guessed at zero; the row omits the clause when it does not know (see
+  // LeaderboardRow).
+  const myClan = pagedRow ? null : getCached('me:clan');
+  const playerRow = pagedRow
+    ? { ...pagedRow, delta: rankDelta || 0 }
+    : (newRank != null && standing
+        ? {
+            user_id: userId,
+            username: standing.username,
+            rank: newRank,
+            total_area_m2: standing.value ?? 0,
+            territory_count: null,
+            clan_tag: myClan?.clan_id ? myClan.tag : null,
+            clan_color: myClan?.clan_id ? myClan.color : null,
+            delta: rankDelta || 0,
+          }
+        : null);
 
   return {
     previousRank,
@@ -120,13 +176,24 @@ export async function loadClaimLeaderboard(userId) {
     fieldSize: standing?.field_size ?? null,
     // Positive = moved up. Null when there is nothing trustworthy to show.
     rankDelta: rankDelta || null,
-    playerRow: playerRow ? { ...playerRow, delta: rankDelta || 0 } : null,
+    playerRow,
     // Land held in m², from whichever of the two sources knows it.
-    playerArea: playerRow ? playerRow.total_area_m2 : (standing?.value ?? null),
-    playerTerritories: playerRow ? playerRow.territory_count : null,
+    playerArea: pagedRow ? pagedRow.total_area_m2 : (standing?.value ?? null),
+    playerTerritories: pagedRow ? pagedRow.territory_count : null,
+    // Travel through every fetched standing rather than jumping from the
+    // podium to the neighbourhood. Only unavailable ranks need a gap.
+    travelRows: pagedRow
+      ? worldwideRows.slice(0, playerIndex + WINDOW + 1).map(row =>
+          row.user_id === userId ? playerRow : row)
+      : appendOffBoardPlayer(worldwideRows, playerRow),
     // The podium, the player's neighbourhood, and a marker for the runners
-    // skipped between them. See buildBoardRows.
-    boardRows: buildBoardRows(worldwideRows, playerIndex),
+    // skipped between them (buildBoardRows) — then the runner themselves,
+    // stitched on the end when they were below the page (appendOffBoardPlayer).
+    // The board ALWAYS ends at the player's row, which is what the transition's
+    // travel animation scrolls to.
+    boardRows: pagedRow
+      ? buildBoardRows(worldwideRows, playerIndex)
+      : appendOffBoardPlayer(buildBoardRows(worldwideRows, playerIndex), playerRow),
     // No country board exists on this backend — see the note above.
     countryRows: null,
     worldwideRows,

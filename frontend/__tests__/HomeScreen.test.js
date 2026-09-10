@@ -90,12 +90,14 @@ jest.mock('../src/pro/ProProvider', () => ({
 // in react-test-renderer.
 jest.mock('../src/effects/ReactionEffect', () => 'ReactionEffect');
 
-import { StyleSheet, Text } from 'react-native';
+import { FlatList, StyleSheet, Text } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 
 import HomeScreen from '../src/screens/HomeScreen';
 import { HOME_AUTO_PROMPT_DELAY_MS } from '../src/config/proExposure';
 import FeedCard from '../src/components/FeedCard';
+import SideRail from '../src/components/SideRail';
+import HomeBackdrop from '../src/components/home/HomeBackdrop';
 import EnergyMeter from '../src/components/EnergyMeter';
 import ReactionEffect from '../src/effects/ReactionEffect';
 import { Bar } from '../src/ui/motion';
@@ -616,6 +618,65 @@ describe('feed card header', () => {
     );
     expect(stamp).toHaveLength(1);
     expect(stamp[0].props.numberOfLines).toBe(1);
+    act(() => tree.unmount());
+  });
+});
+
+
+/**
+ * Home stands on a painting, and its shortcut row says what each tile is.
+ *
+ * Both are easy to lose by accident: a page that paints its own background
+ * again covers the street, and the words under the tiles are the kind of thing
+ * a later "tidy the row up" removes. Neither failure crashes anything — the
+ * screen just quietly goes back to being five unlabelled stickers on a flat
+ * page — so they are asserted here.
+ */
+describe('the Home street', () => {
+  beforeEach(() => {
+    mockFeed = { items: [], next_cursor: null };
+    mockEnergy = { energy: 40, energy_max: 100, claim_cost: 16 };
+    mockNotifs = { unread: 0, items: [] };
+    jest.clearAllMocks();
+  });
+
+  it('paints the page and lets the feed show it through', async () => {
+    const tree = mount();
+    await act(async () => {});
+
+    const backdrop = tree.root.findByType(HomeBackdrop);
+    expect(backdrop).toBeTruthy();
+
+    // Nothing between the painting and the reader may repaint the page: the
+    // list that scrolls over it draws no background of its own.
+    const list = tree.root.findByType(FlatList);
+    expect(StyleSheet.flatten(list.props.style).backgroundColor).toBe('transparent');
+
+    act(() => tree.unmount());
+  });
+
+  it('names every shortcut, inside the button that goes there', async () => {
+    const tree = mount();
+    await act(async () => {});
+
+    const rail = tree.root.findByType(SideRail);
+    expect(rail.props.inline).toBe(true);
+
+    // Each word is INSIDE a button, not beside it — a label the thumb misses
+    // is a label that lies about where to press.
+    const buttons = rail
+      .findAll((node) => node.props?.accessibilityRole === 'button')
+      .map((button) =>
+        button
+          .findAllByType(Text)
+          .map((node) => [].concat(node.props.children || []).join(''))
+      );
+    // A tile may carry a badge as well as its word, so each button is asked to
+    // CONTAIN its name rather than to be only that.
+    for (const word of ['Missions', 'Rewards', 'Shop', 'Rivals', 'Crossroads']) {
+      expect(buttons.some((inside) => inside.includes(word))).toBe(true);
+    }
+
     act(() => tree.unmount());
   });
 });

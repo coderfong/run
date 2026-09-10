@@ -2,7 +2,7 @@ import React from 'react';
 import { Text } from 'react-native';
 import renderer, { act } from 'react-test-renderer';
 
-import ChooseAttack from '../src/components/claim/ChooseAttack';
+import ChooseAttack, { rivalNote } from '../src/components/claim/ChooseAttack';
 
 const placement = (t, rotation_deg) => ({
   t,
@@ -105,6 +105,45 @@ describe('capture placement controls', () => {
     act(() => tree.unmount());
   });
 
+  it('counts everyone under the claim, not only the ones who lose', () => {
+    // THE BUG. The row dropped the defended half whenever anything at all was
+    // takeable, so a claim covering four borders said "1 runner loses ground
+    // here" and showed one face. With the map now drawing exactly the tier the
+    // claim fights, every one of those plots is on screen — a sentence that
+    // counts one of them reads as a miscount rather than as a fight.
+    const mixed = {
+      ...placement(0.55, 45),
+      action: 'attack',
+      enemy_m2: 51000,
+      defended_m2: 96000,
+      rivals: [
+        { user_id: 'r1', username: 'nix', avatar: null, area_m2: 51000, defended: false },
+        { user_id: 'r2', username: 'bex', avatar: null, area_m2: 60000, defended: true },
+        { user_id: 'r3', username: 'ola', avatar: null, area_m2: 36000, defended: true },
+      ],
+    };
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ChooseAttack
+          options={options}
+          pose={{ t: 0.55, deg: 45 }}
+          onPose={() => {}}
+          placement={mixed}
+          team={{ fill: '#22162B', stroke: '#EC4899', glow: '#EC4899' }}
+        />
+      );
+    });
+    const copy = tree.root.findAllByType(Text)
+      .map((node) => node.props.children)
+      .flat(Infinity)
+      .filter((value) => typeof value === 'string')
+      .join(' ');
+    expect(copy).toContain('1 lose ground');
+    expect(copy).toContain('2 hold');
+    act(() => tree.unmount());
+  });
+
   it('keeps ATTACK visible but disabled when there is no rival placement', () => {
     let tree;
     act(() => {
@@ -140,4 +179,25 @@ test('enables Attack for a live rival overlap missed by preset suggestions', () 
   act(() => attack.props.onPress());
   expect(onPose).toHaveBeenCalledWith({ t: 0.37, deg: 22 }, { commit: true });
   act(() => tree.unmount());
+});
+
+
+// The one line that says who is under the claim. Four shapes, because the
+// mixed one is the case that used to go missing and the singular ones are
+// where a naive `${n} runners` reads as a typo.
+describe('rivalNote', () => {
+  it('names both sides when the claim meets both', () => {
+    expect(rivalNote(2, 1)).toBe('2 lose ground · 1 holds');
+    expect(rivalNote(1, 3)).toBe('1 lose ground · 3 hold');
+  });
+  it('stays grammatical when only ground is lost', () => {
+    expect(rivalNote(1, 0)).toBe('1 runner loses ground here');
+    expect(rivalNote(4, 0)).toBe('4 runners lose ground here');
+  });
+  it('says the defence held when nothing gives way', () => {
+    expect(rivalNote(0, 2)).toBe('defence holds here');
+  });
+  it('says nothing when nobody is there', () => {
+    expect(rivalNote(0, 0)).toBe('');
+  });
 });

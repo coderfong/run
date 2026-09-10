@@ -6,7 +6,11 @@
 // the top five (which is what this replaced) renders perfectly happily while
 // telling the runner nothing about themselves.
 
-import { buildBoardRows, GAP_ID } from '../src/components/claim/leaderboardData';
+import {
+  appendOffBoardPlayer,
+  buildBoardRows,
+  GAP_ID,
+} from '../src/components/claim/leaderboardData';
 
 const board = (n) =>
   Array.from({ length: n }, (_, i) => ({ user_id: `u${i + 1}`, rank: i + 1 }));
@@ -69,5 +73,48 @@ describe('buildBoardRows', () => {
       const built = buildBoardRows(rows, i);
       expect(built.some((r) => r.user_id === `u${i + 1}`)).toBe(true);
     }
+  });
+});
+
+// appendOffBoardPlayer — the runner who is BELOW the fetched page.
+//
+// This is what gives the standings beat somewhere to travel to. Its failures
+// are silent in the same way buildBoardRows' are: a board that quietly ends at
+// rank 50 still renders, a duplicate row for the same runner still renders, and
+// a gap marker claiming zero skipped runners still renders.
+describe('appendOffBoardPlayer', () => {
+  const me = (rank) => ({ user_id: 'me', rank, username: 'me' });
+
+  test('the runner is stitched on under a marker for everyone skipped', () => {
+    expect(ranks(appendOffBoardPlayer(board(10), me(380)))).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 'gap:369', 380,
+    ]);
+  });
+
+  test('the runner directly after the page needs no marker', () => {
+    expect(ranks(appendOffBoardPlayer(board(10), me(11)))).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    ]);
+  });
+
+  test('a rank already inside the page is not duplicated on the end', () => {
+    // The page and /leaderboard/standing disagreeing is a real possibility
+    // (they are two queries against a moving board). Showing the runner twice
+    // is worse than showing them once, where the page already has them.
+    expect(ranks(appendOffBoardPlayer(board(10), me(7)))).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+    expect(ranks(appendOffBoardPlayer(board(10), me(10)))).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
+  });
+
+  test('nothing trustworthy to append leaves the board alone', () => {
+    const rows = board(10);
+    // A runner who has not scored on this board at all: `standing` answers
+    // with a null rank, which is a real answer, not a missing one.
+    expect(appendOffBoardPlayer(rows, { user_id: 'me', rank: null })).toBe(rows);
+    expect(appendOffBoardPlayer(rows, null)).toBe(rows);
+    expect(appendOffBoardPlayer([], me(380))).toEqual([]);
   });
 });

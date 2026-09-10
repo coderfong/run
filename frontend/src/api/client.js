@@ -548,9 +548,14 @@ export const api = {
     return request(`/leaderboard/standing?${q.toString()}`);
   },
 
-  // `opts.rank` scopes the board to one rank tier (0=Wood … 9=Mythic). Only
-  // the ranked global map passes it; claim-placement callers omit it so they
-  // still see every nearby holder regardless of tier.
+  // `opts.rank` scopes the board to one rank tier (0=Wood … 9=Mythic).
+  //
+  // EVERY GAME BOARD PASSES IT. Claim combat is rank scoped — a claim only
+  // ever meets holders in the runner's own band — so a map drawn without a
+  // rank is not the board being played on: it paints tiers the claim cannot
+  // touch, and the runner reads a circle covering six plots while the
+  // breakdown honestly reports one rival. Omit it only for a view that is
+  // deliberately about the whole world rather than about a fight.
   mapPolygons: (bbox, zoom, opts) => {
     const parts = [];
     if (bbox) {

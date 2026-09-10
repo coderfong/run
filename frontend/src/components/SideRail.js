@@ -11,8 +11,17 @@
 // buttons), then a full-bleed gradient inside a 2.5px rounded border, which was
 // the only square-cornered chrome left on a page of drawn boxes.
 //
-// TILES ARE ART ONLY: no caption under them, matching the cosmetic and border
-// grids. The label is still passed for the accessibility name.
+// EVERY TILE SAYS WHAT IT IS. The inline row wears a word under each drawing —
+// a sticker of a clipboard, a certificate, a shopfront, two gloves and a map
+// pin are five nice drawings and no reader's first guess at "the reward ladder"
+// or "runners whose route crossed yours". The rail is a NAVIGATION row, not a
+// cosmetic grid: the art-only rule (cosmetics, borders) holds where the picture
+// IS the thing being chosen, and it never applied to a set of shortcuts.
+//
+// The caption is the tab bar's own label recipe — labelSm at 11pt, sentence
+// case — so the row of buttons at the top of Home and the row at the bottom of
+// the window read as one system. The floating column keeps no captions: it is
+// laid over content rather than on the page, and text over a map is a smear.
 //
 // Art is optional: each tile falls back to its sticker icon until the framed
 // art lands (docs/ONBOARDING_ASSETS.md §7). All five have their own drawing
@@ -35,7 +44,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { brand, space, toon } from '../theme';
+import { brand, space, toon, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
@@ -51,44 +60,68 @@ const GOLD = ['#FFD98A', '#F0A93C', '#A8631A'];
 // that knows how many tiles it has.
 function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size }) {
   const src = art(artKey);
+  const { colors } = useTheme();
+  const type = useThemedType();
   return (
     <View style={[styles.slot, inline && styles.inlineSlot]}>
+      {/* THE WORD IS PART OF THE BUTTON, not a caption beside it: the press
+          area is the tile AND its label, so the thing a thumb aims at is the
+          thing the eye reads. The tile keeps its own fixed box inside — the
+          badge hangs off that corner, and a badge pinned to the slot instead
+          would drift out to the row's gutter. */}
       <PressableScale
         onPress={() => { haptic.light(); onPress?.(); }}
         accessibilityRole="button"
         accessibilityLabel={label ? `${label}${badge ? `, ${badge}` : ''}` : 'Open'}
-        style={[styles.tileWrap, inline && styles.inlineTileWrap, size ? { width: size, height: size } : null]}
+        style={styles.press}
       >
-        {/* A drawn box, like everything else on this page — not a rounded
-            rectangle with a 2.5px border pretending to be one.
-            The fill is FLAT, and it has to be: the frame's paper is the tile's
-            shape, and a gradient cannot be painted into a wobbly silhouette
-            without a mask layer this app does not ship. Behind the frame it
-            would simply be a square of colour showing at every corner, which is
-            the bleed this pass exists to remove. The middle stop of each tile's
-            ramp is the colour the ramp reads as anyway.
-            Each tile is dealt its own drawing and pose off its label, so four in
-            a row are four boxes rather than one box copied four times. */}
-        <Framed
-          frame={frameVariant('chip', label)}
-          tint={toon.ink}
-          fill={tint[1]}
-          weight={INK.thin}
-          pose={framePose(`rail:${label}`)}
-          inset={false}
-          style={[styles.tile, inline && styles.inlineTile]}
-          contentStyle={styles.tileInner}
-        >
-          {src ? (
-            <Image source={src} style={styles.tileArt} resizeMode="contain" />
-          ) : (
-            <AppIcon name={icon} style={styles.tileIcon} />
-          )}
-        </Framed>
-        {badge ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText} numberOfLines={1}>{badge}</Text>
-          </View>
+        <View style={[styles.tileWrap, inline && styles.inlineTileWrap, size ? { width: size, height: size } : null]}>
+          {/* A drawn box, like everything else on this page — not a rounded
+              rectangle with a 2.5px border pretending to be one.
+              The fill is FLAT, and it has to be: the frame's paper is the tile's
+              shape, and a gradient cannot be painted into a wobbly silhouette
+              without a mask layer this app does not ship. Behind the frame it
+              would simply be a square of colour showing at every corner, which
+              is the bleed this pass exists to remove. The middle stop of each
+              tile's ramp is the colour the ramp reads as anyway.
+              Each tile is dealt its own drawing and pose off its label, so five
+              in a row are five boxes rather than one box copied five times. */}
+          <Framed
+            frame={frameVariant('chip', label)}
+            tint={toon.ink}
+            fill={tint[1]}
+            weight={INK.thin}
+            pose={framePose(`rail:${label}`)}
+            inset={false}
+            style={[styles.tile, inline && styles.inlineTile]}
+            contentStyle={styles.tileInner}
+          >
+            {src ? (
+              <Image source={src} style={styles.tileArt} resizeMode="contain" />
+            ) : (
+              <AppIcon name={icon} style={styles.tileIcon} />
+            )}
+          </Framed>
+          {badge ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText} numberOfLines={1}>{badge}</Text>
+            </View>
+          ) : null}
+        </View>
+        {/* Already in the pressable's accessibility label, so it is not read
+            twice; this is the sighted half of the same name.
+            It shrinks rather than truncating: "Crossroads" is the longest word
+            on the row, and a wound-up text size would otherwise clip it to an
+            ellipsis, which names nothing. */}
+        {inline && label ? (
+          <Text
+            style={[type.labelSm, styles.caption, { color: colors.text }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {label}
+          </Text>
         ) : null}
       </PressableScale>
     </View>
@@ -158,7 +191,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
       <RailTile
         icon="award"
         artKey="railPass"
-        label="Pass"
+        label="Rewards"
         badge={claimable ? String(claimable) : null}
         onPress={() => navigation.navigate('Progression')}
         inline={inline}
@@ -204,8 +237,14 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
 
 const styles = StyleSheet.create({
   rail: { position: 'absolute', right: space.sm, gap: space.md, alignItems: 'center' },
-  inlineRail: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  // `flex-start` on the cross axis, not `center`: with a caption under every
+  // tile the slots are the same height anyway, and centring would float a
+  // badged tile's row against an unbadged one the moment one of them wraps.
+  inlineRail: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-around' },
   slot: { alignItems: 'center', width: 62 },
+  // The press area is the tile and its word together, so it is the column that
+  // centres them rather than the slot.
+  press: { alignItems: 'center', alignSelf: 'stretch' },
   inlineSlot: { flex: 1, width: 'auto' },
   tileWrap: { width: 56, height: 56 },
   inlineTileWrap: { width: 64, height: 64 },
@@ -225,6 +264,16 @@ const styles = StyleSheet.create({
   // Inset from the frame rather than filling it — the art reads as sitting in
   // the tile instead of being cropped by its rounded corners.
   tileArt: { width: '84%', height: '84%' },
+  // The tab bar's label, to the point: labelSm at 11pt, sentence case rather
+  // than the token's uppercase, and the page's own text colour rather than
+  // `textMuted` — these name buttons, they are not a caption on a picture.
+  caption: {
+    fontSize: 11,
+    letterSpacing: 0.2,
+    textTransform: 'none',
+    marginTop: 6,
+    textAlign: 'center',
+  },
   // Fallback stickers fill the frame instead: unlike the rail art, they are
   // trimmed to ~80% of their own canvas, so the extra 16% here only spends the
   // sticker's baked-in margin and lands the drawing at tileArt's visual size.

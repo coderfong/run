@@ -58,7 +58,7 @@ import { useProEntitlement } from '../pro/ProProvider';
 import XpProgress from '../components/XpProgress';
 import LevelUpCelebration from '../components/LevelUpCelebration';
 import RankUpCeremony from '../components/rank/RankUpCeremony';
-import { standingFrom } from '../config/rankLadder';
+import { standingFrom, tierByKey } from '../config/rankLadder';
 import { Image } from '../ui/image';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useAvatar } from '../state/avatar';
@@ -283,7 +283,7 @@ function QuietStat({ label, value, unit, accent }) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.quietStat}>
-      <Text style={styles.quietLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{label}</Text>
+      <Text style={styles.quietLabel}>{label}</Text>
       <View style={styles.quietValueRow}>
         <Text style={[styles.quietValue, accent && { color: accent }]}>{value}</Text>
         {!!unit && <Text style={styles.quietUnit}>{unit}</Text>}
@@ -327,7 +327,7 @@ export default function ResultScreen({ navigation, route }) {
   const styles = useThemedStyles(makeStyles);
   const { result } = route.params;
   const { color, clan } = useClan();
-  const { equipped } = useAvatar();
+  const { equipped, rankKey } = useAvatar();
   const { user } = useAuth();
   const { trailGlowColor } = useSettings();
   // PRO gate for the secondary stat row (best km, climbing, consistency).
@@ -631,8 +631,22 @@ export default function ResultScreen({ navigation, route }) {
   // through the sequence, and only `endCelebration` moves off it. There is no
   // longer a card to keep alive: the stage is the map.
 
-  // Everyone's nearby land, so the placement map matches the global map:
-  // rival territories painted underneath, owner portraits pinned on each plot.
+  // THE BOARD UNDER THE CLAIM IS THE BOARD THE CLAIM FIGHTS.
+  //
+  // Claim combat is scoped to one rank tier: a claim only ever meets holders
+  // in the runner's own band, and land in any other tier is not in the fight
+  // at all (backend `_rank_scope_sql`). This map used to be fetched with no
+  // rank, which drew every tier at once — so a claim sitting on six painted
+  // plots would report "1 runner lose ground here", and the runner read the
+  // breakdown as broken rather than as the truth about a different board.
+  //
+  // The tier comes from the server with the claim options (`rank_tier`), so
+  // it is literally the number the breakdown was computed against. Until
+  // those land — and if they never do — the runner's own tier stands in,
+  // which is the same reading the global map opens on. Gating the map on the
+  // options instead would leave the neighbourhood blank for the second or so
+  // the grid takes to build, and blank forever if that request fails.
+  const boardRank = options?.rank_tier ?? tierByKey(rankKey).tier;
   const [board, setBoard] = useState([]);
   useEffect(() => {
     if (!MAP_READY || path.length < 2) return;
@@ -644,11 +658,11 @@ export default function ResultScreen({ navigation, route }) {
       maxLon: Math.max(...lons) + m, maxLat: Math.max(...lats) + m,
     };
     let alive = true;
-    api.mapPolygons(bbox, 15)
+    api.mapPolygons(bbox, 15, { rank: boardRank })
       .then((d) => { if (alive) setBoard(d.territories || []); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [path]);
+  }, [path, boardRank]);
 
   const boardFC = useMemo(
     () => ({ type: 'FeatureCollection', features: buildBoardFeatures(board, { userId: user.id, accent: team.stroke }) }),
@@ -1642,7 +1656,7 @@ export default function ResultScreen({ navigation, route }) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + space.md }]}
+      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.xxl }]}
     >
 
       {/* An activity that earned nothing has to SAY so — a result screen that
@@ -1869,7 +1883,7 @@ export default function ResultScreen({ navigation, route }) {
           runId={result.run_id}
           allowAutoPrompt
           hideClaimSummary
-          style={{ marginHorizontal: space.lg }}
+          style={styles.territoryReport}
         />
       </Reveal>
 
@@ -1986,7 +2000,8 @@ export default function ResultScreen({ navigation, route }) {
 }
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
-  scroll: { padding: space.lg, paddingBottom: space.xxl },
+  scroll: { padding: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 640, alignSelf: 'center' },
+  territoryReport: { marginTop: space.xl, marginRight: NB.offset },
 
   // A notice, not a card: the stroke goes all the way round at the thin
   // weight, so it reads as a boxed aside rather than as another panel
@@ -2180,19 +2195,19 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // The rule between the headline and the numbers is a real line now. A
   // hairline inside a 3pt box is the one weight that reads as an accident.
   quietRow: {
-    flexDirection: 'row', alignSelf: 'stretch', justifyContent: 'space-between',
+    flexDirection: 'row', flexWrap: 'wrap', alignSelf: 'stretch',
+    rowGap: space.md,
     marginTop: space.lg,
     paddingTop: space.md,
     borderTopWidth: NB.strokeThin,
     borderTopColor: nbInk(scheme, colors.card),
   },
-  // The second metric row hangs off the first, so the eight read as one block
-  // rather than as two bordered sections.
-  quietRowTight: { marginTop: space.sm, paddingTop: 0, borderTopWidth: 0 },
-  quietStat: { flex: 1, alignItems: 'center' },
+  // Keep the advanced metrics on the same two-column grid and row rhythm.
+  quietRowTight: { marginTop: space.md, paddingTop: 0, borderTopWidth: 0 },
+  quietStat: { width: '50%', minWidth: 0, paddingHorizontal: space.xs, alignItems: 'flex-start' },
   quietLabel: { ...type.labelSm, color: colors.textDim, marginBottom: 4 },
-  quietValueRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  quietValue: { ...type.statSm, color: colors.text },
+  quietValueRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', maxWidth: '100%' },
+  quietValue: { ...type.statSm, color: colors.text, flexShrink: 1 },
   quietUnit: { ...type.caption, color: colors.textDim, marginLeft: 2, marginBottom: 1 },
   deltaRow: { marginTop: space.md },
   deltaText: { ...type.bodySmBold, textAlign: 'center' },

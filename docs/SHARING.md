@@ -33,26 +33,50 @@ Strava-shaped flow:
 
    The preview sits on a **checkerboard** with a `TRANSPARENT` badge on it,
    because "transparent" and "dark grey" look identical against a dark screen.
-3. **Customise it** — under the preview. **The three that change how the card
-   LOOKS are PASER PRO** (2026-08-24): Accent, Placement and Stats each carry
-   the gold padlock, dim to 0.4 and open the paywall on a tap. What is on the
-   card — the route, the runner, the flip — stays free, and so does previewing
-   any of it. See "What PRO buys" below.
-   * **Accent** *(PRO)* — the clan colour first, then eight swatches (including
-     ink, for a bright story). Drives the territory number, the route's end dot,
-     the wordmark badge and the trail decorations.
-   * **Placement** *(PRO)* — Left / Centre / Right, and on the rebuilt card it
-     is the LAYOUT rather than the rag. Left and right stand the numbers down
-     that side with the route and the runner in the column opposite; centre is
-     the older stacked shape, route in a band across the top with the numbers
-     under it. Which side matters on a story: the runner puts the numbers where
-     their own face is not.
+3. **Customise it** — under the preview, in **three short rows that do not
+   scroll**. Accent, Style, On the card, and that is the whole set.
 
-     The type itself is **WHITE and only white**. There used to be a Light /
-     Dark switch here, and it was **cut on 2026-08-16**: ink type on a card with
-     no background of its own is the one combination that disappears, and it was
-     never what anyone wanted over their own story. `RunShareCard`'s `TONE` is a
-     constant now rather than a function of a prop.
+   **Cut back to this on 2026-09-10.** The sheet had grown to six rows
+   (Accent, Style, Placement, On the card, Stats, and a horizontal scroller of
+   nine swatches), which meant the destinations — the point of the screen —
+   sat below the fold, and the runner scrolled *past their own preview* to
+   reach them. Five named looks and three placements over the same three
+   numbers were not eight cards; they were one card with a settings page in
+   front of it. What went: the Placement row, the Stats row, the Flip chip,
+   the three PRO styles, and four accent swatches. What stayed is every choice
+   that changes the card at a glance.
+
+   **The body is a plain `View`, not a `ScrollView`,** and that is load-bearing:
+   the preview is `flex: 1` and measures itself with `onLayout`, so the card is
+   exactly as large as the rows and the destinations leave room for, on every
+   phone. A new control row therefore does not push anything off the bottom —
+   it shrinks the preview. `runShare.test.js` asserts the sheet mounts no
+   `ScrollView` at all, so the fold cannot come back by accident. **If a new
+   row does not fit, it gets cut, not scrolled to.**
+   * **Accent** *(PRO)* — the clan colour first, then four swatches, capped at
+     the five that fit one row on a 375pt screen (`SWATCHES_ON_THE_ROW`). Drives
+     the territory number, the route's end dot, the wordmark badge and the trail
+     decorations. **The only padlock left on the sheet** — see "What PRO buys".
+   * **Style** *(free)* — Classic and Clean, both free since 2026-09-10. A style
+     is a PRESET over the controls, never a second renderer, and each one now
+     states the WHOLE card rather than its own edits: with Placement and Stats
+     gone there is no control left that could put back what another style
+     changed, so Classic has to mean the card as it comes. See
+     `src/config/shareStyles.js`.
+   * **Placement** — **CUT 2026-09-10.** Left / Centre / Right, and on the
+     rebuilt card it was the LAYOUT rather than the rag: left and right stand
+     the numbers down that side with the route and the runner in the column
+     opposite, centre is the older stacked shape with the route in a band
+     across the top. `align` is still a `RunShareCard` prop and Clean still
+     sets it to centre, so both layouts still ship — there is just no chip for
+     choosing between them, and left is the default.
+
+     The type is **WHITE and only white**, and that has not been a control here
+     for longer. The Light / Dark switch was **cut on 2026-08-16**: ink type on
+     a card with no background of its own is the one combination that
+     disappears, and it was never what anyone wanted over their own story.
+     `RunShareCard`'s `TONE` is a constant now rather than a function of a
+     prop.
    * **Trail** — **PARKED, NOT SHIPPED.** Built and then switched off the same
      day (2026-08-16). `TRAIL_DECORATIONS_ENABLED` in
      `src/config/releaseFeatures.js` is `false`, so the row is not on the sheet
@@ -93,8 +117,10 @@ Strava-shaped flow:
      as a flower, an entirely pink one reads as a smudge. Every piece carries its
      own dark edge for the same reason the route carries its under stroke. The
      row hides itself when Route is switched off.
-   * **On the card** *(free)* — Route, Runner, Flip, in one row because they are
-     one question and none of them is a look. The runner is the PASER mark
+   * **On the card** *(free)* — Route and Runner, in one row because they are
+     one question and neither is a look. Flip went on 2026-09-10: it mirrored
+     the mascot, which on a card this size is a change most runners could not
+     see they had made. The runner is the PASER mark
      wearing the player's head, feet on the end dot of their own route (the one
      point on the card that means something), clamped so a run that finished
      high or low doesn't put it through the numbers; with Route off it stands
@@ -105,11 +131,12 @@ Strava-shaped flow:
      2026-08-24 for one reason: the moment the metrics went PRO, the padlock
      over that row took the route and the runner with it, and "you cannot take
      your own avatar off your own card" is not a thing worth selling.
-   * **Stats** *(PRO)* — chips for every metric the run actually has (Distance,
-     Pace, Time, Elev gain, Best km, Avg speed, Territory). Bounded at one
-     minimum and six maximum: zero leaves a hole the runner cannot see, and
-     seven is more rows than the type can shrink for with anywhere left to draw
-     the route.
+   * **Stats** — **CUT 2026-09-10.** It was chips for every metric the run had
+     (Distance, Pace, Time, Elev gain, Best km, Avg speed, Territory), which is
+     up to seven wrapping over two lines to choose between numbers the card
+     shows well and numbers it shows badly. The card posts the three that make
+     a run a run — distance, pace, time (`DEFAULT_STATS`) — and `stats` is
+     still a prop, so a style can still name a set.
 
 4. **See the real card** — the preview *is* the component that gets captured
    (`RunShareCard`), so there is no gap between preview and post.
@@ -155,21 +182,25 @@ Strava-shaped flow:
 ### What PRO buys
 
 **Free gets a finished card.** Three numbers — distance, pace, time — the route,
-the runner, the clan's own colour, and every destination. Nothing about it is
-crippled and most runners will post it untouched. What PASER PRO buys is making
-it *yours*: **your colour** (Accent), **your side of the story** (Placement),
-**your numbers** (Stats).
+the runner, the clan's own colour, both named looks, and every destination.
+Nothing about it is crippled and most runners will post it untouched. What
+PASER PRO buys is one thing: **your colour** (Accent).
 
-The line moved here on 2026-08-24. It was Accent and Placement only, with the
-metrics free; the card's redesign is what moved it, because the default card
-became good enough to give away whole.
+The line has moved twice. It was Accent and Placement (2026-08-24), then Accent,
+Placement and Stats when the card's redesign made the default good enough to
+give away whole. On **2026-09-10** the sheet was cut to one screen, and Placement
+and Stats went as controls — so what they were selling went with them. Accent is
+what is left, and it is the right one to keep: it is the customisation that is
+visibly yours in somebody else's feed.
 
 Not gated, and deliberately: **the route and the runner** (they decide what the
-card *shows*, not how it looks), and **previewing anything** — including the PRO
-*styles*, which are gated on EXPORT instead, in one place, in `perform()`. A
-paywall sprung at the moment of posting would be the worst possible place for
-one, so the sheet says so in a line under the Style row rather than leaving
-somebody to find out at the last step.
+card *shows*, not how it looks), **both styles**, and **previewing anything**.
+
+`styleLocked` and the export gate in `perform()` are still there, unfired: no
+style on the row is PRO today, so nothing reaches them. They are kept because
+the rule they encode is the one worth not re-deriving — a PRO look is gated on
+EXPORT, in one place, so that no destination can quietly skip the check and
+nobody meets a paywall at the moment they press Share.
 
 Mechanically it is the `Row` component's `locked` / `onLockedPress` pair — the
 AvatarStudio padlock pattern: a gold `Lock` and a PRO tag on the label, controls
@@ -227,9 +258,9 @@ figures down one side, the run's own graphic beside them. What changed and why:
   in step.
 * **The runner no longer needs a route.** With the route off it stands centred
   in the space the route would have had, at `width * 0.42`. It used to keep
-  standing where the INVISIBLE line ended, which is why the "Character
-  showcase" preset — `showRoute: false, showCharacter: true` — rendered no
-  character at all.
+  standing where the INVISIBLE line ended, which is why `showRoute: false,
+  showCharacter: true` — the Route chip off with the Runner chip on, and what
+  the old "Character showcase" preset set — rendered no character at all.
 
 Kept from the 2026-08-16 simplification: no territory headline (area is a
 number, not an eyebrow over a 44pt km²), no brand mark beside the wordmark, the

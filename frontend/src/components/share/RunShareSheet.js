@@ -18,7 +18,6 @@ import {
   ActivityIndicator,
   InteractionManager,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -38,7 +37,7 @@ import RunShareCard, {
   SHARE_FORMAT,
   availableStats,
 } from './RunShareCard';
-import { TRAIL_DECORATIONS, TRAIL_NONE } from './trailDecorations';
+import { TRAIL_NONE } from './trailDecorations';
 import { EVENTS, track } from '../../analytics';
 import { GOLD } from '../../config/pro';
 import { shareStyleByKey, stylesForRun } from '../../config/shareStyles';
@@ -49,7 +48,6 @@ import { Framed } from '../ui';
 import { INK, framePose, frameVariant } from '../../ui/frameRegistry';
 import { toast } from '../../ui/toast';
 import { afterHandoff } from '../../utils/appActive';
-import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 
 // WHAT A PADLOCK SAYS, and it says it in one line wherever it appears.
 //
@@ -58,6 +56,10 @@ import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 // had nothing at all but a gold tag. One short line, repeated, is both easier
 // to read and easier to believe than a fresh pitch per control.
 const PRO_NOTE = 'This can only be unlocked with PASER PRO.';
+
+// How many accent swatches the row shows. Five 34pt discs and their gaps clear
+// a 375pt screen's gutters, which is the narrowest phone this ships to.
+const SWATCHES_ON_THE_ROW = 5;
 
 // Instagram's own gradient, so the destination is recognisable at a glance.
 const IG_GRADIENT = ['#F9CE34', '#EE2A7B', '#6228D7'];
@@ -318,14 +320,14 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   // beside them, centre stacks the route above them. See RunShareCard.
   const [align, setAlign] = useState('left');
   const [showRoute, setShowRoute] = useState(true);
-  const [trail, setTrail] = useState(TRAIL_NONE);
+  const trail = TRAIL_NONE;
   // ON. The mascot standing at the end of the route is the part of the card
   // that is THEIRS rather than the run's — their face, their hair, their kit —
   // and it is the one thing on a sticker of numbers that nobody else's card
   // has. It spent a while starting off, which in practice meant almost nobody
   // ever saw it. The chip stays, so it is still one tap to take it away.
   const [showCharacter, setShowCharacter] = useState(true);
-  const [flip, setFlip] = useState(false);
+  const flip = false;
   const offered = useMemo(() => availableStats(cardProps.run), [cardProps.run]);
   const [statKeys, setStatKeys] = useState(() =>
     DEFAULT_STATS.filter((k) => offered.some((s) => s.key === k))
@@ -340,26 +342,19 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   const [styleKey, setStyleKey] = useState('classic');
   const styleOptions = useMemo(() => stylesForRun(cardProps.run), [cardProps.run]);
   const activeStyle = shareStyleByKey(styleKey);
-  // The one thing that actually blocks: a PRO style, on a free account, with
-  // the store live. Everything else exports exactly as it always did.
+  // A PRO style, on a free account, with the store live. Both looks are free
+  // as of 2026-09-10, so this cannot fire today; it is kept whole because it
+  // is the rule a returning PRO look has to land on, not a switch to rewrite.
   const styleLocked = activeStyle.pro && !isPro && canShowPro;
 
-  // CUSTOMISING THE CARD IS PRO. The accent colour, where the card puts its
-  // numbers, and which numbers those are: all three are padlocked.
+  // THE ACCENT IS THE ONLY PADLOCK LEFT ON THIS SHEET.
   //
-  // The line moved on 2026-08-24 (it was accent + placement only, with the
-  // metrics free) and it moved because of what the card became. Free gets the
-  // card the redesign is FOR — three big numbers, distance, pace and time, the
-  // route and the runner beside them, the clan's own colour — finished, and
-  // good enough that most runners will post it untouched. What PRO buys is
-  // making it yours: your colour, your side of the story, your numbers.
-  //
-  // What is NOT gated: whether the route is drawn and whether the runner is
-  // standing on it. Those decide what the card SHOWS rather than how it looks,
-  // and taking your own avatar off your own card should never cost anything.
-  //
-  // Off entirely for subscribers and in builds with no store, so a free-forever
-  // build shows no dead padlocks.
+  // It used to be three: accent, placement and the choice of stats. Placement
+  // and stats went with their rows on 2026-09-10 (see below), which leaves the
+  // colour — the one customisation that is visibly yours in someone else's
+  // feed, and the one worth keeping behind PRO now that every named look is
+  // free. Off entirely for subscribers and in builds with no store, so a
+  // free-forever build shows no dead padlocks.
   const customizeLocked = !isPro && canShowPro;
   const tapLockedCustomize = (feature) => {
     track(EVENTS.TEASER_TAP, { source: 'share', feature });
@@ -368,7 +363,17 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
 
   const applyStyle = (style) => {
     setStyleKey(style.key);
-    const preset = style.preset || {};
+    // Every look states the WHOLE card, not just its own edits: with the
+    // Placement and Stats rows gone there is no control left that could put
+    // back what a previous style changed, so Classic has to mean the card as
+    // it comes rather than "Clean, minus the bits Clean names".
+    const preset = {
+      align: 'left',
+      showRoute: true,
+      showCharacter: true,
+      statKeys: DEFAULT_STATS,
+      ...style.preset,
+    };
     if (preset.accent !== undefined) setAccent(preset.accent);
     if (preset.align !== undefined) setAlign(preset.align);
     if (preset.showRoute !== undefined) setShowRoute(preset.showRoute);
@@ -384,26 +389,20 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
     }
   };
 
-  // The clan's own colour leads the swatches; it is the one most runners want
-  // and the one the rest of the app already uses for them.
-  const swatches = useMemo(
-    () => (clanColor ? [{ key: 'clan', color: clanColor }, ...ACCENTS] : ACCENTS),
-    [clanColor]
-  );
-
-  const toggleStat = (key) =>
-    setStatKeys((keys) => {
-      if (keys.includes(key)) {
-        // Never all the way to nothing: an empty stat block is a card with a
-        // hole in it, and the runner has no way to see what they lost.
-        return keys.length > 1 ? keys.filter((k) => k !== key) : keys;
-      }
-      // Six is six rows now that the numbers stack one per line, and the card
-      // shrinks the type to fit them (VALUE_FOR_ROWS). Past that the figures
-      // are small enough that the poster look is gone and the route has
-      // nowhere left to be drawn.
-      return keys.length >= 6 ? keys : [...keys, key];
-    });
+  // ONE ROW OF SWATCHES, AND IT DOES NOT SCROLL.
+  //
+  // All nine used to sit in a horizontal ScrollView, which on a colour picker
+  // is the worst of both: the row looks complete, and the colours past the
+  // edge are found by accident or not at all. Capped at what fits instead.
+  // The clan's own colour leads — it is the one most runners want, and the one
+  // the rest of the app already uses for them — and a duplicate is dropped
+  // rather than shown twice when the clan colour is also one of the presets.
+  const swatches = useMemo(() => {
+    const choices = [...(clanColor ? [{ key: 'clan', color: clanColor }] : []), ...ACCENTS];
+    const distinct = choices.filter((item, index) => choices.findIndex((other) =>
+      other.color.toLowerCase() === item.color.toLowerCase()) === index);
+    return distinct.slice(0, SWATCHES_ON_THE_ROW);
+  }, [clanColor]);
 
   // Ask once per open — the runner may have installed Instagram since.
   useEffect(() => {
@@ -426,18 +425,16 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   }, [visible]);
 
   const spec = SHARE_FORMAT;
-  // The preview is the real card, just smaller: fit it to whichever axis runs
-  // out first. The controls scroll under it, so the preview is deliberately
-  // kept to about half the screen rather than filling it.
-  const chrome = 250 + insets.top + insets.bottom;
-  const previewW = Math.max(
-    128,
-    Math.min(
-      screenW - space.lg * 2,
-      (screenH - chrome) / spec.ratio,
-      screenH * 0.34 / spec.ratio
-    )
-  );
+  // THE PREVIEW TAKES WHATEVER THE CONTROLS LEAVE, measured rather than
+  // guessed. The old sizing computed the card from a hard-coded 250pt of
+  // "chrome" and then let the whole body scroll if that guess was wrong, which
+  // is how a sheet with four control rows ended up hiding its own share
+  // buttons below the fold. Now the rows and the destinations are laid out
+  // first, the preview flexes into the gap, and `onLayout` reports how big the
+  // gap turned out to be — so the sheet is one screen on every phone by
+  // construction, and the card is as large as that screen can afford.
+  const [previewSpace, setPreviewSpace] = useState({ width: screenW - space.lg * 2, height: screenH * 0.3 });
+  const previewW = Math.max(1, Math.min(previewSpace.width - 2, (previewSpace.height - 8) / spec.ratio));
 
   // `result` is 'tmpfile' for anything that takes a URI and 'base64' for the
   // clipboard, which wants the bytes rather than a path.
@@ -547,7 +544,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   if (!visible) return null;
 
   // Everything below the head bar (title + Close) waits for the sheet to
-  // finish arriving: the body is a ScrollView, every control row, the card
+  // finish arriving: the body contains the preview, every control row, the card
   // preview and the destinations row, and mounting it mid-transition made the
   // sheet stutter on the way in.
   const bodyOn = editorReady;
@@ -571,12 +568,9 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             second layout out of the same numbers and sent it to the same
             place. Whatever the runner picks below, the export is the story. */}
 
-        {bodyOn ? <ScrollView
-          style={styles.scroller}
-          contentContainerStyle={styles.previewWrap}
-          showsVerticalScrollIndicator={false}
-          alwaysBounceVertical={false}
-        >
+        {bodyOn ? <View style={styles.editor}>
+          <View style={styles.previewWrap} onLayout={({ nativeEvent: { layout } }) =>
+            setPreviewSpace({ width: layout.width, height: layout.height })}>
           {/* The exact pixels that get posted, on a checkerboard so the empty
               parts read as empty rather than as dark grey. */}
           <View style={styles.previewShadow}>
@@ -624,6 +618,8 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </View>
           </View>
 
+          </View>
+
           {/* --- customise ------------------------------------------------ */}
 
           <Row
@@ -631,7 +627,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             locked={customizeLocked}
             onLockedPress={() => tapLockedCustomize('accent')}
           >
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View>
               <View style={styles.chipRow}>
                 {swatches.map((s) => {
                   const on = accent === s.color;
@@ -647,16 +643,15 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                   );
                 })}
               </View>
-            </ScrollView>
+            </View>
           </Row>
 
-          {/* Named looks. First control in the list because it is the one that
-              moves everything else, and a runner who picks a style is usually
-              done. The PRO ones are selectable and previewable by anybody —
-              the padlock is about EXPORTING, and the note under the row says
-              so before the runner discovers it at the last step. A paywall
-              sprung at the moment of posting would be the worst possible
-              place for one. */}
+          {/* Named looks, and both of them are free. Two chips on one line:
+              the card as it comes, and a centred one with the runner taken
+              off. `styleLocked` below is kept for the day a PRO look comes
+              back — it gates EXPORTING rather than picking, so nobody meets a
+              paywall at the moment they press Share — but with no PRO style on
+              the row it never fires today. */}
           <Row label="Style">
             <View style={styles.chipWrap}>
               {styleOptions.map((option) => {
@@ -687,63 +682,6 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
             </TouchableOpacity>
           ) : null}
 
-          {/* PLACEMENT, not "Text" — it moves the whole card now, not the rag.
-              Left and right stand the numbers down that side of the story with
-              the route and the runner in the column opposite; centre stacks
-              them, route above numbers, the way the card used to be. Which
-              matters on a story: the runner picks the side their own face is
-              not on.
-
-              Text colour is not a control at all. It is WHITE and only white;
-              see the tone note in RunShareCard, where black type on a card
-              with no background of its own is the one combination that
-              vanishes. */}
-          <Row
-            label="Placement"
-            locked={customizeLocked}
-            onLockedPress={() => tapLockedCustomize('align')}
-          >
-            <View style={styles.chipWrap}>
-              {[
-                { key: 'left', label: 'Left' },
-                { key: 'center', label: 'Centre' },
-                { key: 'right', label: 'Right' },
-              ].map((o) => (
-                <Chip
-                  key={o.key}
-                  label={o.label}
-                  on={align === o.key}
-                  onPress={() => setAlign(o.key)}
-                />
-              ))}
-            </View>
-          </Row>
-
-          {/* What grows along the line the runner actually ran: side-on marks
-              rooted on the route, drawn in the accent and spaced by distance.
-              PARKED behind TRAIL_DECORATIONS_ENABLED — built, kept, not shipped
-              yet — and only offered while the route is on the card at all. */}
-          {TRAIL_DECORATIONS_ENABLED && showRoute ? (
-            <Row label="Trail">
-              <View style={styles.chipWrap}>
-                {TRAIL_DECORATIONS.map((d) => (
-                  <Chip
-                    key={d.key}
-                    label={d.label}
-                    on={trail === d.key}
-                    onPress={() => setTrail(d.key)}
-                  />
-                ))}
-              </View>
-            </Row>
-          ) : null}
-
-          {/* WHAT IS ON THE CARD, and it stays free. Route and runner used to
-              be split across two rows with the Route chip filed under Stats,
-              which put it behind the padlock the moment the metrics went PRO —
-              and "you cannot take your own avatar off your own card" is not a
-              thing worth selling. They are one row now because they are one
-              question, and neither of them is a look. */}
           <Row label="On the card">
             <View style={styles.chipWrap}>
               <Chip label="Route" on={showRoute} onPress={() => setShowRoute((v) => !v)} />
@@ -752,39 +690,10 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 on={showCharacter}
                 onPress={() => setShowCharacter((v) => !v)}
               />
-              {showCharacter && (
-                <Chip label="Flip" on={flip} onPress={() => setFlip((v) => !v)} />
-              )}
             </View>
           </Row>
 
-          {/* WHICH numbers, which is now a PRO choice. Free posts the three the
-              card is designed around — distance, pace, time — and that is a
-              finished card, not a crippled one. Climbing, best km, pace
-              consistency and the ground the run took are the ones you unlock. */}
-          <Row
-            label="Stats"
-            locked={customizeLocked}
-            onLockedPress={() => tapLockedCustomize('stats')}
-          >
-            <View style={styles.chipWrap}>
-              {offered.map((s) => (
-                <Chip
-                  key={s.key}
-                  label={s.label}
-                  on={statKeys.includes(s.key)}
-                  onPress={() => toggleStat(s.key)}
-                />
-              ))}
-            </View>
-          </Row>
-
-          {/* No "Home post" editor here any more. Posting to Home is its own
-              thing — a caption and photos on your runner card — and it lives on
-              the Home screen where the card does. Bolting it onto the share
-              flow made one screen do two jobs and blurred "share to Instagram"
-              with "edit my feed". */}
-        </ScrollView> : (
+        </View> : (
           <View style={styles.preparing}>
             {editorReady ? (
               <Text style={styles.preparingText}>Sheet body off (debug)</Text>
@@ -797,7 +706,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           </View>
         )}
 
-        {bodyOn ? <View style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}>
+        {bodyOn ? <View style={[styles.actions, { paddingBottom: insets.bottom + space.sm }]}>
           <Text style={styles.actionsLabel}>Share to</Text>
           <View style={styles.destinations}>
             <Destination
@@ -861,12 +770,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   title: { ...type.title, color: colors.text },
   close: { ...type.bodySmBold, color: colors.textMuted },
-  scroller: { flex: 1, minHeight: 0 },
+  editor: { flex: 1, minHeight: 0, paddingBottom: space.sm },
   preparing: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
   preparingText: { ...type.bodySm, color: colors.textMuted },
-  previewWrap: { alignItems: 'center', paddingVertical: space.xs, paddingBottom: space.xl },
+  previewWrap: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center' },
 
-  row: { marginTop: space.md, alignSelf: 'stretch' },
+  row: { marginTop: space.sm, alignSelf: 'stretch' },
   rowLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.sm },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm },
   rowLabelInHead: { marginBottom: 0 },
@@ -918,12 +827,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   actionsLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.md },
-  destinations: { flexDirection: 'row', alignItems: 'flex-start', gap: space.lg },
-  destination: { alignItems: 'center', width: 68 },
+  destinations: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.xs },
+  destination: { alignItems: 'center', flex: 1, minWidth: 0 },
   destinationDisc: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -56,22 +56,22 @@ export default function RankLadderScreen({ navigation }) {
 
   return (
     <Screen gutter={false} edges={[]}>
+      {/* ONE LINE, AND NOTHING ELSE. The header carried an eyebrow, a display
+          sized tier name and a sentence about the gap, which is a hundred and
+          forty points of flat pink standing on top of the ladder it is
+          labelling — and every word of it is already on the rungs below (the
+          plaque names the tier, the band prints the gap, the rail prints your
+          points). It is chrome over the thing that matters, so it is sized
+          like chrome: a title line at `type.title`, tight padding, done. */}
       <ToonHeader
         panel
         compact
-        eyebrow="Rank"
-        title={standing.name}
-        subtitle={
-          standing.isTop
-            ? 'Top of the ladder'
-            : `${Number(standing.toNext).toLocaleString()} rank points to climb`
-        }
+        title={`Rank: ${standing.name}`}
         solid={standing.color}
         top={insets.top}
-        titleStyle={type.display}
-        eyebrowStyle={type.labelSm}
+        titleStyle={type.title}
         onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined}
-        style={{ marginBottom: space.sm }}
+        style={styles.header}
       />
 
       {/* The ladder cannot be drawn honestly until the standing is in hand —
@@ -99,6 +99,9 @@ export default function RankLadderScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  // Tighter than `compact` on its own: with no subtitle under the title there
+  // is nothing for the standard bottom pad to separate the title from.
+  header: { paddingBottom: space.sm, marginBottom: space.sm },
   content: { paddingLeft: space.sm },
   footer: { paddingHorizontal: space.gutter, paddingVertical: space.md },
 });

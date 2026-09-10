@@ -233,6 +233,11 @@ def end_run(
     if run is None or run.user_id != user.id:
         raise HTTPException(404, "run not found")
 
+    # Match claim_run's lock order. Refresh after waiting so a concurrent
+    # finalizer's committed rewards are replayed rather than paid again.
+    db.execute(text("SELECT id FROM runs WHERE id = :r FOR UPDATE"), {"r": run.id})
+    db.refresh(run)
+
     # A finished run REPLAYS rather than 409s. A client that lost its response
     # — flaky network, backgrounded app, an impatient second tap — otherwise
     # had no way to recover the result of a run it can never repeat. Rewards
@@ -262,6 +267,7 @@ def end_run(
     # Persist the full cleaned path (in WGS84) for visualisation/debugging.
     line_wgs = LineString(cleaned.wgs_coords)
     run.path = from_shape(line_wgs, srid=4326)
+    run.together_trace = club_runs.record_trace(payload.points)
     run.ended_at = datetime.utcnow()
     run.distance_m = cleaned.distance_m
     run.duration_s = (run.ended_at - run.started_at).total_seconds()
@@ -269,7 +275,10 @@ def end_run(
     # Anti-cheat on the RAW submitted points (clean_path scrubs exactly the
     # samples that betray a spoof). Shadow-flag: the response below looks
     # identical either way; flag_reasons never leaves the server.
-    reasons = validate_run(payload.points, cleaned.distance_m, payload.step_count)
+    reasons = validate_run(
+        payload.points, cleaned.distance_m, payload.step_count,
+        started_at=run.started_at, ended_at=run.ended_at,
+    )
     run.flag_reasons = reasons or None
     run.verified = is_verified(reasons)
 
@@ -998,7 +1007,10 @@ def _cached_stamp(run, route, area: float):
     return stamp
 
 
-def _cached_cells(db: Session, user, run, route, area: float, strength: float, stamp=None):
+def _cached_cells(
+    db: Session, user, run, route, area: float, strength: float, stamp=None,
+    rank_tier: int | None = None,
+):
     """(cells, breakdowns) for this run, rebuilt only when the map has moved.
 
     Cells are plain dicts holding the ROUNDED ring, not shapely polygons: the
@@ -1007,7 +1019,8 @@ def _cached_cells(db: Session, user, run, route, area: float, strength: float, s
     """
     limit = settings.claim_options_cache_size
     key = str(run.id)
-    rank_tier = elo.solo_status(db, user.id)["tier"]
+    if rank_tier is None:
+        rank_tier = elo.solo_status(db, user.id)["tier"]
     # A tier change moves every eligible opponent at once even if no territory
     # row changed. Keep it in the cache fingerprint so an options screen opened
     # across a promotion cannot replay the previous division's fights.
@@ -1055,7 +1068,10 @@ def _claim_energy_cost(user, action: str, first_of_day: bool) -> int:
     return economy.claim_cost(action, first_of_day)
 
 
-def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlacement]):
+def _price_placements(
+    db: Session, user, run, placements: List[schemas.ClaimPlacement],
+    rank_tier: int | None = None,
+):
     """Fill in the action, the price and the expected reward for each entry.
 
     Shared by /claim-options and /claim-preview so a dragged pose is described
@@ -1076,7 +1092,8 @@ def _price_placements(db: Session, user, run, placements: List[schemas.ClaimPlac
     # Same tier the claim itself will fight on (see the note on `rank_tier` in
     # /claim-territory) — the preview must quote the tier-scaled steal reward,
     # or a runner near Mythic sees a bigger number than the claim will pay.
-    rank_tier = elo.solo_status(db, user.id)["tier"]
+    if rank_tier is None:
+        rank_tier = elo.solo_status(db, user.id)["tier"]
     run_xp = round((run.distance_m / 1000.0) * settings.xp_per_km)
 
     for p in placements:
@@ -1150,6 +1167,14 @@ def claim_options(
     if run.claimed_at is not None:
         raise HTTPException(409, economy.REASON_ALREADY_CLAIMED)
 
+    # The band this claim fights in. Read ONCE here and threaded through, so
+    # the breakdown, the reward quote and the tier the client scopes its map to
+    # are all the same number — a second read could land either side of a
+    # promotion and describe a fight against a division the claim will not
+    # meet. Stated in the response too, because the placement map has to be
+    # drawn from the same board or it shows land the claim cannot touch.
+    rank_tier = elo.solo_status(db, user.id)["tier"]
+
     # The area /end-run froze — the run's slice of the day's entitlement, not a
     # fresh curve. An empty one means this activity never qualified, and the
     # response says so rather than returning an empty list the client has to
@@ -1159,6 +1184,7 @@ def claim_options(
         return schemas.ClaimOptionsOut(
             run_id=str(run.id),
             claim_area_m2=0.0,
+            rank_tier=rank_tier,
             tier=run.tier or economy.UNQUALIFIED,
             qualification_reason=run.gate_reason or economy.REASON_MIN_CLAIM_DISTANCE,
             claim_eligible=False,
@@ -1169,10 +1195,14 @@ def claim_options(
     strength = claim_strength(run.distance_m, run.duration_s)
     stamp = _cached_stamp(run, route, area)
     # Geometry only — the pricing below is re-read every time. See _cached_cells.
-    cells, breakdowns = _cached_cells(db, user, run, route, area, strength, stamp)
+    cells, breakdowns = _cached_cells(
+        db, user, run, route, area, strength, stamp, rank_tier=rank_tier
+    )
     if not cells:
         # No usable route: the circle fallback is the only placement there is.
-        return schemas.ClaimOptionsOut(run_id=str(run.id), claim_area_m2=area)
+        return schemas.ClaimOptionsOut(
+            run_id=str(run.id), claim_area_m2=area, rank_tier=rank_tier
+        )
 
     out = []
     for i, (cell, b) in enumerate(zip(cells, breakdowns)):
@@ -1213,7 +1243,9 @@ def claim_options(
     # of how a placement reads — "storming that border costs 24, expanding
     # east costs 16" is a decision; one flat 25 was a toll. Everything here is
     # computed server-side so the client displays rather than derives.
-    est, first_of_day, neutral_left = _price_placements(db, user, run, out)
+    est, first_of_day, neutral_left = _price_placements(
+        db, user, run, out, rank_tier=rank_tier
+    )
 
     n_place = cells[-1]["placement"] + 1
     n_rot = cells[-1]["rotation"] + 1
@@ -1308,6 +1340,7 @@ def claim_options(
         # "is this stop open" comparison passes for every stop instead of
         # silently greying out most of the rail.
         min_route_attachment=0.0,
+        rank_tier=rank_tier,
         tier=run.tier or economy.CLAIMABLE,
         qualification_reason=run.gate_reason,
         claim_eligible=True,

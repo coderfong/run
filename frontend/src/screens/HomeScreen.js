@@ -29,6 +29,7 @@ import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import SideRail from '../components/SideRail';
+import HomeBackdrop from '../components/home/HomeBackdrop';
 import ProHomeCard from '../components/ProHomeCard';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
@@ -316,7 +317,6 @@ function sameRow(a, b) {
 }
 
 function FeedList({ navigation, header }) {
-  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const accent = useAccent();
   const reduce = useReduceMotion();
@@ -442,7 +442,10 @@ function FeedList({ navigation, header }) {
       // the flag with a standing history of blank cells on iOS, and a feed
       // that sometimes shows empty cards is worse than one that holds a few
       // extra views.
-      style={{ backgroundColor: colors.bg }}
+      // TRANSPARENT, not `colors.bg`: the page is a painting now
+      // (components/home/HomeBackdrop.js) and a list painted in the page
+      // colour would cover all of it but the strip under the last card.
+      style={styles.list}
       contentContainerStyle={{ paddingBottom: space.xxl, flexGrow: 1 }}
       data={rows}
       keyExtractor={(it) => it.id}
@@ -614,9 +617,20 @@ export default function HomeScreen({ navigation }) {
     </View>
   );
 
+  // The street is drawn behind EVERYTHING, feed skeletons included — a page
+  // that only grows its ground once the feed lands shows a flat rectangle on
+  // every visit, which is the one thing the painting is there to stop. It is
+  // absolutely positioned and takes no taps, so it costs the feed no layout.
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top }}>
-      <FeedList navigation={navigation} header={feedHeader} />
+    <View style={styles.page}>
+      <HomeBackdrop />
+      {/* The safe-area inset is the FEED's, not the page's. Yoga lays an
+          absolutely positioned child out inside its parent's padding, so a
+          `paddingTop` up here would push the painting's sky down by the notch
+          and leave a bare strip of pager colour above it. */}
+      <View style={{ flex: 1, paddingTop: insets.top }}>
+        <FeedList navigation={navigation} header={feedHeader} />
+      </View>
       {IAP_ENABLED ? (
         <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
       ) : null}
@@ -625,6 +639,11 @@ export default function HomeScreen({ navigation }) {
 }
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
+  // No background of its own: the page IS the painting under it.
+  page: { flex: 1 },
+  // The feed shows the painting through itself. Both the list and its rows are
+  // unpainted; every card on it carries its own fill.
+  list: { backgroundColor: 'transparent' },
   feedHeader: { paddingHorizontal: space.gutter, paddingTop: space.sm },
   feedRow: { paddingHorizontal: space.gutter },
   shortcutRow: { marginTop: space.lg, marginBottom: space.md },

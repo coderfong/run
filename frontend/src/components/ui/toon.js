@@ -187,6 +187,18 @@ export function ToonHeader({
   // chrome over something that matters — Crossroads draws a whole plaza behind
   // it — rather than the page's hero.
   compact = false,
+  // Panel-only: the page paints its OWN ground behind the header — a scene,
+  // not a brand fill — so the panel draws neither. No colour, and no bottom
+  // rule either: that stroke is the line where the panel stops and the page
+  // starts, and on a page that is one continuous painting there is no such
+  // line to draw. Rivals stands its header in the treetops this way.
+  //
+  // The copy still has to be legible on whatever is behind it, and the scenes
+  // that take this treatment are bright by day and washed near-black at night
+  // (components/rivals/RivalsBackdrop.js), so the ink follows the SCHEME here
+  // instead of staying the fixed panel black. Everything else — the white back
+  // tile, the sizes, the layout — is the panel exactly as it is anywhere else.
+  onArt = false,
   top = 0,
   onBack,
   children,
@@ -219,6 +231,11 @@ export function ToonHeader({
 
   if (panel) {
     const panelFill = solid || brand.pink;
+    // On a painted page the copy has to read against the scene rather than
+    // against a fill we chose, and the scene is daylight in light mode and a
+    // near-black dusk wash in dark. Applied LAST, over styles.panelTitle and
+    // friends, which is where the fixed panel ink lives.
+    const artInk = onArt && scheme === 'dark' ? { color: '#fff' } : null;
     return (
       <View
         style={[
@@ -228,7 +245,7 @@ export function ToonHeader({
           // that a strip of breathing room protects — the inset already
           // clears the notch, and anything past that is just a band of flat
           // colour above the art.
-          { paddingTop: top, backgroundColor: panelFill },
+          { paddingTop: top, backgroundColor: onArt ? 'transparent' : panelFill },
           // The BOTTOM EDGE ONLY, and that is the whole neo-brutalist device
           // available to a page header. A panel bleeds off the left, right and
           // top of the screen, so a full box would run a line down both bezels
@@ -241,7 +258,13 @@ export function ToonHeader({
           // Judged against the panel's own fill, because the panel is a
           // saturated brand colour in BOTH schemes — picking off the scheme
           // would put a cream stroke under a yellow header on dark.
-          { borderBottomWidth: NB.stroke, borderBottomColor: nbInk(scheme, panelFill) },
+          //
+          // `onArt` has no such edge: the header is standing IN the picture,
+          // and a rule across it would cut the treeline in half.
+          !onArt && {
+            borderBottomWidth: NB.stroke,
+            borderBottomColor: nbInk(scheme, panelFill),
+          },
           compact && styles.panelCompact,
           style,
         ]}
@@ -281,7 +304,7 @@ export function ToonHeader({
               <OutlinedText
                 width={0}
                 align="left"
-                style={[toonType.label, eyebrowStyle, styles.panelEyebrow]}
+                style={[toonType.label, eyebrowStyle, styles.panelEyebrow, artInk]}
               >
                 {eyebrow}
               </OutlinedText>
@@ -289,7 +312,7 @@ export function ToonHeader({
             <OutlinedText
               width={0}
               align="left"
-              style={[toonType.hero, titleStyle, styles.panelTitle]}
+              style={[toonType.hero, titleStyle, styles.panelTitle, artInk]}
             >
               {title}
             </OutlinedText>
@@ -306,6 +329,7 @@ export function ToonHeader({
                   subtitleLines
                     ? { minHeight: subtitleLines * toonType.body.lineHeight }
                     : null,
+                  artInk,
                 ]}
               >
                 {subtitle}

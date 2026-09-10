@@ -156,10 +156,8 @@ class Settings(BaseSettings):
     cheat_clean_accuracy_var: float = 0.01  # near-zero accuracy variance = spoof-ish
 
     # ---- development harness ---------------------------------------------
-    # Comma-separated user ids or usernames allowed to use the in-app run
-    # simulator and its unlimited testing energy (see app/devtools.py). This is
-    # empty by default; the owner's exact account is pinned in devtools.py and
-    # all additional testers must be explicitly named here.
+    # Comma-separated immutable user IDs allowed simulator access.
+    # Empty disables all developer privileges; usernames/emails never grant them.
     dev_run_accounts: str = ""
 
     # ---- rate limiting ---------------------------------------------------

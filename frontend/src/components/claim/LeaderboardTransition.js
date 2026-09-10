@@ -10,6 +10,26 @@
 // only ever animated when leaderboardData found a genuine previous rank; with
 // nothing trustworthy to show, the row simply states where the runner is now.
 //
+// THE TRAVEL. The board arrives at the podium and then scrolls, under its own
+// power, all the way down to the runner's own slot — past every standing
+// between the two — and their row drops into the gap when it stops. That beat
+// replaced a staggered fade-in of five rows, and the reason is the number it
+// is trying to make felt: 380th of 387 is a DISTANCE, and a list that simply
+// appears states it where a list that travels shows it.
+//
+// Three things it has to keep:
+//
+//   * There is always somewhere to travel TO. A runner below the fetched top
+//     fifty used to be nowhere on their own standings screen; leaderboardData
+//     now builds their row from `/leaderboard/standing` and stitches it on
+//     under a gap marker, so the board always ends at them.
+//   * The landing happens INSIDE the viewport. The row is held out until the
+//     scroll has actually stopped, because a row that pops in while the board
+//     is still moving lands off screen and is never seen.
+//   * The board is measured, not guessed. Row heights move with text size and
+//     club tags, so the target comes from the slot's own layout — see
+//     TravelBoard.
+//
 // THE DRESSING. This is a payoff screen, and it used to be typeset like a
 // settings page: a heading, five rows, and half a phone of empty cream. The
 // decoration added since is all from the kit rather than invented here — the
@@ -23,10 +43,9 @@
 //     ui/Framed): the banner and the labels are drawn straight onto the page,
 //     and the only filled boxes here are the rows, which are not framed.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -35,7 +54,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
+  cancelAnimation,
+  runOnJS,
+  scrollTo,
+  useAnimatedRef,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withDelay,
   withSequence,
@@ -189,7 +213,6 @@ function useRankCounter(from, to, enabled) {
 // the point of the screen.
 function PlayerSummary({ data, reducedMotion }) {
   const { colors, scheme } = useTheme();
-  const type = useThemedType();
   const hasMovement = data?.rankDelta != null && data.rankDelta !== 0;
   const rank = useRankCounter(data?.previousRank, data?.newRank, hasMovement && !reducedMotion);
 
@@ -256,14 +279,6 @@ function PlayerSummary({ data, reducedMotion }) {
                 : 'WORLDWIDE')}
         </Text>
       </Framed>
-
-      {data.playerArea != null ? (
-        <Text style={[type.caption, styles.scoreLine, { color: colors.textMuted }]}>
-          {`${(data.playerArea / 1e6).toFixed(3)} km² held${
-            data.playerTerritories != null ? ` · ${data.playerTerritories} territories` : ''
-          }`}
-        </Text>
-      ) : null}
     </View>
   );
 }
@@ -358,7 +373,7 @@ export default function LeaderboardTransition({
     transform: [{ translateY: (1 - content.value) * 18 }],
   }));
 
-  const rows = useMemo(() => data?.boardRows || [], [data]);
+  const rows = useMemo(() => data?.travelRows || data?.boardRows || [], [data]);
   const playerId = data?.playerRow?.user_id;
   const rays = art('burstRays');
   // Memoized because it is a STYLE OBJECT handed to a child: a fresh identity
@@ -423,49 +438,25 @@ export default function LeaderboardTransition({
                 STANDINGS
               </OutlinedText>
             </Framed>
-            <Text style={[type.caption, styles.subtitle, { color: colors.textMuted }]}>
-              worldwide · by land held
-            </Text>
           </View>
 
           <PlayerSummary data={data} reducedMotion={reducedMotion} />
 
-          <ScrollView
-            style={styles.board}
-            contentContainerStyle={styles.boardContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {rows.map((row, index) => {
-              const delay =
-                row.user_id === playerId
-                  ? rows.length * T.rowStagger + 120
-                  : index * T.rowStagger;
-              return (
-                <StaggeredRow
-                  key={row.user_id === GAP_ID ? `${GAP_ID}-${index}` : row.user_id}
-                  index={index}
-                  isMe={row.user_id === playerId}
-                  // 7. the player's row lands after the others, with its own pop
-                  delay={delay}
-                  reducedMotion={reducedMotion}
-                  playToken={playToken}
-                >
-                  {row.user_id === GAP_ID ? (
-                    <GapRow count={row.gap} />
-                  ) : (
-                    <LeaderboardRow item={row} isMe={row.user_id === playerId} board="land" />
-                  )}
-                </StaggeredRow>
-              );
-            })}
-
-            {!data && (
-              // A standings fetch that failed must never trap the runner here.
-              <Text style={[type.caption, styles.fallback, { color: colors.textMuted }]}>
-                Standings are unavailable right now. Your territory is safely claimed.
-              </Text>
-            )}
-          </ScrollView>
+          {visible && (
+            <TravelBoard
+              key={playToken}
+              rows={rows}
+              playerId={playerId}
+              reducedMotion={reducedMotion}
+              startDelay={T.leaderboardWipe + T.travelLead}
+            >
+              {!data && (
+                <Text style={[type.caption, styles.fallback, { color: colors.textMuted }]}>
+                  Standings are unavailable right now. Your territory is safely claimed.
+                </Text>
+              )}
+            </TravelBoard>
+          )}
 
           <View style={styles.actions}>
             {/* The same runner who dashed the board in, stood next to the way
@@ -487,43 +478,99 @@ export default function LeaderboardTransition({
   );
 }
 
-// One entry landing on the board. Takes children rather than a row so the gap
-// divider is staggered by the same clock as the rows around it.
-function StaggeredRow({ children, isMe, delay, reducedMotion, playToken }) {
-  const progress = useSharedValue(0);
+// Measure before travelling so large text and short screens still land on
+// the player's actual slot. Remount for each replay to start at the podium.
+function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
+  const boardRef = useAnimatedRef();
+  const offset = useSharedValue(0);
+  const driving = useSharedValue(false);
+  const landed = useSharedValue(reducedMotion ? 1 : 0);
+  const [viewport, setViewport] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [slot, setSlot] = useState(null);
+  const [finished, setFinished] = useState(false);
+  const started = useRef(false);
+  const hasPlayer = playerId != null && rows.some(row => row.user_id === playerId);
+  const finish = useCallback(() => setFinished(true), []);
+
+  useDerivedValue(() => {
+    if (driving.value) scrollTo(boardRef, 0, offset.value, false);
+  });
 
   useEffect(() => {
-    progress.value = 0;
-    progress.value = withDelay(
-      delay,
-      reducedMotion
-        ? withTiming(1, { duration: 140 })
-        : withSpring(1, { damping: 15, stiffness: 220, mass: 0.55 })
-    );
-  }, [delay, playToken, reducedMotion]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (started.current || !viewport || !contentHeight || (hasPlayer && !slot)) return;
+    started.current = true;
+    const target = slot
+      ? Math.max(0, Math.min(slot.y - (viewport - slot.height) / 2, contentHeight - viewport))
+      : 0;
+    driving.value = true;
+    if (reducedMotion || !hasPlayer) {
+      offset.value = target;
+      landed.value = 1;
+      setFinished(true);
+      return;
+    }
+    // Reserve the player's real slot while travelling. Insert only after the
+    // scroll has stopped, so the landing never happens outside the viewport.
+    offset.value = withDelay(startDelay, withTiming(target, {
+      duration: target > 0 ? Math.min(2400, 900 + target * 0.65) : 350,
+      easing: Easing.inOut(Easing.cubic),
+    }, complete => {
+      if (!complete) return;
+      driving.value = false;
+      landed.value = withSpring(1, { damping: 16, stiffness: 150, mass: 0.8 }, done => {
+        if (done) runOnJS(finish)();
+      });
+    }));
+  }, [viewport, contentHeight, slot, hasPlayer, reducedMotion, startDelay, finish]);
 
-  const style = useAnimatedStyle(() => ({
-    opacity: progress.value,
+  useEffect(() => () => {
+    cancelAnimation(offset);
+    cancelAnimation(landed);
+    driving.value = false;
+  }, [offset, landed, driving]);
+
+  const playerStyle = useAnimatedStyle(() => ({
+    opacity: landed.value,
     transform: [
-      { translateY: (1 - progress.value) * 16 },
-      // The player's row gets the extra emphasis, not the whole list.
-      { scale: isMe ? 0.96 + progress.value * 0.04 : 1 },
+      { translateX: reducedMotion ? 0 : (1 - landed.value) * 110 },
+      { scale: reducedMotion ? 1 : 0.92 + landed.value * 0.08 },
     ],
   }));
 
-  // The one hard drop on the board, on the one row that is the runner's own.
-  // A drop under every row would print each one on the shadow of the row above
-  // it, which is the reason LeaderboardRow itself takes a stroke and no drop.
   return (
-    <Animated.View style={style}>
-      {isMe ? (
-        <HardShadow accent={brand.teal} radius={12} style={styles.meShadow}>
-          {children}
-        </HardShadow>
-      ) : (
-        children
-      )}
-    </Animated.View>
+    <Animated.ScrollView
+      ref={boardRef}
+      style={styles.board}
+      contentContainerStyle={styles.boardContent}
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={finished || !hasPlayer}
+      onTouchStart={() => { if (finished) driving.value = false; }}
+      onLayout={event => setViewport(event.nativeEvent.layout.height)}
+      onContentSizeChange={(_, height) => setContentHeight(height)}
+      testID="standings-travel-board"
+    >
+      {rows.map((row, index) => {
+        const isMe = row.user_id === playerId;
+        return (
+          <View
+            key={row.user_id === GAP_ID ? `${GAP_ID}-${index}` : row.user_id}
+            onLayout={isMe ? event => setSlot(event.nativeEvent.layout) : undefined}
+          >
+            {isMe ? (
+              <Animated.View style={playerStyle} testID="standings-player-slot">
+                <HardShadow accent={brand.teal} radius={12} style={styles.meShadow}>
+                  <LeaderboardRow item={row} isMe board="land" celebrateDelta={finished} />
+                </HardShadow>
+              </Animated.View>
+            ) : row.user_id === GAP_ID ? <GapRow count={row.gap} /> : (
+              <LeaderboardRow item={row} board="land" />
+            )}
+          </View>
+        );
+      })}
+      {children}
+    </Animated.ScrollView>
   );
 }
 
@@ -545,7 +592,6 @@ const styles = StyleSheet.create({
   },
   banner: { alignSelf: 'center' },
   title: { color: '#fff', textAlign: 'center' },
-  subtitle: { textAlign: 'center', marginTop: space.xs },
 
   summary: { alignItems: 'center', marginTop: space.sm },
   medallion: { alignItems: 'center', justifyContent: 'center' },
@@ -556,7 +602,6 @@ const styles = StyleSheet.create({
   },
   summaryRank: { color: '#fff', fontSize: 42, lineHeight: 50 },
   chip: { marginTop: -6 },
-  scoreLine: { textAlign: 'center', marginTop: space.xs },
 
   board: { flex: 1, marginTop: space.lg },
   boardContent: { paddingBottom: space.md },

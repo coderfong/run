@@ -25,17 +25,14 @@ import PrivacySettings from '../components/PrivacySettings';
 import HealthSyncSettings from '../components/HealthSyncSettings';
 import RecoveryEmail from '../components/RecoveryEmail';
 import RivalCard from '../components/RivalCard';
-import { Arrival, Bar, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
+import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
 import { brand, nbField, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { levelBandColor } from '../config/progression';
-import { IAP_ENABLED } from '../config/releaseFeatures';
 import { COPY as PASERBY_COPY } from '../config/paserby';
 import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
-import EnergyMeter from '../components/EnergyMeter';
 import RankRail from '../components/rank/RankRail';
 import { standingFrom } from '../config/rankLadder';
-import BuyEnergySheet from '../components/BuyEnergySheet';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
 import DevCrossroadsSeed from '../components/DevCrossroadsSeed';
@@ -172,7 +169,6 @@ export default function ProfileScreen({ navigation }) {
     select: (d) => d.days || [],
   });
   const { data: prefs, setData: setPrefs } = useQuery('me:notif-prefs', api.getNotifPrefs);
-  const { data: energy, refresh: reloadEnergy } = useQuery('me:energy', api.energyStatus);
   const { data: paserInfo } = useQuery('pasers', api.pasers);
   // Shares the 'me:paserby' key with Home's Crossroads badge, so the switch is
   // drawn from cache on the first render and both stay in step.
@@ -195,7 +191,6 @@ export default function ProfileScreen({ navigation }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteDraft, setDeleteDraft] = useState('');
   const [deleting, setDeleting] = useState(false);
-  const [shopOpen, setShopOpen] = useState(false);
   const { isPro, canShowPro, isLoading: proLoading, openPaywall } = useProEntitlement();
 
   useEffect(() => {
@@ -318,39 +313,28 @@ export default function ProfileScreen({ navigation }) {
           <OutlinedText style={[type.title, { color: '#fff' }]} outline={toon.ink} width={2.5}>
             {user?.username}
           </OutlinedText>
+          {/* The level badge IS the way to levels and rewards now. The XP bar
+              that used to carry that tap sat between the name and the rank
+              rail, which meant the header stacked two progress tracks on top
+              of each other before you reached anything you could do — so the
+              header keeps the ladder that is the game (rank) and the level
+              keeps its route out, on the badge that states it. */}
           {stats && (
-            <View style={[styles.levelBadge, { backgroundColor: levelBandColor(stats.level ?? 0) }]}>
+            <PressableScale
+              style={[styles.levelBadge, { backgroundColor: levelBandColor(stats.level ?? 0) }]}
+              onPress={() => navigation.navigate('Progression')}
+              accessibilityRole="button"
+              accessibilityLabel={`Level ${stats.level ?? 0}. View levels and rewards`}
+            >
               <OutlinedText style={[type.statSm, { color: '#fff' }]} outline={toon.ink} width={1.5}>
                 {String(stats.level ?? 0)}
               </OutlinedText>
-            </View>
+            </PressableScale>
           )}
         </Row>
-        {/* level + XP bar — taps through to the reward ladder. Sits directly
-            under the name so progress reads before the actions. */}
-        {stats && (
-          <PressableScale
-            style={styles.xpWrap}
-            onPress={() => navigation.navigate('Progression')}
-            accessibilityRole="button"
-            accessibilityLabel="View levels and rewards"
-          >
-            <View style={{ flex: 1 }}>
-              <Bar
-                pct={(stats.xp || 0) / Math.max(1, stats.next_level_xp || 100)}
-                trackStyle={styles.xpTrack}
-                fillStyle={[styles.xpFill, { backgroundColor: accent }]}
-              />
-              <Text style={[type.caption, { marginTop: 4 }]}>
-                {(stats.xp || 0).toLocaleString()} / {(stats.next_level_xp || 100).toLocaleString()} XP · Levels & rewards →
-              </Text>
-            </View>
-          </PressableScale>
-        )}
 
         {/* RANK, directly under the runner it belongs to and above the
-            actions. Two ladders, stacked in the order they matter: the XP bar
-            above is the treadmill (distance, one way), this is the fight.
+            actions. It is the ladder the game is actually played on.
             Push it sideways to see what is ahead; tap it for the full ladder. */}
         {stats && (
           <RankRail
@@ -389,15 +373,11 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </Row>
 
-        {/* claim energy — tap to refill */}
-        {energy && (
-          <EnergyMeter
-            status={energy}
-            onPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
-            style={{ alignSelf: 'stretch', marginTop: space.lg }}
-          />
-        )}
-
+        {/* No energy meter here. Energy is a thing you spend at the moment you
+            claim, so it is read where that happens — Home, the result screen
+            and the shop all carry the meter and its refill. On You it was one
+            more bar in a header that is meant to be who you are, not what you
+            have left. */}
       </Reveal>
 
 
@@ -412,6 +392,12 @@ export default function ProfileScreen({ navigation }) {
             {/* One counting number per screen (see theme/motion). Area held is
                 the headline — it is the thing the whole game is about — so it
                 counts and the other five arrive settled. */}
+            {/* The stickers say what each number IS at a glance, and only four
+                of the six carry one — Distance and Biggest claim are read
+                against the two tiles beside them, and a drawing on all six
+                would be a row of pictures rather than a wall of numbers.
+                Area held wears the crown ABOVE the box: its number is the
+                widest on the wall, so there is no room inside for one. */}
             <StatTile
               label="Area held"
               value={km2(stats.total_area_m2 || 0)}
@@ -419,12 +405,13 @@ export default function ProfileScreen({ navigation }) {
               format={km2Worklet}
               unit="km²"
               accent={accent}
+              badge="crown"
             />
             <StatTile label="Distance" value={km(stats.career_distance_m || 0)} unit="km" />
-            <StatTile label="Runs" value={String(stats.runs_count || 0)} />
+            <StatTile label="Runs" value={String(stats.runs_count || 0)} icon="route" />
             <StatTile label="Biggest claim" value={km2(stats.biggest_claim_m2 || 0)} unit="km²" accent={accent} />
-            <StatTile label="Streak" value={String(stats.current_streak_weeks || 0)} unit="wk" />
-            <StatTile label="Zones" value={String(stats.territory_count || 0)} />
+            <StatTile label="Streak" value={String(stats.current_streak_weeks || 0)} unit="wk" icon="streak" />
+            <StatTile label="Zones" value={String(stats.territory_count || 0)} icon="map-pin" />
           </Arrival>
         )}
       </Reveal>
@@ -870,11 +857,6 @@ export default function ProfileScreen({ navigation }) {
 
       <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
-      {IAP_ENABLED ? (
-        <>
-          <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
-        </>
-      ) : null}
     </Screen>
   );
 }
@@ -901,9 +883,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   wallInner: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: { width: '31.5%', marginBottom: space.md },
 
-  xpWrap: { flexDirection: 'row', alignItems: 'center', gap: space.md, alignSelf: 'stretch', marginTop: space.lg },
-  // Customize runner / Add pasers sit close under the XP bar: they are what you
-  // do with the runner above them, so the pair reads as part of that block
+  // Customize runner / Add pasers sit close under the rank rail: they are what
+  // you do with the runner above them, so the pair reads as part of that block
   // rather than as its own section. `sm` is measured from the BADGE, which
   // hangs BADGE_OVERHANG above the button it rides on — the gap you see is the
   // one below the overhang, not below the layout box.
@@ -937,8 +918,6 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden' },
-  xpFill: { height: '100%', borderRadius: 4 },
 
   // The PRO poster — Home's hero card geometry, deliberately: a fixed 190pt
   // box with the copy column on the left and the cut-out bleeding off the
