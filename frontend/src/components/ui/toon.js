@@ -192,6 +192,11 @@ export function ToonHeader({
   // chrome over something that matters — Crossroads draws a whole plaza behind
   // it — rather than the page's hero.
   compact = false,
+  // Panel-only: the cut-out stays at the RIGHT EDGE instead of following the
+  // title. For a header whose title changes while the page stays put (the
+  // Missions day, "Today" or a weekday), where art that sits right after the
+  // last word slides sideways every time the word does.
+  pinArt = false,
   // Panel-only: the page paints its OWN ground behind the header — a scene,
   // not a brand fill — so the panel draws neither. No colour, and no bottom
   // rule either: that stroke is the line where the panel stops and the page
@@ -299,7 +304,7 @@ export function ToonHeader({
               style={styles.panelBackInline}
             />
           ) : null}
-          <View style={styles.panelText}>
+          <View style={[styles.panelText, pinArt && styles.panelTextPinned]}>
             {/* The ink styles go LAST, after the caller's overrides. Every
                 `type.*` token carries `color: colors.text`, so a titleStyle of
                 `type.display` would otherwise repaint the copy in the themed
@@ -731,6 +736,9 @@ const styles = StyleSheet.create({
   // allowed to shrink, the column is as wide as the copy needs and no wider, so
   // the art comes to meet the words instead of hugging the screen edge.
   panelText: { flexShrink: 1 },
+  // `pinArt`: the column takes the whole row after all, which is exactly what
+  // parks the cut-out on the right edge whatever the title says.
+  panelTextPinned: { flex: 1 },
   panelEyebrow: { color: PANEL_INK, opacity: 0.75, textTransform: 'uppercase' },
   panelTitle: { color: PANEL_INK, marginTop: 2 },
   panelSub: { color: PANEL_INK, opacity: 0.72, marginTop: 6, textAlign: 'left' },
@@ -765,10 +773,12 @@ const styles = StyleSheet.create({
   // In the row, not above it — the line it used to occupy is most of what
   // `compact` gives back. It carries its own right margin because the row's
   // `gap` is zeroed to pull the ART in, and a shared gap would have closed this
-  // side too, jamming the eyebrow against the chevron.
+  // side too, jamming the eyebrow against the chevron. A full `md`, not `sm`:
+  // the tile's hard drop hangs off its right side and ate most of a small gap,
+  // so the words read as touching the button.
   panelBackInline: {
     marginBottom: 0,
-    marginRight: space.sm,
+    marginRight: space.md,
   },
   panelCompact: { paddingBottom: space.md },
 

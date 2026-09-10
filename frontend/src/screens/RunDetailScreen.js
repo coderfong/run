@@ -1,26 +1,21 @@
-// Run detail — route on the game board, splits, claim outcome, kudos,
-// comments. Reached from the feed and the You tab's recent runs.
+// Run detail: a fixed route summary, with paged splits and a separate details sheet.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MoreHorizontal, Send } from 'lucide-react-native';
 import { useIsFocused } from '@react-navigation/native';
 
 import { api } from '../api/client';
-import { updateCached } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { NEUTRAL } from '../state/clan';
-import { NB, nbField, nbInk, nbRadius, radius, space, toonSurface, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Card, Row, Input, StatValue, Skeleton, HardShadow } from '../components/ui';
-import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
+import { NB, nbField, nbInk, nbRadius, radius, space, toonSurface, useTheme, useThemedStyles, useThemedType } from '../theme';
+import { Screen, Card, Row, Input, Skeleton, BackButton } from '../components/ui';
+import { PressableScale, haptic } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
-import GameLottie from '../components/GameLottie';
-import ReactionBar, { ReactionTrigger } from '../components/ReactionBar';
-import { useRunReactions } from '../hooks/useRunReactions';
-import AppIcon from '../components/AppIcon';
+import HomeBackdrop from '../components/home/HomeBackdrop';
 import TerritoryInsights from '../components/TerritoryInsights';
-import { ProFrosted, ProLockedSection } from '../components/ProLock';
+import { ProLockedSection } from '../components/ProLock';
 import { openSafetyActions } from '../utils/safety';
 import { longDateTime, sinceServer } from '../utils/time';
 
@@ -63,7 +58,7 @@ export default function RunDetailScreen({ navigation, route }) {
   // Cached per run: reopening a run from the feed or your recent-runs list
   // draws the route, splits and comments immediately rather than rebuilding
   // the page from two skeletons.
-  const { data: d, loading, error, setData: setD } = useQuery(
+  const { data: d, loading, error } = useQuery(
     `run:${runId}`,
     () => api.runDetail(runId)
   );
@@ -72,11 +67,18 @@ export default function RunDetailScreen({ navigation, route }) {
     () => api.runComments(runId),
     { fallback: [] }
   );
-  const [busy, setBusy] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(focusComments);
+  const [splitPage, setSplitPage] = useState(0);
+  const mapRef = useRef(null);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapSize, setMapSize] = useState(null);
+  const fitRoute = useCallback(() => {
+    const points = (d?.path || []).filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])).map(([longitude, latitude]) => ({ longitude, latitude }));
+    if (points.length > 1) mapRef.current?.fitToPoints(points, 32, 0);
+  }, [d?.path]);
+  useEffect(() => { if (mapReady && mapSize) fitRoute(); }, [mapReady, mapSize, fitRoute]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
-  const [kudosFx, setKudosFx] = useState(0);
-  const [reactOpen, setReactOpen] = useState(false);
   const screenFocused = useIsFocused();
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
@@ -88,11 +90,10 @@ export default function RunDetailScreen({ navigation, route }) {
   const jumped = useRef(false);
 
   useEffect(() => {
-    if (!screenFocused) setReactOpen(false);
+    if (!screenFocused) setDetailsOpen(false);
   }, [screenFocused]);
 
-  // Measured rather than guessed: the page above the composer is a map, a stat
-  // row and a splits table whose height depends on how far the run was.
+  // Focus comments inside the details sheet when opened from a feed comment.
   const onCommentsLayout = useCallback((event) => {
     if (!focusComments || jumped.current) return;
     jumped.current = true;
@@ -104,12 +105,6 @@ export default function RunDetailScreen({ navigation, route }) {
       inputRef.current?.focus();
     });
   }, [focusComments]);
-
-  // `d` is undefined until the first fetch or cache hit lands, which is fine:
-  // the summary starts empty and fills in with everything else.
-  const { reactions, mine, burst, react } = useRunReactions(runId, d, (r) => {
-    setD((p) => (p ? { ...p, reactions: r.reactions, my_reaction: r.my_reaction } : p));
-  });
 
   const sendComment = async () => {
     const body = draft.trim();
@@ -127,36 +122,12 @@ export default function RunDetailScreen({ navigation, route }) {
     }
   };
 
-  const kudos = async () => {
-    if (busy || !d) return;
-    setBusy(true);
-    haptic.light();
-    if (!d.kudoed) setKudosFx((token) => token + 1);
-    // optimistic
-    setD((p) => ({ ...p, kudoed: !p.kudoed, kudos_count: p.kudos_count + (p.kudoed ? -1 : 1) }));
-    try {
-      const r = await api.toggleKudos(runId);
-      setD((p) => ({ ...p, kudoed: r.kudoed, kudos_count: r.kudos_count }));
-      // Keep the feed row for this run in step — it's the same heart.
-      updateCached('feed', (feed) => ({
-        ...feed,
-        items: (feed.items || []).map((row) =>
-          (row.id === runId ? { ...row, kudoed: r.kudoed, kudos_count: r.kudos_count } : row)
-        ),
-      }));
-    } catch (e) {
-      toast.error(e.message || 'Could not send kudos');
-    } finally {
-      setBusy(false);
-    }
-  };
 
-  const arriving = useArrival(loading);
-
-  if (loading && error) return <Screen center><Text style={type.body}>Run not found.</Text></Screen>;
-  if (loading) {
+  if (error && !d) return <Screen><BackButton onPress={() => navigation.goBack()} /><Text style={type.body}>Run not found.</Text></Screen>;
+  if (loading || !d) {
     return (
       <Screen>
+        <BackButton onPress={() => navigation.goBack()} />
         <Skeleton width="100%" height={220} style={{ borderRadius: 16, marginTop: space.md }} />
         <Skeleton width="70%" height={20} style={{ marginTop: space.lg }} />
       </Screen>
@@ -164,185 +135,80 @@ export default function RunDetailScreen({ navigation, route }) {
   }
 
   const c = d.clan_color || NEUTRAL;
-  const path = (d.path || []).map(([lon, lat]) => ({ latitude: lat, longitude: lon }));
+  const path = (d.path || []).filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])).map(([lon, lat]) => ({ latitude: lat, longitude: lon }));
   const ring = (d.territory_rings?.[0] || []).map(([lon, lat]) => ({ latitude: lat, longitude: lon }));
-  const slowest = d.splits.length ? Math.max(...d.splits.map((s) => s.seconds)) : 1;
+  const splits = d.splits || [];
+  const slowest = Math.max(1, ...splits.map((s) => s.seconds));
+  const pages = Math.max(1, Math.ceil(splits.length / 4));
+  const pageIndex = Math.min(splitPage, pages - 1);
   // Reactions are deliberately separate from comments. Older servers may
   // still return sticker-only rows; omit those instead of putting emojis back
   // into the discussion.
   const textComments = (comments || []).filter((cm) => cm.body?.trim());
 
-  // Bound and wrapped below rather than in place — see the same pattern in
-  // ClubScreen; the page is far too long to re-indent for one parent.
-  const page = (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-    <Screen scroll scrollRef={scrollRef} contentStyle={{ paddingBottom: space.xxl }}>
-      {/* map — a defined NB object: heavy stroke on the inner box (which clips),
-          hard offset drop from HardShadow so it lands on Android too. The clan
-          colours stay inside the trail and territory; the box's own edge is
-          neutral chrome. */}
-      <HardShadow radius={radius.card} on={colors.bgElevated} style={{ marginTop: space.md }}>
-        <View style={styles.map}>
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <HomeBackdrop />
+      <Screen style={{ backgroundColor: 'transparent', paddingBottom: 12 }}>
+        <Row gap={12} style={{ paddingVertical: 10 }}>
+          <BackButton onPress={() => navigation.goBack()} />
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[type.title, { fontSize: 23 }]}>{d.clan_tag ? `[${d.clan_tag}] ` : ''}{d.username}{d.is_you ? ' · you' : ''}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={type.caption}>{longDateTime(d.created_at)}</Text>
+          </View>
+          {!d.is_you ? <PressableScale accessibilityRole="button" accessibilityLabel={`Safety options for ${d.username}`} onPress={() => openSafetyActions({ userId: d.user_id, username: d.username, context: `run ${runId}`, onBlocked: () => navigation.goBack() })}><MoreHorizontal size={24} color={colors.text} /></PressableScale> : null}
+        </Row>
+
+        <View style={[styles.map, { flex: 1, minHeight: 100, marginBottom: 12 }]}
+          onLayout={(event) => { const { width, height } = event.nativeEvent.layout; setMapSize((old) => old?.width === width && old?.height === height ? old : { width, height }); }}>
           {MAP_READY && path.length > 1 ? (
-            <GameMap initialCenter={path[0]} initialZoom={14}>
-              {ring.length >= 3 && <TerritoryFill id="d-terr" points={ring} fillColor={c.stroke} strokeColor={c.stroke} fillOpacity={0.35} />}
-              <Trail id="d-trail" points={path} color={c.stroke} width={5} />
-              <MapPoint id="d-start" point={path[0]} color={c.stroke} />
+            <GameMap ref={mapRef} constrainToCity={false} locked initialCenter={path[0]} onReady={() => setMapReady(true)}>
+              {ring.length >= 3 && <TerritoryFill id="d-terr" points={ring} fillColor={c.stroke} strokeColor={c.stroke} fillOpacity={0.25} />}
+              <Trail id="d-trail" points={path} color={c.stroke} width={4} />
+              <MapPoint id="d-start" point={path[0]} color="#36A76B" />
+              <MapPoint id="d-finish" point={path[path.length - 1]} color={c.stroke} />
             </GameMap>
-          ) : (
-            <View style={styles.mapPlaceholder}>
-              <Text style={type.caption}>{MAP_READY ? 'No route recorded' : 'Map needs the dev build'}</Text>
+          ) : <View style={styles.mapPlaceholder}><Text style={type.caption}>{MAP_READY ? 'No route recorded' : 'Map needs the dev build'}</Text></View>}
+        </View>
+
+        <View style={styles.summary}>
+          {[['Distance', km(d.distance_m), 'km'], ['Pace', fmtPace(d.distance_m, d.duration_s).split(' ')[0], '/km'], ['Time', fmtDuration(d.duration_s), ''], [d.closed_loop ? 'Claimed' : 'No claim', d.closed_loop ? (d.area_m2 / 1e6).toFixed(2) : '·', d.closed_loop ? 'km²' : '']].map(([label, value, unit]) => (
+            <View key={label} style={{ width: '50%', paddingHorizontal: 10, paddingVertical: 5 }}>
+              <Text style={type.labelSm}>{label}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[type.statSm, { fontSize: 23 }]}>{value}<Text style={type.caption}> {unit}</Text></Text>
             </View>
-          )}
+          ))}
         </View>
-      </HardShadow>
 
-      {/* header */}
-      <Row between style={{ marginTop: space.lg }}>
-        <View>
-          <Text style={type.title}>{d.clan_tag ? `[${d.clan_tag}] ` : ''}{d.username}{d.is_you ? ' · you' : ''}</Text>
-          <Text style={type.caption}>{longDateTime(d.created_at)}</Text>
-        </View>
-        <View style={styles.kudosSlot}>
-          {/* Cleared on finish — left up, it is an invisible last frame sitting
-              over the button it just celebrated. */}
-          {kudosFx > 0 ? (
-            <GameLottie
-              name="kudos"
-              size={96}
-              trigger={kudosFx}
-              onFinish={() => setKudosFx(0)}
-              style={styles.kudosFx}
-            />
-          ) : null}
-          <Row gap={2}>
-            {!d.is_you ? (
-              <PressableScale
-                onPress={() => openSafetyActions({
-                  userId: d.user_id,
-                  username: d.username,
-                  context: `run ${runId}`,
-                  onBlocked: () => navigation.goBack(),
-                })}
-                style={styles.kudos}
-                accessibilityRole="button"
-                accessibilityLabel={`Safety options for ${d.username}`}
-              >
-                <MoreHorizontal size={24} color={colors.textMuted} />
-              </PressableScale>
-            ) : null}
-            <ReactionTrigger
-              mine={mine}
-              active={reactOpen}
-              color={c.stroke}
-              onPress={() => { haptic.light(); setReactOpen((v) => !v); }}
-            />
-            <PressableScale
-              onPress={kudos}
-              style={styles.kudos}
-              accessibilityRole="button"
-              accessibilityState={{ selected: !!d.kudoed }}
-              accessibilityLabel={d.kudoed ? 'Remove kudos' : 'Give kudos'}
-            >
-              {/* Same two states as the feed card's heart: full strength once
-                  you have given it, a step down before. */}
-              <AppIcon name="like" size={28} opacity={d.kudoed ? 1 : 0.62} />
-              <Text style={[type.bodySmBold, { color: d.kudoed ? c.stroke : colors.textMuted }]}>{d.kudos_count}</Text>
-            </PressableScale>
-          </Row>
-        </View>
-      </Row>
-
-      {/* Chips always; the picker only when asked for. This page used to show
-          all eight tiles permanently, which put a control block between the
-          runner's name and their splits on a screen you opened to read the
-          run. */}
-      <ReactionBar
-        reactions={reactions}
-        mine={mine}
-        burst={burst}
-        color={c.stroke}
-        onReact={react}
-        open={reactOpen}
-        onRequestClose={() => setReactOpen(false)}
-        style={{ marginTop: space.md }}
-      />
-
-      <Row between style={{ marginTop: space.lg }}>
-        <StatValue size="md" label="Distance" value={km(d.distance_m)} unit="km" />
-        <StatValue size="md" label="Pace" value={fmtPace(d.distance_m, d.duration_s).split(' ')[0]} unit="/km" />
-        <StatValue size="md" label="Time" value={fmtDuration(d.duration_s)} />
-        <StatValue size="md" label={d.closed_loop ? 'Claimed' : 'No claim'} value={d.closed_loop ? (d.area_m2 / 1e6).toFixed(d.area_m2 >= 1e5 ? 2 : 3) : '·'} unit={d.closed_loop ? 'km²' : ''} color={d.closed_loop ? c.stroke : colors.textDim} />
-      </Row>
-
-      {/* splits — drawn box. The two panels on this page are the two blocks
-          of detail you came here to read, so they are the ones that earn the
-          ink; the map and the stat row above are already strong shapes.
-
-          PRO depth: the per-kilometre breakdown is a richer VIEW of a run, not
-          a lever on it — reading your splits changes nothing about the ground
-          you hold, so it is a fair thing to sell. When PRO is off in this
-          build the lock never appears and everyone keeps their splits. */}
-      {d.splits.length > 0 && (
-        <ProLockedSection
-          context="run_detail"
-          feature="run_splits"
-          title="Splits"
-          blurb="Your per kilometre pace, fastest to slowest."
-          // The table itself, times frosted out — the same preview the result
-          // screen shows, so a locked run reads the same a week later as it
-          // did on the day. Four rows, or a long run walls the page off.
-          peek={
-            <View>
-              {d.splits.slice(0, 4).map((s) => (
-                <View key={s.km} style={styles.splitRow}>
-                  <Text style={styles.splitKm}>{s.km} km</Text>
-                  <View style={styles.track}>
-                    <View style={[styles.bar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: withAlpha(c.stroke, 0.5) }]} />
-                  </View>
-                  <ProFrosted style={styles.splitPace}>{paceStr(s.seconds)}</ProFrosted>
-                </View>
-              ))}
-            </View>
-          }
-          style={{ marginTop: space.xl }}
-        >
-          {/* marginTop lives on the Card too, not only on the wrapper: when
-              PRO is off or the runner is a subscriber the section renders these
-              children directly, so the gap has to travel with them. */}
-          <Card frame="panel" frameTint={c.stroke} style={[styles.framedPanel, { marginTop: space.xl }]}>
-            <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>Splits</Text>
-            {d.splits.map((s) => (
-              <View key={s.km} style={styles.splitRow}>
-                <Text style={styles.splitKm}>{s.km} km</Text>
-                <View style={styles.track}>
-                  <View style={[styles.bar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: withAlpha(c.stroke, 0.5) }]} />
-                </View>
-                <Text style={styles.splitPace}>{paceStr(s.seconds)}</Text>
-              </View>
-            ))}
-          </Card>
-        </ProLockedSection>
-      )}
-
-      {/* What this run did for the ground you hold — the same free/PRO split
-          the result screen shows, so a run read back a week later says exactly
-          what it said on the day.
-
-          OWN RUNS ONLY, and that is not a preference: /runs/{id}/insights
-          answers 404 for anybody else's run (see the note on guessable ids in
-          backend/app/routes/insights.py). Rendering it on a stranger's run
-          would show a permanently empty panel, and on a PRO account it would
-          look like the analytics had broken. */}
-      {d.is_you ? (
-        // Fetches on its own clock and renders nothing until it lands, so
-        // without an entrance it drops into the middle of a page you are
-        // already reading and pushes the comments down.
-        <Reveal from="none" duration={260}>
-          <TerritoryInsights runId={d.id} style={{ marginTop: space.xl }} />
-        </Reveal>
-      ) : null}
-
+        {splits.length > 0 ? <ProLockedSection context="run_detail" feature="run_splits" title="Splits" style={{ marginTop: 10 }}>
+          <View style={[styles.summary, { display: 'flex', flexDirection: 'column', marginTop: 10, padding: 12 }]}>
+            <Row between style={{ marginBottom: 6 }}>
+              <Text style={type.label}>Splits</Text>
+              <Row gap={12}>
+                {pages > 1 ? <>
+                  <PressableScale disabled={pageIndex === 0} accessibilityRole="button" hitSlop={12} accessibilityLabel="Previous splits" onPress={() => setSplitPage(pageIndex - 1)}><Text style={[type.bodySmBold, { opacity: pageIndex === 0 ? 0.3 : 1 }]}>‹</Text></PressableScale>
+                  <Text style={type.caption}>{pageIndex + 1} / {pages}</Text>
+                  <PressableScale disabled={pageIndex === pages - 1} accessibilityRole="button" hitSlop={12} accessibilityLabel="Next splits" onPress={() => setSplitPage(pageIndex + 1)}><Text style={[type.bodySmBold, { opacity: pageIndex === pages - 1 ? 0.3 : 1 }]}>›</Text></PressableScale>
+                </> : null}
+              </Row>
+            </Row>
+            {splits.slice(pageIndex * 4, pageIndex * 4 + 4).map((split) => <View key={split.km} style={[styles.splitRow, { marginBottom: 4 }]}>
+              <Text style={[type.caption, { width: 42 }]}>{split.km} km</Text>
+              <View style={styles.track}><View style={[styles.bar, { width: `${Math.max(12, split.seconds / slowest * 100)}%`, backgroundColor: c.stroke }]} /></View>
+              <Text style={[type.bodySmBold, { width: 42, textAlign: 'right' }]}>{paceStr(split.seconds)}</Text>
+            </View>)}
+          </View>
+        </ProLockedSection> : null}
+        <PressableScale accessibilityRole="button" accessibilityLabel="Open comments and run details" onPress={() => setDetailsOpen(true)} style={{ paddingTop: 10, alignItems: 'center' }}>
+          <Text style={type.bodySmBold}>Comments{d.is_you ? ' & territory details' : ''}  ↗</Text>
+        </PressableScale>
+      </Screen>
+      <Modal visible={detailsOpen} animationType="slide" onRequestClose={() => setDetailsOpen(false)}>
+        <Screen>
+          <Row gap={12} style={{ paddingVertical: 12 }}><BackButton onPress={() => setDetailsOpen(false)} /><Text style={type.title}>Run details</Text></Row>
+          <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 32 }}>
+              {d.is_you ? <TerritoryInsights runId={d.id} /> : null}
       {/* comments */}
       <Card
         frame="panel"
@@ -412,14 +278,11 @@ export default function RunDetailScreen({ navigation, route }) {
           </PressableScale>
         </View>
       </Card>
-    </Screen>
-    </KeyboardAvoidingView>
-  );
-
-  return (
-    <Arrival active={arriving} style={{ flex: 1 }}>
-      {page}
-    </Arrival>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </Screen>
+      </Modal>
+    </View>
   );
 }
 
@@ -427,12 +290,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // Stroke lives on the clipping box; the drop is the HardShadow wrapper's job.
   // marginTop moved to that wrapper so the box slides fully under its own drop.
   map: {
-    height: 240,
     borderRadius: radius.card,
     overflow: 'hidden',
     backgroundColor: colors.bgElevated,
     ...toonSurface(colors, scheme, { on: colors.bgElevated }).outline,
   },
+  summary: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.card, borderRadius: 14, borderWidth: 2, borderColor: colors.text, paddingVertical: 5 },
   mapPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   kudos: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, paddingVertical: space.sm },
   kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },

@@ -1,37 +1,9 @@
-// The box gamble — tap to bid a chest's rarity upward, then tap to open it.
-//
-// THE OUTCOMES ARE ALREADY DECIDED. `sequence` comes from the server, whole,
-// at open time (see backend/app/lootbox.py). Every tap here REVEALS the next
-// step in a list that was true before this screen mounted. Nothing is rolled
-// on the device, so nothing can be re-rolled by leaving and coming back, and a
-// tap costs no round trip — which is the only way "tap tap tap" can feel like
-// tapping rather than like waiting.
-//
-// THE SCREEN IS THE RARITY. There is no card, no panel, no scrim over a
-// dimmed app: the background is a flat full bleed fill in the box's current
-// rarity, and an upgrade washes the WHOLE screen to the next colour. That is
-// what makes the promotion feel like it happened to you rather than to a
-// widget you were looking at. Everything else on screen is white on that fill,
-// which is why the label, the pips and the caption carry no colour of their
-// own.
-//
-// NOTHING IS EVER LOST. The floor is the rarity the box was granted at, so
-// there is no losing tap and no state in which the caption has bad news. The
-// tension is entirely in how far up it goes. A running app should not be
-// teaching a loss reflex, and a mechanic with a downside would also have
-// needed a confirm step, which would have killed the tapping.
-//
-// REDUCE MOTION collapses the reveal rather than replaying it slowly: the
-// chest is shown at its FINAL rarity with the outcome stated in words, and one
-// tap opens it. A gamble whose animation you have turned off is not a gamble,
-// and pretending otherwise would just be a delay with a chest in it.
-
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+// Three mystery swipes for every box; the server outcome stays hidden until opening.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Modal, PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -50,7 +22,7 @@ import { fonts, space } from '../../theme';
 // and the wash needs to finish inside the same beat or two quick taps overlap
 // each other's colours.
 const TAP_MS = 340;
-const WASH_MS = 420;
+export const MYSTERY_SWIPES = 3;
 // The lid lift. Long enough to see the chest actually open, short enough that
 // it is not standing between the player and their reward.
 const OPEN_MS = 620;
@@ -226,25 +198,24 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
   const reduced = useReduceMotion();
   const { width, height } = useWindowDimensions();
 
-  const steps = useMemo(() => sequence?.steps || [], [sequence]);
   const base = sequence?.rarity || 'common';
   const finalRarity = sequence?.final_rarity || base;
 
   // Reduce Motion starts at the answer; everyone else starts at the floor and
   // taps their way up.
   const [spent, setSpent] = useState(0);
-  const [rarity, setRarity] = useState(base);
-  const [incoming, setIncoming] = useState(null);
+  const [rarity, setRarity] = useState('common');
   const [opening, setOpening] = useState(false);
   const [tapKey, setTapKey] = useState(0);
   const [burstKey, setBurstKey] = useState(0);
   const busy = useRef(false);
   const handoff = useRef(null);
+  const inputTimer = useRef(null);
+  const spentRef = useRef(0);
 
   const chestW = Math.min(280, width * 0.62);
   const chestH = chestW * 0.82;
 
-  const wash = useSharedValue(0);
   const bob = useSharedValue(0);
   const squash = useSharedValue(0);
   const shake = useSharedValue(0);
@@ -268,11 +239,13 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
     if (!visible) return;
     clearTimeout(handoff.current);
     busy.current = false;
-    setSpent(reduced ? steps.length : 0);
-    setRarity(reduced ? finalRarity : base);
-    setIncoming(null);
+    clearTimeout(inputTimer.current);
+    spentRef.current = 0;
+    setSpent(0);
+    setTapKey(0);
+    setBurstKey(0);
+    setRarity('common');
     setOpening(false);
-    wash.value = 0;
     lid.value = 0;
     beam.value = 0;
     squash.value = 0;
@@ -294,12 +267,6 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
     return () => cancelAnimation(bob);
   }, [visible, reduced, opening]);
 
-  const commitWash = useCallback((next) => {
-    setRarity(next);
-    setIncoming(null);
-    wash.value = 0;
-  }, [wash]);
-
   const finish = useCallback(() => {
     onOpened?.(finalRarity);
   }, [onOpened, finalRarity]);
@@ -309,6 +276,7 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
     if (busy.current) return;
     busy.current = true;
     setOpening(true);
+    setRarity(finalRarity);
     haptic.success();
 
     if (reduced) {
@@ -327,56 +295,41 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
     // callback on an animation that gets cancelled (the modal dismissed
     // mid-open) would never fire at all. Cleared on unmount below.
     handoff.current = setTimeout(finish, OPEN_MS + OPEN_HOLD_MS);
-  }, [reduced, beam, lid, finish]);
+  }, [reduced, beam, lid, finish, finalRarity]);
 
-  useEffect(() => () => clearTimeout(handoff.current), []);
+  useEffect(() => () => {
+    clearTimeout(handoff.current);
+    clearTimeout(inputTimer.current);
+  }, [visible, sequence]);
 
-  // ---- one tap ---------------------------------------------------------
   const tap = useCallback(() => {
-    if (busy.current) return;
-
-    // Out of chances (or never had any, which is what a legendary box looks
-    // like): the tap opens it.
-    if (spent >= steps.length) {
+    if (busy.current || spentRef.current >= MYSTERY_SWIPES) return;
+    spentRef.current += 1;
+    setSpent(spentRef.current);
+    setTapKey((k) => k + 1);
+    haptic.light();
+    if (spentRef.current === MYSTERY_SWIPES) {
       openChest();
       return;
     }
-
-    const step = steps[spent];
-    setSpent(spent + 1);
-    setTapKey((k) => k + 1);
-
-    // Every tap gets the squash, upgrade or not.
-    squash.value = withSequence(
-      withTiming(1, { duration: 110, easing: Easing.out(Easing.quad) }),
-      withSpring(0, { damping: 9, stiffness: 200 })
-    );
-
-    if (!step.upgraded) {
-      haptic.light();
-      return;
+    busy.current = true;
+    inputTimer.current = setTimeout(() => { busy.current = false; }, TAP_MS);
+    if (!reduced) {
+      squash.value = withSequence(
+        withTiming(1, { duration: 110 }),
+        withSpring(0, { damping: 9, stiffness: 200 })
+      );
     }
+  }, [openChest, reduced, squash]);
 
-    haptic.heavy();
-    setIncoming(step.rarity);
-    setBurstKey((k) => k + 1);
-    labelPop.value = withSequence(
-      withTiming(1, { duration: 140 }),
-      withSpring(0, { damping: 11, stiffness: 220 })
-    );
-    shake.value = withSequence(
-      withTiming(1, { duration: 60 }),
-      withTiming(-1, { duration: 60 }),
-      withTiming(0.6, { duration: 60 }),
-      withTiming(0, { duration: 60 })
-    );
-    wash.value = withTiming(1, { duration: WASH_MS, easing: Easing.out(Easing.quad) }, (done) => {
-      if (done) runOnJS(commitWash)(step.rarity);
-    });
-  }, [spent, steps, openChest, squash, shake, wash, labelPop, commitWash]);
+  const gesture = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 18 || Math.abs(g.dy) > 18,
+    onPanResponderRelease: (_, g) => {
+      if (Math.hypot(g.dx, g.dy) >= 55) tap();
+    },
+  });
 
   // ---- styles ----------------------------------------------------------
-  const washStyle = useAnimatedStyle(() => ({ opacity: wash.value }));
   const shakeStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shake.value * 7 }],
   }));
@@ -390,8 +343,8 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
   const lidStyle = useAnimatedStyle(() => ({
     transform: [
       { perspective: 600 },
-      { translateY: -46 * lid.value },
-      { rotateX: `${-118 * lid.value}deg` },
+      { translateY: -chestW * 0.18 * lid.value },
+      { rotateX: `${-65 * lid.value}deg` },
     ],
   }));
   const beamStyle = useAnimatedStyle(() => ({
@@ -405,44 +358,20 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
   if (!visible || !sequence) return null;
 
   const tint = chestColors(rarity);
-  const nextTint = incoming ? chestColors(incoming) : null;
-  const remaining = Math.max(0, steps.length - spent);
-  const shown = incoming || rarity;
-
-  const caption = opening
-    ? ''
-    : remaining > 1
-      ? 'Tap! Tap!'
-      : remaining === 1
-        ? '1 chance left!'
-        : 'Tap to open!';
-
-  // Reduce Motion says the outcome instead of performing it.
-  const reducedNote = reduced && finalRarity !== base
-    ? `Upgraded to ${finalRarity}`
-    : null;
+  const remaining = Math.max(0, MYSTERY_SWIPES - spent);
+  const shown = opening ? finalRarity : 'mystery';
+  const caption = opening ? '' : `Swipe to unlock · ${remaining} left`;
 
   return (
     <Modal visible transparent={false} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={[styles.page, { backgroundColor: tint.page }]}>
-        {/* The incoming rarity, washing over the whole screen. */}
-        {nextTint ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: nextTint.page }, washStyle]}
-          />
-        ) : null}
-
         <Pressable
+          {...gesture.panHandlers}
           style={styles.tapArea}
           onPress={tap}
           disabled={opening}
           accessibilityRole="button"
-          accessibilityLabel={
-            remaining > 0
-              ? `${shown} chest. ${remaining} ${remaining === 1 ? 'chance' : 'chances'} to upgrade. Tap to use one.`
-              : `${shown} chest. Tap to open.`
-          }
+          accessibilityLabel={`${shown} chest. ${remaining} swipes remaining. Swipe or tap to unlock.`}
         >
           <Animated.View style={[styles.stage, shakeStyle]}>
             <Animated.Text style={[styles.rarity, labelStyle]}>
@@ -466,14 +395,7 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
                     hovering rather than as the whole picture sliding. */}
                 <View style={[styles.shadow, { backgroundColor: tint.shade, width: chestW * 0.72, top: chestH * 0.93 }]} />
                 <Chest width={chestW} rarity={rarity} open={opening} lidStyle={lidStyle} />
-                {/* The incoming rarity's chest, crossfading on top. Only the
-                    panels differ, so this reads as a recolour rather than as a
-                    second chest arriving. */}
-                {nextTint ? (
-                  <Animated.View style={[StyleSheet.absoluteFill, washStyle]} pointerEvents="none">
-                    <Chest width={chestW} rarity={incoming} open={false} />
-                  </Animated.View>
-                ) : null}
+
               </Animated.View>
 
               <View style={styles.burst} pointerEvents="none">
@@ -482,14 +404,14 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
                 ))}
               </View>
 
-              <Swoosh trigger={tapKey} size={chestW * 1.05} />
+              {!reduced ? <Swoosh trigger={tapKey} size={chestW * 1.05} /> : null}
             </View>
 
             {!opening ? (
               <>
-                <Pips total={steps.length} spent={spent} tint={tint} />
+                <Pips total={MYSTERY_SWIPES} spent={spent} tint={tint} />
                 <Text style={styles.caption}>{caption}</Text>
-                {reducedNote ? <Text style={styles.note}>{reducedNote}</Text> : null}
+                <Text style={styles.note}>What’s inside? Tap also works.</Text>
               </>
             ) : null}
           </Animated.View>

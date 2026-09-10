@@ -77,7 +77,7 @@ function polygonFeature(points) {
 // the app is wearing. Every screen used to hard-code theme="dark", so the one
 // surface that fills the whole screen stayed black in light mode.
 const GameMap = forwardRef(function GameMap(
-  { theme, onPress, onIdle, onViewportChange, onReady, showsUserLocation = false, children, style, initialCenter, initialZoom, locked = false },
+  { theme, onPress, onIdle, onViewportChange, onReady, showsUserLocation = false, children, style, initialCenter, initialZoom, constrainToCity = true, locked = false },
   ref
 ) {
   const { scheme } = useTheme();
@@ -239,8 +239,8 @@ const GameMap = forwardRef(function GameMap(
     >
       <Camera
         ref={cameraRef}
-        maxBounds={bounds}
-        minZoomLevel={activeCity.minZoom}
+        maxBounds={constrainToCity ? bounds : undefined}
+        minZoomLevel={constrainToCity ? activeCity.minZoom : 0}
         maxZoomLevel={activeCity.maxZoom}
         defaultSettings={{
           centerCoordinate: initialCenter ? toLngLat(initialCenter) : activeCity.center,

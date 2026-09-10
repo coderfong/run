@@ -16,7 +16,7 @@ import AppIcon from '../components/AppIcon';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
-import { NB, brand, fonts, nbRadius, radius, shadow, space, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { NB, brand, fonts, nbDrop, nbRadius, radius, shadow, space, tintOn, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
 import {
   Card,
   Framed,
@@ -28,9 +28,9 @@ import {
   OutlinedText,
   PANEL_INK,
   ToonButton,
-  ToonHeader,
+  BackButton,
 } from '../components/ui';
-import GameAnimation from '../components/GameAnimation';
+import Chest from '../components/lootbox/Chest';
 import PassBackdrop from '../components/pass/PassBackdrop';
 import RewardArt, { RARITY_COLOR } from '../components/RewardArt';
 import RewardReveal from '../components/RewardReveal';
@@ -64,23 +64,29 @@ import { rollCosmetic } from '../config/lootboxRoll';
 // down the page was a column of the same word; the pulse says it instead, and
 // the tile gets that space back for the artwork.
 function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, equipped, isPro }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const claimable = unlocked && !claimed && !gated;
-  const dim = !unlocked || claimed;
   const shown = rewards.slice(0, 2);
   const cosmeticReward = rewards.find((reward) => reward.kind === 'cosmetic');
   const [cosmeticSlot, cosmeticId] = cosmeticReward?.key?.split(':') || [];
   const cosmeticRarity = getItem(cosmeticSlot, cosmeticId)?.rarity;
-  // ART ONLY. A collectible tile shows the object and nothing else — its
-  // rarity is said by the COLOUR OF THE BOX round it, not by a grey caption
-  // under it. Fifty of those captions down the page was a column of small text
-  // on a screen whose whole job is the artwork, and the shop and the studio
-  // grids had already dropped theirs for the same reason.
   const rarityTint = cosmeticRarity ? RARITY_COLOR[cosmeticRarity] : null;
-  // Rarity wins the ink when there is one; the claim state is still readable
-  // off the heavier line, the tinted paper and the pulse.
-  const tint = rarityTint || (claimable ? accent : colors.border);
+  // THE BACKING. Every reward stands on its own coloured card — a pastel wash
+  // of a colour that says what KIND of thing it is (rarity for a collectible,
+  // gold for energy, orange for a box, green for a border), with the ink stroke
+  // and hard drop every other NB box wears. Art only on it, no caption: the
+  // object names itself and fifty captions down the page is a column of text.
+  //
+  // Opaque, not an alpha wash: the plaza is painted behind this page and an
+  // alpha fill lets the paving show through, and the drop paints behind it.
+  const kind = shown[0]?.kind;
+  const cardTone = rarityTint || KIND_TONE[kind] || accent;
+  const dark = scheme === 'dark';
+  const fill = tintOn(colors.card, cardTone, dark ? 0.28 : 0.32);
+  // Claimable wears the heavier stroke and the lane's own colour as its drop,
+  // so the tier you can collect stands out of the column before it pulses.
+  const drop = claimable ? accent : nbDrop(scheme, { on: fill, accent: cardTone });
   // Generated chrome; each falls back to the code-drawn version when absent.
   //
   // NOTE: tile-free / tile-pro are deliberately NOT used. They're 9-slice
@@ -95,10 +101,7 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
   const stampArt = art('stampClaimed');
   return (
     <TouchableOpacity
-      style={[
-        styles.tilePress,
-        { opacity: dim ? 0.5 : 1 },
-      ]}
+      style={styles.tilePress}
       onPress={onPress}
       disabled={!unlocked || claimed || busy}
       activeOpacity={0.85}
@@ -106,20 +109,19 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
       accessibilityLabel={rewards.map((r) => r.label).join(', ')}
       accessibilityState={{ disabled: !unlocked || claimed }}
     >
-      <Framed
-        frame={frameVariant('card', `${isPro ? 'pro' : 'free'}:${rewards.map((r) => r.key).join(':')}`)}
-        tint={tint}
-        fill={claimable ? withAlpha(tint, 0.16) : colors.card}
-        weight={claimable ? INK.medium : INK.thin}
-        pose={framePose(rewards.map((r) => r.key).join(':'))}
-        inset={false}
-        style={styles.tile}
-        contentStyle={styles.tileContent}
+      <HardShadow offset={NB.offsetSm} radius={TILE_R} color={drop} style={styles.tileShadow}>
+      <View
+        style={[
+          styles.tile,
+          { backgroundColor: fill, borderColor: colors.ink, borderWidth: claimable ? NB.stroke : NB.strokeThin },
+        ]}
       >
       {/* Every kind of reward now draws to the same box at the same size, so
           the ladder reads as one grid instead of a jumble of big chests and
-          small stickers. Two-reward tiers step down only enough to fit. */}
-      <Pulse active={claimable} style={styles.artRow}>
+          small stickers. Two-reward tiers step down only enough to fit.
+          A spent tier fades its ART, not its card: the backing keeps its
+          colour so the column stays one grid, and the stamp reads on top. */}
+      <Pulse active={claimable} style={[styles.artRow, claimed && styles.spent]}>
         {shown.map((r, i) => (
           <RewardArt
             key={`${r.kind}:${r.key}:${i}`}
@@ -171,7 +173,8 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
       {claimed && stampArt && (
         <Image source={stampArt} style={styles.stamp} resizeMode="contain" fadeDuration={0} pointerEvents="none" />
       )}
-      </Framed>
+      </View>
+      </HardShadow>
     </TouchableOpacity>
   );
 }
@@ -333,33 +336,14 @@ function ProgressionInfoSheet({ visible, onClose }) {
 function PassHeader({ top, onBack, onInfo, level, eyebrow, pct }) {
   const type = useThemedType();
   return (
-    <ToonHeader
-      panel
-      // `compact`, for the reason Crossroads is: there is a painted plaza
-      // behind this page now, and the header is chrome over it. At full size
-      // the panel is about 260pt tall and the painting's horizon sits at 269,
-      // so the whole scene — sun, clouds, flags, skyline, hoardings — was
-      // behind the pink and the reader got the bare paving. Compact gives
-      // ninety points back and the skyline band comes out from under it.
-      compact
-      // The Crossroads shape exactly: eyebrow, title, cut-out, nothing under
-      // the row. The XP count rides in the eyebrow (it used to be a subtitle
-      // line of its own) and the bar and info tile sit in the text column
-      // under the title, where the cut-out already sets the row's height. A
-      // full-width line under the row cost another 56pt of pink.
-      eyebrow={eyebrow}
-      title={level == null ? 'Levels' : `Level ${level}`}
-      solid={brand.pink}
-      art={art('railPass')}
-      top={top}
-      titleStyle={type.display}
-      eyebrowStyle={type.labelSm}
-      onBack={onBack}
-      // The line is DRAWN IN EVERY STATE whether or not it has anything in
-      // it: a header that is one height while it loads and another once it
-      // has data would slide the painted horizon out from under itself as the
-      // page settles.
-      underTitle={
+    <View style={[styles.passHeader, { paddingTop: top + 8 }]}>
+      <View style={styles.headerTools}>
+        <Image source={art('railPass')} style={styles.headerScroll} resizeMode="contain" />
+        <BackButton onPress={onBack} fill="#ffffff" ink={PANEL_INK} size={36} />
+      </View>
+      <View style={styles.headerCopy}>
+        <Text style={[type.labelSm, { color: PANEL_INK }]}>{eyebrow}</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={[type.display, { color: PANEL_INK, fontSize: 32, lineHeight: 40 }]}>{level == null ? 'Levels' : `Level ${level}`}</Text>
         <View style={styles.headerLine}>
           {pct == null ? null : (
             // The outline rides on the WRAPPER and the track is the absolute
@@ -400,8 +384,8 @@ function PassHeader({ top, onBack, onInfo, level, eyebrow, pct }) {
             </HardShadow>
           ) : null}
         </View>
-      }
-    />
+      </View>
+    </View>
   );
 }
 
@@ -772,7 +756,7 @@ export default function ProgressionScreen({ navigation }) {
                 there is a box waiting and the row exists to be tapped. It is
                 this row's icon as well as its animation, so Reduce Motion stills
                 it rather than leaving the row with an empty slot. */}
-            <GameAnimation name="giftBox" size={34} loop={!reducedMotion} still={reducedMotion} />
+            <Chest width={34} />
             <View style={{ flex: 1 }}>
               <Text style={type.bodyBold}>{pending_lootboxes.length} lootbox{pending_lootboxes.length === 1 ? '' : 'es'} ready</Text>
               <Text style={[type.caption, { color: colors.textMuted }]}>Tap to open a random collectible</Text>
@@ -889,6 +873,16 @@ export default function ProgressionScreen({ navigation }) {
 }
 
 const SPINE_W = 60;
+// The reward card's corner, shared by the card and the drop behind it.
+const TILE_R = 14;
+// A reward's backing colour when it is not a collectible (collectibles take
+// their rarity's colour instead). Washed to a pastel in TrackTile.
+const KIND_TONE = {
+  energy: '#E8B63D',
+  energy_cap: '#E8B63D',
+  lootbox: '#F09B72',
+  border: '#69AF85',
+};
 // Reward art: ONE size for every kind, so the ladder is a grid rather than an
 // assortment. Up from 64/46 — the tile is nothing but the object now that the
 // caption has gone, so the object is what should have the room.
@@ -918,6 +912,10 @@ const styles = StyleSheet.create({
   // the same in every state — see the note at the call site. Sized so eyebrow +
   // title + this line (~86pt) matches the 85pt the cut-out already sets the row
   // at; any taller and the header grows again.
+  passHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: brand.pink, paddingHorizontal: space.gutter, paddingBottom: 14, borderBottomWidth: 3, borderColor: PANEL_INK, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  headerTools: { width: 42, alignItems: 'center', gap: 10 },
+  headerScroll: { width: 36, height: 32 },
+  headerCopy: { flex: 1, marginLeft: 22, paddingRight: 4 },
   headerLine: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -976,16 +974,18 @@ const styles = StyleSheet.create({
   // and at 4pt of gap the drawn lines of neighbouring rows read as one grid
   // rule between them.
   tilePress: { flex: 1, marginVertical: space.sm },
-  tile: { flex: 1, minHeight: 132 },
-  tileContent: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
+  tileShadow: { flex: 1 },
+  tile: {
+    flex: 1, minHeight: 132, borderRadius: TILE_R,
+    alignItems: 'center', justifyContent: 'center',
     padding: space.md, paddingBottom: space.xl,
     // The bottom padding belongs to the locked/claimed chip, which is the only
     // thing that sits down there now that the caption has gone.
   },
+  spent: { opacity: 0.45 },
   artRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm, minHeight: ART_SIZE + 4 },
-  chipArt: { position: 'absolute', bottom: 4, width: 26, height: 26 },
-  stamp: { position: 'absolute', width: '86%', height: '52%', opacity: 0.75 },
+  chipArt: { position: 'absolute', bottom: 6, right: 8, width: 23, height: 23 },
+  stamp: { position: 'absolute', bottom: 7, left: 10, width: '62%', height: 30, opacity: 1 },
   state: {
     position: 'absolute', bottom: 8, borderRadius: radius.pill,
     paddingHorizontal: 8, paddingVertical: 3, alignItems: 'center', justifyContent: 'center',

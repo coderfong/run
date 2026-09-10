@@ -22,6 +22,7 @@
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 // The rarity palette. `body` is the panel inside the gold, `shade` is the same
@@ -125,15 +126,9 @@ function Base({ width, rarity, open }) {
       />
       {/* The panel, or the open mouth once the lid has come off. An open chest
           showing its own front panel would look shut with the top removed. */}
-      <Rect x="26" y="6" width="168" height={BASE_H - 24} fill={open ? 'url(#mouth)' : c.shade} />
-      {open ? (
-        // The near rim, so the mouth reads as a container with a wall in
-        // front of it rather than as a hole cut in the chest.
-        <Rect x="26" y={BASE_H - 30} width="168" height="12" fill={c.body} />
-      ) : (
-        // The centre strap, continuing the lid's.
-        <Rect x="96" y="6" width="28" height={BASE_H - 24} fill={GOLD} />
-      )}
+      <Rect x="26" y="6" width="168" height={BASE_H - 24} fill={c.shade} />
+      <Rect x="96" y="6" width="28" height={BASE_H - 24} fill={GOLD} />
+      {open ? <Rect x="26" y="0" width="168" height="10" rx="5" fill="#FFF6DC" /> : null}
       {/* Feet. */}
       <Rect x="30" y={BASE_H - 14} width="42" height="14" fill={GOLD_DARK} />
       <Rect x="148" y={BASE_H - 14} width="42" height="14" fill={GOLD_DARK} />
@@ -177,7 +172,7 @@ export default function Chest({ width = 240, rarity = 'common', open = false, li
 
       {/* transformOrigin on the seam, so a rotateX hinges the lid instead of
           spinning it about its own middle. */}
-      <View
+      <Animated.View
         style={[
           styles.lid,
           { width, height: lidH, transformOrigin: `${width / 2}px ${lidH}px` },
@@ -189,7 +184,7 @@ export default function Chest({ width = 240, rarity = 'common', open = false, li
         <View style={[styles.clasp, { left: width / 2 - claspSize / 2, top: lidH - claspSize * 0.62 }]}>
           <Clasp width={width} />
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 }

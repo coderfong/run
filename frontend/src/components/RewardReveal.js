@@ -297,11 +297,11 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
 
   // 'box' = the chest is on screen and still shut. Reduce Motion skips it, and
   // with it the whole build.
-  const staged = fromLootbox && !reduced;
+  const staged = false; // LootboxGamble already opened the chest.
   // `opened` is the hit. BOTH shapes start closed now — the claim's wind-up is
   // the change — so this stays false until the build finishes or a tap cuts it
   // short.
-  const [opened, setOpened] = useState(reduced);
+  const [opened, setOpened] = useState(reduced || fromLootbox);
   const chargeMs = staged ? BOX_CHARGE_MS : CHARGE_MS;
 
   const scrim = useSharedValue(0);
@@ -336,10 +336,11 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
       pop.value = 0;
       label.value = 0;
       hint.value = 0;
-      setOpened(reduced);
+      setOpened(reduced || fromLootbox);
       return undefined;
     }
     scrim.value = reduced ? 1 : withTiming(1, { duration: 160 });
+    if (fromLootbox) setOpened(true);
     if (reduced) return undefined;
     // The shine turns behind everything for as long as the reveal is up. The
     // lootbox fan turns at the rate its master was authored at, so the drawn
@@ -563,14 +564,6 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
                 ))}
                 <Shockwave wave={wave} color={buildInk} />
               </>
-            ) : null}
-
-            {/* The closed box, drawn UNDER the card — so when the two overlap
-                mid-reveal, the item is the thing in front. */}
-            {staged ? (
-              <Animated.View style={[styles.box, boxStyle]} pointerEvents="none">
-                <GameAnimation name="giftBox" size={BOX_SIZE} loop />
-              </Animated.View>
             ) : null}
 
             {/* The burst: fired at the box's position the instant it gives way.

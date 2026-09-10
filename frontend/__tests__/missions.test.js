@@ -192,8 +192,11 @@ describe('the screen', () => {
     expect(bonus).toHaveBeenCalled();
     // The box is the reward, so it opens rather than being announced.
     expect(open).toHaveBeenCalled();
-    expect(texts(tree)).toContain('RARE');
-    expect(texts(tree)).toContain('Tap! Tap!');
+    // The gamble keeps the outcome hidden until the third swipe, so the
+    // granted rarity must NOT be on screen yet.
+    expect(texts(tree)).toContain('MYSTERY');
+    expect(texts(tree)).toContain('Swipe to unlock · 3 left');
+    expect(texts(tree)).not.toContain('RARE');
   });
 
   test('a stale claim re-reads instead of showing an error', async () => {

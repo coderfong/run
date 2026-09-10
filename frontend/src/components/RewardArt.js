@@ -21,9 +21,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Gift } from 'lucide-react-native';
 
 import { toonType, useTheme } from '../theme';
-import { useReduceMotion } from '../ui/motion';
 import AppIcon from './AppIcon';
-import GameAnimation from './GameAnimation';
+import Chest from './lootbox/Chest';
 import PortraitBorder from './PortraitBorder';
 import { PartThumb } from './character/CharacterRig';
 import { getItem } from '../config/cosmetics';
@@ -44,7 +43,6 @@ function parseItemKey(key) {
 
 export default function RewardArt({ reward, size = 56, equipped, accent = '#ec4899', animated = false }) {
   const { colors } = useTheme();
-  const reduced = useReduceMotion();
   if (!reward) return null;
   const { kind, key } = reward;
 
@@ -76,23 +74,9 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
   }
 
   if (kind === 'lootbox') {
-    // ONE chest for every rarity — the animated gift box, drawn at full tile
-    // size and NOTHING else. It used to sit inside a rarity-coloured ring;
-    // that ring read as a box drawn around a box, and it shrank the art to
-    // make room for itself. Rarity lives in the reveal and the label now.
-    //
-    // `animated` is off by default because the pass mounts twenty of these at
-    // once in a plain ScrollView. The screen turns it on for the tiles worth
-    // looking at; the rest hold frame one, which is a complete, readable box.
     return (
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        <GameAnimation
-          name="giftBox"
-          size={size}
-          loop={animated && !reduced}
-          // Reduce Motion must not remove the chest — it IS the reward.
-          still={!animated || reduced}
-        />
+        <Chest width={size} rarity="common" />
       </View>
     );
   }

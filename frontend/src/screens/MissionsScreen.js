@@ -27,7 +27,7 @@ import { useQuery } from '../hooks/useQuery';
 import { useAccent } from '../hooks/useAccent';
 import { useAvatar } from '../state/avatar';
 import AppIcon from '../components/AppIcon';
-import GameAnimation from '../components/GameAnimation';
+import Chest from '../components/lootbox/Chest';
 import { Card, HardShadow, PANEL_INK, Row, Screen, Skeleton, ToonHeader } from '../components/ui';
 import { ProgressTrack } from '../components/ui/toon';
 import DayStrip from '../components/missions/DayStrip';
@@ -79,12 +79,7 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
   // unfinished — the box IS the reward, so it has to be on screen either way.
   const chest = (
     <View ref={chestRef} collapsable={false} style={styles.chestSlot}>
-      <GameAnimation
-        name="giftBox"
-        size={54}
-        loop={ready && !reduced}
-        still={!ready || reduced}
-      />
+      <Chest width={54} />
     </View>
   );
 
@@ -272,11 +267,17 @@ export default function MissionsScreen({ navigation }) {
     <Screen gutter={false} edges={[]}>
       {/* The Crossroads header: `compact` puts the chevron in the title row
           and sizes the row by the type rather than the art, and the art is a
-          cut-out on the panel's own fill rather than a boxed tile. The purse
-          stays in the header because it is where the coins fly to. */}
+          cut-out on the panel's own fill rather than a boxed tile.
+          `pinArt` keeps the art on the right edge: the title is the DAY, and
+          art placed after the last word slid about as the word changed.
+          The purse sits under the title rather than on a footer row of its
+          own, which is most of the height the header gave back. It stays in
+          the header because it is where the coins fly to. The "finish all
+          four" line is gone: the day card under the header says it. */}
       <ToonHeader
         panel
         compact
+        pinArt
         eyebrow="Missions"
         title={state?.day === state?.today ? 'Today' : label.charAt(0).toUpperCase() + label.slice(1)}
         art={MISSIONS_ART}
@@ -285,13 +286,9 @@ export default function MissionsScreen({ navigation }) {
         solid={brand.purple}
         top={insets.top}
         onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined}
+        underTitle={purse}
         style={styles.header}
-      >
-        <View style={styles.headerFooter}>
-          <Text style={styles.subtitle}>Finish all four for a box</Text>
-          {purse}
-        </View>
-      </ToonHeader>
+      />
 
       <Screen
         scroll
@@ -388,10 +385,12 @@ const styles = StyleSheet.create({
   skeletons: { marginTop: space.sm },
   error: { marginTop: space.md },
 
-  header: { marginBottom: space.md },
-  headerFooter: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
-  subtitle: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 20, color: PANEL_INK },
-  purseWrap: { flexShrink: 0 },
+  // A tighter foot than the compact panel's own: with the purse moved up into
+  // the text column there is no footer row left to pad.
+  header: { marginBottom: space.md, paddingBottom: space.sm },
+  // Left-aligned under the title. The text column fills the row (pinArt), so
+  // without `alignSelf` the tile would stretch across the whole of it.
+  purseWrap: { flexShrink: 0, alignSelf: 'flex-start', marginTop: space.sm },
   // The same white tile the panel's back chevron wears, for the same reason:
   // a panel is a saturated brand fill in both schemes, so its controls are
   // fixed white-on-ink rather than themed.

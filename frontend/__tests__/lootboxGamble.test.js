@@ -76,73 +76,52 @@ describe('the chest drawing', () => {
   });
 });
 
-describe('spending chances', () => {
-  test('counts down, then invites the open', () => {
-    let tree;
-    act(() => { tree = renderer.create(<LootboxGamble visible sequence={lucky} onOpened={() => {}} />); });
+describe('mystery swipes', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
 
-    // Three chances left: nothing but "keep tapping".
-    expect(texts(tree)).toContain('Tap! Tap!');
-    expect(texts(tree)).toContain('RARE');
-
-    tapOnce(tree);
-    expect(texts(tree)).toContain('Tap! Tap!');
-
-    // The second tap is the one that upgrades: the label follows immediately,
-    // because the wash starts on the same frame.
-    tapOnce(tree);
-    expect(texts(tree)).toContain('EPIC');
-    expect(texts(tree)).toContain('1 chance left!');
-
-    tapOnce(tree);
-    expect(texts(tree)).toContain('Tap to open!');
-  });
-
-  test('an unlucky box still reaches the open, at its floor', () => {
-    let tree;
-    act(() => { tree = renderer.create(<LootboxGamble visible sequence={unlucky} onOpened={() => {}} />); });
-    for (let i = 0; i < 3; i += 1) tapOnce(tree);
-    expect(texts(tree)).toContain('Tap to open!');
-    // Never promoted, so it is still what it was granted at. Nothing was lost.
-    expect(texts(tree)).toContain('COMMON');
-  });
-
-  test('a box with no chances opens on the first tap', () => {
-    // A legendary box has nothing to gamble for, and must not show pips it
-    // cannot spend or a caption telling you to tap tap.
-    let tree;
+  test.each([lucky, unlucky, topped])('every outcome starts hidden and opens after exactly three inputs: %j', (sequence) => {
     const onOpened = jest.fn();
-    act(() => { tree = renderer.create(<LootboxGamble visible sequence={topped} onOpened={onOpened} />); });
-    expect(texts(tree)).toContain('Tap to open!');
-    expect(texts(tree)).not.toContain('Tap! Tap!');
+    let tree;
+    act(() => { tree = renderer.create(<LootboxGamble visible sequence={sequence} onOpened={onOpened} />); });
+    expect(texts(tree)).toContain('MYSTERY');
+    expect(texts(tree)).toContain('Swipe to unlock · 3 left');
+    for (let i = 0; i < 2; i += 1) {
+      tapOnce(tree);
+      act(() => jest.advanceTimersByTime(400));
+      expect(texts(tree)).toContain('MYSTERY');
+      expect(onOpened).not.toHaveBeenCalled();
+    }
+    tapOnce(tree);
+    expect(texts(tree)).toContain(sequence.final_rarity.toUpperCase());
+    expect(onOpened).not.toHaveBeenCalled();
+    act(() => jest.advanceTimersByTime(1200));
+    expect(onOpened).toHaveBeenCalledWith(sequence.final_rarity);
+    tapOnce(tree);
+    expect(onOpened).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
   });
 
-  test('hands over the rarity the taps actually reached, not the granted one', () => {
-    jest.useFakeTimers();
+  test('rapid repeated inputs cannot skip the mystery beats', () => {
+    let tree;
+    act(() => { tree = renderer.create(<LootboxGamble visible sequence={lucky} />); });
+    tapOnce(tree);
+    tapOnce(tree);
+    expect(texts(tree)).toContain('Swipe to unlock · 2 left');
+    act(() => tree.unmount());
+  });
+
+  test('closing mid-open cancels the handoff', () => {
     const onOpened = jest.fn();
     let tree;
     act(() => { tree = renderer.create(<LootboxGamble visible sequence={lucky} onOpened={onOpened} />); });
-    for (let i = 0; i < 3; i += 1) tapOnce(tree);
-    tapOnce(tree);
-    act(() => { jest.advanceTimersByTime(3000); });
-    expect(onOpened).toHaveBeenCalledWith('epic');
-    jest.useRealTimers();
-  });
-
-  test('taps after the open are ignored, so it can only pay out once', () => {
-    jest.useFakeTimers();
-    const onOpened = jest.fn();
-    let tree;
-    act(() => { tree = renderer.create(<LootboxGamble visible sequence={unlucky} onOpened={onOpened} />); });
-    for (let i = 0; i < 6; i += 1) tapOnce(tree);
-    act(() => { jest.advanceTimersByTime(3000); });
-    expect(onOpened).toHaveBeenCalledTimes(1);
-    jest.useRealTimers();
-  });
-
-  test('renders nothing without a sequence', () => {
-    let tree;
-    act(() => { tree = renderer.create(<LootboxGamble visible sequence={null} onOpened={() => {}} />); });
-    expect(tree.toJSON()).toBeNull();
+    for (let i = 0; i < 3; i += 1) {
+      tapOnce(tree);
+      act(() => jest.advanceTimersByTime(400));
+    }
+    act(() => tree.update(<LootboxGamble visible={false} sequence={lucky} onOpened={onOpened} />));
+    act(() => jest.advanceTimersByTime(2000));
+    expect(onOpened).not.toHaveBeenCalled();
+    act(() => tree.unmount());
   });
 });

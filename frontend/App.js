@@ -203,7 +203,7 @@ function HomeStack() {
       <HomeStackNav.Screen
         name="RunDetail"
         component={RunDetailScreen}
-        options={{ headerShown: true, title: 'Run' }}
+        options={{ headerShown: false }}
       />
       <HomeStackNav.Screen
         name="Notifications"
@@ -314,7 +314,7 @@ function YouStack() {
       <YouStackNav.Screen
         name="RunDetail"
         component={RunDetailScreen}
-        options={{ headerShown: true, title: 'Run' }}
+        options={{ headerShown: false }}
       />
       {/* Pasers, Rivals and Crossroads draw their own gradient headers (with a
           back button), so the native one is off. */}
