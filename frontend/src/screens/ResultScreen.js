@@ -58,6 +58,8 @@ import { useProEntitlement } from '../pro/ProProvider';
 import XpProgress from '../components/XpProgress';
 import LevelUpCelebration from '../components/LevelUpCelebration';
 import RankUpCeremony from '../components/rank/RankUpCeremony';
+import RankDownCeremony from '../components/rank/RankDownCeremony';
+import { writeSeenRank } from '../rank/rankSeen';
 import { standingFrom, tierByKey } from '../config/rankLadder';
 import { Image } from '../ui/image';
 import { IAP_ENABLED } from '../config/releaseFeatures';
@@ -1019,6 +1021,28 @@ export default function ResultScreen({ navigation, route }) {
     });
   }, [claim?.rank_up, claim?.rank_key_before, claim?.rank_key_after, claim?.solo_elo]);
   const closeRankUp = useCallback(() => setRankUp(null), []);
+
+  // DEMOTION, the other way round: a failed claim that costs enough points to
+  // cross a floor. Same server flag, same reasoning as `rank_up` above.
+  const [rankDown, setRankDown] = useState(null);
+  const rankDownShown = useRef(false);
+  useEffect(() => {
+    if (rankDownShown.current || !claim?.rank_down) return;
+    rankDownShown.current = true;
+    setRankDown({
+      from: standingFrom({ key: claim.rank_key_before }),
+      to: standingFrom({ key: claim.rank_key_after, points: claim.solo_elo }),
+    });
+  }, [claim?.rank_down, claim?.rank_key_before, claim?.rank_key_after, claim?.solo_elo]);
+  const closeRankDown = useCallback(() => setRankDown(null), []);
+
+  // Either way, THIS screen is where the runner saw the tier change, so the
+  // return-to-app check (RankDropWatcher) must not tell them about it again.
+  useEffect(() => {
+    if (claim?.rank_key_after && (claim.rank_up || claim.rank_down)) {
+      writeSeenRank(user?.id, claim.rank_key_after);
+    }
+  }, [claim?.rank_up, claim?.rank_down, claim?.rank_key_after, user?.id]);
   const [crossedDone, setCrossedDone] = useState(false);
   const [highFiving, setHighFiving] = useState(false);
   const [highFivedAll, setHighFivedAll] = useState(false);
@@ -1992,6 +2016,19 @@ export default function ResultScreen({ navigation, route }) {
       to={rankUp?.to}
       equipped={equipped}
       onDone={closeRankUp}
+    />
+
+    {/* A claim can only move the tier one way, so this never races the
+        promotion; it queues behind the same overlays for the same reason. */}
+    <RankDownCeremony
+      visible={
+        rankDown != null && rankUp == null && levelUp == null
+        && !seq.showPayoff && !seq.showLeaderboard && !crossedOpen
+      }
+      from={rankDown?.from}
+      to={rankDown?.to}
+      equipped={equipped}
+      onDone={closeRankDown}
     />
 
     {showConfetti && <Confetti />}

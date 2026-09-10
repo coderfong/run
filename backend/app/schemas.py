@@ -556,6 +556,10 @@ class ClaimOut(BaseModel):
     # Both keys are always populated (they are equal on the ordinary claim that
     # changes nothing); `rank_up` is the flag the ceremony is gated on.
     rank_up: bool = False
+    # DEMOTION, the same answer the other way round. A failed claim costs rank
+    # points, and one that crosses a floor drops a tier; the client gates its
+    # demotion screen on this flag for the same reason it gates on `rank_up`.
+    rank_down: bool = False
     rank_key_before: str = "wood"
     rank_key_after: str = "wood"
 

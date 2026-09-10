@@ -37,6 +37,7 @@ import RankRail from '../components/rank/RankRail';
 import { standingFrom } from '../config/rankLadder';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
+import DevCelebrationsPanel from '../components/DevCelebrationsPanel';
 import DevCrossroadsSeed from '../components/DevCrossroadsSeed';
 import SharedStatTile from '../components/StatTile';
 import { art } from '../config/onboardingArt';
@@ -868,6 +869,9 @@ export default function ProfileScreen({ navigation }) {
       {/* Every PRO state, previewable from a desk. Invisible to real accounts
           — see the gate in DevProPanel. */}
       <DevProPanel style={{ marginTop: space.lg }} />
+      {/* Rank up, rank down, level up and the rest, playable on demand.
+          Invisible to real accounts, the same gate as DevProPanel. */}
+      <DevCelebrationsPanel style={{ marginTop: space.md }} />
 
       <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>

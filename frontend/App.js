@@ -63,6 +63,7 @@ import ClubChatScreen from './src/screens/ClubChatScreen';
 import SeasonScreen from './src/screens/SeasonScreen';
 import AvatarStudioScreen from './src/screens/AvatarStudioScreen';
 import ShopScreen from './src/screens/ShopScreen';
+import RankDropWatcher from './src/components/rank/RankDropWatcher';
 import ProgressionScreen from './src/screens/ProgressionScreen';
 import MissionsScreen from './src/screens/MissionsScreen';
 import RankLadderScreen from './src/screens/RankLadderScreen';
@@ -684,6 +685,9 @@ function RootNavigator() {
         >
           <RootStack />
         </NavigationContainer>
+        {/* A tier lost while the app was closed, told once on the way back
+            in. Outside the navigator like the alert hosts below. */}
+        <RankDropWatcher navigationRef={navigationRef} ready={navReady} />
         {/* Steal alerts drop in over whatever screen is up, so the host lives
             outside the navigator — same as the tutorial overlay. */}
         <RivalPopupHost

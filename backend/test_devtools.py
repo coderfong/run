@@ -50,6 +50,14 @@ JON = SimpleNamespace(
     email=None,
     email_verified_at=None,
 )
+# The owner's real account, pinned by ID. Given a different username on
+# purpose: the pin must survive a rename, because it is not about the name.
+OWNER = SimpleNamespace(
+    id="32a78fc4-0b3e-49bd-aeac-8e0732c48282",
+    username="renamed-owner",
+    email=None,
+    email_verified_at=None,
+)
 
 
 class _EnergyResult:
@@ -89,8 +97,21 @@ def main():
             check("empty configured list grants no ordinary account", not devtools.is_dev_account(ALICE)),
             check("...not even by id", not devtools.is_dev_account(MALLORY)),
             check("former pinned username grants no privileges", not devtools.is_dev_account(JON)),
+            check("the owner's pinned ID is a dev account with nothing configured", devtools.is_dev_account(OWNER)),
         ),
     )
+    check(
+        "the owner's pin names nobody else",
+        with_allowlist("", lambda: not any(devtools.is_dev_account(u) for u in (ALICE, MALLORY, JON))),
+    )
+    check(
+        "the owner's pin sits beside a configured list, not in place of it",
+        with_allowlist(
+            ALICE.id,
+            lambda: devtools.is_dev_account(OWNER) and devtools.is_dev_account(ALICE),
+        ),
+    )
+    check("/me reports dev_tools true for the owner", with_allowlist("", lambda: _user_dict(OWNER)["dev_tools"]) is True)
 
     check(
         "an unset setting is empty, not missing",

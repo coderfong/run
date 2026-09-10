@@ -1788,6 +1788,7 @@ def claim_territory(
         club_elo=elo_result["club_rating"],
         club_elo_delta=elo_result["club_delta"],
         rank_up=rank_after["tier"] > rank_before["tier"],
+        rank_down=rank_after["tier"] < rank_before["tier"],
         rank_key_before=rank_before["key"],
         rank_key_after=rank_after["key"],
     )
