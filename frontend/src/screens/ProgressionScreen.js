@@ -330,7 +330,7 @@ function ProgressionInfoSheet({ visible, onClose }) {
 // Because the header carries its own back tile, the native stack header is off
 // for this route (see App.js).
 // ---------------------------------------------------------------------------
-function PassHeader({ top, onBack, onInfo, level, subtitle, pct }) {
+function PassHeader({ top, onBack, onInfo, level, eyebrow, pct }) {
   const type = useThemedType();
   return (
     <ToonHeader
@@ -342,66 +342,66 @@ function PassHeader({ top, onBack, onInfo, level, subtitle, pct }) {
       // behind the pink and the reader got the bare paving. Compact gives
       // ninety points back and the skyline band comes out from under it.
       compact
-      eyebrow="Rewards"
+      // The Crossroads shape exactly: eyebrow, title, cut-out, nothing under
+      // the row. The XP count rides in the eyebrow (it used to be a subtitle
+      // line of its own) and the bar and info tile sit in the text column
+      // under the title, where the cut-out already sets the row's height. A
+      // full-width line under the row cost another 56pt of pink.
+      eyebrow={eyebrow}
       title={level == null ? 'Levels' : `Level ${level}`}
-      subtitle={subtitle}
-      // The line swaps as the page loads, and again at the ceiling. Reserving
-      // it stops the header changing height under the reader's thumb.
-      subtitleLines={1}
       solid={brand.pink}
       art={art('railPass')}
       top={top}
       titleStyle={type.display}
       eyebrowStyle={type.labelSm}
       onBack={onBack}
-    >
-      {/* The XP bar and the info tile share one line under the title, and the
-          LINE IS DRAWN IN EVERY STATE whether or not it has anything in it.
-          Two reasons, both new with the plaza behind the page. The info tile
-          used to be absolutely positioned on the back tile's line; `compact`
-          moves the back tile inline with the title, so there is no longer a
-          line up there for it to sit on. And a header that is one height while
-          it loads and another once it has data would slide the painted horizon
-          out from under itself as the page settles — the one place a few points
-          of empty pink is cheaper than the alternative. */}
-      <View style={styles.headerLine}>
-        {pct == null ? null : (
-          // The outline rides on the WRAPPER and the track is the absolute fill
-          // inside it: a bordered track measures its own width including the
-          // border, which leaves the fill permanently short of the end (see
-          // Bar).
-          <View style={styles.xpWrap}>
-            <Bar
-              pct={pct}
-              // Fills from empty every time you open the screen. You mostly get
-              // here straight off a finished run, and watching the bar run up to
-              // where your XP landed is the whole point of the number; the delay
-              // lets the header settle first.
-              animateOnMount
-              delay={260}
-              durationMs={700}
-              trackStyle={StyleSheet.absoluteFill}
-              fillStyle={styles.xpFill}
-            />
-          </View>
-        )}
-        {onInfo ? (
-          // The same white square the back tile wears, at the other end of the
-          // line. It has a hard drop: over the old busy banner art a shadow read
-          // as muck, but on a flat panel it reads as depth.
-          <HardShadow offset={NB.offsetSm} radius={nbRadius.sm} on="#fff">
-            <TouchableOpacity
-              onPress={onInfo}
-              style={styles.infoTile}
-              accessibilityRole="button"
-              accessibilityLabel="How levels and rewards work"
-            >
-              <Info size={20} color={PANEL_INK} />
-            </TouchableOpacity>
-          </HardShadow>
-        ) : null}
-      </View>
-    </ToonHeader>
+      // The line is DRAWN IN EVERY STATE whether or not it has anything in
+      // it: a header that is one height while it loads and another once it
+      // has data would slide the painted horizon out from under itself as the
+      // page settles.
+      underTitle={
+        <View style={styles.headerLine}>
+          {pct == null ? null : (
+            // The outline rides on the WRAPPER and the track is the absolute
+            // fill inside it: a bordered track measures its own width
+            // including the border, which leaves the fill permanently short of
+            // the end (see Bar).
+            <View style={styles.xpWrap}>
+              <Bar
+                pct={pct}
+                // Fills from empty every time you open the screen. You mostly
+                // get here straight off a finished run, and watching the bar
+                // run up to where your XP landed is the whole point of the
+                // number; the delay lets the header settle first.
+                animateOnMount
+                delay={260}
+                durationMs={700}
+                trackStyle={StyleSheet.absoluteFill}
+                fillStyle={styles.xpFill}
+              />
+            </View>
+          )}
+          {onInfo ? (
+            // The same white square the back tile wears, at the other end of
+            // the line. It has a hard drop: over the old busy banner art a
+            // shadow read as muck, but on a flat panel it reads as depth.
+            <HardShadow offset={NB.offsetSm} radius={nbRadius.sm} on="#fff">
+              <TouchableOpacity
+                onPress={onInfo}
+                style={styles.infoTile}
+                // The tile is drawn small to keep the header the cut-out's
+                // height; the target is not.
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="How levels and rewards work"
+              >
+                <Info size={14} color={PANEL_INK} />
+              </TouchableOpacity>
+            </HardShadow>
+          ) : null}
+        </View>
+      }
+    />
   );
 }
 
@@ -612,7 +612,7 @@ export default function ProgressionScreen({ navigation }) {
       <View style={styles.page}>
         <PassBackdrop headerHeight={headerH} />
         <View onLayout={onHeaderLayout}>
-          <PassHeader top={insets.top} onBack={goBack} subtitle="Couldn’t load your ladder" />
+          <PassHeader top={insets.top} onBack={goBack} eyebrow="Couldn’t load" />
         </View>
         <Screen center edges={['bottom']} style={styles.transparent}>
           <Text style={type.body}>Couldn’t load progression.</Text>
@@ -625,7 +625,7 @@ export default function ProgressionScreen({ navigation }) {
       <View style={styles.page}>
         <PassBackdrop headerHeight={headerH} />
         <View onLayout={onHeaderLayout}>
-          <PassHeader top={insets.top} onBack={goBack} subtitle="Counting up your XP" />
+          <PassHeader top={insets.top} onBack={goBack} eyebrow="Rewards" />
         </View>
         <Screen edges={['bottom']} style={styles.transparent}>
           <Skeleton width="100%" height={180} style={{ borderRadius: radius.card, marginTop: space.md }} />
@@ -639,7 +639,7 @@ export default function ProgressionScreen({ navigation }) {
   const showPremium = premium_active || IAP_ENABLED;
   // At the ceiling there is no "next level" to be part-way to, and the server
   // keeps reporting progress toward a level 51 that doesn't exist. A bar
-  // sitting a third full under the words "Max level reached" reads as a bug,
+  // sitting a third full under the words "Max level" reads as a bug,
   // so the ladder being finished fills it.
   const maxed = level >= MAX_LEVEL;
   const pct = maxed ? 1 : Math.max(0, Math.min(1, xp_into_level / xp_for_next));
@@ -875,10 +875,10 @@ export default function ProgressionScreen({ navigation }) {
           onBack={goBack}
           onInfo={() => setInfoOpen(true)}
           level={level}
-          subtitle={
+          eyebrow={
             maxed
-              ? 'Max level reached'
-              : `${xp_into_level.toLocaleString()} / ${xp_for_next.toLocaleString()} XP to level ${level + 1}`
+              ? 'Max level'
+              : `${xp_into_level.toLocaleString()} / ${xp_for_next.toLocaleString()} XP`
           }
           pct={pct}
         />
@@ -915,16 +915,18 @@ const styles = StyleSheet.create({
 
   // The one line under the title: the XP bar, then the info tile. Its height is
   // the TILE's, fixed and independent of what is in it, so the header measures
-  // the same in every state — see the note at the call site.
+  // the same in every state — see the note at the call site. Sized so eyebrow +
+  // title + this line (~86pt) matches the 85pt the cut-out already sets the row
+  // at; any taller and the header grows again.
   headerLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 40,
-    gap: space.md,
-    marginTop: space.md,
+    height: 24,
+    gap: space.sm,
+    marginTop: space.xs,
   },
   infoTile: {
-    width: 40, height: 40, borderRadius: nbRadius.sm,
+    width: 24, height: 24, borderRadius: nbRadius.sm,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#fff',
     borderWidth: NB.stroke, borderColor: PANEL_INK,
@@ -946,8 +948,8 @@ const styles = StyleSheet.create({
   // panel's own white tiles make against it.
   xpWrap: {
     flex: 1,
-    height: 14,
-    borderRadius: 7,
+    height: 10,
+    borderRadius: 5,
     borderWidth: NB.strokeThin,
     borderColor: PANEL_INK,
     backgroundColor: withAlpha(PANEL_INK, 0.18),

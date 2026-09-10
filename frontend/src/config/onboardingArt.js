@@ -205,10 +205,10 @@ const ART = {
 // is the only scale the page draws it at, so a band is `width x fraction`
 // points tall on any phone.
 export const RIVALS_PARK = {
-  ground: '#FEFDF2',
-  sky: '#6DC6FD',
-  top: 0.3804,
-  bottom: 0.5728,
+  ground: '#FFFCEF',
+  sky: '#76C8FD',
+  top: 0.3836,
+  bottom: 0.5154,
 };
 
 // The Home street, on the same terms as the park above — PRINTED BY

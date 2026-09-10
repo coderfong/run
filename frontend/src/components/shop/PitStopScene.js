@@ -40,7 +40,7 @@ import {
   PIT_STOP_LAYOUT,
   PIT_STOP_PLATES,
   SCENE,
-  SCENE_ASPECT,
+  SCENE_VIEW,
 } from '../../config/pitStop';
 import { ICONS } from '../AppIcon';
 import { useReduceMotion } from '../../ui/motion';
@@ -70,10 +70,10 @@ const layer = (f, scale) => ({
  *
  * They are sized from SCENE rather than left on `absoluteFill` so that the
  * plates are pinned to the same reference grid every frame is measured in.
- * The container happens to be exactly this box today — nothing is cropped any
- * more — but a plate on `absoluteFill` would silently rescale itself the day
- * that stops being true, and it would take the counter's edge out of register
- * with the crew standing behind it.
+ * The stage is exactly this box, but the visible container is NOT (the shop
+ * crops the sky, see SCENE_VIEW), and a plate on `absoluteFill` would rescale
+ * itself to the container and take the counter's edge out of register with
+ * the crew standing behind it.
  */
 const sceneBox = (scale) => ({
   position: 'absolute',
@@ -82,6 +82,9 @@ const sceneBox = (scale) => ({
   width: SCENE.width * scale,
   height: SCENE.height * scale,
 });
+
+/** The full box, slid up so the sky above `cropTop` (scene units) leaves the frame. */
+const stage = (scale, cropTop) => ({ ...sceneBox(scale), top: -cropTop * scale });
 
 /**
  * One painted plate, laid on the scene box.
@@ -337,8 +340,8 @@ const StationSign = memo(function StationSign({ scale }) {
       <View
         style={{
           flex: 1,
-          borderRadius: 14 * scale,
-          borderWidth: Math.max(2, 4 * scale),
+          borderRadius: 18 * scale,
+          borderWidth: Math.max(2, 5 * scale),
           borderColor: toon.ink,
           backgroundColor: PIT_STOP_COLORS.signBoard,
           alignItems: 'center',
@@ -350,9 +353,9 @@ const StationSign = memo(function StationSign({ scale }) {
             the board's inner width, and a stall sign that ellipsises is worse
             than one set a little smaller. */}
         <OutlinedText
-          style={[toonType.label, { color: '#FFFFFF', fontSize: Math.max(11, 46 * scale) }]}
+          style={[toonType.label, { color: '#FFFFFF', fontSize: Math.max(14, 76 * scale) }]}
           outline={toon.ink}
-          width={Math.max(1.5, 3 * scale)}
+          width={Math.max(2, 4 * scale)}
           containerStyle={{ width: '84%' }}
           fit
         >
@@ -411,6 +414,7 @@ const BeatProp = memo(function BeatProp({ frame, scale, beat, reduced, lift, chi
  *   isSelectedUnavailable — owned, or not affordable (the apologetic face)
  *   purchaseStatus        — 'idle' | 'pending' | 'success' | 'error'
  *   active                — false when the screen is not focused
+ *   headroom              — points of chrome floating over the scene's top
  */
 const PitStopScene = memo(function PitStopScene({
   selectedProductId = null,
@@ -418,11 +422,16 @@ const PitStopScene = memo(function PitStopScene({
   isSelectedUnavailable = false,
   purchaseStatus = 'idle',
   active = true,
+  headroom = 0,
 }) {
   const reduced = useReduceMotion();
   const window = useWindowDimensions();
   const [width, setWidth] = useState(window.width);
   const scale = width / SCENE.width;
+  // The crop, in scene units. Whatever the floating chrome covers is handed
+  // back as sky, so the canopy starts below the buttons rather than under
+  // them; on a notched phone that is the whole painting.
+  const cropTop = Math.max(0, SCENE_VIEW.top - headroom / scale);
 
   const { state, offerPhase } = useShopkeeperDirector({
     active,
@@ -447,93 +456,100 @@ const PitStopScene = memo(function PitStopScene({
 
   return (
     <View
-      style={styles.scene}
+      style={[styles.scene, { height: (SCENE.height - cropTop) * scale }]}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      {/* 01 the painted stall, and the two icons standing on its shelves. */}
-      <StaticEnvironment scale={scale} />
+      {/* THE STAGE. Every layer below is placed in the FULL scene box; the
+          stage is that box slid up by `cropTop`, and this container clips
+          what rises past its top edge. That is the whole crop: no frame is
+          re-measured for it. */}
+      <View style={stage(scale, cropTop)}>
+        {/* 01 the painted stall, and the two icons standing on its shelves. */}
+        <StaticEnvironment scale={scale} />
 
-      {/* 02 hanging props, swinging off the canopy's lower edge in the two
-          lanes the crew leaves clear. Both are BEHIND the crew, which is what
-          keeps a swinging bottle from crossing a face. */}
-      <HangingProp
-        frame={PIT_STOP_LAYOUT.hangBottle}
-        scale={scale}
-        sway={PIT_STOP_ANIM.sway.bottle}
-        active={active}
-        reduced={reduced}
-      >
-        <HangingBottleArt color={PIT_STOP_COLORS.bottleTeal} height={PIT_STOP_LAYOUT.hangBottle.height} />
-      </HangingProp>
-      <HangingProp
-        frame={PIT_STOP_LAYOUT.hangMedal}
-        scale={scale}
-        sway={PIT_STOP_ANIM.sway.medal}
-        active={active}
-        reduced={reduced}
-      >
-        <HangingMedalArt />
-      </HangingProp>
-
-      {/* 03 support crew */}
-      <SupportCharacters
-        state={state}
-        scale={scale}
-        active={active}
-        reduced={reduced}
-        restockBeat={restockBeat}
-        presentBeat={presentBeat}
-      />
-
-      {/* 04 the attendant and the cup they offer */}
-      <MainAttendant
-        state={state}
-        offerPhase={offerPhase}
-        scale={scale}
-        active={active}
-        reduced={reduced}
-      />
-      <OfferCup scale={scale} offerPhase={offerPhase} reduced={reduced} />
-
-      {/* 05 the counter, from its back edge down — the same painting, cut
-          here so it lands in FRONT of the crew and takes their legs. The
-          stock standing on it comes with it. */}
-      <ForegroundCounter
-        scale={scale}
-        restockBeat={restockBeat}
-        presentBeat={presentBeat}
-        reduced={reduced}
-      />
-
-      {/* 06 effects.
-          THE SELECTED PRODUCT IS NOT DRAWN HERE ANY MORE. It used to rise off
-          the counter's left lane, which put the one thing on this screen you
-          have to READ — art, name, rarity, price — inside a decorative,
-          pointerEvents-none illustration, at whatever size the scene happened
-          to be. It has its own card above the wallet now (ShopScreen), where
-          the buy button sits next to it and the purchase burst plays over the
-          item you actually bought. What is left in here is the crew's
-          reaction, which is the part that belongs to the scene. */}
-      {offerPhase === 'present' ? (
-        <SparkBurst
-          frame={PIT_STOP_LAYOUT.cup}
+        {/* 02 hanging props, swinging off the canopy's lower edge in the two
+            lanes the crew leaves clear. Both are BEHIND the crew, which is
+            what keeps a swinging bottle from crossing a face. */}
+        <HangingProp
+          frame={PIT_STOP_LAYOUT.hangBottle}
           scale={scale}
-          trigger={`cup-${offerPhase}`}
-          count={2}
-          color={PIT_STOP_COLORS.stripe}
+          sway={PIT_STOP_ANIM.sway.bottle}
+          active={active}
+          reduced={reduced}
+        >
+          <HangingBottleArt color={PIT_STOP_COLORS.bottleTeal} height={PIT_STOP_LAYOUT.hangBottle.height} />
+        </HangingProp>
+        <HangingProp
+          frame={PIT_STOP_LAYOUT.hangMedal}
+          scale={scale}
+          sway={PIT_STOP_ANIM.sway.medal}
+          active={active}
+          reduced={reduced}
+        >
+          <HangingMedalArt />
+        </HangingProp>
+
+        {/* 03 support crew */}
+        <SupportCharacters
+          state={state}
+          scale={scale}
+          active={active}
+          reduced={reduced}
+          restockBeat={restockBeat}
+          presentBeat={presentBeat}
+        />
+
+        {/* 04 the attendant and the cup they offer */}
+        <MainAttendant
+          state={state}
+          offerPhase={offerPhase}
+          scale={scale}
+          active={active}
           reduced={reduced}
         />
-      ) : null}
+        <OfferCup scale={scale} offerPhase={offerPhase} reduced={reduced} />
 
-      {/* 07 the station's name, across the canopy, drawn last so nothing in
-          the scene crosses it. The art carries no lettering by design (see
-          docs/SHOP_ASSETS.md), so this is the stall's only signage — and
-          being type rather than paint, it stays sharp at any width and reads
-          to a screen reader. */}
-      <StationSign scale={scale} />
+        {/* 05 the counter, from its back edge down — the same painting, cut
+            here so it lands in FRONT of the crew and takes their legs. The
+            stock standing on it comes with it. */}
+        <ForegroundCounter
+          scale={scale}
+          restockBeat={restockBeat}
+          presentBeat={presentBeat}
+          reduced={reduced}
+        />
+
+        {/* 06 effects.
+            THE SELECTED PRODUCT IS NOT DRAWN HERE ANY MORE. It used to rise
+            off the counter's left lane, which put the one thing on this
+            screen you have to READ — art, name, rarity, price — inside a
+            decorative, pointerEvents-none illustration, at whatever size the
+            scene happened to be. It has its own card under the scene now
+            (ShopScreen), where the buy button sits next to it and the
+            purchase burst plays over the item you actually bought. What is
+            left in here is the crew's reaction, which is the part that
+            belongs to the scene. */}
+        {offerPhase === 'present' ? (
+          <SparkBurst
+            frame={PIT_STOP_LAYOUT.cup}
+            scale={scale}
+            trigger={`cup-${offerPhase}`}
+            count={2}
+            color={PIT_STOP_COLORS.stripe}
+            reduced={reduced}
+          />
+        ) : null}
+
+        {/* 07 the station's name, across the canopy, drawn last so nothing
+            in the scene crosses it. The art carries no lettering by design
+            (see docs/SHOP_ASSETS.md), so this is the stall's only signage —
+            and being type rather than paint, it stays sharp at any width and
+            reads to a screen reader. */}
+        <StationSign scale={scale} />
+      </View>
     </View>
   );
 });
@@ -541,7 +557,6 @@ const PitStopScene = memo(function PitStopScene({
 const styles = StyleSheet.create({
   scene: {
     width: '100%',
-    aspectRatio: SCENE_ASPECT,
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: PIT_STOP_COLORS.plateSky,

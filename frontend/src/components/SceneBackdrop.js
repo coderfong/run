@@ -27,6 +27,7 @@
 
 import React from 'react';
 import { useWindowDimensions, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from '../ui/image';
 
 import { art } from '../config/onboardingArt';
@@ -36,6 +37,11 @@ import { useTheme } from '../theme';
 // Sky colour at each scene's top edge, so a scene shorter than the box it is
 // given (or a stray rounding pixel) reads as more sky rather than as a seam.
 const SKY = { light: '#F7EDCB', dark: '#0E2340' };
+// The same skies at zero alpha — the far end of the `skyAbove` fade. A plain
+// 'transparent' would fade through black on iOS.
+const SKY_CLEAR = { light: 'rgba(247,237,203,0)', dark: 'rgba(14,35,64,0)' };
+// How far down into the art that fade reaches.
+const SKY_FADE = 28;
 
 // Road colour at each scene's BOTTOM edge, for `bleed` (below). Both scenes end
 // on flat tarmac, so a box taller than the art reads as a longer road.
@@ -53,17 +59,18 @@ const DAY_ASPECT = DAY_META?.height ? DAY_META.width / DAY_META.height : 1400 / 
  * `minHeight` floor for the box — the studio uses it to guarantee the scene
  *             covers the runner no matter how wide the window is.
  */
-export function useSceneBackdrop({ aspect = DAY_ASPECT, minHeight = 0, variant = 'studio' } = {}) {
+export function useSceneBackdrop({ aspect = DAY_ASPECT, minHeight = 0, variant = 'studio', skyAbove = 0 } = {}) {
   const { scheme } = useTheme();
   const { width } = useWindowDimensions();
 
   const darkKey = variant === 'profile' ? 'profileBannerDark' : 'stage';
   const source = art(scheme === 'light' ? 'profileBanner' : darkKey);
   // `sceneHeight` is the box the caller ASKED for; `height` is what it gets
-  // once minHeight is applied. They differ only when the caller wants a taller
-  // box than the shape holds — which is what `bleed` fills.
+  // once minHeight and any sky above it are applied. They differ only when the
+  // caller wants a taller box than the shape holds — which is what `bleed`
+  // fills.
   const sceneHeight = width / (aspect || DAY_ASPECT);
-  const height = Math.max(minHeight, sceneHeight);
+  const height = Math.max(minHeight, sceneHeight + skyAbove);
 
   return {
     source,
@@ -71,6 +78,7 @@ export function useSceneBackdrop({ aspect = DAY_ASPECT, minHeight = 0, variant =
     height,
     sceneHeight,
     sky: SKY[scheme] || SKY.dark,
+    clear: SKY_CLEAR[scheme] || SKY_CLEAR.dark,
     ground: GROUND[scheme] || GROUND.dark,
   };
 }
@@ -105,21 +113,31 @@ export function useSceneBackdrop({ aspect = DAY_ASPECT, minHeight = 0, variant =
  *           a backdrop drifting behind a screen nobody is on is battery spent
  *           on something literally invisible.
  */
+/**
+ * `skyAbove` points of sky drawn ABOVE the scene's top edge, for a header that
+ *           runs up under the status bar. Moving the art up instead would put
+ *           the kerb behind the portrait, and covering the taller box would
+ *           crop the trees off the sides, so the scene stays where it was and
+ *           the sky simply continues upward. The day art's left tree is cut
+ *           off by its top edge, so that edge fades into the sky rather than
+ *           ending on a hard line through the canopy.
+ */
 export default function SceneBackdrop({
   aspect,
   minHeight,
   variant = 'studio',
   bleed = false,
   anchor = 'center',
+  skyAbove = 0,
   ambient = null,
   ambientDensity = 1,
   playing = true,
   style,
 }) {
-  const { source, width, height, sceneHeight, sky, ground } = useSceneBackdrop({ aspect, minHeight, variant });
+  const { source, width, height, sceneHeight, sky, clear, ground } = useSceneBackdrop({ aspect, minHeight, variant, skyAbove });
   if (!source || !height) return null;
 
-  const artHeight = bleed ? sceneHeight : height;
+  const artHeight = bleed ? sceneHeight : height - skyAbove;
 
   // The living layers, shared by both of the branches below so the two paths
   // through this component cannot drift apart. Non-interactive and clipped by
@@ -188,18 +206,27 @@ export default function SceneBackdrop({
           marginLeft: -width / 2,
           width,
           height,
-          backgroundColor: bleed && height > sceneHeight ? ground : sky,
+          backgroundColor: bleed && height > sceneHeight + skyAbove ? ground : sky,
           overflow: 'hidden',
         },
         style,
       ]}
     >
+      {skyAbove > 0 ? (
+        <View style={{ position: 'absolute', top: 0, width, height: skyAbove, backgroundColor: sky }} />
+      ) : null}
       <Image
         source={source}
-        style={{ width, height: artHeight }}
+        style={{ marginTop: skyAbove, width, height: artHeight }}
         resizeMode="cover"
         fadeDuration={0}
       />
+      {skyAbove > 0 ? (
+        <LinearGradient
+          colors={[sky, clear]}
+          style={{ position: 'absolute', top: skyAbove, width, height: SKY_FADE }}
+        />
+      ) : null}
       {life}
     </View>
   );

@@ -18,7 +18,7 @@
 // pile of coins.
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { Image, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../api/client';
@@ -28,7 +28,7 @@ import { useAccent } from '../hooks/useAccent';
 import { useAvatar } from '../state/avatar';
 import AppIcon from '../components/AppIcon';
 import GameAnimation from '../components/GameAnimation';
-import { BackButton, Card, HardShadow, PANEL_INK, Row, Screen, Skeleton } from '../components/ui';
+import { Card, HardShadow, PANEL_INK, Row, Screen, Skeleton, ToonHeader } from '../components/ui';
 import { ProgressTrack } from '../components/ui/toon';
 import DayStrip from '../components/missions/DayStrip';
 import MissionCard from '../components/missions/MissionCard';
@@ -40,6 +40,10 @@ import { rollCosmetic } from '../config/lootboxRoll';
 import { toast } from '../ui/toast';
 import { Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
 import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
+
+// Cut off its baked indigo ground by scripts/cut-header-art.py, from
+// assets/art/ui/header-missions.png.
+const MISSIONS_ART = require('../../assets/art/panel/missions.png');
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -266,29 +270,28 @@ export default function MissionsScreen({ navigation }) {
 
   return (
     <Screen gutter={false} edges={[]}>
-      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        <View style={styles.headerRow}>
-          <View style={styles.headerCopy}>
-            {navigation?.canGoBack?.() ? (
-              <BackButton onPress={() => navigation.goBack()} fill="#fff" ink={PANEL_INK} size={36} style={styles.back} />
-            ) : null}
-            <Text style={[type.labelSm, styles.eyebrow]}>MISSIONS</Text>
-            <Text style={[type.display, styles.title]}>
-              {state?.day === state?.today ? 'Today' : label.charAt(0).toUpperCase() + label.slice(1)}
-            </Text>
-          </View>
-          <Image
-            source={require('../../assets/art/panel/missions.png')}
-            style={styles.headerArt}
-            resizeMode="contain"
-            accessible={false}
-          />
-        </View>
+      {/* The Crossroads header: `compact` puts the chevron in the title row
+          and sizes the row by the type rather than the art, and the art is a
+          cut-out on the panel's own fill rather than a boxed tile. The purse
+          stays in the header because it is where the coins fly to. */}
+      <ToonHeader
+        panel
+        compact
+        eyebrow="Missions"
+        title={state?.day === state?.today ? 'Today' : label.charAt(0).toUpperCase() + label.slice(1)}
+        art={MISSIONS_ART}
+        titleStyle={type.display}
+        eyebrowStyle={type.labelSm}
+        solid={brand.purple}
+        top={insets.top}
+        onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined}
+        style={styles.header}
+      >
         <View style={styles.headerFooter}>
           <Text style={styles.subtitle}>Finish all four for a box</Text>
           {purse}
         </View>
-      </View>
+      </ToonHeader>
 
       <Screen
         scroll
@@ -385,22 +388,7 @@ const styles = StyleSheet.create({
   skeletons: { marginTop: space.sm },
   error: { marginTop: space.md },
 
-  header: {
-    backgroundColor: brand.purple,
-    paddingHorizontal: space.lg,
-    paddingBottom: space.md,
-    marginBottom: space.md,
-    borderBottomWidth: NB.stroke,
-    borderBottomColor: PANEL_INK,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-  },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  headerCopy: { flex: 1, minWidth: 0 },
-  back: { alignSelf: 'flex-start', marginBottom: space.sm },
-  eyebrow: { color: PANEL_INK, opacity: 0.75 },
-  title: { color: PANEL_INK, fontSize: 30, lineHeight: 36, marginTop: 2 },
-  headerArt: { width: 90, height: 152, borderRadius: 14 },
+  header: { marginBottom: space.md },
   headerFooter: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
   subtitle: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 20, color: PANEL_INK },
   purseWrap: { flexShrink: 0 },

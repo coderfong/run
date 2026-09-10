@@ -23,6 +23,7 @@ import {
   PIT_STOP_PLATES,
   SCENE,
   SCENE_ASPECT,
+  SCENE_VIEW,
 } from '../src/config/pitStop';
 import CharacterRig, { BODY_RATIO, HEADROOM } from '../src/components/character/CharacterRig';
 import { getItem } from '../src/config/cosmetics';
@@ -165,6 +166,14 @@ describe('the station sign', () => {
   test('sits on the striped part of the canopy, clear of the valance', () => {
     expect(L.sign.y).toBeGreaterThan(PAINTING.awningStripes[0]);
     expect(bottom(L.sign)).toBeLessThan(PAINTING.awningStripes[1]);
+  });
+
+  test('survives the crop, with the whole canopy above it', () => {
+    // The shop cuts the sky off the top of the scene. It has to cut ABOVE the
+    // canopy's stripes, or the stall loses its roofline and the sign sits
+    // hard against the edge of the page.
+    expect(SCENE_VIEW.top).toBeLessThan(PAINTING.awningStripes[0]);
+    expect(SCENE_VIEW.top).toBeLessThan(L.sign.y);
   });
 });
 

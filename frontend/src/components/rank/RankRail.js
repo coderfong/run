@@ -32,6 +32,12 @@
 // sum. Anything added here has to be added to that sum.
 // ---------------------------------------------------------------------------
 //
+// IT IS ALSO INSIDE THE TAB PAGER, which swipes sideways too. The pager won the
+// drag, so the rail could only be moved by the jump-to-you on mount — and at
+// the top of the ladder the one direction left to scroll is the swipe back to
+// Club. `onGrab(true/false)` reports a finger on the track so the page can
+// hold the pager still (hooks/useTabSwipeLock).
+//
 // WHAT IT HAS TO SAY, in the order it is asked: what am I (the plaque), how
 // far along (the fill and the division ticks), how far off the next one (the
 // gap line), and what is above me (the nodes to the right). The numbers are
@@ -138,10 +144,15 @@ function Node({ rung, reached, current, division, colors, scheme }) {
  * @param {number[]} floors    per tier points thresholds (optional)
  * @param {Function} onPress   opens the full ladder
  */
-export default function RankRail({ standing, floors = [], onPress, style }) {
+export default function RankRail({ standing, floors = [], onPress, onGrab, style }) {
   const { colors, scheme } = useTheme();
   const reduced = useReduceMotion();
   const scroller = useRef(null);
+
+  // Finger down on the track, finger up. The page uses these to hold the tab
+  // pager still — see the header and hooks/useTabSwipeLock.
+  const grab = useCallback(() => onGrab?.(true), [onGrab]);
+  const release = useCallback(() => onGrab?.(false), [onGrab]);
 
   const rungs = useMemo(() => ladderRungs({ floors }), [floors]);
 
@@ -231,6 +242,11 @@ export default function RankRail({ standing, floors = [], onPress, style }) {
         // Nested in the profile's ScrollView: without this a horizontal drag
         // that starts on a node is swallowed by the parent on Android.
         nestedScrollEnabled
+        // And nested in the tab PAGER, which wants the same sideways drag.
+        onTouchStart={grab}
+        onTouchEnd={release}
+        onTouchCancel={release}
+        onScrollEndDrag={release}
       >
         <View style={{ width: total, height: TRACK_BOX_H }}>
           {/* The track, stroked once behind every node. */}

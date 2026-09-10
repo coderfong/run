@@ -175,6 +175,11 @@ export function ToonHeader({
   // count; a longer one still grows rather than being cut. Leave unset when
   // the copy is fixed.
   subtitleLines,
+  // Panel-only: a node set in the LEFT column under the title, beside the art
+  // rather than full-width under the row the way `children` are. For a header
+  // that needs one small control or meter but should stay the height of the
+  // cut-out — the pass puts its XP bar and info tile here.
+  underTitle,
   // Panel-only, and only for a header whose ART CHANGES while the page stays
   // put. Draws the cut-out in a fixed square instead of a box shaped to the
   // asset, so switching between a wide illustration and a tall one doesn't
@@ -335,6 +340,7 @@ export function ToonHeader({
                 {subtitle}
               </Text>
             ) : null}
+            {underTitle}
           </View>
           {art ? (
             <Image

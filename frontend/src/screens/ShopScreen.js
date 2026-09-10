@@ -31,9 +31,18 @@
 // intercept a purchase or add a focus stop.
 
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
@@ -42,7 +51,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { NB, brand, nbInk, nbRadius, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
 import RewardReveal from '../components/RewardReveal';
-import { Card, Framed, Row, Screen, Skeleton, Button } from '../components/ui';
+import { BackButton, Card, Framed, PANEL_INK, Row, Screen, Skeleton, Button } from '../components/ui';
 import CharacterRig, { PartThumb } from '../components/character/CharacterRig';
 import { getItem, SLOTS } from '../config/cosmetics';
 import { RARITY_COLOR } from '../components/RewardArt';
@@ -150,7 +159,7 @@ const RefreshBar = memo(function RefreshBar({ expiresAt, onExpire }) {
 // ---------------------------------------------------------------------------
 
 const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, disabled, onSelect }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const reduced = useReduceMotion();
   const tint = RARITY_COLOR[item.rarity] || colors.border;
@@ -165,7 +174,7 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
   return (
     <Animated.View style={[styles.cellWrap, style]}>
       <TouchableOpacity
-        style={[styles.cellTouch, item.owned && { opacity: 0.55 }]}
+        style={styles.cellTouch}
         onPress={() => onSelect(item.item_id)}
         disabled={disabled}
         accessibilityRole="button"
@@ -175,24 +184,24 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
         }`}
         accessibilityHint={item.owned ? undefined : 'Shows the item details and the buy button'}
       >
-        <Framed
-          frame={frameVariant('card', `shop:${item.item_id}`)}
-          tint={selected ? colors.text : tint}
-          fill={selected ? withAlpha(tint, 0.2) : colors.card}
-          weight={selected ? INK.medium : INK.thin}
-          pose={framePose(`shop:${item.item_id}`)}
-          // Only the selected tile boils — see ProgressionScreen's header
-          // frame for the same rule: a grid of boiling tiles is a grid that
-          // will not sit still, so the animated look is reserved for the one
-          // thing you actually picked.
-          boil={selected}
-          inset={false}
-          style={styles.cell}
-          contentStyle={styles.cellContent}
+        {/* A plain stroked tile, art over price. A tile is functional chrome,
+            so it takes the NB stroke rather than a drawn frame, and the whole
+            shelf reads as one even grid. Rarity is the picked tile's wash and
+            is spelled out in the panel. */}
+        <View
+          style={[
+            styles.cell,
+            {
+              backgroundColor: selected ? withAlpha(tint, 0.22) : colors.card,
+              borderColor: nbInk(scheme, colors.card),
+            },
+          ]}
         >
-          {/* Rarity remains both a section heading and the card's tinted
-              frame now that the name is gone from the tile itself. */}
-          <PartThumb slot={item.slot} item={cat} size={68} />
+          {/* Owned dims the ART, not the tile: fading the whole card took its
+              outline with it and washed the shelf out. */}
+          <View style={item.owned ? styles.ownedArt : null}>
+            <PartThumb slot={item.slot} item={cat} size={68} />
+          </View>
           {item.owned ? (
             <Text style={[type.caption, { color: colors.textMuted }]}>Owned</Text>
           ) : (
@@ -201,7 +210,7 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
               <Text style={[type.captionMedium, { color: colors.text }]}>{item.price}</Text>
             </Row>
           )}
-        </Framed>
+        </View>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -217,10 +226,10 @@ const ShopProductCard = memo(function ShopProductCard({ item, cat, selected, dis
 // was never in one piece, and half of it lived inside a decorative layer that
 // takes no touches and answers to no screen reader.
 //
-// It is one card now, and it sits directly ABOVE THE WALLET — art, name,
-// rarity, price and Buy together, with your coin balance as the very next
-// thing you read. That adjacency is the point: "this costs 240" is only useful
-// next to "you have 180".
+// It is one card now, directly under the scene: art, name, rarity, price and
+// Buy together, and when you cannot afford it, how far short you are. "This
+// costs 240" is only useful next to "you have 180", and the purse is up in
+// the header, so the panel does that sum itself.
 //
 // The purchase burst plays HERE, over the item that was bought, rather than
 // over an empty patch of counter.
@@ -230,6 +239,7 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
   cat,
   equipped,
   affordable,
+  coins,
   pending,
   celebrating,
   purchaseTick,
@@ -258,11 +268,12 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
     [equipped, item.slot, item.item_id]
   );
 
-  const status = item.owned
-    ? 'Owned'
-    : affordable
-      ? `${item.price} coins`
-      : `Not enough coins, ${item.price} needed`;
+  const status = item.owned ? 'Owned' : `${item.price} coins`;
+  // How far short, in words: a dimmed button alone does not say whether you
+  // are 5 coins away or 5,000.
+  const short = !item.owned && !affordable && coins != null
+    ? `${Number(item.price - coins).toLocaleString()} coins short. Run to earn more.`
+    : null;
 
   return (
     <Reveal from="down" duration={220}>
@@ -326,6 +337,9 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
                 {status}
               </Text>
             </Row>
+            {short ? (
+              <Text style={[type.caption, { color: colors.danger }]}>{short}</Text>
+            ) : null}
           </View>
         </View>
 
@@ -369,9 +383,10 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
 // ---------------------------------------------------------------------------
 
 export default function ShopScreen() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const focused = useIsFocused();
   const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
   const { data, loading, error, refresh: load, setData } = useQuery('me:coins', api.shop);
@@ -388,6 +403,30 @@ export default function ShopScreen() {
   // view; `sceneH` is how far down the page it starts.
   const scroller = useRef(null);
   const [sceneH, setSceneH] = useState(0);
+  // The floating header's height. Seeded with its sum so the scene's crop is
+  // right on the first frame; onLayout corrects it once it is measured.
+  const [barH, setBarH] = useState(() => insets.top + space.xs + 38 + space.sm);
+  // THE BAR IS SEE-THROUGH over the painting and turns solid as the stock
+  // scrolls up under it: sky behind floating buttons reads as a picture,
+  // tiles sliding beneath them read as a rendering fault.
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+  // Until the scene has been measured there is nothing to be solid over.
+  const solidAt = sceneH > 0 ? Math.max(24, sceneH - barH) : 1e6;
+  const barFade = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [solidAt - 24, solidAt], [0, 1], Extrapolation.CLAMP),
+  }));
+  // Mirrored to JS only on the crossing, for the status bar's ink.
+  const [solid, setSolid] = useState(false);
+  useAnimatedReaction(
+    () => scrollY.value >= solidAt - 12,
+    (now, before) => {
+      if (now !== before) runOnJS(setSolid)(now);
+    },
+    [solidAt]
+  );
 
   useEffect(() => () => clearTimeout(resetTimer.current), []);
 
@@ -454,10 +493,12 @@ export default function ShopScreen() {
       const next = cur === id ? null : id;
       // Only on SELECT. Deselecting and being yanked to the top would be the
       // page moving under a tap that meant "never mind".
-      if (next) scroller.current?.scrollTo({ y: sceneH, animated: true });
+      // To the scene's foot, less the floating bar, so the panel lands just
+      // under the buttons rather than behind them.
+      if (next) scroller.current?.scrollTo({ y: Math.max(0, sceneH - barH), animated: true });
       return next;
     });
-  }, [sceneH]);
+  }, [sceneH, barH]);
 
   const buy = useCallback(async () => {
     if (!selected || selected.owned || purchase.status === 'pending') return;
@@ -514,8 +555,49 @@ export default function ShopScreen() {
       isSelectedUnavailable={unavailable}
       purchaseStatus={purchase.status}
       active={focused}
+      headroom={barH}
     />
   );
+
+  // THE HEADER: back on the left, purse on the right, FLOATING over the
+  // painting. There is no title: the stall's own sign says "Water point", and
+  // the art runs all the way up under the status bar. The native bar is off
+  // for this screen (App.js), so the row pays the status-bar inset itself,
+  // exactly once. It is PINNED: the balance is the number every tile is
+  // judged against, so it never scrolls away.
+  //
+  // Both controls are white tiles with fixed dark ink whatever the scheme,
+  // because the sky behind them is the same painting in both.
+  const header = (
+    <View
+      style={[styles.header, { paddingTop: insets.top + space.xs }]}
+      onLayout={(e) => setBarH(e.nativeEvent.layout.height)}
+      pointerEvents="box-none"
+    >
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          styles.headerSolid,
+          { backgroundColor: colors.bg, borderBottomColor: nbInk(scheme, colors.bg) },
+          barFade,
+        ]}
+      />
+      <BackButton onPress={() => navigation.goBack()} fill="#fff" ink={PANEL_INK} size={38} />
+      <ShopWallet
+        coins={data ? coins : null}
+        fill="#fff"
+        ink={PANEL_INK}
+        onGetMore={IAP_ENABLED ? () => setGetMore(true) : undefined}
+      />
+    </View>
+  );
+
+  // The status bar sits on the painted sky, which is light in both schemes,
+  // so its ink is dark until the bar turns solid over a dark page.
+  const statusBar = focused ? (
+    <StatusBar barStyle={solid && scheme === 'dark' ? 'light-content' : 'dark-content'} />
+  ) : null;
 
   // The scene stays up through loading, empty and error states — the station
   // is the screen, and swapping it for a blank page to say "try again" loses
@@ -525,35 +607,25 @@ export default function ShopScreen() {
   if (loading && error) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {statusBar}
         {scene}
         <Screen center>
           <Text style={[type.body, { textAlign: 'center' }]}>Couldn’t load the shop.</Text>
           <Button title="Try again" size="sm" full={false} onPress={load} style={{ marginTop: space.md }} />
         </Screen>
+        {header}
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* PINNED. The balance is the number every tile is judged against, so it
-          sits in the chrome and never scrolls away — and it carries the
-          selected item's price beside it, which is the comparison the whole
-          screen exists to support. */}
-      {/* NO TOP INSET. The shop is pushed with a native header (App.js gives
-          it the "Water point" title and the back chevron), and that header has
-          already cleared the status bar. Passing the inset in here added it a
-          SECOND time, which is the band of empty background that used to sit
-          between the title and the balance. */}
-      <ShopWallet
-        coins={data ? coins : null}
-        cost={selected && !selected.owned ? selected.price : null}
-        affordable={affordable}
-        onGetMore={IAP_ENABLED ? () => setGetMore(true) : undefined}
-      />
-      <ScrollView
+      {statusBar}
+      <Animated.ScrollView
         ref={scroller}
         style={{ flex: 1 }}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         // Clear the home indicator: this screen is a raw ScrollView with no
         // Screen wrapper, so the restock clock (the LAST row) sat right on the
         // bottom edge on a device with a home bar.
@@ -569,6 +641,7 @@ export default function ShopScreen() {
               cat={selectedCat}
               equipped={equipped}
               affordable={affordable}
+              coins={data ? coins : null}
               pending={purchase.status === 'pending'}
               celebrating={purchase.status === 'success'}
               purchaseTick={purchase.tick}
@@ -614,7 +687,10 @@ export default function ShopScreen() {
               rather than between you and the stock. */}
           <RefreshBar expiresAt={data?.expires_at} onExpire={load} />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Drawn AFTER the scroller, so it floats over the painting. */}
+      {header}
 
       {IAP_ENABLED ? (
         <BuyEnergySheet
@@ -648,12 +724,32 @@ const styles = StyleSheet.create({
   },
   cellWrap: { width: '31.3%' },
   cellTouch: { width: '100%' },
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: space.gutter,
+    paddingBottom: space.sm,
+    zIndex: 5,
+  },
+  headerSolid: { borderBottomWidth: NB.strokeThin },
   // Taller than the old twelve-item tile, because nine of them fit. The art
   // is what you are shopping by, so the art is what got the extra room.
   cell: {
-    width: '100%', minHeight: 116,
+    width: '100%',
+    minHeight: 116,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    padding: 8,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.strokeThin,
   },
-  cellContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, padding: 8 },
+  ownedArt: { opacity: 0.5 },
   // No border of its own: the Card brings the neo-brutalist stroke. The rarity
   // read lives on the mirror behind the runner and the spelled-out rarity line.
   panel: { gap: space.md },

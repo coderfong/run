@@ -56,7 +56,7 @@ jest.mock('../src/components/RivalCard', () => {
   return { __esModule: true, default: Card, fmtArea: (m2) => `${m2}m2` };
 });
 
-import { Dimensions, ScrollView, StyleSheet } from 'react-native';
+import { Dimensions, ScrollView, StyleSheet, Text } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 
 import RivalsScreen from '../src/screens/RivalsScreen';
@@ -94,14 +94,38 @@ function boxes(tree) {
     .filter(Boolean);
 }
 
-const rival = (username) => ({
+const DAY = 24 * 60 * 60 * 1000;
+const rival = (username, daysAgo = 0) => ({
   user_id: `u-${username}`,
   username,
   net_m2: 1000,
   you_took_m2: 2000,
   they_took_m2: 1000,
-  last_event: { kind: 'you_took', area_m2: 2000, at: new Date().toISOString(), lat: 1, lon: 2 },
+  last_event: {
+    kind: 'you_took',
+    area_m2: 2000,
+    at: new Date(Date.now() - daysAgo * DAY).toISOString(),
+    lat: 1,
+    lon: 2,
+  },
 });
+
+/** The usernames of the cards currently drawn, in order. */
+function cards(tree) {
+  return tree.root
+    .findAllByType(Text)
+    .map((t) => t.props.children)
+    .filter((c) => typeof c === 'string' && c.startsWith('card:'))
+    .map((c) => c.slice(5));
+}
+
+/** Press the header tab with this label. */
+function pressTab(tree, label) {
+  const tab = tree.root.findAll(
+    (n) => n.props.accessibilityLabel === label && typeof n.props.onPress === 'function'
+  )[0];
+  act(() => tab.props.onPress());
+}
 
 describe('RivalsScreen', () => {
   beforeEach(() => {
@@ -143,6 +167,50 @@ describe('RivalsScreen', () => {
     // either comes back the treeline is painted over.
     expect(header.props.solid).toBeUndefined();
     expect(header.props.art).toBeUndefined();
+  });
+
+  it('keeps the copy on the sky to one short line', async () => {
+    const tree = mount();
+    await act(async () => {});
+    const header = tree.root.findByType(ToonHeader);
+    // The running score and the eyebrow were what ran across the left tree.
+    expect(header.props.eyebrow).toBeUndefined();
+    expect(header.props.subtitle).toBe('Head to head. Take more ground.');
+  });
+
+  it('opens on Active, and History holds the rivalries that went quiet', async () => {
+    mockRivals = [rival('denise', 1), rival('felicia', 20)];
+    const tree = mount();
+    await act(async () => {});
+
+    expect(tree.root.findAll((n) => n.props.accessibilityLabel === 'Active (1)').length).toBeGreaterThan(0);
+    expect(cards(tree)).toEqual(['denise']);
+
+    pressTab(tree, 'History');
+    expect(cards(tree)).toEqual(['felicia']);
+
+    pressTab(tree, 'Active (1)');
+    expect(cards(tree)).toEqual(['denise']);
+  });
+
+  it('draws the cut at two weeks', async () => {
+    mockRivals = [rival('inside', 13.9), rival('outside', 14.1)];
+    const tree = mount();
+    await act(async () => {});
+    expect(cards(tree)).toEqual(['inside']);
+  });
+
+  it('says so when every rivalry has gone quiet, rather than drawing nothing', async () => {
+    mockRivals = [rival('felicia', 30)];
+    const tree = mount();
+    await act(async () => {});
+
+    expect(cards(tree)).toEqual([]);
+    const copy = tree.root.findAllByType(Text).map((t) => t.props.children);
+    expect(copy).toContain('All quiet');
+
+    pressTab(tree, 'History');
+    expect(cards(tree)).toEqual(['felicia']);
   });
 
   it('runs the list out to the treeline, less the chrome already covering it', async () => {

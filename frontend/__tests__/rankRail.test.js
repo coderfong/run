@@ -117,6 +117,26 @@ describe('the rail', () => {
     expect(sv.props.directionalLockEnabled).toBe(true);
   });
 
+  test('reports a finger on the track, so the page can hold the tab pager still', () => {
+    // The tabs are a swipeable pager. Without this the drag that should push
+    // the rail along swipes to the next tab instead.
+    const onGrab = jest.fn();
+    const tree = render(
+      <RankRail standing={standingFrom({ key: 'mythic', points: 2600, floor: 2400, next_points: null })}
+                floors={FLOORS} onPress={() => {}} onGrab={onGrab} />
+    );
+    const sv = tree.root.findAllByType(ScrollView)[0];
+    act(() => { sv.props.onTouchStart(); });
+    expect(onGrab).toHaveBeenLastCalledWith(true);
+    act(() => { sv.props.onTouchEnd(); });
+    expect(onGrab).toHaveBeenLastCalledWith(false);
+    // The scroll view taking the gesture cancels the touch; that lets go too.
+    act(() => { sv.props.onTouchStart(); sv.props.onTouchCancel(); });
+    expect(onGrab).toHaveBeenLastCalledWith(false);
+    act(() => { sv.props.onTouchStart(); sv.props.onScrollEndDrag(); });
+    expect(onGrab).toHaveBeenLastCalledWith(false);
+  });
+
   test('states its own height, so it cannot swallow the page under it', () => {
     const tree = render(
       <RankRail standing={standingFrom({ key: 'wood', points: 0 })} floors={FLOORS} onPress={() => {}} />

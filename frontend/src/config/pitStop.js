@@ -52,6 +52,15 @@ export const SCENE = {
 
 export const SCENE_ASPECT = SCENE.width / SCENE.height; // ~1.03
 
+// What the shop SHOWS of that box: everything below `top`, less whatever the
+// page's floating chrome covers. The sky above the canopy is cut so the stock
+// is on screen the moment the shop opens, but the shop runs the art up under
+// the status bar with its buttons floating over it, so PitStopScene hands back
+// as much sky as that `headroom` covers and the canopy always starts below the
+// buttons. Every frame is still measured in the FULL box: the scene slides the
+// whole stack up rather than re-measuring anything.
+export const SCENE_VIEW = { top: 360 };
+
 /** Reference units -> fraction of the scene box, for percentage layout. */
 export const px = (x) => `${(x / SCENE.width) * 100}%`;
 export const py = (y) => `${(y / SCENE.height) * 100}%`;
@@ -128,7 +137,11 @@ export const PIT_STOP_LAYOUT = {
   // The back wall was the other candidate and it does not work: the crew's
   // heads start at ~700, so a board wide enough to read would hang behind
   // them.
-  sign: { x: 553, y: 435, width: 430, height: 118 },
+  //
+  // It is as big as the band allows because it is the page's TITLE: the shop
+  // has no header text of its own, so this board is where the screen says
+  // what it is.
+  sign: { x: 448, y: 400, width: 640, height: 150 },
 
   // Real PASER icons standing on the painted shelves, one per side. Both go
   // at the shelf ends the crew does NOT stand in front of — the restocker

@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChevronRight, Lock } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
@@ -16,6 +17,7 @@ import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
+import { useTabSwipeLock } from '../hooks/useTabSwipeLock';
 import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
@@ -113,6 +115,9 @@ export default function ProfileScreen({ navigation }) {
   // This is a tab screen, so without it the leaves keep crossing for the whole
   // session behind Home, the map and the shop.
   const focused = useIsFocused();
+  // The rank rail scrolls sideways inside a tab pager that also swipes
+  // sideways; while a finger is on the rail, the You tab stops swiping.
+  const lockTabSwipe = useTabSwipeLock(navigation);
   // The runner colour picker below is exactly this: club colour unless a
   // fixed one is chosen. This page's own frames used to hardcode the club
   // colour, which is why only whichever swatch happened to match the club's
@@ -125,6 +130,13 @@ export default function ProfileScreen({ navigation }) {
   // both themes; the header only needs the height to reserve room for it.
   const { height: sceneH } = useSceneBackdrop({ variant: 'profile' });
 
+  // The scene runs all the way up under the status bar. The page opts out of
+  // Screen's top inset and the header takes it instead, as sky above the art —
+  // the runner stays exactly where it stood on the scene, only the strip of
+  // page background that used to sit above the scene is gone.
+  const insets = useSafeAreaInsets();
+  const skyTop = insets.top + space.md;
+
   // The name and its level badge sit at the very bottom of the header, and the
   // portrait frame above them is taller than the art's own shape — so the badge
   // hung off the bottom edge of the scene. Measuring the name row and growing
@@ -132,7 +144,7 @@ export default function ProfileScreen({ navigation }) {
   // width, portrait tier or text size; `bleed` adds the height as more road
   // rather than cropping into the trees.
   const [nameBottom, setNameBottom] = useState(0);
-  const headerH = Math.max(sceneH, nameBottom ? nameBottom + space.sm : 0);
+  const headerH = Math.max(sceneH + skyTop, nameBottom ? nameBottom + space.sm : 0);
 
   // Everything the page shows is served from the cache on the first render and
   // corrected behind it, so returning to You never rebuilds itself from six
@@ -274,15 +286,22 @@ export default function ProfileScreen({ navigation }) {
   };
 
   return (
-    <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
+    <Screen scroll edges={[]} contentStyle={{ paddingBottom: space.xxl }}>
       {/* header — profile picture is a head-and-shoulders bust, sitting on the
           roadside scene (the art leaves its centre clear for it). The header
           reserves the scene's full height so the stat wall below starts clear
           of it instead of floating over the road. */}
-      <Reveal style={[styles.header, { minHeight: headerH }]}>
+      <Reveal style={[styles.header, { minHeight: headerH, paddingTop: skyTop + space.lg }]}>
         {/* Wind through the scene. A no-op when the leaf art is not in the
             build, so this line is safe whatever the asset selection says. */}
-        <SceneBackdrop variant="profile" minHeight={headerH} bleed ambient="leaves" playing={focused} />
+        <SceneBackdrop
+          variant="profile"
+          minHeight={headerH}
+          skyAbove={skyTop}
+          bleed
+          ambient="leaves"
+          playing={focused}
+        />
         <PressableScale
           onPress={() => navigation.navigate('AvatarStudio')}
           accessibilityRole="button"
@@ -341,6 +360,7 @@ export default function ProfileScreen({ navigation }) {
             standing={standingFrom(stats)}
             floors={rankFloors}
             onPress={() => navigation.navigate('RankLadder')}
+            onGrab={lockTabSwipe}
             style={styles.rankRail}
           />
         )}
@@ -391,13 +411,8 @@ export default function ProfileScreen({ navigation }) {
           <Arrival active={statsArriving} style={styles.wallInner}>
             {/* One counting number per screen (see theme/motion). Area held is
                 the headline — it is the thing the whole game is about — so it
-                counts and the other five arrive settled. */}
-            {/* The stickers say what each number IS at a glance, and only four
-                of the six carry one — Distance and Biggest claim are read
-                against the two tiles beside them, and a drawing on all six
-                would be a row of pictures rather than a wall of numbers.
-                Area held wears the crown ABOVE the box: its number is the
-                widest on the wall, so there is no room inside for one. */}
+                counts and the other five arrive settled. No stickers on any
+                tile: the wall is numbers only. */}
             <StatTile
               label="Area held"
               value={km2(stats.total_area_m2 || 0)}
@@ -405,13 +420,12 @@ export default function ProfileScreen({ navigation }) {
               format={km2Worklet}
               unit="km²"
               accent={accent}
-              badge="crown"
             />
             <StatTile label="Distance" value={km(stats.career_distance_m || 0)} unit="km" />
-            <StatTile label="Runs" value={String(stats.runs_count || 0)} icon="route" />
+            <StatTile label="Runs" value={String(stats.runs_count || 0)} />
             <StatTile label="Biggest claim" value={km2(stats.biggest_claim_m2 || 0)} unit="km²" accent={accent} />
-            <StatTile label="Streak" value={String(stats.current_streak_weeks || 0)} unit="wk" icon="streak" />
-            <StatTile label="Zones" value={String(stats.territory_count || 0)} icon="map-pin" />
+            <StatTile label="Streak" value={String(stats.current_streak_weeks || 0)} unit="wk" />
+            <StatTile label="Zones" value={String(stats.territory_count || 0)} />
           </Arrival>
         )}
       </Reveal>
@@ -875,7 +889,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // The header now ends at the scene's bottom edge rather than at the name, so
   // its old `xl` bottom margin read as a hole between the art and the runner
   // actions — `md` closes it up without letting the buttons touch the road.
-  header: { alignItems: 'center', marginTop: space.md, marginBottom: space.md, paddingTop: space.lg },
+  // No top margin or padding here: the header starts at the very top of the
+  // screen so its scene can, and the padding that clears the status bar is
+  // applied inline where the inset is known.
+  header: { alignItems: 'center', marginBottom: space.md },
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   // The fade wrapper sits BETWEEN the wall and its tiles, so it has to carry

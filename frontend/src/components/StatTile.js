@@ -21,30 +21,16 @@
 // and a bare Card is the one thing that cannot carry a percentage width (its
 // hard-shadow wrapper is what gets laid out — see components/ui/Card.js), so
 // that wall collapsed into six black columns with the labels set vertically.
+//
+// NO STICKERS. Tiles used to carry an icon in the corner (and the headline one
+// a crown above the box). They were removed on request: the wall is numbers.
 
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
 
-import AppIcon from './AppIcon';
 import { Card, StatValue } from './ui';
 import { frameVariant } from '../ui/frameRegistry';
 
-// Two ways a tile can carry a sticker, and they are not interchangeable.
-//
-// `icon` sits INSIDE, in the bottom right — the corner the value leaves empty
-// on a tile whose number is short ("2 runs", "1 wk"). It is positioned against
-// the frame's padding edge, so it lands just inside the drawn line whatever
-// frame the label deals.
-//
-// `badge` HANGS OFF the top right corner instead, for the tile whose number
-// fills the box. A tile is about 84pt of content across and `0.62 km²` at the
-// stat size is most of that, so an inside sticker would be printed over the
-// unit — the headline tile wears its crown above the box, the way a prize is
-// worn, and the frame's ink crosses its foot.
-const ICON = 22;
-const BADGE = 26;
-
-export default function StatTile({ label, value, unit, accent, countTo, format, icon, badge, style }) {
+export default function StatTile({ label, value, unit, accent, countTo, format, style }) {
   return (
     <Card frame={frameVariant('chip', label)} frameTint={accent} style={style} padded>
       <StatValue
@@ -56,21 +42,6 @@ export default function StatTile({ label, value, unit, accent, countTo, format, 
         countTo={countTo}
         format={format}
       />
-      {icon ? (
-        <View style={styles.icon} pointerEvents="none">
-          <AppIcon name={icon} size={ICON} />
-        </View>
-      ) : null}
-      {badge ? (
-        <View style={styles.badge} pointerEvents="none">
-          <AppIcon name={badge} size={BADGE} />
-        </View>
-      ) : null}
     </Card>
   );
 }
-
-const styles = StyleSheet.create({
-  icon: { position: 'absolute', right: 0, bottom: 0 },
-  badge: { position: 'absolute', right: -2, top: -BADGE * 0.62 },
-});

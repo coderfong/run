@@ -144,20 +144,10 @@ describe('the pinned wallet', () => {
     expect(texts(tree)).not.toContain('0');
   });
 
-  test('shows the price beside the balance once something is picked', () => {
-    let tree;
-    act(() => { tree = renderer.create(<ShopWallet coins={180} cost={240} affordable={false} />); });
-    const t = texts(tree);
-    expect(t).toContain('180');
-    expect(t).toContain('240');
-    // The number that actually decides the tap.
-    expect(t).toContain('60 coins short. Run to earn more.');
-  });
-
-  test('an affordable price is not flagged as short', () => {
-    let tree;
-    act(() => { tree = renderer.create(<ShopWallet coins={500} cost={240} affordable />); });
-    expect(texts(tree)).not.toContain('short');
+  test('sits in the header row, beside the way back', async () => {
+    const tree = await mountShop();
+    expect(byLabel(tree, 'Go back')).toBeTruthy();
+    expect(texts(tree)).toContain('180');
   });
 });
 
@@ -228,5 +218,15 @@ describe('trying it on', () => {
 
     await act(async () => { byLabel(tree, ', legendary,').props.onPress(); });
     expect(texts(tree)).toContain('Not enough coins');
+  });
+
+  test('an item you cannot afford says how far short you are', async () => {
+    const tree = await mountShop();
+    // 180 in the purse, 900 on the legendary: the number that decides the tap.
+    await act(async () => { byLabel(tree, ', legendary,').props.onPress(); });
+    expect(texts(tree)).toContain('720 coins short. Run to earn more.');
+
+    await act(async () => { byLabel(tree, ', common, 80 coins').props.onPress(); });
+    expect(texts(tree)).not.toContain('short');
   });
 });

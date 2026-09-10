@@ -17,6 +17,7 @@ import {
   nbTextOn,
   radius,
   space,
+  tintOn,
   withAlpha,
   useTheme,
   useThemedType,
@@ -177,7 +178,7 @@ function FramedStat({ item, index, label, value, unit, valueColor }) {
 }
 
 export default function FeedCard({ item, navigation, autoPlaySteal = false, screenFocused = true }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
   // when the file moved to themed styles, and since the only two uses of it
@@ -207,6 +208,14 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
   // to the username, so the seeded/bot rows in a fresh database still come out
   // varied rather than all landing on the first colour in the deck.
   const accent = nbAccentFor(item.id || item.username || 'run');
+  // The card's paper: the dealt hue washed into the ordinary card surface, not
+  // the hue itself. A feed of full-strength deck colours was a wall of shouting
+  // blocks, one after another down the page, and it drowned the route and the
+  // numbers the card exists to show. A wash keeps each run its own colour and
+  // hands the loud part back to the stroke and the drop. Opaque via `tintOn`,
+  // because HardShadow paints a solid block behind the card.
+  const cardFill = tintOn(colors.card, accent, scheme === 'dark' ? 0.28 : 0.32);
+  const onCard = nbTextOn(cardFill);
   // Seeded from the row the feed already handed us, so the chips are on the
   // card at first paint rather than a fetch later.
   const { reactions, mine, burst, react } = useRunReactions(item.id, item);
@@ -302,14 +311,14 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
       // colour on every render and on every device, and nothing has to store
       // a colour per row. See `nbAccentFor`.
       //
-      // It is the card's FILL now, not just its drop — a flat saturated block,
-      // the way the reference boards colour a repeated list. The pieces that
+      // It is the card's FILL now, not just its drop — a wash of the dealt
+      // hue (see `cardFill`), not the flat saturated block it started as. The pieces that
       // used to need a neutral ground for their own colour (the route map, a
       // photo, the clan-coloured stats) each sit in their own drawn frame with
       // its own paper now, so they no longer read directly against the fill and
       // the clan-colour-wins rule holds where it still meets the chrome.
       accent={accent}
-      fill={accent}
+      fill={cardFill}
       style={{ marginBottom: space.md }}
     >
       <Row between testID="feed-card-header" style={styles.header}>
@@ -341,7 +350,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           <View style={styles.identityText}>
             {/* On the card's own colour now — `nbTextOn` keeps the name legible
                 whichever hue the run was dealt, in either scheme. */}
-            <Text style={[type.bodyBold, { color: nbTextOn(accent) }]} numberOfLines={1}>
+            <Text style={[type.bodyBold, { color: onCard }]} numberOfLines={1}>
               {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}
               {item.is_you ? ' · you' : ''}
             </Text>
@@ -415,7 +424,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
                   has kudoed: the count is hidden at zero, so tapping the heart
                   on and off changed the card not at all. */}
               <AppIcon name="like" size={28} opacity={kudoed ? 1 : 0.62} />
-              {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : nbTextOn(accent) }]}>{count}</Text> : null}
+              {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : onCard }]}>{count}</Text> : null}
             </PressableScale>
           </View>
           {/* Everything else. The list is built per row rather than being a

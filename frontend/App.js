@@ -541,10 +541,12 @@ function RootStack() {
           opens it, and when it sat under You that deep-link left the You tab
           resting on the shop — tapping You then reopened the shop instead of
           the profile. */}
+      {/* Draws its own header row (back, title and coin purse on one line),
+          so the native bar stays off. */}
       <RootStackNav.Screen
         name="Shop"
         component={ShopScreen}
-        options={{ headerShown: true, title: 'Water point' }}
+        options={{ title: 'Water point' }}
       />
       <RootStackNav.Screen
         name="Record"

@@ -56,6 +56,10 @@ SOURCES = [
     # PASERBY: two runners passing each other, on a flat yellow ground. Same
     # treatment as the two above — the Crossroads header draws it as a cut-out.
     ("ui/header-crossroads.png", "panel/crossroads.png"),
+    # Two kids reading the mission board, on a flat indigo ground. That ground
+    # is too dark to put the panel's black copy on, so the Missions header
+    # keeps brand purple and draws this as a cut-out, the Crossroads way.
+    ("ui/header-missions.png", "panel/missions.png"),
     # The first-run steps stand these on the night stage, unboxed.
     ("onboarding/thumb-name.png", "onboarding/cut/name.png"),
     ("onboarding/thumb-birthday.png", "onboarding/cut/birthday.png"),
