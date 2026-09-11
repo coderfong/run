@@ -120,31 +120,7 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
   );
 }
 
-// Swipeable hero: Season → Clubs → Solo → PRO, each deep-linking somewhere.
-//
-// THE CARDS ARE THE SCOPE PICKER. Season standings ranks either clubs or solo
-// runners, and the choice used to be made TWICE: once here, by picking a card,
-// and again on the board itself, by a pair of chips on its header. Two controls
-// for one axis meant the card you tapped could be contradicted by the chip you
-// landed on. The chips are gone (see SeasonScreen) and these cards own the
-// choice outright:
-//
-//   Season  where the season stands   → the standings board, clubs scope
-//   Clubs   where the clubs stand     → the standings board, clubs scope
-//   Solo    where YOU stand           → the standings board, solo scope
-//
-// Season and Clubs land on the same board on purpose: `clans` is the board the
-// season opens on, and the card that names it is the one a runner reaches for.
-//
-// THE PRO SLIDE IS LAST, AND IT IS A SLIDE. Home's other PRO surface (the card
-// partway down the feed) only appears after three finished runs, which left a
-// new account with no route to the paywall from the app's main screen at all.
-// This one is always there for anybody who could subscribe — but it is the
-// fourth card in a carousel that opens on the season, so it costs nothing to
-// anybody who does not swipe to it and covers nothing on the way past.
-//
-// A subscriber never sees it: `canShowPro && !isPro`, the same pair every other
-// marketing surface asks (src/pro/storeAvailable.js).
+// Swipeable hero: start a run, leaderboards, then PRO when available.
 function HeroCarousel({ navigation }) {
   const styles = useThemedStyles(makeStyles);
   const { width } = useWindowDimensions();
@@ -153,8 +129,8 @@ function HeroCarousel({ navigation }) {
   const warmSeason = () => preloadScreenImages('Season');
   const { isPro, canShowPro, openPaywall } = useProEntitlement();
   const showPro = canShowPro && !isPro;
-  const pages = showPro ? 4 : 3;
-  const proPage = 3;
+  const pages = showPro ? 3 : 2;
+  const proPage = 2;
   const proSeen = useRef(false);
 
   const onEnd = (e) => {
@@ -183,39 +159,25 @@ function HeroCarousel({ navigation }) {
       >
         <HeroCard
           width={cardW}
+          bg={brand.teal}
+          art={require('../../assets/art/card-solo.png')}
+          eyebrow="START A RUN TODAY"
+          title="LET'S RUN"
+          sub="Make today your next run"
+          cta="Start a run"
+          onPressIn={() => preloadScreenImages('Record')}
+          onPress={() => navigation.navigate('Record')}
+        />
+        <HeroCard
+          width={cardW}
           bg={brand.pink}
           art={require('../../assets/art/season-banner.png')}
           eyebrow={`SEASON ${SEASON_NO} · ${SEASON_CITY}`}
-          title="STANDINGS"
+          title="LEADERBOARDS"
           sub={countdown()}
-          cta="View standings"
+          cta="View leaderboards"
           onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season')}
-        />
-        <HeroCard
-          width={cardW}
-          bg={brand.purple}
-          art={require('../../assets/art/card-clubs.png')}
-          artWidth="69%"
-          eyebrow="LEAGUE"
-          title="CLUBS"
-          sub="Every club, ranked"
-          cta="View the club board"
-          onPressIn={warmSeason}
-          // The board scoped to clubs. Your own club is a tab of its own; this
-          // card asks where the clubs stand, which is a standings question.
-          onPress={() => navigation.navigate('Season', { mode: 'clans' })}
-        />
-        <HeroCard
-          width={cardW}
-          bg={brand.teal}
-          art={require('../../assets/art/card-solo.png')}
-          eyebrow="LADDER"
-          title="SOLO"
-          sub="Climb without a club"
-          cta="View the ladder"
-          onPressIn={warmSeason}
-          onPress={() => navigation.navigate('Season', { mode: 'solo' })}
         />
         {showPro ? (
           <HeroCard
@@ -323,6 +285,15 @@ function FeedList({ navigation, header }) {
   // One focus subscription for the feed, passed down as a primitive. The tab
   // stays mounted, but every open reaction picker should close when it leaves.
   const screenFocused = useIsFocused();
+  const [visibleRunIds, setVisibleRunIds] = useState([]);
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60, minimumViewTime: 180 }).current;
+  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+    const ids = viewableItems.filter((entry) => entry.isViewable).map((entry) => entry.item.id);
+    setVisibleRunIds((previous) => (
+      previous.length === ids.length && previous.every((id, index) => id === ids[index])
+        ? previous : ids
+    ));
+  }, []);
   // The first page comes from the cache, so coming back to Home shows the feed
   // you were just looking at instead of four skeletons and a round trip. Later
   // pages are deliberately NOT cached: they're append-only scroll state, and
@@ -375,10 +346,11 @@ function FeedList({ navigation, header }) {
   };
 
   const rows = loading ? Array.from({ length: 4 }, (_, i) => ({ id: `skeleton-${i}` })) : items;
-  // Exactly one card detonates on its own: the most recent run that actually
-  // took land off somebody. Every other steal on the page sits settled until
-  // it is tapped — twenty bombs going off down a scroll is not a payoff.
-  const autoStealId = (loading ? null : rows.find((r) => r.victims?.length))?.id ?? null;
+  // Virtualized rows mount before they appear. Play only the first visible
+  // steal so its explosion is seen, and stop autoplay when Home loses focus.
+  const autoStealId = (!loading && screenFocused && !reduce
+    ? rows.find((row) => row.victims?.length && visibleRunIds.includes(row.id))?.id
+    : null) ?? null;
 
   // A FEED CARD IS 86 NATIVE VIEWS — measured, not estimated, and down from
   // 241 before the frames learned to nine-slice themselves natively (see
@@ -448,6 +420,9 @@ function FeedList({ navigation, header }) {
       style={styles.list}
       contentContainerStyle={{ paddingBottom: space.xxl, flexGrow: 1 }}
       data={rows}
+      extraData={autoStealId}
+      viewabilityConfig={viewabilityConfig}
+      onViewableItemsChanged={onViewableItemsChanged}
       keyExtractor={(it) => it.id}
       ListHeaderComponent={header}
       ListEmptyComponent={
@@ -500,8 +475,8 @@ export default function HomeScreen({ navigation }) {
   });
   const unread = notifs?.unread || 0;
 
-  useEffect(
-    () => preloadScreenImagesAfterInteractions([
+  useFocusEffect(
+    useCallback(() => preloadScreenImagesAfterInteractions([
       'Season',
       'Progression',
       'Shop',
@@ -511,8 +486,7 @@ export default function HomeScreen({ navigation }) {
       'Notifications',
       'Leaderboard',
       'SharedIcons',
-    ]),
-    []
+    ]), [])
   );
 
   useFocusEffect(
@@ -610,6 +584,7 @@ export default function HomeScreen({ navigation }) {
           scroll away with the season card instead of covering run cards. */}
       <SideRail
         inline
+        firstRunComplete={runCount > 0}
         navigation={navigation}
         onOpenShop={() => navigation.navigate('Shop')}
         style={styles.shortcutRow}

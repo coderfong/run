@@ -4,44 +4,14 @@
 // Each scope can be ranked by land, claims, captures, defenses, or distance.
 // Tap a club row to open its profile; solo rows aren't tappable (no profile).
 //
-// THE SCOPE IS CHOSEN BEFORE YOU GET HERE. `route.params.mode` decides which
-// board this is, and there is no control on the page to change it: Home's
-// carousel has a Clubs card and a Solo card, so the choice is already made by
-// the card that was tapped. A pair of chips up here would be a second control
-// for the same axis, able to contradict the card that opened the screen — and
-// on the club board they also sat above rows that are clubs, offering to turn
-// them into runners. Coming back to the other board is a back-swipe away.
-//
-// THE HEADER IS CHROME, NOT THE PAGE. It used to carry FIFTEEN chips in three
-// wrapped rows — two scopes, five categories, four windows, four fields — under
-// a full-size hero panel with a three-line sentence reserved under the title.
-// On a phone that is most of the screen spent on the picker, on a page whose
-// entire job is to show a ranked list: the first standing was below the fold on
-// every board. The picker now reads
-//
-//     compact panel header · one summary bar
-//
-// and the twelve remaining chips live in a sheet behind that bar. The bar
-// states the whole board in words ("Land held · Season · Everyone"), so nothing
-// is hidden — the sentence that used to be the header's subtitle IS the control
-// now, which is why the subtitle went away rather than being shortened.
-//
-// The panel keeps its per-board illustration and colour: whichever board was
-// chosen last owns the header art — the scope this screen was opened on, or a
-// category chosen inside the sheet. `compact` + `stableArt` means swapping
-// between a wide illustration and a tall one can't resize the header underneath
-// the reader's thumb.
-
 import React, { useState } from 'react';
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronDown, Lock } from 'lucide-react-native';
+import { ChevronDown } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import useCoarsePosition from '../hooks/useCoarsePosition';
-import { useProEntitlement } from '../pro/ProProvider';
 import { useAuth } from '../auth/AuthContext';
 import StandingBar from '../components/StandingBar';
 import {
@@ -80,7 +50,8 @@ const km2 = (m) => (m / 1e6).toFixed(2);
 // RunnerPortrait — which is why nothing here is a fixed 40pt box.
 const PORTRAIT = 40;
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
-// Not a picker any more — the scope arrives as a route param from Home. This
+// The scope defaults from a route param (Home's leaderboards card opens on
+// Clubs) but is now also a filter in the sheet, alongside category — this
 // still owns the two boards' art and the words the page uses for them, so the
 // header can name the board it is showing.
 const SCOPE_OPTIONS = [
@@ -97,27 +68,7 @@ const CATEGORY_OPTIONS = [
 ];
 const CATEGORY_BY_KEY = Object.fromEntries(CATEGORY_OPTIONS.map((item) => [item.key, item]));
 
-// The PASER PRO half of the board. These change the QUESTION — over what
-// stretch of time, against which runners — and never the answer to "where am
-// I", which StandingBar answers for free underneath. Every option here is
-// `season`/`all` for a free runner, which is the board they already had.
-const WINDOW_OPTIONS = [
-  { key: 'season', label: 'Season', sentence: 'this season' },
-  { key: 'week', label: 'This week', sentence: 'this week' },
-  { key: 'month', label: 'This month', sentence: 'this month' },
-  { key: 'all', label: 'All time', sentence: 'all time' },
-];
-const FIELD_OPTIONS = [
-  { key: 'all', label: 'Everyone', sentence: '' },
-  { key: 'pasers', label: 'Pasers', sentence: ', among your pasers' },
-  { key: 'club', label: 'My club', sentence: ', within your club' },
-  { key: 'local', label: 'Near me', sentence: ', near you' },
-];
-const WINDOW_BY_KEY = Object.fromEntries(WINDOW_OPTIONS.map((i) => [i.key, i]));
-const FIELD_BY_KEY = Object.fromEntries(FIELD_OPTIONS.map((i) => [i.key, i]));
-
-// The board the screen opens on, and what "Reset" goes back to.
-const DEFAULTS = { category: 'land', window: 'season', field: 'all' };
+const DEFAULTS = { category: 'land', mode: 'clans' };
 
 // Every board that owns an illustration, keyed the way `bannerKey` stores it.
 const ART_BY_KEY = {
@@ -128,13 +79,13 @@ const ART_BY_KEY = {
 // One chip inside the filter sheet. `locked` still renders as a live control:
 // tapping it opens the paywall, which is a better answer than a chip that looks
 // broken or one that has been hidden so nobody knows the view exists.
-function SheetChip({ label, active, locked, onPress, styles, type, colors }) {
+function SheetChip({ label, active, onPress, styles, type, colors }) {
   return (
     <PressableScale
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      accessibilityLabel={locked ? `${label}. Paser Pro` : label}
+      accessibilityLabel={label}
     >
       <Framed
         frame={frameVariant('chip', `season:${label}`)}
@@ -155,9 +106,7 @@ function SheetChip({ label, active, locked, onPress, styles, type, colors }) {
         >
           {label}
         </Text>
-        {locked ? (
-          <Lock size={12} color={active ? colors.primaryInk : colors.textDim} strokeWidth={2.5} />
-        ) : null}
+
       </Framed>
     </PressableScale>
   );
@@ -174,7 +123,7 @@ function ChipGroup({ title, children, styles, type, colors }) {
   );
 }
 
-// Rank by / when / who. Selections apply to the board LIVE — the sheet does not
+// Rank by / Clubs / Solo. Selections apply to the board LIVE — the sheet does not
 // close on a tap and there is no Apply button, so the header art, the summary
 // bar and the rows behind the backdrop all move as the chips are chosen. The
 // button at the bottom only dismisses.
@@ -182,12 +131,9 @@ function BoardFiltersSheet({
   visible,
   onClose,
   category,
-  window_,
-  field,
-  isPro,
+  mode,
   onCategory,
-  onWindow,
-  onField,
+  onMode,
   onReset,
   changed,
   styles,
@@ -221,33 +167,10 @@ function BoardFiltersSheet({
         ))}
       </ChipGroup>
 
-      <ChipGroup title="When" styles={styles} type={type} colors={colors}>
-        {WINDOW_OPTIONS.map((option) => (
-          <SheetChip
-            key={`w:${option.key}`}
-            label={option.label}
-            active={window_ === option.key}
-            locked={!isPro && option.key !== DEFAULTS.window}
-            onPress={() => onWindow(option.key)}
-            styles={styles}
-            type={type}
-            colors={colors}
-          />
-        ))}
-      </ChipGroup>
-
-      <ChipGroup title="Who" styles={styles} type={type} colors={colors}>
-        {FIELD_OPTIONS.map((option) => (
-          <SheetChip
-            key={`f:${option.key}`}
-            label={option.label}
-            active={field === option.key}
-            locked={!isPro && option.key !== DEFAULTS.field}
-            onPress={() => onField(option.key)}
-            styles={styles}
-            type={type}
-            colors={colors}
-          />
+      <ChipGroup title="Clubs / Solo" styles={styles} type={type} colors={colors}>
+        {SCOPE_OPTIONS.map((option) => (
+          <SheetChip key={option.key} label={option.label} active={mode === option.key}
+            onPress={() => onMode(option.key)} styles={styles} type={type} colors={colors} />
         ))}
       </ChipGroup>
 
@@ -279,61 +202,28 @@ export default function SeasonScreen({ navigation, route }) {
   const { user } = useAuth();
   // Your own portrait, for your own row on the solo board.
   const { equipped: myEquipped, rankKey: myRankKey } = useAvatar();
-  // Fixed for the life of the screen — the Home card that opened it chose the
-  // scope, and nothing on this page changes it. Not state: a `useState` seeded
-  // from a param that no setter is left to call is a value pretending to be a
-  // control, and the next reader would go looking for the missing chips.
-  const mode = SCOPE_BY_KEY[route.params?.mode] ? route.params.mode : 'clans';
+  const [mode, setMode] = useState(SCOPE_BY_KEY[route?.params?.mode] ? route.params.mode : DEFAULTS.mode);
   const [category, setCategory] = useState(
-    CATEGORY_BY_KEY[route.params?.category] ? route.params.category : DEFAULTS.category
+    CATEGORY_BY_KEY[route?.params?.category] ? route.params.category : DEFAULTS.category
   );
   // Which board's illustration the header is wearing — the last one chosen.
   // Home links straight to a scope ("Clubs"/"Solo" on the season banner) with
   // no category, so open on THAT art rather than defaulting to land.
   const [bannerKey, setBannerKey] = useState(() => {
-    if (CATEGORY_BY_KEY[route.params?.category]) return route.params.category;
-    if (SEASON_SCOPE_ART[route.params?.mode]) return route.params.mode;
+    if (CATEGORY_BY_KEY[route?.params?.category]) return route.params.category;
+    if (SEASON_SCOPE_ART[route?.params?.mode]) return route.params.mode;
     return DEFAULTS.category;
   });
-  // The PRO filters. `season` + `all` is the free board, so a runner who never
-  // opens the sheet has exactly the screen they had before.
-  const [window_, setWindow] = useState(DEFAULTS.window);
-  const [field, setField] = useState(DEFAULTS.field);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // The app's one paywall, opened with the context that explains WHY a
-  // board filter is locked. No sheet of its own any more.
-  const { isPro, openPaywall } = useProEntitlement();
-  // Only fetched for the one filter that needs it, and only when it is chosen
-  // — asking for a position to draw a board nobody has asked for would be a
-  // location prompt out of nowhere.
-  const here = useCoarsePosition(field === 'local');
-
-  const boardOpts = { window: window_, filter: field, lat: here?.lat, lon: here?.lon };
-  // `local` cannot be requested until a position arrives; the server refuses
-  // it outright rather than quietly answering globally.
-  const ready = field !== 'local' || !!here;
-
-  // One cache entry PER BOARD, so flipping between Clubs, Solo, land and
-  // distance re-shows a board you have already looked at instantly instead of
-  // blanking to skeletons on every toggle. useQuery re-seeds itself when the
-  // key changes, which also retires the request-id guard that used to be
-  // needed to ignore a slow board arriving late.
+  const boardOpts = { window: 'season', filter: 'all' };
   const { data: rows, loading } = useQuery(
-    ready ? `season:${mode}:${category}:${window_}:${field}` : null,
+    `season:${mode}:${category}:season:all`,
     () => api.seasonLeaderboard(mode, category, boardOpts),
     { fallback: [] }
   );
-
-  const selectFilter = (axis, key) => {
-    // A free runner gets the paywall, not a silent no-op and not a 402 toast.
-    // The sheet closes FIRST: the paywall is a modal of its own, and the app
-    // never stacks one on top of another (see MapLayersSheet).
-    if (!isPro && key !== DEFAULTS[axis]) {
-      setFiltersOpen(false);
-      openPaywall('leaderboard_history');
-      return;
-    }
-    (axis === 'window' ? setWindow : setField)(key);
+  const selectMode = (key) => {
+    setMode(key);
+    setBannerKey(key);
   };
 
   const selectCategory = (key) => {
@@ -343,20 +233,13 @@ export default function SeasonScreen({ navigation, route }) {
 
   const reset = () => {
     setCategory(DEFAULTS.category);
-    setWindow(DEFAULTS.window);
-    setField(DEFAULTS.field);
+    setMode(DEFAULTS.mode);
     setBannerKey(DEFAULTS.category);
   };
 
   const art = ART_BY_KEY[bannerKey] || CATEGORY_BY_KEY[DEFAULTS.category].art;
-  // What the summary bar says, and what the sheet's Reset appears for. Scope is
-  // not counted: it is fixed by the card that opened the screen, and nothing on
-  // this page — bar or sheet — can move it.
-  const changed =
-    (category !== DEFAULTS.category ? 1 : 0) +
-    (window_ !== DEFAULTS.window ? 1 : 0) +
-    (field !== DEFAULTS.field ? 1 : 0);
-  const summary = `${CATEGORY_BY_KEY[category].label} · ${WINDOW_BY_KEY[window_].label} · ${FIELD_BY_KEY[field].label}`;
+  const changed = (category !== DEFAULTS.category ? 1 : 0) + (mode !== DEFAULTS.mode ? 1 : 0);
+  const summary = `${CATEGORY_BY_KEY[category].label} · ${SCOPE_BY_KEY[mode].label}`;
 
   const header = (
     <ToonHeader
@@ -391,7 +274,7 @@ export default function SeasonScreen({ navigation, route }) {
         style={styles.summaryBar}
         accessibilityRole="button"
         accessibilityLabel={`Filters. ${summary}`}
-        accessibilityHint="Choose what the board ranks, over what period, and who is on it"
+        accessibilityHint="Choose rank by and Clubs or Solo"
       >
         <Framed
           frame={frameVariant('action', 'season-filter-bar')}
@@ -420,7 +303,7 @@ export default function SeasonScreen({ navigation, route }) {
   // A disabled query never resolves, so its `loading` never clears — without
   // this, choosing "Near me" with no location permission would sit on
   // skeletons forever instead of reaching the empty state that explains why.
-  const waiting = loading && ready;
+  const waiting = loading;
   const arriving = useArrival(waiting);
 
   const openClan = (clanId) => navigation.navigate('ClubDetail', { clanId });
@@ -509,7 +392,7 @@ export default function SeasonScreen({ navigation, route }) {
         // different tree. Changing a filter refetches, and a second tree would
         // unmount the sheet the filter was chosen in — the sheet would slam
         // shut on every tap inside it.
-        data={ready && !waiting ? rows : []}
+        data={!waiting ? rows : []}
         keyExtractor={(item) => item.clan_id || item.user_id}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl }}
         // The header is the full-bleed art rectangle, so it cancels the list's
@@ -542,20 +425,13 @@ export default function SeasonScreen({ navigation, route }) {
                 />
               ))}
             </View>
-          ) : field === 'local' && !here ? (
-            <EmptyState
-              icon={<AppIcon name="locate" size={44} />}
-              title="PASER needs your location for this board"
-              body="Turn location on for PASER in your device settings to see the runners around you."
-              style={{ marginTop: space.xxl }}
-            />
           ) : (
             <EmptyState
               icon={<AppIcon name="trophy" size={44} />}
               title={mode === 'clans' ? 'No clubs on the board yet' : 'No solo runners yet'}
               body={mode === 'clans'
-                ? `No club has recorded ${CATEGORY_BY_KEY[category].description} ${WINDOW_BY_KEY[window_].sentence}.`
-                : `No solo runner has recorded ${CATEGORY_BY_KEY[category].description} ${WINDOW_BY_KEY[window_].sentence}${FIELD_BY_KEY[field].sentence}.`}
+                ? `No club has recorded ${CATEGORY_BY_KEY[category].description} this season.`
+                : `No solo runner has recorded ${CATEGORY_BY_KEY[category].description} this season.`}
               style={{ marginTop: space.xxl }}
             />
           )
@@ -574,12 +450,9 @@ export default function SeasonScreen({ navigation, route }) {
         visible={filtersOpen}
         onClose={() => setFiltersOpen(false)}
         category={category}
-        window_={window_}
-        field={field}
-        isPro={isPro}
+        mode={mode}
         onCategory={selectCategory}
-        onWindow={(key) => selectFilter('window', key)}
-        onField={(key) => selectFilter('field', key)}
+        onMode={selectMode}
         onReset={reset}
         changed={changed}
         styles={styles}

@@ -37,6 +37,7 @@
 // two taps away. Shop is the exception and always has been — it lives at the
 // ROOT, above the tabs, so it pops straight back to wherever it opened from.
 
+import { Lock } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from '../ui/image';
@@ -58,7 +59,7 @@ const GOLD = ['#FFD98A', '#F0A93C', '#A8631A'];
 // grew to five: five 64pt tiles do not fit across a 320pt phone. Sized by the
 // caller rather than by a media query here, so the rail stays the one place
 // that knows how many tiles it has.
-function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size }) {
+function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size, locked = false }) {
   const src = art(artKey);
   const { colors } = useTheme();
   const type = useThemedType();
@@ -70,10 +71,13 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
           badge hangs off that corner, and a badge pinned to the slot instead
           would drift out to the row's gutter. */}
       <PressableScale
-        onPress={() => { haptic.light(); onPress?.(); }}
+        onPress={() => { if (!locked) { haptic.light(); onPress?.(); } }}
+        disabled={locked}
+        accessibilityState={{ disabled: locked }}
+        accessibilityHint={locked ? 'Complete your first run to unlock' : undefined}
         accessibilityRole="button"
-        accessibilityLabel={label ? `${label}${badge ? `, ${badge}` : ''}` : 'Open'}
-        style={styles.press}
+        accessibilityLabel={label ? `${label}${locked ? ', locked. Complete your first run to unlock' : ''}${badge ? `, ${badge}` : ''}` : 'Open'}
+        style={[styles.press, locked && { opacity: 0.55 }]}
       >
         <View style={[styles.tileWrap, inline && styles.inlineTileWrap, size ? { width: size, height: size } : null]}>
           {/* A drawn box, like everything else on this page — not a rounded
@@ -102,7 +106,11 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
               <AppIcon name={icon} style={styles.tileIcon} />
             )}
           </Framed>
-          {badge ? (
+          {locked ? (
+            <View style={[styles.badge, { backgroundColor: colors.card }]}>
+              <Lock size={14} color={colors.text} />
+            </View>
+          ) : badge ? (
             <View style={styles.badge}>
               <Text style={styles.badgeText} numberOfLines={1}>{badge}</Text>
             </View>
@@ -128,7 +136,7 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
   );
 }
 
-export default function SideRail({ navigation, onOpenShop, style, inline = false }) {
+export default function SideRail({ navigation, onOpenShop, style, inline = false, firstRunComplete = true }) {
   const [claimable, setClaimable] = useState(0);
   // Today's missions, for the badge. Same rule as the pass tile: the number is
   // what is WAITING TO BE COLLECTED, not how many missions exist — a badge
@@ -210,6 +218,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         icon="steal"
         artKey="railRivals"
         label="Rivals"
+        locked={!firstRunComplete}
         tint={['#C4B5FD', brand.purple, '#5B21B6']}
         onPress={() => navigation.navigate('Rivals')}
         inline={inline}
@@ -225,6 +234,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         icon="route"
         artKey="railCrossroads"
         label="Crossroads"
+        locked={!firstRunComplete}
         badge={badgeLabel(paserby?.unseen)}
         tint={['#FBA6CD', brand.pink, '#9D1458']}
         onPress={() => navigation.navigate('Crossroads')}

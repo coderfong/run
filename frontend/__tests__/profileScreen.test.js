@@ -6,7 +6,7 @@
  * vertical one, and it carried no height of its own. A nested scroll view
  * measured in an unbounded parent takes the space rather than its content's,
  * so the rail grew to most of a screen and pushed the stat wall, the PRO
- * poster, the rivals, the streak calendar, the trophies, the run list and
+ * poster, the streak calendar, the trophies, the run list and
  * every setting down past the fold. Nothing crashed and nothing was missing
  * from the tree — the page simply read as though everything below the portrait
  * had been deleted.
@@ -157,7 +157,6 @@ describe('ProfileScreen', () => {
     }
     // Everything under it, in page order.
     expect(t).toContain('PASER PRO');
-    expect(t).toContain('Rivals');
     expect(t).toContain('Running streak');
     expect(t).toContain('Trophies');
     expect(t).toContain('Recent runs');

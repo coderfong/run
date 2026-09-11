@@ -25,6 +25,32 @@ const inFlight = new Map();
 // a completed warm is permanent for the life of the process.
 const warmed = new Set();
 
+// Shared across callers: separate screen groups must not each saturate the
+// native image loader while navigation is mounting visible images.
+const MAX_CONCURRENT_PREFETCHES = 2;
+const pending = [];
+let active = 0;
+
+function drain() {
+  while (active < MAX_CONCURRENT_PREFETCHES && pending.length) {
+    const { uri, resolve } = pending.shift();
+    active += 1;
+    Promise.resolve()
+      .then(() => Image.prefetch(uri))
+      .then((ok) => {
+        if (ok !== false) warmed.add(uri);
+        return ok !== false;
+      })
+      .catch(() => false)
+      .then((ok) => {
+        active -= 1;
+        inFlight.delete(uri);
+        resolve(ok);
+        drain();
+      });
+  }
+}
+
 function sourceUri(source) {
   if (!source) return null;
   if (typeof source === 'string') return source;
@@ -38,16 +64,11 @@ export function preloadImage(source) {
   if (warmed.has(uri)) return Promise.resolve(true);
   if (inFlight.has(uri)) return inFlight.get(uri);
 
-  const request = Promise.resolve(Image.prefetch(uri))
-    .then((ok) => {
-      if (ok !== false) warmed.add(uri);
-      return ok !== false;
-    })
-    // A missing optional asset should never hold the app or navigation open.
-    .catch(() => false)
-    .finally(() => inFlight.delete(uri));
-
+  let resolve;
+  const request = new Promise((done) => { resolve = done; });
   inFlight.set(uri, request);
+  pending.push({ uri, resolve });
+  drain();
   return request;
 }
 

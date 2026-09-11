@@ -564,7 +564,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
       {/* The steal, on the card. It starts SETTLED — heads on the bar pulling
           a face, the amount stamped on — and detonates when tapped, because a
           feed that blows itself up as you scroll is noise rather than a
-          payoff. The newest steal on the page is the one that plays itself.
+          payoff. Home plays the first visible steal as it scrolls into view.
 
           Pulled up by its own headroom: the banner reserves 90pt of empty
           stage above the bar for the fireball to have somewhere to go, and
@@ -581,8 +581,8 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           trigger={item.id}
           victims={victims}
           amount={fmtArea(item.stolen_m2 || 0)}
-          autoPlay={autoPlaySteal}
-          haptics={autoPlaySteal}
+          autoPlay={autoPlaySteal && screenFocused}
+          haptics={false}
           style={{ marginTop: space.sm - STEAL_HEADROOM }}
         />
       )}

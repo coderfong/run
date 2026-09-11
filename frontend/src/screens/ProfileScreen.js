@@ -26,7 +26,6 @@ import StreakCalendar from '../components/StreakCalendar';
 import PrivacySettings from '../components/PrivacySettings';
 import HealthSyncSettings from '../components/HealthSyncSettings';
 import RecoveryEmail from '../components/RecoveryEmail';
-import RivalCard from '../components/RivalCard';
 import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
 import { brand, nbField, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { levelBandColor } from '../config/progression';
@@ -46,7 +45,6 @@ import { toast } from '../ui/toast';
 import { itemPreviewSources } from '../config/cosmetics';
 import { preloadImages } from '../utils/imagePreload';
 import { preloadScreenImagesAfterInteractions } from '../config/screenAssets';
-import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
 import { shortDate } from '../utils/time';
 
 // Trophy shelf — derived from live stats; earned trophies glow in the accent.
@@ -193,10 +191,7 @@ export default function ProfileScreen({ navigation }) {
   // purchase made from it. Both now come from the entitlement itself, which
   // this screen already has, so keeping it would be a request per visit to
   // /me/progression for a number nothing on the page reads.
-  const { data: rivals } = useQuery('me:rivals:3', () => api.rivals(3), {
-    fallback: { rivals: [] },
-    select: (d) => d.rivals || [],
-  });
+
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(user?.username || '');
@@ -216,7 +211,6 @@ export default function ProfileScreen({ navigation }) {
       'AvatarStudio',
       'Progression',
       'Pasers',
-      'Rivals',
       'Crossroads',
       // The ten tier scenes. Last in the queue because it is the heaviest
       // group in the app, and this is the only page that opens the ladder —
@@ -225,16 +219,7 @@ export default function ProfileScreen({ navigation }) {
     ]);
   }, [scheme]);
 
-  // The paser badge and the rivals row refresh on focus (useQuery does that for
-  // every query on this page): the badge has to settle after you answer a
-  // request over on the Pasers screen and come back, and rivalries move while
-  // you're away — someone can take your land at any time.
-  //
-  // Warming the rivals' avatar layers happens once their cards are already on
-  // screen, never in front of them.
-  useEffect(() => {
-    if (rivals?.length) preloadRunnerAssets(rivals);
-  }, [rivals]);
+
 
   const togglePref = async (key) => {
     const next = { ...prefs, [key]: !prefs[key] };
@@ -520,60 +505,6 @@ export default function ProfileScreen({ navigation }) {
               />
             </Framed>
           </PressableScale>
-        </Reveal>
-      ) : null}
-
-      {/* Rivals — the newest beat, with every rivalry a tap away. The header
-          shows even at zero: rivalries only start accruing once someone takes
-          your land, and hiding the row entirely meant a new player had no way
-          to reach the Rivals page at all. */}
-      {rivals && !rivals.length ? (
-        <Reveal delay={120}>
-          <SectionHeader
-            title="Rivals"
-            action="See all"
-            onAction={() => navigation.navigate('Rivals')}
-            style={{ marginTop: space.xl, marginBottom: space.md }}
-          />
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Rivals')}
-            accessibilityRole="button"
-            accessibilityLabel="Rivals, none yet"
-          >
-            <Card padded>
-              <Text style={[type.bodySm, { color: colors.textMuted, textAlign: 'center' }]}>
-                No rivals yet. Claim ground someone else wants and you’ll get one.
-              </Text>
-            </Card>
-          </TouchableOpacity>
-        </Reveal>
-      ) : null}
-      {rivals?.length ? (
-        <Reveal delay={120}>
-          <SectionHeader
-            title="Rivals"
-            action={rivals.length > 1 ? `See all ${rivals.length}` : 'See all'}
-            onAction={() => navigation.navigate('Rivals')}
-            style={{ marginTop: space.xl, marginBottom: space.md }}
-          />
-          <RivalCard
-            rival={rivals[0]}
-            myAvatar={equipped}
-            compact
-            onPress={() => navigation.navigate('Rivals')}
-            onTakeBack={() => navigation.navigate('Record')}
-            onViewLand={
-              rivals[0].last_event?.lat != null
-                ? () =>
-                    navigation.navigate('Map', {
-                      screen: 'MapMain',
-                      params: {
-                        focus: { lat: rivals[0].last_event.lat, lon: rivals[0].last_event.lon },
-                      },
-                    })
-                : undefined
-            }
-          />
         </Reveal>
       ) : null}
 
