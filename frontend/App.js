@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   AppState,
+  InteractionManager,
   StatusBar,
   TouchableOpacity,
   useWindowDimensions,
@@ -360,13 +361,51 @@ const YouTab = withBoundary(YouStack);
 // bookends the swipe: Home↔Map and Club↔You swipe; leave Map by tapping).
 const Tab = createMaterialTopTabNavigator();
 
-// Mount tabs on demand. Preloading the whole pager also mounts Mapbox and
-// retains every tab's native view tree, even if those tabs are never opened.
-const TAB_SCREEN_OPTIONS = { swipeEnabled: true, lazy: true, lazyPreloadDistance: 0 };
+// How long after launch the other three tabs get built. Long enough that Home
+// has drawn and its first requests are away; short enough that nobody has
+// finished reading the screen and reached for a tab.
+const TAB_PRELOAD_DELAY_MS = 1500;
 
 function MainTabs() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
+
+  // PRELOAD THE OTHER TABS — BUT NOT DURING LAUNCH, AND NOT DURING THE SWIPE.
+  //
+  // `lazyPreloadDistance: 3` is what stops a tab tap from being a mount, and
+  // it is worth keeping. As a FIXED option, though, it is a mount cost paid
+  // at the worst possible moment either way: set to 0, the first swipe to
+  // each tab pays for that tab's mount — Mapbox's GL context included — right
+  // in the middle of the pager's swipe animation, which is the stutter this
+  // was rewritten to fix and instead reintroduced. Set to 3 from launch,
+  // opening the app builds all four tabs at once, racing the screen the
+  // runner is actually looking at.
+  //
+  // So it starts at zero and moves to three once the app is idle. Home mounts
+  // alone, draws, and settles; the other three are built behind it a beat
+  // later — off the interaction path, not inside a gesture — and are ready
+  // by the time anybody swipes or taps a tab. Changing a screen option
+  // remounts nothing — the tabs that already exist stay exactly as they are.
+  const [preloadDistance, setPreloadDistance] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    let task = null;
+    const timer = setTimeout(() => {
+      task = InteractionManager.runAfterInteractions(() => {
+        if (alive) setPreloadDistance(3);
+      });
+    }, TAB_PRELOAD_DELAY_MS);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      task?.cancel?.();
+    };
+  }, []);
+
+  const screenOptions = useMemo(
+    () => ({ swipeEnabled: true, lazy: true, lazyPreloadDistance: preloadDistance }),
+    [preloadDistance]
+  );
 
   return (
     <Tab.Navigator
@@ -378,8 +417,13 @@ function MainTabs() {
       // than relying on the navigator's default.
       style={{ backgroundColor: colors.bg }}
       sceneContainerStyle={{ backgroundColor: colors.bg }}
-      // Visited tabs keep their state; unopened tabs incur no mount work.
-      screenOptions={TAB_SCREEN_OPTIONS}
+      // Lazy mounting's low initial cost, and every tab prepared before it is
+      // asked for — see `preloadDistance` above for why the second half of
+      // that is deferred rather than set at launch. Separately, useQuery
+      // (hooks/useQuery.js) gates each screen's FIRST fetch on that screen
+      // being focused, so a preloaded tab is built without also firing its
+      // network requests.
+      screenOptions={screenOptions}
     >
       <Tab.Screen name="Home" component={HomeTab} />
       <Tab.Screen name="Map" component={MapTab} options={{ swipeEnabled: false }} />
