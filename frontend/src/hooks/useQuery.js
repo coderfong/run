@@ -18,16 +18,12 @@
 // is true only when there is genuinely nothing to show, so skeletons survive
 // for the first-ever visit and for a fresh install, which is where they belong.
 //
-// Revalidation is tied to FOCUS, not mount. The tab navigator keeps all four
-// tabs mounted (lazyPreloadDistance: 3), so a mount-only fetch would leave a
-// tab showing minutes-old data; a focus fetch refreshes exactly when you look
-// at it. `staleMs` stops a quick swipe through the tabs from firing the same
-// request three times, and concurrent callers of one endpoint are coalesced
-// into a single request by the cache. The FIRST load is focus-gated too, for
-// the same reason: a screen the tab navigator merely preloaded is mounted
-// without being looked at, and firing its fetch anyway meant opening the app
-// fired four screens' worth of requests in one burst. See the first-load
-// effect below.
+// Revalidation is tied to FOCUS, not mount. Tab stacks remain mounted after
+// their first visit, so a mount-only fetch would leave a tab showing
+// minutes-old data; a focus fetch refreshes exactly when you look at it.
+// `staleMs` stops a quick swipe through the tabs from firing the same request
+// three times, and concurrent callers of one endpoint are coalesced into a
+// single request by the cache.
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavigationContext } from '@react-navigation/native';
@@ -148,14 +144,8 @@ export function useQuery(key, fetcher, options = {}) {
   // coalescing makes that free when two screens really do ask at once.
   //
   // Gated on focus for a screen that HAS a navigation context and is not
-  // focused: the tab navigator keeps all four tabs mounted at once
-  // (lazyPreloadDistance: 3), so without this every one of them fired its
-  // first fetch in the same burst the instant the app opened, whether or not
-  // the tab was ever looked at. A preloaded-but-unfocused screen now gets its
-  // first fetch from the `focus` listener below instead, when the tab is
-  // actually opened — that `run()` call still fetches (unforced doesn't mean
-  // skipped, only throttled) because nothing has been attempted yet, so nothing
-  // about what a freshly-opened tab shows changes, only when the request fires.
+  // focused. Nested stack screens can be mounted before they are shown; those
+  // get their first fetch from the focus listener below instead.
   useEffect(() => {
     if (!active) return;
     // Deferring only holds together because the focus listener below is what

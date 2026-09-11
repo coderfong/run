@@ -40,6 +40,18 @@ Apple Health sync is optional and off until you turn it on in **You > Settings
   are yours to keep or delete in the Health app, and deleting your PASER
   account does not remove them.
 
+## Apple Watch companion
+
+The paired iPhone records the run. PASER sends run status, elapsed time,
+distance, pace and land earned to your Apple Watch through Apple's
+WatchConnectivity framework. The watch sends start, pause, resume and finish
+commands back to the phone. It does not independently record GPS, read Apple
+Health, or send data directly to PASER's servers.
+
+During a paused run with the companion installed, the iPhone's location session
+may remain active so you can resume from the watch. Points received during the
+pause are excluded from the route. Location stops when you finish the run.
+
 ## How data is used
 
 Data is used to provide accounts, record and display runs, calculate territory,

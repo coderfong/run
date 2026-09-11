@@ -1,12 +1,11 @@
 /**
  * Every endless loop parks when its screen is not the one being looked at.
  *
- * The app's tabs are never frozen: material top tabs carry no react-freeze, so
- * Home's feed, the avatar studio, a Missions screen left on top of a stack —
- * all stay mounted and live behind whatever tab is showing. And Reanimated 4
- * on iOS applies every animated frame as a commit of the whole shadow tree,
- * which every React update then has to queue behind. A loop nobody can see is
- * a tax on every tap in the app, so each primitive that loops asks
+ * Bottom tabs now freeze inactive tab trees, but stack screens within the
+ * active tab and components rendered outside navigation can still remain
+ * mounted. Reanimated 4 on iOS applies every animated frame as a commit of the
+ * shadow tree, which every React update then has to queue behind. A loop nobody
+ * can see is a tax on every tap in the app, so each primitive that loops asks
  * `useOnScreen` first. These pin that it does.
  */
 

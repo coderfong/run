@@ -36,10 +36,15 @@ import {
 } from '../run/backgroundTrack';
 import { createGpsFilter, DROP, filterPoints, haversineM, pathDistanceM } from '../run/gpsFilter';
 import { buildSimulatedRun, FALLBACK_ORIGIN } from '../run/simulatedRun';
+import { withoutPausedPoints } from '../run/pauseWindows';
 import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
 import { useSettings } from '../state/settings';
 import { writeWorkout } from '../health';
+import { useIsFocused } from '@react-navigation/native';
+import useWatchRun from '../watch/useWatchRun';
+import { watchAppInstalled, beginRunSave, endRunSave } from '../watch/watchLink';
+import { PHASE as WATCH_PHASE } from '../watch/watchState';
 import { NB, darkColors, nbInk, radius, runTuning as T, space, toon, type } from '../theme';
 import { ToonButton } from '../components/ui';
 import { haptic, PressableScale, Pulse } from '../ui/motion';
@@ -282,6 +287,9 @@ export default function RunningScreen({ navigation }) {
   const { equipped, rankKey } = useAvatar();
   const { trailGlowColor } = useSettings();
   const accent = trailGlowColor || color.stroke;
+  // Whether Start on the watch may begin a run here: not while Result sits on
+  // top of this screen (see watchPhase below).
+  const isFocused = useIsFocused();
 
   const mapRef = useRef(null);
   const watchRef = useRef(null);
@@ -347,6 +355,18 @@ export default function RunningScreen({ navigation }) {
   const [paused, setPaused] = useState(false);
   const [locked, setLocked] = useState(false);
   const pausedAtRef = useRef(null);
+  // Every stretch this run spent paused, { from, to } in epoch ms. Fixes the
+  // background task recorded inside one never reach the trail (see
+  // run/pauseWindows.js and pauseRun).
+  const pauseWindowsRef = useRef([]);
+  // True while a pause is holding the background location session open for
+  // the watch (see pauseRun).
+  const bgHeldRef = useRef(false);
+  // What the watch shows once a run ends: { status, distanceM, elapsedMs,
+  // notice }, where status is the watch phase (saving, saved, unsaved, or
+  // ready with a notice after a run too short to save). Null until a run
+  // ends, cleared by the next start. Nothing on the phone's screen reads it.
+  const [afterRun, setAfterRun] = useState(null);
   const [starting, setStarting] = useState(false);
   const startingRef = useRef(false);
   const [startCountdown, setStartCountdown] = useState(null);
@@ -406,7 +426,8 @@ export default function RunningScreen({ navigation }) {
   // (a foreground fix can land before the drain finishes) and the same
   // jitter filter the live watcher applies.
   async function mergeBackgroundPoints() {
-    const pts = await drainBackgroundPoints();
+    // Whatever the task recorded during a pause is not part of the run.
+    const pts = withoutPausedPoints(await drainBackgroundPoints(), pauseWindowsRef.current);
     if (!pts.length || !runRef.current) return;
     const merged = [...pathRef.current, ...pts].sort((a, b) => a.timestamp - b.timestamp);
     // The background task writes raw fixes, so they get the same accuracy
@@ -610,6 +631,9 @@ export default function RunningScreen({ navigation }) {
     startedAtRef.current = saved.startedAt || Date.now();
     recentSpeedsRef.current = [];
     gpsModeRef.current = 'high';
+    pauseWindowsRef.current = [];
+    bgHeldRef.current = false;
+    setAfterRun(null);
 
     const resumedDistance = totalDistanceMeters(saved.path);
     gpsFilterRef.current.seed(saved.path, resumedDistance);
@@ -660,6 +684,7 @@ export default function RunningScreen({ navigation }) {
     setStarting(true);
     try {
       haptic.light();
+      setAfterRun(null);
       setStartCountdown(3);
       await wait(520);
       setStartCountdown(2);
@@ -672,6 +697,8 @@ export default function RunningScreen({ navigation }) {
       haptic.success();
       // API returns { run_id, started_at }; older builds returned { id }.
       runRef.current = { id: createdRun.run_id || createdRun.id };
+      pauseWindowsRef.current = [];
+      bgHeldRef.current = false;
       pathRef.current = [];
       gpsFilterRef.current.reset();
       setPaceSPerKm(null);
@@ -910,10 +937,20 @@ export default function RunningScreen({ navigation }) {
 
   function pauseRun() {
     if (paused) return;
-    pausedAtRef.current = Date.now();
+    const now = Date.now();
+    pausedAtRef.current = now;
+    pauseWindowsRef.current.push({ from: now, to: null });
     stopWatchingLocation();
     stopPedometer();
-    stopBackgroundTrack();
+    // With PASER on a paired watch, the background location session stays up
+    // through the pause. With the phone locked in a pocket it is the one thing
+    // keeping this app's process alive, and without it a Resume pressed on the
+    // wrist would land on a suspended app that iOS will not let switch
+    // location back on from the background. Whatever it records meanwhile
+    // falls inside the pause window above and never reaches the trail. No
+    // watch, no change: the session stops here as it always has.
+    bgHeldRef.current = watchAppInstalled();
+    if (!bgHeldRef.current) stopBackgroundTrack();
     stopVehicleWatch();
     fastPointsRef.current = 0;
     if (tickRef.current) {
@@ -925,8 +962,11 @@ export default function RunningScreen({ navigation }) {
 
   async function resumeFromPause() {
     if (!paused) return;
-    const pausedFor = Date.now() - (pausedAtRef.current || Date.now());
+    const now = Date.now();
+    const pausedFor = now - (pausedAtRef.current || now);
     startedAtRef.current += pausedFor;
+    const openPause = pauseWindowsRef.current[pauseWindowsRef.current.length - 1];
+    if (openPause && openPause.to == null) openPause.to = now;
     setElapsedS(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
     // The estimate goes cold across a pause: reseeding stops the time gap
     // from reading as a teleport, and stops the stationary stretch from
@@ -936,40 +976,66 @@ export default function RunningScreen({ navigation }) {
     startClock();
     await startWatchingLocation(gpsModeRef.current);
     await startPedometer();
-    startBackgroundTrack();
+    // A session held through the pause never stopped. Starting it again would
+    // also empty its buffer, and with the phone in a pocket that buffer is the
+    // only record of the stretch run just before the pause.
+    if (bgHeldRef.current) bgHeldRef.current = false;
+    else startBackgroundTrack();
     startVehicleWatch();
     setPaused(false);
   }
 
   async function finishRun() {
     haptic.light();
+    // Finishing while paused ends the run where it paused, the moment its
+    // clock stopped. Read before `paused` is cleared below.
+    const endedAt = paused && pausedAtRef.current ? pausedAtRef.current : Date.now();
     setPaused(false);
     setLocked(false);
     stopWatchingLocation();
     stopPedometer();
     stopVehicleWatch();
-    await stopBackgroundTrack();
-    // fold in anything the background task recorded before we submit
-    await mergeBackgroundPoints();
-    if (tickRef.current) {
-      clearInterval(tickRef.current);
-      tickRef.current = null;
-    }
-    setIsRunning(false);
-    isRunningRef.current = false;
-    setRecording(false);
+    // Request bounded save time before stopping GPS. Location must not be
+    // kept running after Finish just to prevent suspension during an upload.
+    await beginRunSave();
+    try {
+      await stopBackgroundTrack();
+      // fold in anything the background task recorded before we submit
+      await mergeBackgroundPoints();
+      if (tickRef.current) {
+        clearInterval(tickRef.current);
+        tickRef.current = null;
+      }
+      setIsRunning(false);
+      isRunningRef.current = false;
+      setRecording(false);
 
-    const run = runRef.current;
-    const finalPath = pathRef.current;
-    if (!run) {
-      Alert.alert('No active run', 'Start a run first.');
-      return;
+      const run = runRef.current;
+      const finalPath = pathRef.current;
+      if (!run) {
+        Alert.alert('No active run', 'Start a run first.');
+        return;
+      }
+      if (finalPath.length < 2) {
+        // The phone is still on this screen, so the watch goes back to Start,
+        // with a word about why nothing was saved.
+        setAfterRun({ status: WATCH_PHASE.READY, notice: 'Too short to save. Move around first.' });
+        Alert.alert('Too short', 'Move around first before ending the run.');
+        return;
+      }
+      setAfterRun({
+        status: WATCH_PHASE.SAVING,
+        distanceM: totalDistanceMeters(finalPath),
+        elapsedMs: Math.max(0, endedAt - (startedAtRef.current || endedAt)),
+      });
+      await commitRun(run, finalPath, {
+        workoutStartMs: startedAtRef.current || endedAt,
+        workoutEndMs: endedAt,
+      });
+    } finally {
+      bgHeldRef.current = false;
+      await endRunSave();
     }
-    if (finalPath.length < 2) {
-      Alert.alert('Too short', 'Move around first before ending the run.');
-      return;
-    }
-    await commitRun(run, finalPath);
   }
 
   // The recorded path stays in memory whatever the network does — a failed
@@ -977,8 +1043,16 @@ export default function RunningScreen({ navigation }) {
   async function commitRun(
     run,
     finalPath,
-    { steps = null, simulated = false, devScenario = 'open' } = {}
+    {
+      steps = null, simulated = false, devScenario = 'open',
+      workoutStartMs = startedAtRef.current || Date.now(),
+      workoutEndMs = Date.now(),
+    } = {}
   ) {
+    // A retry after a failed save puts the watch back on "saving". Runs that
+    // never went through finishRun (an orphan submitted anyway, the dev
+    // simulator) have no afterRun and leave the watch alone.
+    setAfterRun((a) => (a ? { ...a, status: WATCH_PHASE.SAVING, notice: '' } : a));
     try {
       // Steps are sent whenever a pedometer exists — INCLUDING zero, which is
       // exactly the signature of covering distance in a vehicle.
@@ -1009,20 +1083,26 @@ export default function RunningScreen({ navigation }) {
       // nobody did into the phone's health record.
       if (!simulated) {
         writeWorkout({
-          startMs: startedAtRef.current || Date.now(),
-          endMs: Date.now(),
+          startMs: workoutStartMs,
+          endMs: workoutEndMs,
           distanceM: totalDistanceMeters(finalPath),
         }).catch(() => {});
       }
+      setAfterRun((a) => (a ? { ...a, status: WATCH_PHASE.SAVED } : a));
       navigation.navigate('Result', { result, run: result, path: finalPath });
     } catch (err) {
+      setAfterRun((a) =>
+        a ? { ...a, status: WATCH_PHASE.UNSAVED, notice: 'Open PASER on your iPhone to try again.' } : a
+      );
       Alert.alert(
         "Couldn't save your run",
         `${err.message || 'Network error'}. Your route is still on this phone.`,
         [
           {
             text: 'Retry',
-            onPress: () => commitRun(run, finalPath, { steps, simulated, devScenario }),
+            onPress: () => commitRun(run, finalPath, {
+              steps, simulated, devScenario, workoutStartMs, workoutEndMs,
+            }),
           },
           { text: 'Later', style: 'cancel' },
         ]
@@ -1163,6 +1243,43 @@ export default function RunningScreen({ navigation }) {
   }, [currentTier, enqueueRunFx, isRunning]);
   // Rough energy estimate: ~1.036 kcal per kg per km at a 70 kg default.
   const caloriesKcal = 1.036 * T.defaultWeightKg * (distance / 1000);
+
+  // The run as the wrist sees it (src/watch, docs/APPLE_WATCH.md). The watch's
+  // buttons go through the same functions as the ones on this screen, and
+  // useWatchRun lets each through only in the phase it makes sense in.
+  const watchPhase = isRunning
+    ? paused
+      ? WATCH_PHASE.PAUSED
+      : WATCH_PHASE.RUNNING
+    : startCountdown != null
+      ? WATCH_PHASE.COUNTDOWN
+      : afterRun
+        ? afterRun.status
+        : isFocused && !permDenied && !starting && !simulating
+          ? WATCH_PHASE.READY
+          : WATCH_PHASE.IDLE;
+  useWatchRun(
+    {
+      phase: watchPhase,
+      // Read when a state is sent, not when the screen renders: the heartbeat
+      // sends between renders. Paused, the clock stands where it stopped.
+      getElapsedMs: () => {
+        if (!startedAtRef.current) return 0;
+        const end = paused && pausedAtRef.current ? pausedAtRef.current : Date.now();
+        return end - startedAtRef.current;
+      },
+      distanceM: distance,
+      paceSPerKm,
+      landM2: earningNothing ? null : claimArea,
+      accuracyM,
+      hint: claimBlocker || '',
+      accent,
+      countdown: startCountdown,
+      qualified: currentTier === RUN_TIER.CLAIMABLE,
+      afterRun,
+    },
+    { start: startRun, pause: pauseRun, resume: resumeFromPause, finish: finishRun }
+  );
 
   // Location denied: a way forward, not a dead end.
   if (permDenied) {

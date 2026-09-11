@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.pacerrun.app",
+      "appleTeamId": "D3HU96BTMY",
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -137,7 +138,8 @@
           "project": "react-native",
           "organization": "paser"
         }
-      ]
+      ],
+      "@bacons/apple-targets"
     ],
     "extra": {
       "apiBase": "https://run-mdlv.onrender.com",

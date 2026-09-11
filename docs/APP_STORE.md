@@ -9,6 +9,10 @@ has no in-app purchases.**
 
 ## Submission status
 
+**Apple Watch audit, 2026-09-11:** see [APPLE_WATCH_REVIEW.md](APPLE_WATCH_REVIEW.md)
+for source fixes, current Apple references, and outstanding archive/device/privacy
+gates. The Watch addition has not yet been verified in a signed production build.
+
 The source now passes Expo's store-readiness checks and produces an iOS bundle,
 but **do not submit an old EAS build**. Complete every unchecked gate in
 "Before submission" below — including the two new in-app-purchase gates — then
@@ -84,6 +88,7 @@ to defend it.
 - BUILD YOUR RUNNER - customize your character with outfits and accessories.
 - STAY MOTIVATED - follow streaks, XP, levels, records, and your activity feed.
 - APPLE HEALTH - optionally save every finished run as a running workout.
+- APPLE WATCH - view and control your run from your wrist with your paired iPhone nearby.
 - BE SOCIAL - comment on runs, chat with your club, and react to achievements.
 
 PASER records your route only during an active, user-started run.
@@ -320,6 +325,14 @@ Apple Health and allow it on the permission sheet. PASER then writes each
 finished run to Apple Health as a running workout with its time and distance.
 PASER requests write access only and never reads health data.
 
+APPLE WATCH
+PASER includes a companion Apple Watch app. It needs PASER on the paired
+iPhone, which records the run. Open Record on the iPhone, then open PASER on
+the watch. Start run begins the run from the wrist, and during the run the
+watch shows time, distance, pace and land earned, with pause, resume and hold
+to finish controls. The watch app asks for no permissions and reads no health
+data.
+
 PURCHASES
 This version offers in-app purchases. PASER PRO is an auto-renewable
 subscription (monthly or yearly) that unlocks depth features only: route
@@ -354,6 +367,10 @@ set (for example 1320x2868, 1290x2796, or 1260x2736). Suggested sequence:
 
 Use only data and artwork you are licensed to display. Avoid mock Apple UI and
 make sure every screenshot reflects the submitted binary.
+
+This version also includes an Apple Watch app, so the version page needs Apple
+Watch screenshots too (at least one, taken on a real watch from the TestFlight
+build): Start run, a run in progress, and Run saved. See `docs/APPLE_WATCH.md`.
 
 ## Before submission
 
@@ -500,6 +517,16 @@ make sure every screenshot reflects the submitted binary.
       repo. The App Store Connect account in `eas.json` remains
       `constanceow@gmail.com`; that is fine, but the support address is what
       reviewers and users will write to.
+- [ ] **Apple Watch app (new in this version, owner only).** The first build
+      that carries it needs the watch target's signing credentials created
+      once, interactively (`npx eas-cli build --platform ios --profile
+      production`, signing in to Apple when asked): the new bundle id
+      `com.pacerrun.app.watchkitapp` has no provisioning profile yet, and a
+      non-interactive build stops there. Then run the device checklist in
+      `docs/APPLE_WATCH.md` on a real iPhone and watch pair, and add the Apple
+      Watch screenshots above. If the watch app cannot be tested before
+      submission, take `@bacons/apple-targets` out of the `app.json` plugins
+      and rebuild, rather than ship a watch app nobody has run.
 
 Build and submit only after those gates are complete:
 
