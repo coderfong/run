@@ -25,7 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
-import { useReduceMotion } from '../../ui/motion';
+import { useOnScreen, useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
 
 // Body art is 248×640 after trimming.
@@ -343,9 +343,12 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
   const happyTimer = useRef(null);
   useEffect(() => () => clearTimeout(happyTimer.current), []);
 
-  // Idle bob.
+  // Idle bob. Parked while its screen is not the one being looked at: the
+  // studio stays mounted behind whatever tab you went to, and a runner bobbing
+  // there is a whole-tree commit every frame for nobody (see useOnScreen).
+  const bobbing = useOnScreen(animate && !reduced);
   useEffect(() => {
-    if (!animate || reduced) return undefined;
+    if (!animate || reduced || !bobbing) return undefined;
     bob.value = withRepeat(
       withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }),
       -1,
@@ -354,7 +357,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     return () => {
       bob.value = 0;
     };
-  }, [animate, reduced, bob]);
+  }, [animate, reduced, bobbing, bob]);
 
   // A layer has finished loading art that replaced something. The RUNNER
   // reacts, whole, springing back up to size — which is legible whichever slot

@@ -1,8 +1,18 @@
 // Motion + haptics primitives. Every animated flourish in the app goes
 // through here so Reduce Motion is respected in exactly one place.
 
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { AccessibilityInfo, Dimensions, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { NavigationContext } from '@react-navigation/native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -76,6 +86,49 @@ export function MotionProvider({ children }) {
       {children}
     </ReduceMotionContext.Provider>
   );
+}
+
+// ---------------------------------------------------------------------------
+// useOnScreen — may a loop run here, right now?
+//
+// Tabs are never frozen. react-native-tab-view carries no react-freeze, and the
+// top screen of an unfocused tab's stack stays mounted and live, so an endless
+// animation on Home keeps going while you are on the map, on your profile,
+// anywhere. Nobody can see it, and it is not free: Reanimated 4 on iOS applies
+// every animated frame as a commit of the WHOLE shadow tree — all four tabs are
+// one tree — and every React update then queues behind those commits and has
+// to carry the animated props with it. A few forgotten loops is the difference
+// between taps landing and taps lagging, app-wide.
+//
+// So every loop asks this before it starts, and stops when the answer changes.
+// It is react-navigation's `useIsFocused` with two differences: outside a
+// navigator (App-level overlays, tests) the answer is "yes" rather than a
+// throw, and a caller that is not looping passes `enabled = false` and pays for
+// no subscription at all — which matters, because frames ask, a screen draws
+// fifty of them, and almost none of them boil.
+// ---------------------------------------------------------------------------
+
+// Stands in when the navigation package is mocked without its context.
+const NoNavigationContext = createContext(undefined);
+const ALWAYS_ON_SCREEN = () => true;
+const NO_SUBSCRIPTION = () => () => {};
+
+export function useOnScreen(enabled = true) {
+  const navigation = useContext(NavigationContext ?? NoNavigationContext);
+  const watching = enabled && !!navigation;
+  const subscribe = useCallback(
+    (onChange) => {
+      const offFocus = navigation.addListener('focus', onChange);
+      const offBlur = navigation.addListener('blur', onChange);
+      return () => {
+        offFocus();
+        offBlur();
+      };
+    },
+    [navigation]
+  );
+  const read = watching ? navigation.isFocused : ALWAYS_ON_SCREEN;
+  return useSyncExternalStore(watching ? subscribe : NO_SUBSCRIPTION, read, read);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,12 +361,18 @@ export function Confetti({ count = 26 }) {
 
 export function MascotLoader({ source, size = 132 }) {
   const reduced = useReduceMotion();
+  const onScreen = useOnScreen(!reduced);
   const t = useSharedValue(0);
 
   useEffect(() => {
-    if (reduced) return;
+    if (reduced || !onScreen) {
+      cancelAnimation(t);
+      t.value = 0;
+      return undefined;
+    }
     t.value = withRepeat(withTiming(1, { duration: 720, easing: Easing.inOut(Easing.quad) }), -1, true);
-  }, [reduced, t]);
+    return () => cancelAnimation(t);
+  }, [reduced, onScreen, t]);
 
   const bob = useAnimatedStyle(() => ({ transform: [{ translateY: -10 * t.value }] }));
 
@@ -695,13 +754,15 @@ export function CountUpText({
 // A slow breath — "this is waiting for you", said without words. The pass
 // ladder uses it in place of a CLAIM label on every unclaimed tier: fifty
 // little pink pills reading CLAIM is a wall of text, one collectible gently
-// swelling is an invitation. Holds still under Reduce Motion.
+// swelling is an invitation. Holds still under Reduce Motion, and while its
+// screen is not the one being looked at (see useOnScreen).
 export function Pulse({ children, active = true, min = 1, max = 1.07, durationMs = 900, style }) {
   const reduced = useReduceMotion();
+  const onScreen = useOnScreen(active && !reduced);
   const scale = useSharedValue(min);
 
   useEffect(() => {
-    if (!active || reduced) {
+    if (!active || reduced || !onScreen) {
       scale.value = min;
       return;
     }
@@ -710,7 +771,7 @@ export function Pulse({ children, active = true, min = 1, max = 1.07, durationMs
       -1,
       true
     );
-  }, [active, durationMs, max, min, reduced, scale]);
+  }, [active, durationMs, max, min, onScreen, reduced, scale]);
 
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
@@ -757,6 +818,9 @@ export function Pop({ trigger = 0, from = 0.72, delay = 0, children, style, ...r
 
 export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
   const reduced = useReduceMotion();
+  // A loading screen left behind another tab is still loading, and still has
+  // no one watching it breathe.
+  const onScreen = useOnScreen(!reduced);
   // Read the LIVE palette. This used to take the static `colors` export, which
   // is the dark palette whatever the scheme is — so on light mode every loading
   // placeholder painted as a near-black slab and the screen read as broken
@@ -765,7 +829,7 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
   const opacity = useSharedValue(0.45);
 
   useEffect(() => {
-    if (reduced) {
+    if (reduced || !onScreen) {
       opacity.value = 0.45;
       return;
     }
@@ -774,7 +838,7 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
       -1,
       true
     );
-  }, [reduced, opacity]);
+  }, [reduced, onScreen, opacity]);
 
   const pulse = useAnimatedStyle(() => ({ opacity: opacity.value }));
 

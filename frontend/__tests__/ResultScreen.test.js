@@ -73,6 +73,7 @@ jest.mock('../src/ui/motion', () => {
     },
     useReduceMotion: () => true,
     useSystemReduceMotion: () => true,
+    useOnScreen: () => true,
     staggerDelay: () => 0,
     shouldStagger: () => false,
     Reveal: Pass,

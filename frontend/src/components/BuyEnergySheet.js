@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { api } from '../api/client';
+import { updateCached } from '../api/cache';
 import { brand, space, useTheme, useThemedType } from '../theme';
 import { Card, Pill, Sheet } from './ui';
 import AppIcon from './AppIcon';
@@ -77,7 +78,12 @@ export default function BuyEnergySheet({ visible, onClose, onPurchased }) {
       const { receipt, platform, purchase } = await storePurchase(pack.id);
       // The response's `coins` is the new BALANCE, not the amount just
       // added — the pack's own known amount is what belongs in "+N coins".
-      await api.purchaseCoins(pack.id, receipt, platform);
+      const res = await api.purchaseCoins(pack.id, receipt, platform);
+      // That balance goes straight into the shared wallet entry the Shop and
+      // Missions purses both read. This sheet also opens from Home and the
+      // result screen, whose `onPurchased` only reloads energy, so without
+      // this the purses kept the old number until their next refetch.
+      if (Number.isFinite(res?.coins)) updateCached('me:coins', (prev) => ({ ...prev, coins: res.coins }));
       await finishPurchase(purchase, { isConsumable: true });
       toast.success(`+${pack.coins} coins`);
       onPurchased?.();

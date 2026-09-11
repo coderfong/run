@@ -1,6 +1,6 @@
 # PASER Privacy Policy
 
-_Last updated: 2026-08-12. Publish the finalized version at
+_Last updated: 2026-09-11. Publish the finalized version at
 `https://www.gameablestudios.com/privacy` before submission._
 
 ## Data PASER collects
@@ -8,7 +8,7 @@ _Last updated: 2026-08-12. Publish the finalized version at
 - **Account information:** username, password hash for password accounts,
   social-provider identifier for Apple/Google accounts, and an optional verified
   email address used for account recovery.
-- **Age information:** date of birth, used to enforce the 13+ minimum age and
+- **Age information:** optional date of birth, used to apply the 13+ minimum age and
   stronger route-privacy defaults for minors. It is not shown to other users.
 - **Run and fitness information:** route, distance, duration, pace, splits,
   records, and claim results for user-started runs.
@@ -58,9 +58,9 @@ other runners inside PASER.
 
 ## Photos and sharing
 
-PASER asks only for permission to add a run card when the user taps Save. It
-does not read the photo library. Sharing a card uses the destination selected
-by the user.
+PASER can access photos you choose or take for a run post or club photo. It
+also asks to save a run card to your photos when you tap Save. Sharing a card
+uses the destination selected by you.
 
 ## Retention and deletion
 

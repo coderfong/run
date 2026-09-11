@@ -123,12 +123,15 @@ def claim_mission(request: Request, response: Response, body: dict,
     if not inserted:
         raise HTTPException(409, "already collected")
 
-    coins_mod.grant(db, user.id, mission["reward"], "mission",
-                    f"{target.isoformat()}:{mission_id}")
+    balance = coins_mod.grant(db, user.id, mission["reward"], "mission",
+                              f"{target.isoformat()}:{mission_id}")
     db.commit()
 
     state = missions_mod.day_state(db, user.id, target)
+    # `coins` is the wallet after paying. The missions purse and the Shop both
+    # show it, and this lets them move on the tap without a second request.
     return {"ok": True, "mission_id": mission_id, "reward": mission["reward"],
+            "coins": balance,
             "day": state["day"], "missions": state["missions"],
             "complete_count": state["complete_count"], "total": state["total"],
             "all_complete": state["all_complete"],

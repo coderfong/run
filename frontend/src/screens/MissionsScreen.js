@@ -38,7 +38,7 @@ import RewardReveal from '../components/RewardReveal';
 import { RARITY_COLOR } from '../components/RewardArt';
 import { rollCosmetic } from '../config/lootboxRoll';
 import { toast } from '../ui/toast';
-import { Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
+import { CountUpText, Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
 import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
 
 // Cut off its baked indigo ground by scripts/cut-header-art.py, from
@@ -140,6 +140,10 @@ export default function MissionsScreen({ navigation }) {
     useCallback(() => api.missions(day), [day])
   );
 
+  // The purse is the WALLET: the same `me:coins` entry the Shop reads, so the
+  // two screens show one number rather than two that can disagree.
+  const { data: wallet, setData: setWallet } = useQuery('me:coins', api.shop);
+
   const [busy, setBusy] = useState(null);
   const [gamble, setGamble] = useState(null);
   const [reveal, setReveal] = useState(null);
@@ -170,8 +174,15 @@ export default function MissionsScreen({ navigation }) {
         setFrom({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
         setFlight((n) => n + 1);
       }
-      // The purse and every board that counts coins are now wrong.
-      invalidate('me:coins');
+      // Pay the purse off the response, on the frame the coins leave the
+      // card. `coins` is the balance the server just wrote; a server too old
+      // to send it is covered by adding the reward, which is the same number
+      // because a grant is never clipped. Written through the shared
+      // `me:coins` entry, so the Shop shows it too with no refetch.
+      setWallet((prev) => (prev
+        ? { ...prev, coins: res.coins ?? prev.coins + (res.reward || 0) }
+        : prev));
+      // Every board that counts coins earned is now wrong.
       invalidate('me:stats');
       // The claim response already IS this day, freshly derived. Writing it
       // beats re-asking the server for what it just told us, and it means the
@@ -187,7 +198,7 @@ export default function MissionsScreen({ navigation }) {
     } finally {
       setBusy(null);
     }
-  }, [busy, day, to, refresh, setData]);
+  }, [busy, day, to, refresh, setData, setWallet]);
 
   const claimBonus = useCallback(async () => {
     if (busy) return;
@@ -234,17 +245,11 @@ export default function MissionsScreen({ navigation }) {
     [state?.day, state?.today]
   );
 
-  // What this day has actually paid. The purse used to read the WORD "Coins"
-  // under a coin, which is a label with nothing to say — and it is the thing
-  // the collected coins fly into, so it has to be worth landing on. Derived
-  // from the missions already on screen rather than from the balance endpoint:
-  // the claim response rewrites this day in place, so the number ticks up on
-  // the frame the coins leave the card, with no second request and nothing to
-  // go stale.
-  const collected = useMemo(
-    () => (state?.missions || []).reduce((sum, m) => (m.claimed ? sum + (m.reward || 0) : sum), 0),
-    [state?.missions]
-  );
+  // Your balance, the same number the Shop's purse shows. It used to be what
+  // the selected DAY had paid, which put two different coin figures in front
+  // of one player and read as the wallet being wrong. Null until the balance
+  // lands, drawn as `·`: a placeholder 0 reads as "you are broke".
+  const coins = wallet?.coins ?? null;
 
   // Keep the coin-flight destination in the fixed header.
   const purse = (
@@ -255,10 +260,15 @@ export default function MissionsScreen({ navigation }) {
         onLayout={measurePurse}
         style={styles.purse}
         accessible
-        accessibilityLabel={`${collected} coins collected ${label === 'today' ? 'today' : `on ${label}`}`}
+        accessibilityLabel={coins == null ? 'Your coins' : `You have ${coins.toLocaleString()} coins`}
       >
         <AppIcon name="coin" size={18} />
-        <Text style={styles.purseText}>{collected}</Text>
+        {coins == null ? (
+          <Text style={[styles.purseText, styles.purseEmpty]}>·</Text>
+        ) : (
+          // Counts like the Shop's purse, so a claim is watched landing.
+          <CountUpText value={coins} durationMs={620} style={styles.purseText} />
+        )}
       </View>
     </HardShadow>
   );
@@ -406,6 +416,7 @@ const styles = StyleSheet.create({
     borderRadius: nbRadius.sm,
   },
   purseText: { fontFamily: fonts.bold, fontSize: 15, color: PANEL_INK },
+  purseEmpty: { color: withAlpha(PANEL_INK, 0.45) },
 
   banner: { padding: space.md, borderWidth: 2 },
   bannerRow: { alignItems: 'center' },

@@ -22,6 +22,7 @@ jest.mock('../src/ui/motion', () => {
   return {
     haptic: { success: jest.fn(), light: jest.fn() },
     useReduceMotion: () => true,
+    useOnScreen: () => true,
     staggerDelay: () => 0,
     Reveal: Pass,
     Confetti: () => null,

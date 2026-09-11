@@ -52,7 +52,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NB, brand, nbInk, nbRadius, radius, space, useTheme, useThemedType, withAlpha } from '../theme';
 import RewardReveal from '../components/RewardReveal';
 import { BackButton, Card, Framed, PANEL_INK, Row, Screen, Skeleton, Button } from '../components/ui';
-import CharacterRig, { PartThumb } from '../components/character/CharacterRig';
+import CharacterRig, { BODY_RATIO, HEADROOM, PartThumb } from '../components/character/CharacterRig';
 import { getItem, SLOTS } from '../config/cosmetics';
 import { RARITY_COLOR } from '../components/RewardArt';
 import AppIcon from '../components/AppIcon';
@@ -69,9 +69,19 @@ import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 const SLOT_LABEL = Object.fromEntries(SLOTS.map((s) => [s.key, s.label]));
 const SLOT_ORDER = Object.fromEntries(SLOTS.map((s, index) => [s.key, index]));
 const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
-// How tall the runner stands in the fitting mirror. Big enough that a hat
-// reads at a glance, small enough that the stock below it is still on screen.
-const PREVIEW_SIZE = 132;
+// The fitting mirror, and the runner sized to stand in it WHOLE. Tall enough
+// that a hat reads at a glance, short enough that the stock below it is still
+// on screen.
+//
+// CharacterRig's `size` is the body's WIDTH, and with the headroom it keeps
+// for hair and hats the runner is ~2.9x as tall as that. This used to hand it
+// the mirror's height as a width: a 388pt runner in a 132pt window, and the
+// window kept the legs, so the hat, sash or jacket being tried on was never in
+// the preview at all. The width is derived from the mirror instead. `pad`
+// includes the 2pt stroke, and leaves the swap spring room to overshoot.
+const MIRROR = { w: 114, h: 180, pad: 12 };
+const PREVIEW_SIZE = (MIRROR.h - MIRROR.pad * 2) / (BODY_RATIO * (1 + HEADROOM));
+const PANEL_FX = 180;
 
 // THE SHELF IS ALWAYS THIS BIG. Three rows of three, every window, whatever
 // the server sends.
@@ -296,7 +306,7 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
             {celebrating ? (
               <AnimationStack
                 names={rare ? ['rewardBurst', 'confettiBurst'] : ['confettiBurst']}
-                size={180}
+                size={PANEL_FX}
                 trigger={purchaseTick}
                 style={styles.panelFx}
               />
@@ -757,8 +767,9 @@ const styles = StyleSheet.create({
   // The fitting mirror. A fixed box, so the info column starts in the same
   // place whatever the item is and the burst has a centre to fire from.
   mirror: {
-    width: PREVIEW_SIZE * 0.86,
-    height: PREVIEW_SIZE,
+    width: MIRROR.w,
+    height: MIRROR.h,
+    paddingBottom: MIRROR.pad,
     alignItems: 'center',
     justifyContent: 'flex-end',
     borderRadius: radius.card,
@@ -776,9 +787,12 @@ const styles = StyleSheet.create({
   },
   panelActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   close: { paddingVertical: 6, paddingHorizontal: space.sm },
-  // Overflows its 72pt square on purpose — a burst confined to the art box is
-  // a rectangle of confetti, not an explosion.
-  panelFx: { position: 'absolute', left: -34, top: -34 },
+  // Centred on the mirror, so the burst goes off round the runner.
+  panelFx: {
+    position: 'absolute',
+    left: (MIRROR.w - PANEL_FX) / 2,
+    top: (MIRROR.h - PANEL_FX) / 2,
+  },
   panelCoin: { position: 'absolute', right: -6, top: -14 },
   rarityDot: { width: 8, height: 8, borderRadius: 4 },
 });

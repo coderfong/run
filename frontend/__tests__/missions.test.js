@@ -13,7 +13,7 @@ import MissionsScreen from '../src/screens/MissionsScreen';
 import MissionCard from '../src/components/missions/MissionCard';
 import DayStrip from '../src/components/missions/DayStrip';
 import { api } from '../src/api/client';
-import { invalidate } from '../src/api/cache';
+import { getCached, invalidate } from '../src/api/cache';
 
 jest.mock('../src/state/avatar', () => ({
   useAvatar: () => ({ equipped: {}, isUnlocked: () => false, refreshUnlocks: jest.fn() }),
@@ -70,9 +70,13 @@ function pressable(tree, match) {
   )[0];
 }
 
+// The purse reads the wallet: the same /me/coins the Shop does.
+const WALLET = { coins: 1240, packs: [], items: [], expires_at: null, rotation_hours: 24 };
+
 beforeEach(() => {
   invalidate('me:');
   jest.restoreAllMocks();
+  jest.spyOn(api, 'shop').mockResolvedValue(WALLET);
 });
 
 describe('a mission card', () => {
@@ -164,6 +168,36 @@ describe('the screen', () => {
     // Settled from the response: the Claim tab is gone with no second fetch.
     expect(api.missions).toHaveBeenCalledTimes(1);
     expect(texts(tree)).not.toContain('Claim');
+    // The purse is paid off the response too. This response carries no
+    // balance (an older server), so the reward lands on what it showed.
+    expect(texts(tree)).toContain('1,540');
+    expect(api.shop).toHaveBeenCalledTimes(1);
+  });
+
+  test('the purse is the wallet, and a claim shows the balance the server wrote', async () => {
+    // Not the day's collected total: the Shop reads this same number, and the
+    // two screens disagreeing was the bug.
+    jest.spyOn(api, 'missions').mockResolvedValue(DAY);
+    jest.spyOn(api, 'claimMission').mockResolvedValue({
+      ok: true, mission_id: 'distance_5k', reward: 300, coins: 2000,
+      ...DAY,
+      missions: DAY.missions.map((m, i) => (i === 0 ? { ...m, claimed: true } : m)),
+    });
+
+    let tree;
+    await act(async () => {
+      tree = renderer.create(<MissionsScreen navigation={{ canGoBack: () => false }} />);
+    });
+    expect(texts(tree)).toContain('1,240');
+
+    const card = pressable(tree, 'Collect 300 coins');
+    await act(async () => { await card.props.onPress(); });
+
+    // The server's figure wins over reward arithmetic: it also counts anything
+    // paid elsewhere since the purse last loaded.
+    expect(texts(tree)).toContain('2,000');
+    // And it is written where the Shop reads it.
+    expect(getCached('me:coins').coins).toBe(2000);
   });
 
   test('the day bonus grants a box and drops straight into the gamble', async () => {

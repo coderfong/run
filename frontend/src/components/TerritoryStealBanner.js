@@ -39,7 +39,7 @@ import Animated, {
 
 import { brand, toon, toonType, useTheme, withAlpha } from '../theme';
 import EffectPlayer from '../effects/EffectPlayer';
-import { haptic, useReduceMotion } from '../ui/motion';
+import { haptic, useOnScreen, useReduceMotion } from '../ui/motion';
 import AppIcon, { STEAL_ICON_SIZE } from './AppIcon';
 import { CharacterBust } from './character/CharacterRig';
 import { OutlinedText } from './ui';
@@ -250,15 +250,19 @@ function BurstHead({ victim, clock, index, size }) {
   );
 }
 
-// The head that stays on the bar, pulling a sad face on a loop.
-function SettledHead({ victim, clock, index, size, reduced, trigger, playToken }) {
+// The head that stays on the bar, pulling a sad face on a loop — while the bar
+// is on the screen being looked at. It matters more here than almost anywhere:
+// a feed carries one of these per head per steal, Home stays mounted behind
+// every other tab, and a sulk nobody can see is still a whole-tree commit on
+// every frame it moves (see useOnScreen).
+function SettledHead({ victim, clock, index, size, reduced, looping, trigger, playToken }) {
   const faceMix = useSharedValue(0);
   const sadAvatar = useMemo(() => ({ ...(victim.avatar || {}), face: 'sad' }), [victim.avatar]);
 
   useEffect(() => {
     cancelAnimation(faceMix);
     faceMix.value = 0;
-    if (reduced) return undefined;
+    if (reduced || !looping) return undefined;
 
     // default → sad → default, held either side, forever. The stagger keeps a
     // row of heads from blinking in lockstep.
@@ -276,7 +280,7 @@ function SettledHead({ victim, clock, index, size, reduced, trigger, playToken }
     );
 
     return () => cancelAnimation(faceMix);
-  }, [faceMix, index, reduced, trigger, playToken]);
+  }, [faceMix, index, looping, reduced, trigger, playToken]);
 
   const entryStyle = useAnimatedStyle(() => {
     const delay = index * 70;
@@ -375,6 +379,7 @@ export default function TerritoryStealBanner({
   useEffect(() => { setPlayToken(autoPlay ? 1 : 0); }, [trigger, autoPlay]);
 
   const heads = useMemo(() => (victims || []).slice(0, MAX_STEAL_HEADS), [victims]);
+  const sulking = useOnScreen(!reduced && heads.length > 0);
   const size = HEAD_SIZE;
 
   const finish = () => done.current?.();
@@ -501,6 +506,7 @@ export default function TerritoryStealBanner({
               clock={clock}
               size={size}
               reduced={reduced}
+              looping={sulking}
               trigger={trigger}
               playToken={playToken}
             />

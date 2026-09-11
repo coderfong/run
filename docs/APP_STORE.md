@@ -260,9 +260,12 @@ for App Functionality, and **not used for tracking**:
 | Other Data - Other Data Types | Date of birth used for the 13+ gate and stronger route-privacy defaults for minors |
 | Purchases - Purchase History | PASER PRO subscription and consumable (energy/coin) transactions, to grant and restore entitlements |
 
-Declare Diagnostics only if `EXPO_PUBLIC_SENTRY_DSN` is enabled in the submitted
-mobile build. The current production profile does not set it. Answer **No** for
-tracking, advertising, and data-broker use.
+The production profile enables Sentry and the app samples performance traces.
+Declare Diagnostics (Crash Data and Performance Data) for the submitted build.
+Inspect the release privacy report and actual Sentry payloads to determine
+linkage and any additional collected fields; do not assume they are anonymous.
+Answer **No** for tracking, advertising, and data-broker use only after verifying
+that the release SDK configuration matches these practices.
 
 The public privacy policy must match these answers, and it must cover Apple
 Health, which HealthKit apps are required to have (Guideline 5.1.3). Publish

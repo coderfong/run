@@ -51,23 +51,27 @@
 // screen with six boiling panels on it is a screen that will not sit still, and
 // the effect is worth having on one thing at a time. Where it IS on, the frame
 // index is driven by a shared value, so the eight slices restyle on the UI
-// thread and React never re-renders for it.
+// thread and React never re-renders for it. The value STEPS rather than
+// sweeps — each drawing is held, then swapped — so it changes three times a
+// cycle instead of on every frame, and the slices are only restyled when there
+// is a new drawing to show.
 //
-// Reduced motion pins the boil to a single frame. The box stays; only the
-// crawling stops.
+// Reduced motion pins the boil to a single frame, and so does a screen nobody
+// is looking at (see `useOnScreen`). The box stays; only the crawling stops.
 
-import React, { useEffect, useMemo } from 'react';
-import { Image, Platform, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
+import { Image, PixelRatio, Platform, StyleSheet, View } from 'react-native';
 import Animated, {
-  Easing,
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
 
-import { useReduceMotion } from './motion';
+import { useOnScreen, useReduceMotion } from './motion';
 import { getFrame } from './frameRegistry';
 
 // Nothing below this line reads the registry directly; `spec` carries both the
@@ -204,28 +208,67 @@ export function frameMiddle(spec, width, height, scale = 1) {
 //    image is nonsense. scripts/split-frame-poses.py cuts them; the strips stay
 //    for the boil, which cannot swap an image source on the UI thread.
 //
-// 2. CAP INSETS ARE IN POINTS, AND OUR LINE WEIGHT IS A POINT VALUE. This is
-//    the part worth reading twice. The frames were drawn at wildly different
-//    sizes, so the app never draws them at their own scale: `weightScale` works
-//    out the factor that turns a given drawing into a 5pt (or 3.75pt, or 6.5pt)
-//    line, and it lands around a third for every frame in the pack. A cap inset
-//    is fixed in the IMAGE's point space, so left alone every corner would come
-//    out roughly three times too heavy — the frames would read as a different,
-//    much clumsier set of drawings.
+// 2. CAP INSETS ARE IN THE IMAGE'S OWN POINTS, AND OUR LINE WEIGHT IS A POINT
+//    VALUE. This is the part worth reading twice, because it has shipped broken
+//    twice. The frames were drawn at wildly different sizes, so the app never
+//    draws them at their own scale: `weightScale` works out the factor that
+//    turns a given drawing into a 5pt (or 3.75pt, or 6.5pt) line, and it lands
+//    around a third for every frame in the pack. A cap inset is fixed in the
+//    UIImage's point space, and a corner is drawn at exactly that size.
 //
-//    The lever for that is the source's `scale`, which is a documented field on
-//    an image source and is what tells iOS the density a bitmap is drawn at: an
-//    image of P pixels declared at scale S measures P/S points. Declaring
-//    `scale: 1 / fitted` therefore makes the drawing measure exactly
-//    `pixels * fitted` points, which puts its corners at `inset * fitted` — the
-//    same number `sliceLayout` rounds to for the slice path. The geometry is
-//    identical by construction, which is what `capFrameGeometry` below exists
-//    to make testable.
+//    This used to be answered by DECLARING a density on the source (`scale:
+//    1 / fitted`), which is a documented field and does nothing at all on the
+//    new architecture. Fabric overwrites every image request's scale with the
+//    screen's before it is sent (ImageShadowNode::getImageSource), and the
+//    loader for a bundled file ignores the request anyway: it hands back
+//    UIImage imageNamed:, whose density comes off the FILE NAME. In a dev build
+//    the art streams from Metro and is decoded at the screen's 3x — and a
+//    third is about what `fitted` happens to be, so every dev build looked
+//    right. In a release build the same files load at 1x, the cut landed a
+//    third of the way into every corner and the rest of each corner smeared
+//    along its edges: heavy, streaky borders over the text, on every box in
+//    the app.
+//
+//    So nothing is declared any more. The density is the one the device will
+//    actually use (`capImageDensity`), the insets are stated in THAT, and the
+//    line weight is reached with a transform instead: the layer is laid out
+//    1 / zoom times the size of the box, the image's corners come out at their
+//    own point size inside it, and `scale: zoom` brings the whole layer onto
+//    the box — which puts every corner at `inset * fitted`, the same number
+//    `sliceLayout` rounds to. The cut no longer moves with the weight or the
+//    box, only the zoom does, so a box that resizes restyles one view rather
+//    than reloading an image.
 //
 // If this ever needs turning off, it is one constant. The slice path is
-// untouched and still runs on Android, on every boiling frame, and on anything
-// whose poses are missing.
+// untouched and still runs on Android, on every boiling frame, on anything
+// whose poses are missing, and — see the safety net below — everywhere, the
+// moment a device reports an image the arithmetic did not expect.
 const NATIVE_NINE_SLICE = Platform.OS === 'ios';
+
+export function isRemoteImage(uri) {
+  return typeof uri === 'string' && /^https?:/i.test(uri);
+}
+
+/**
+ * The density iOS will give the UIImage behind a frame, which is the unit its
+ * `capInsets` are read in. Decided by where the image is loaded FROM, never by
+ * anything the source declares:
+ *
+ *   - over http(s) — Metro, in a dev build — it is decoded at the SCREEN's
+ *     scale, because that is the scale Fabric puts on every image request and
+ *     the network decoder honours it;
+ *   - from a file — the app bundle in a release build, or an update's assets —
+ *     RCTLocalAssetImageLoader loads it with UIImage imageNamed: (falling back
+ *     to imageWithContentsOfFile:), which reads the density off the file name:
+ *     `@3x` is 3, no suffix is 1. The request is never consulted.
+ */
+export function capImageDensity(uri, pixelRatio = PixelRatio.get()) {
+  if (isRemoteImage(uri)) return pixelRatio > 0 ? pixelRatio : 1;
+  const suffix = typeof uri === 'string'
+    ? /@(\d+(?:\.\d+)?)x\.[a-z0-9]+(?:[?#].*)?$/i.exec(uri)
+    : null;
+  return suffix ? Number(suffix[1]) : 1;
+}
 
 /**
  * What to hand a capInsets <Image> so it draws the frame `sliceLayout` would.
@@ -233,31 +276,141 @@ const NATIVE_NINE_SLICE = Platform.OS === 'ios';
  * Exported and pure because it is the whole of the risk: the pixels are the
  * compositor's business, but whether the numbers agree with the slice path is
  * arithmetic, and arithmetic can be pinned. Null when there is nothing to draw.
+ *
+ * `density` is the UIImage's, from `capImageDensity`. The cut depends on that
+ * and on nothing else; the weight and the box only move `zoom`, the scale the
+ * layer is drawn at so its corners land at `inset * fitted` points.
  */
-export function capFrameGeometry(spec, width, height, scale = 1) {
-  if (!spec?.insets || !width || !height) return null;
+export function capFrameGeometry(spec, width, height, scale = 1, density = 1) {
+  if (!spec?.insets || !width || !height || !(density > 0)) return null;
   const fitted = frameScale(spec, width, height, scale);
   if (!(fitted > 0)) return null;
   const { insets } = spec;
+  // Image points to box points. A corner is drawn at its cap's point size
+  // inside the layer, and the layer is then scaled onto the box by this.
+  const zoom = fitted * density;
+  const layerWidth = width / zoom;
+  const layerHeight = height / zoom;
   return {
     fitted,
-    // The density that makes the drawing measure `pixels * fitted` points.
-    scale: 1 / fitted,
-    // Point dimensions at that density. Only used as the intrinsic size hint —
-    // the style below gives the real box — but they have to agree with `scale`
-    // or the hint contradicts the image.
-    width: spec.frameWidth * fitted,
-    height: spec.frameHeight * fitted,
+    density,
+    zoom,
     // NOT rounded, unlike the slice path's corners. Rounding here would cut the
     // image somewhere other than the corner boundary it was measured at, which
     // is a sub-pixel slice of the wrong drawing along every edge.
     capInsets: {
-      left: insets.left * fitted,
-      right: insets.right * fitted,
-      top: insets.top * fitted,
-      bottom: insets.bottom * fitted,
+      left: insets.left / density,
+      right: insets.right / density,
+      top: insets.top / density,
+      bottom: insets.bottom / density,
+    },
+    // Centred on the box, because a transform scales about the view's centre:
+    // scaled by `zoom` about that point, the layer covers the box exactly.
+    layer: {
+      width: layerWidth,
+      height: layerHeight,
+      left: (width - layerWidth) / 2,
+      top: (height - layerHeight) / 2,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// The safety net.
+//
+// Everything above is arithmetic on what iOS is PROMISED to do with an image,
+// and it is exactly that promise that broke twice. No test can see a UIImage,
+// so the first few frames to load on a device check: Fabric's load event
+// reports the decoded image's size, which is the density read straight back
+// off the device. If it is not what `capImageDensity` said, the corners would
+// be cut in the wrong place, so every frame in the app drops to the eight
+// slices — slower, and known good — and the disagreement goes to Sentry
+// instead of onto the screen.
+// ---------------------------------------------------------------------------
+
+// How many loads must agree before the check stops listening. Every frame goes
+// through the same loader, so a handful is proof; checking all fifty on a
+// screen would be fifty load events for one answer.
+const CAP_CHECKS = 4;
+// A decoded size a rounding away from the promise is not a different density.
+const CAP_TOLERANCE = 0.03;
+
+let capAgreements = 0;
+let capDisagreement = null;
+const capListeners = new Set();
+
+function subscribeCapTrust(listener) {
+  capListeners.add(listener);
+  return () => capListeners.delete(listener);
+}
+
+function readCapTrust() {
+  return capDisagreement === null;
+}
+
+/**
+ * Did an image come back at the density the cut was made for?
+ *
+ * `reported` is the load event's `source`: on RN 0.81 that is the decoded
+ * image's point size times the screen scale (ImageEventEmitter::onLoad), so it
+ * can be predicted exactly from the drawing's pixels and the density.
+ */
+export function capDensityHolds(spec, density, reported, { pixelRatio = PixelRatio.get(), remote = false } = {}) {
+  const width = reported?.width;
+  const height = reported?.height;
+  if (!spec || !(density > 0) || !(width > 0) || !(height > 0)) return true;
+  const overW = width / ((spec.frameWidth / density) * pixelRatio);
+  const overH = height / ((spec.frameHeight / density) * pixelRatio);
+  // Bigger than promised is THE failure — the cut lands short of every corner
+  // and the rest of the corner smears along the edges. Wrong on every path.
+  if (overW > 1 + CAP_TOLERANCE || overH > 1 + CAP_TOLERANCE) return false;
+  // Smaller is just as wrong for a file, which is loaded at its own size and
+  // never resampled. Over the network (Metro, in dev) the decoder may shrink an
+  // image to the view it is going into, so there, smaller proves nothing.
+  if (!remote && (overW < 1 - CAP_TOLERANCE || overH < 1 - CAP_TOLERANCE)) return false;
+  return true;
+}
+
+function noteCapLoad(spec, density, remote, event) {
+  if (capDisagreement || capAgreements >= CAP_CHECKS) return;
+  const reported = event?.nativeEvent?.source;
+  if (capDensityHolds(spec, density, reported, { remote })) {
+    capAgreements += 1;
+    return;
+  }
+  capDisagreement = {
+    frame: spec.id,
+    density,
+    remote,
+    pixelRatio: PixelRatio.get(),
+    reported: { width: reported.width, height: reported.height },
+  };
+  if (__DEV__) {
+    console.warn(
+      '[frames] the native nine slice was cut for a different image density than ' +
+      'the device loaded; every frame is falling back to the eight slices.',
+      capDisagreement
+    );
+  }
+  try {
+    // Required here rather than at the top: this is the one place a primitive
+    // drawn fifty times a screen needs Sentry, and it only runs if the device
+    // has just contradicted the arithmetic above.
+    require('@sentry/react-native').captureException(
+      new Error('frames: cap inset density mismatch'),
+      { extra: capDisagreement }
+    );
+  } catch {
+    // Reporting must never be the thing that breaks a frame.
+  }
+  capListeners.forEach((listener) => listener());
+}
+
+/** For tests: forget what earlier loads said, and redraw anything listening. */
+export function resetCapTrust() {
+  capAgreements = 0;
+  capDisagreement = null;
+  capListeners.forEach((listener) => listener());
 }
 
 /**
@@ -269,68 +422,47 @@ export function capFrameGeometry(spec, width, height, scale = 1) {
  * RCTImageComponentView), so the two compose.
  */
 function CapLayer({ spec, source, width, height, scale, tint, opacity }) {
+  // Where the image is loaded from decides the density it comes back at, and
+  // so the units of the cut — see `capImageDensity`.
+  const uri = useMemo(() => Image.resolveAssetSource(source)?.uri, [source]);
+  const density = capImageDensity(uri);
   const geometry = useMemo(
-    () => capFrameGeometry(spec, width, height, scale),
-    [spec, width, height, scale]
-  );
-  // The bundled asset with its declared density REPLACED, and nothing else
-  // touched. Spread rather than rebuilt from the uri: the resolver also sets
-  // `__packager_asset`, which is how the loader knows this is art shipped
-  // inside the app rather than something off the network, and dropping it
-  // would change how the image is fetched in a release build.
-  //
-  // Memoised on the values that actually vary, so the object identity is stable
-  // between renders — a fresh source object every pass makes RCTImageView treat
-  // it as a new image and reload it.
-  const resolved = source ? Image.resolveAssetSource(source) : null;
-  const uri = resolved?.uri || null;
-  const imageSource = useMemo(
-    () => (resolved && geometry
-      ? { ...resolved, width: geometry.width, height: geometry.height, scale: geometry.scale }
-      : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [uri, geometry?.width, geometry?.height, geometry?.scale]
+    () => capFrameGeometry(spec, width, height, scale, density),
+    [spec, width, height, scale, density]
   );
 
-  if (!imageSource) return null;
+  if (!geometry) return null;
+  const { capInsets, layer, zoom } = geometry;
+  const checking = readCapTrust() && capAgreements < CAP_CHECKS;
   return (
     <Image
-      // REMOUNT WHEN THE GEOMETRY MOVES. `capInsets` is applied in exactly one
-      // place on Fabric — `didReceiveImage:`, as the loaded UIImage is turned
-      // resizable — and `updateProps:` forwards only `resizeMode` and
-      // `tintColor`. A reload is the only thing that re-applies it, and a
-      // reload needs a NEW image source, which for Fabric means a new `uri`:
-      // `ImageSource::operator==` ties on type and uri alone, so the density
-      // and the size below are invisible to it. Every one of those numbers
-      // moves with `fitted`, so keying on `fitted` is what makes the two agree
-      // — without it, a box that grows or shrinks across the corner-fit clamp
-      // keeps the corners it was first drawn with. Rare, and free: the key is
-      // constant for as long as the geometry is.
-      key={geometry.fitted}
-      source={imageSource}
-      capInsets={geometry.capInsets}
+      // The bundled asset exactly as required. Nothing is declared on it: a
+      // density or a size here would be thrown away by Fabric, and the old
+      // code's reliance on one is what drew every release build's frames wrong.
+      source={source}
+      capInsets={capInsets}
       resizeMode="stretch"
       fadeDuration={0}
       pointerEvents="none"
+      onLoad={checking ? (event) => noteCapLoad(spec, density, isRemoteImage(uri), event) : undefined}
       style={[
-        StyleSheet.absoluteFill,
-        // THE BOX, RESTATED — and it has to be, however redundant it looks
-        // next to `absoluteFill`. RN's Image puts the SOURCE's declared point
-        // size in FRONT of the caller's style:
+        styles.cap,
+        // THE LAYER, STATED IN FULL. RN's Image puts the SOURCE's own point
+        // size in front of the caller's style:
         //
         //   style = [{width, height}, styles.base, props.style]   Image.ios.js
         //
-        // `absoluteFill` is only `position` plus four offsets, so it has no
-        // width or height to overwrite that with, and on an absolutely
-        // positioned node an explicit dimension beats `right`/`bottom`. The
-        // frame therefore drew at the DRAWING's own fitted size — tens of
-        // points — pinned to the top left of whatever it was meant to wrap.
-        //
-        // The slice path never showed this because every window states its own
-        // width and height after the same absoluteFill. This one is the whole
-        // layer, so it states the whole box.
-        { width, height },
-        { opacity },
+        // so a layer that left its size to offsets would be drawn at the
+        // drawing's natural size, pinned to one corner — which shipped once.
+        // Every dimension is stated here, after that prefix, so it cannot.
+        {
+          left: layer.left,
+          top: layer.top,
+          width: layer.width,
+          height: layer.height,
+          opacity,
+          transform: [{ scale: zoom }],
+        },
         tint ? { tintColor: tint } : null,
       ]}
     />
@@ -403,9 +535,8 @@ function StillSlice({ spec, source, pose, rect, box, tint, opacity }) {
 function BoilingSlice({ spec, source, frame, rect, box, tint, opacity }) {
   const { scaleX, scaleY, frameCount, window: win, sheet } = sliceGeometry(spec, rect, box, tint, opacity);
   const sheetStyle = useAnimatedStyle(() => {
-    // Modulo, because the boil timing runs 0 → frameCount and would otherwise
-    // land exactly one frame past the end of the strip on the wrap, showing an
-    // empty box for a beat every cycle.
+    // Modulo, because the boil runs 0 → frameCount and the last step lands one
+    // frame past the end of the strip, which is the first drawing again.
     const index = Math.floor(frame.value) % frameCount;
     return {
       transform: [
@@ -449,7 +580,7 @@ function BoilingSlice({ spec, source, frame, rect, box, tint, opacity }) {
  *            point-valued ink weight into this number — see `weightScale`.
  * `opacity`  applies to the INK only. See the paper note below.
  * `pose`     which of the three hand-redrawn poses a still frame uses.
- * `boil`     cycle the three drawings.
+ * `boil`     cycle the three drawings, while the screen is being looked at.
  */
 export default function ArtFrame({
   name = 'panel',
@@ -468,24 +599,26 @@ export default function ArtFrame({
   const spec = getFrame(name);
   const frame = useSharedValue(0);
   const stillPose = spec ? Math.abs(Math.trunc(pose || 0)) % Math.max(1, spec.frameCount || 1) : 0;
+  // Only a boiling frame has anything to park, so only a boiling frame listens
+  // for focus — a screen draws fifty of these and almost none of them boil.
+  const onScreen = useOnScreen(boil && !reduced && !!spec);
+  const capsTrusted = useSyncExternalStore(subscribeCapTrust, readCapTrust, readCapTrust);
 
   useEffect(() => {
     cancelAnimation(frame);
-    if (!boil || reduced || !spec) {
-      frame.value = stillPose;
-      return undefined;
-    }
     frame.value = stillPose;
-    // Steps through 0,1,2 and wraps. Linear and rounded on read, so each
-    // drawing is held for its full beat instead of being crossfaded — these
-    // are three separate drawings, not keyframes of one.
-    frame.value = withRepeat(
-      withTiming(stillPose + spec.frameCount, { duration: BOIL_MS * spec.frameCount, easing: Easing.linear }),
-      -1,
-      false
-    );
+    if (!boil || reduced || !spec || !onScreen) return undefined;
+    // Each drawing held for its full beat and then swapped, rather than a
+    // linear sweep read back through Math.floor. These are three separate
+    // drawings, not keyframes of one, and a value that only moves when the
+    // drawing does is a value the slices only restyle for when it does.
+    const steps = [];
+    for (let i = 1; i <= spec.frameCount; i += 1) {
+      steps.push(withDelay(BOIL_MS, withTiming(stillPose + i, { duration: 0 })));
+    }
+    frame.value = withRepeat(withSequence(...steps), -1, false);
     return () => cancelAnimation(frame);
-  }, [boil, frame, reduced, spec, stillPose]);
+  }, [boil, frame, onScreen, reduced, spec, stillPose]);
 
   const layout = useMemo(
     () => sliceLayout(spec, width, height, scale),
@@ -500,7 +633,9 @@ export default function ArtFrame({
   if (!layout) return null;
 
   // Reduced motion keeps the box and drops the crawl, so it takes the still
-  // path too — and gets the cheaper one for free.
+  // path too — and gets the cheaper one for free. A boiling frame on a screen
+  // nobody is looking at keeps its slices and just stops stepping, so coming
+  // back to it does not rebuild sixteen views.
   const boiling = boil && !reduced;
   const SliceView = boiling ? BoilingSlice : StillSlice;
 
@@ -509,11 +644,12 @@ export default function ArtFrame({
   //
   // Every condition here is a reason the compositor cannot do the job:
   // a boiling frame needs the strip and a per-frame offset, Android has no
-  // capInsets, and a frame whose poses were never cut has nothing to hand it.
-  // Any of them falls through to the eight slices, which still work.
+  // capInsets, a frame whose poses were never cut has nothing to hand it, and
+  // a device that has contradicted the cut's arithmetic is not to be trusted
+  // with it. Any of them falls through to the eight slices, which still work.
   const inkPose = spec.posesInk?.[stillPose];
   const paperPose = spec.posesPaper?.[stillPose];
-  const canCap = NATIVE_NINE_SLICE && !boiling && !!inkPose && (!wantsPaper || !!paperPose);
+  const canCap = NATIVE_NINE_SLICE && capsTrusted && !boiling && !!inkPose && (!wantsPaper || !!paperPose);
 
   if (canCap) {
     return (
@@ -593,6 +729,7 @@ export default function ArtFrame({
 }
 
 const styles = StyleSheet.create({
+  cap: { position: 'absolute' },
   middle: { position: 'absolute' },
   window: { position: 'absolute', overflow: 'hidden' },
   sheet: { position: 'absolute', left: 0, top: 0 },

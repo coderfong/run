@@ -7,12 +7,12 @@
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 
 import ShopScreen from '../src/screens/ShopScreen';
 import ShopWallet from '../src/components/shop/ShopWallet';
-import CharacterRig from '../src/components/character/CharacterRig';
+import CharacterRig, { BODY_RATIO, HEADROOM } from '../src/components/character/CharacterRig';
 import { api } from '../src/api/client';
 import { invalidate } from '../src/api/cache';
 
@@ -208,6 +208,22 @@ describe('trying it on', () => {
     expect(rig.props.equipped.headwear).toBe('beanie');
     // The context's own equipped set is untouched.
     expect(EQUIPPED.headwear).toBe('none');
+  });
+
+  test('the runner stands in the mirror whole, head to feet', async () => {
+    // The rig's `size` is its WIDTH, and a runner is ~2.9x as tall as that.
+    // Handing it the mirror's height as a width drew a 388pt runner in a
+    // 132pt window that kept only the legs, so the item being tried on was
+    // never in the preview.
+    const tree = await mountShop();
+    await act(async () => { byLabel(tree, 'Cap, common').props.onPress(); });
+    const rig = tree.root.findAllByType(CharacterRig)[0];
+    const mirror = StyleSheet.flatten(rig.parent.props.style);
+    const tall = rig.props.size * BODY_RATIO * (1 + HEADROOM);
+    expect(tall + mirror.paddingBottom).toBeLessThanOrEqual(mirror.height);
+    expect(rig.props.size).toBeLessThanOrEqual(mirror.width);
+    // …and fills it, rather than fitting by shrinking to a speck.
+    expect(tall).toBeGreaterThan(mirror.height * 0.8);
   });
 
   test('the buy button names the price, and refuses what you cannot afford', async () => {
