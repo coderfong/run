@@ -140,6 +140,25 @@ describe('ProfileScreen', () => {
     api.pasers.mockImplementation(() => Promise.resolve({ incoming: [], pasers: [] }));
     api.paserby.mockImplementation(() => Promise.resolve({ enabled: true, unseen: 0, total: 0 }));
     api.getNotifPrefs.mockImplementation(() => Promise.resolve({}));
+    api.myTerritory.mockImplementation(() => Promise.resolve({
+      summary: { plots: 1, area_m2: 12000, fading_plots: 1, held_times: 0, lost_times: 0 },
+      plots: [{
+        id: 'p1',
+        area_m2: 12000,
+        held: 0,
+        reinforcements: 0,
+        claimed_at: new Date(Date.now() - 24 * 3600000).toISOString(),
+        expires_at: new Date(Date.now() + 5.5 * 3600000).toISOString(),
+        rings: [],
+        bbox: [],
+        lat: 1.3,
+        lon: 103.8,
+      }],
+      history: [],
+      fading_hours: 36,
+      window_days: 7,
+      history_days: 14,
+    }));
   });
 
   test('every section of the page is on it', async () => {
@@ -155,6 +174,9 @@ describe('ProfileScreen', () => {
     for (const label of ['Area held', 'Distance', 'Runs', 'Biggest claim', 'Streak', 'Zones']) {
       expect(t).toContain(label);
     }
+    // What is happening to that land, right under the wall that counts it.
+    expect(t).toContain('Your land');
+    expect(t).toContain('Fades in 5h');
     // Everything under it, in page order.
     expect(t).toContain('PASER PRO');
     expect(t).toContain('Running streak');
@@ -205,6 +227,18 @@ describe('ProfileScreen', () => {
     const tree = mount();
     await act(async () => {});
     expect(texts(tree).join('|')).toContain('Settings');
+    act(() => tree.unmount());
+  });
+
+  test('a land request that fails takes its card with it, not the page', async () => {
+    // An app build ahead of its backend gets a 404 here. The card goes; the
+    // rest of You must not.
+    api.myTerritory.mockImplementation(() => Promise.reject(new Error('Request failed (404)')));
+    const tree = mount();
+    await act(async () => {});
+    const t = texts(tree).join('|');
+    expect(t).not.toContain('Your land');
+    expect(t).toContain('Settings');
     act(() => tree.unmount());
   });
 

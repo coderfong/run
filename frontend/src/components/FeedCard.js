@@ -177,7 +177,7 @@ function FramedStat({ item, index, label, value, unit, valueColor }) {
   );
 }
 
-export default function FeedCard({ item, navigation, autoPlaySteal = false, screenFocused = true }) {
+export default function FeedCard({ item, navigation, autoPlaySteal = false, screenFocused = true, onScreen = true }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
@@ -564,7 +564,10 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
       {/* The steal, on the card. It starts SETTLED — heads on the bar pulling
           a face, the amount stamped on — and detonates when tapped, because a
           feed that blows itself up as you scroll is noise rather than a
-          payoff. Home plays the first visible steal as it scrolls into view.
+          payoff. Home lets exactly ONE steal per visit play itself, the first
+          one it has properly seen, and tells every card whether it is on
+          screen at all (see createFeedVisibility in HomeScreen), so the heads
+          on a card scrolled out of view hold still.
 
           Pulled up by its own headroom: the banner reserves 90pt of empty
           stage above the bar for the fireball to have somewhere to go, and
@@ -581,7 +584,10 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
           trigger={item.id}
           victims={victims}
           amount={fmtArea(item.stolen_m2 || 0)}
-          autoPlay={autoPlaySteal && screenFocused}
+          // NOT gated on focus as well. It was, and every return to Home
+          // flipped it back on and set the same steal off again.
+          autoPlay={autoPlaySteal}
+          active={onScreen}
           haptics={false}
           style={{ marginTop: space.sm - STEAL_HEADROOM }}
         />

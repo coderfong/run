@@ -680,3 +680,87 @@ describe('the Home street', () => {
     act(() => tree.unmount());
   });
 });
+
+/**
+ * Which feed rows are on screen, and the ONE steal that plays by itself.
+ *
+ * Build 66 kept the visible ids in the list's state: every row crossing the
+ * viewport re-rendered the whole feed, and "the first visible steal" moved as
+ * you scrolled, so every steal you reached detonated, scrolling back set it
+ * off again, and so did every return to Home. The heads on rows mounted but
+ * scrolled away kept sulking on their endless loops the whole time.
+ */
+describe('feed visibility', () => {
+  const { createFeedVisibility } = require('../src/screens/HomeScreen');
+  const TerritoryStealBanner = require('../src/components/TerritoryStealBanner').default;
+
+  beforeEach(() => {
+    mockFeed = { items: [], next_cursor: null };
+    jest.clearAllMocks();
+    // 'survives every request failing' above leaves these rejecting for good.
+    const { api } = require('../src/api/client');
+    api.feed.mockImplementation(() => Promise.resolve(mockFeed));
+    api.energyStatus.mockImplementation(() => Promise.resolve(mockEnergy));
+    api.notifications.mockImplementation(() => Promise.resolve(mockNotifs));
+  });
+
+  it('spends its one autoplay on the first steal properly seen, and never again', () => {
+    const store = createFeedVisibility();
+    store.setSteals(['s1', 's2']);
+    store.setOnScreen(['r0', 's1']);
+    store.setSeen(['r0', 's1']);
+    // Not until Home is in front, with motion allowed and the feed landed.
+    expect(store.plays('s1')).toBe(false);
+    store.setAllowed(true);
+    expect(store.plays('s1')).toBe(true);
+
+    // Scrolling on: s1 leaves and s2 arrives. s2 does not go off.
+    store.setOnScreen(['s2']);
+    store.setSeen(['s2']);
+    expect(store.plays('s1')).toBe(false);
+    expect(store.plays('s2')).toBe(false);
+
+    // Scrolling back does not set s1 off again either.
+    store.setOnScreen(['s1']);
+    store.setSeen(['s1']);
+    expect(store.plays('s1')).toBe(false);
+  });
+
+  it('only tells the rows anything when what is on screen changed', () => {
+    const store = createFeedVisibility();
+    const listener = jest.fn();
+    store.subscribe(listener);
+    store.setOnScreen(['a', 'b']);
+    expect(listener).toHaveBeenCalledTimes(1);
+    store.setOnScreen(['b', 'a']);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.isOnScreen('a')).toBe(true);
+    expect(store.isOnScreen('c')).toBe(false);
+  });
+
+  it('wires every card on Home to it', async () => {
+    const steal = (id) => runner({
+      id,
+      victims: [{ user_id: `v-${id}`, username: 'victim', area_m2: 4000, avatar: {} }],
+    });
+    mockFeed = { items: [runner({ id: 'r0' }), steal('s1'), steal('s2')], next_cursor: null };
+    const tree = mount();
+    await act(async () => {});
+
+    const banner = (id) => tree.root.findAllByType(TerritoryStealBanner).find((b) => b.props.trigger === id);
+    // Nothing reported on screen yet: no heads sulk and nothing goes off.
+    expect(banner('s1').props.active).toBe(false);
+    expect(banner('s1').props.autoPlay).toBe(false);
+
+    const [anyOfIt, seen] = tree.root.findByType(FlatList).props.viewabilityConfigCallbackPairs;
+    const entries = (ids) => ids.map((id) => ({ item: { id }, isViewable: true }));
+    act(() => anyOfIt.onViewableItemsChanged({ viewableItems: entries(['r0', 's1']), changed: [] }));
+    act(() => seen.onViewableItemsChanged({ viewableItems: entries(['s1']), changed: [] }));
+
+    expect(banner('s1').props.active).toBe(true);
+    expect(banner('s1').props.autoPlay).toBe(true);
+    expect(banner('s2').props.active).toBe(false);
+    expect(banner('s2').props.autoPlay).toBe(false);
+    act(() => tree.unmount());
+  });
+});

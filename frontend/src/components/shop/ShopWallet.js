@@ -13,7 +13,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import AppIcon from '../AppIcon';
 import { CountUpText, PressableScale } from '../../ui/motion';
-import { brand, nbInk, nbRadius, nbTextOn, space, useTheme, useThemedType, withAlpha } from '../../theme';
+import { brand, fonts, nbInk, nbRadius, nbTextOn, space, useTheme, useThemedType, withAlpha } from '../../theme';
 
 const GOLD = '#eab308';
 
@@ -87,5 +87,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   // Nudged up: the glyph's own bearing sits it low in a circle this small.
-  plusMark: { fontSize: 22, fontWeight: '900', lineHeight: 24, marginTop: -2 },
+  plusMark: { fontSize: 22, fontFamily: fonts.bold, lineHeight: 24, marginTop: -2 },
 });

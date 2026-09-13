@@ -12,7 +12,7 @@
 // clanColor (accepted for API compat; the art is not tinted).
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Image as RNImage, View } from 'react-native';
+import { Image as RNImage, StyleSheet, View } from 'react-native';
 import { Image as ExpoImage } from '../../ui/image';
 import Animated, {
   Easing,
@@ -316,6 +316,13 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     // PARENT scales it (RunningScreen's live marker sits in a Pulse) can ask
     // for it by hand.
     crisp,
+    // A second face (a face item id, e.g. 'sad') cross-faded over the worn
+    // one by `altFaceMix`, a shared value from 0 (worn face) to 1 (this one).
+    // Both sit in the face's own place in the stack, under hair, glasses and
+    // hat. For a caller making the SAME runner pull a face: the steal
+    // banner's sulk used to stack a whole second rig on top for it.
+    altFace,
+    altFaceMix,
   },
   ref
 ) {
@@ -442,13 +449,6 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
   // the body so the item reads as going around the head/neck.
   const accBackHalf = itemBackImage('accessory', it.accessory, equipped);
   const hatBackHalf = itemBackImage('headwear', it.headwear, equipped);
-  // Full-coverage hats hide all hair; crown-enclosing hats (caps, hard hat)
-  // also hide bulky updos/afros that would jut out of the hat outline. Open
-  // headwear (sweatband, visor, crown, bandana) lets bulky hair show — a
-  // sweatband under an afro or a top knot through a visor reads naturally.
-  const hideHair =
-    it.headwear.hideHair || (it.headwear.hidesBulky && it.hair.bulky);
-
   const Img = captureSafe ? RNImage : ExpoImage;
 
   return (
@@ -535,10 +535,20 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
             plate would erase outright and the one thing that is not "below
             the jaw". Everything else was moved down instead. */}
         <Layer img={it.accessory.atNeck ? accFront : null} slot="accessory" layout={it.accessory.layout} {...layerBox} />
-        <Layer img={itemImage('face', it.face, equipped)} slot="face" layout={it.face.layout} {...layerBox} />
-        {!hideHair && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} {...layerBox} />
+        {altFace && altFaceMix ? (
+          <FaceBlend
+            mix={altFaceMix}
+            base={<Layer img={itemImage('face', it.face, equipped)} slot="face" layout={it.face.layout} {...layerBox} />}
+            alt={<Layer img={itemImage('face', getItem('face', altFace), equipped)} slot="face" layout={getItem('face', altFace).layout} {...layerBox} />}
+          />
+        ) : (
+          <Layer img={itemImage('face', it.face, equipped)} slot="face" layout={it.face.layout} {...layerBox} />
         )}
+        {/* Hair always remains in the stack under headwear. The headwear art is
+            opaque where it encloses the crown, so it naturally masks that
+            portion while preserving the fringe, sides, ponytails and buns —
+            matching the supplied hat + hairstyle reference sheets. */}
+        <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} {...layerBox} />
         <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
         <Layer img={itemImage('headwear', it.headwear, equipped)} slot="headwear" layout={it.headwear.layout} {...layerBox} />
       </View>
@@ -555,7 +565,26 @@ export default CharacterRig;
 // Props: equipped, size (circle diameter), ring (border color), bg.
 // ---------------------------------------------------------------------------
 
-export const CharacterBust = React.memo(function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,255,0.06)', style, crisp }) {
+// Two faces in the face's own place in the stack, cross-faded by a shared value
+// (see `altFace`). Only the face doubles; hair, glasses and hat stay on top of
+// both, which is the ordering a whole second rig used to be stacked on top to
+// protect.
+function FaceBlend({ mix, base, alt }) {
+  const baseStyle = useAnimatedStyle(() => ({ opacity: 1 - mix.value }));
+  const altStyle = useAnimatedStyle(() => ({ opacity: mix.value }));
+  return (
+    <>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, baseStyle]}>
+        {base}
+      </Animated.View>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, altStyle]}>
+        {alt}
+      </Animated.View>
+    </>
+  );
+}
+
+export const CharacterBust = React.memo(function CharacterBust({ equipped, size = 72, ring, bg = 'rgba(255,255,255,0.06)', style, crisp, altFace, altFaceMix }) {
   const W = size * BUST.bodyScale;
   return (
     <View
@@ -580,6 +609,8 @@ export const CharacterBust = React.memo(function CharacterBust({ equipped, size 
         // point of a bust. Set it where the CALLER animates the portrait's
         // scale, since the rig cannot see that from in here.
         crisp={crisp}
+        altFace={altFace}
+        altFaceMix={altFaceMix}
         style={{ position: 'absolute', left: (size - W) / 2, top: BUST.top * size }}
       />
     </View>
@@ -701,8 +732,24 @@ export function PartThumb({ slot, item, size = 56, clanColor, equipped = null, c
       </View>
     );
   }
+  // A wrap-around item (cape, medal, scarf, visor, beanie...) is stored as a
+  // front layer plus a back layer the rig draws behind the body. On its own the
+  // front is a fragment: the cape was its clasp, the medals lost their ribbons.
+  // Every tile that shows an item (studio, shop, pass, lootbox prize) comes
+  // through here, so stack the back under the front. They share one canvas, so
+  // `contain` lands them pixel-registered.
+  const back = item ? itemBackImage(slot, item, previewEquipped) : null;
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {back ? (
+        <ExpoImage
+          source={back}
+          style={{ position: 'absolute', left: 0, top: 0, width: size, height: size }}
+          resizeMode="contain"
+          fadeDuration={0}
+          crisp={crisp}
+        />
+      ) : null}
       <ExpoImage
         source={img}
         style={{ width: size, height: size }}

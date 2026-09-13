@@ -5,19 +5,27 @@ iPhone still records the run. The watch shows that run and controls it.
 
 ## What the runner gets
 
-- **Before the run.** With Record open and in front on the iPhone, the watch
-  shows **Start run**. Pressing it runs the phone's normal 3, 2, 1 countdown.
-  With Record closed, the watch says to open PASER on the iPhone.
+- **Before the run.** While the signed-in PASER iPhone app is in front, the
+  watch shows **Start run** from any phone screen. Pressing it opens Record on
+  the phone and runs the normal 3, 2, 1 countdown. If the phone app is closed
+  or in the background, the watch asks the runner to open it because iOS does
+  not allow PASER's foreground location permission to begin recording there.
 - **During the run.** Elapsed time, distance, pace, land earned, GPS signal,
   and the same "what this run still needs" line as the phone. There is a
   pause/resume button and a **hold to finish** bar, which needs a one second
   press the same way the phone's finish button needs a hold. The Always On
   display shows the numbers without the controls.
+- **Same run, two controls.** The phone and watch control one shared run ID.
+  Client-side single-flight locks collapse simultaneous Finish presses, and
+  the server replays a repeated end request without awarding or counting it
+  again.
 - **Taps on the wrist** mark the countdown, the start, a pause, a resume, each
   kilometre, the moment the run earns land, and the run being saved or failing
   to save. Button presses get no extra taps.
 - **After the run.** "Run saved" with distance and time, then "Claim your land
-  on your iPhone", because claim placement stays on the phone.
+  on your iPhone". The phone opens the full Result flow automatically, where
+  the runner can move and rotate the earned shape, preview rivals, and place
+  the territory; claim placement stays on the phone.
 
 ## How it fits together
 
@@ -36,7 +44,7 @@ RunningScreen ── useWatchRun ── watchLink ─┐   ┌── PhoneLink �
 | Link | `frontend/src/watch/watchLink.js` | Wraps the native module. Does nothing, silently, where the module is missing |
 | Hook | `frontend/src/watch/useWatchRun.js` | Publishes on change plus a 10 s heartbeat while running, routes commands, sends idle on unmount |
 | Native, phone | `frontend/modules/paser-watch/` | Local Expo module: WCSession, application context, live messages, replies without JS |
-| Watch app | `frontend/targets/watch/` | SwiftUI, watchOS 10+, built by `@bacons/apple-targets` at prebuild |
+| Watch app | `frontend/targets/watch/` | SwiftUI, watchOS 9+, built by `@bacons/apple-targets` at prebuild |
 | Pause windows | `frontend/src/run/pauseWindows.js` | Keeps fixes recorded during a pause out of the trail |
 
 **State flows phone to watch only.** Each snapshot is fully formatted
@@ -51,8 +59,9 @@ stamped with the time it was sent). The phone never takes the watch's word.
 `commandAllowed` checks each command against the Run screen's phase at the
 moment it lands, and drops anything older than 30 s. Start is also refused
 unless the phone has the app in front, because iOS only lets location switch on
-in the foreground. With no Run screen listening, a command is dropped, never
-queued.
+in the foreground. Outside the Run screen, the app-level watch launcher handles
+Start by opening Record with a short-lived command token. Other commands are
+never queued.
 
 `__tests__/watchProtocol.test.js` fails if a field, phase or command exists on
 one side only, or if a watch string contains a dash.
@@ -113,8 +122,8 @@ one side only, or if a watch string contains a dash.
 
 - [ ] Installing the TestFlight build puts PASER on the watch. If Automatic App
       Install is off, install it from the Watch app.
-- [ ] Record closed: the watch says to open PASER on the iPhone. Record open:
-      the watch shows Start run.
+- [ ] On Home, Map, Club and You with PASER in front: the watch shows Start
+      run. With the phone app backgrounded: the watch asks to open PASER.
 - [ ] Start run on the watch counts down on both, and the phone starts
       recording.
 - [ ] Lock the phone and pocket it. Pause and resume from the watch several

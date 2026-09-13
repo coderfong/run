@@ -8,11 +8,16 @@ struct RunScreen: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        content
-            .tint(link.state.accent)
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { link.refresh() }
-            }
+        ZStack {
+            PaserStyle.background.ignoresSafeArea()
+            content.padding(.horizontal, 3)
+        }
+        .tint(link.state.accent)
+        // Use the watchOS 9 overload. The two-argument closure is only
+        // available from watchOS 10 and would make the lower target lie.
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { link.refresh() }
+        }
     }
 
     @ViewBuilder
@@ -50,28 +55,42 @@ struct ReadyView: View {
     @EnvironmentObject private var link: PhoneLink
 
     var body: some View {
-        VStack(spacing: 10) {
-            Text("PASER")
-                .font(.system(size: 16, weight: .black, design: .rounded))
-                .foregroundStyle(link.state.accent)
+        VStack(spacing: 9) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(link.state.accent)
+                    .frame(width: 8, height: 8)
+                Text("PASER")
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .tracking(1.2)
+                Spacer(minLength: 0)
+                Text("READY")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundStyle(PaserStyle.muted)
+            }
+            Text("OWN YOUR RUN")
+                .font(.system(size: 23, weight: .black, design: .rounded))
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
             Button {
                 link.send(.start)
             } label: {
                 Text("Start run")
-                    .font(.system(size: 20, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color.white)
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .background(Capsule().fill(link.state.accent))
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(PaserStyle.ink)
+                    .frame(maxWidth: .infinity, minHeight: 48)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PaserActionStyle(accent: link.state.accent))
             .disabled(link.pending != nil || !link.reachable)
             .opacity(link.pending != nil ? 0.6 : 1)
             Text(footnote)
-                .font(.footnote)
-                .foregroundStyle(link.state.notice.isEmpty ? Color.gray : Color.orange)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(link.state.notice.isEmpty ? PaserStyle.muted : Color.orange)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(10)
+        .paserPanel(accent: link.state.accent)
     }
 
     private var footnote: String {
@@ -85,11 +104,19 @@ struct CountdownView: View {
     @EnvironmentObject private var link: PhoneLink
 
     var body: some View {
-        Text(link.state.countdown.isEmpty ? "3" : link.state.countdown)
-            .font(.system(size: 84, weight: .black, design: .rounded))
-            .foregroundStyle(link.state.accent)
-            .lineLimit(1)
-            .minimumScaleFactor(0.5)
+        VStack(spacing: 2) {
+            Text("GET READY")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .tracking(1.3)
+                .foregroundStyle(PaserStyle.yellow)
+            Text(link.state.countdown.isEmpty ? "3" : link.state.countdown)
+                .font(.system(size: 74, weight: .black, design: .rounded))
+                .foregroundStyle(link.state.accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        }
+        .padding(12)
+        .paserPanel(accent: PaserStyle.teal)
     }
 }
 
@@ -128,12 +155,15 @@ struct LiveRunView: View {
                 }
 
                 HStack(alignment: .top, spacing: 8) {
-                    StatView(label: "PACE", value: state.pace, unit: "/km", tint: .white)
+                    StatView(
+                        label: "PACE", value: state.pace, unit: "/km",
+                        fill: PaserStyle.teal
+                    )
                     StatView(
                         label: "LAND",
                         value: state.land,
                         unit: "km²",
-                        tint: state.land == RunState.empty ? .gray : state.accent
+                        fill: state.land == RunState.empty ? PaserStyle.muted : PaserStyle.yellow
                     )
                 }
 
@@ -156,6 +186,8 @@ struct LiveRunView: View {
                     }
                 }
             }
+            .padding(8)
+            .paserPanel(accent: state.accent)
         }
     }
 
@@ -198,27 +230,34 @@ struct StatView: View {
     let label: String
     let value: String
     let unit: String
-    let tint: Color
+    let fill: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label)
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Color.gray)
+                .foregroundStyle(PaserStyle.ink.opacity(0.7))
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(tint)
+                    .foregroundStyle(PaserStyle.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 if value != RunState.empty {
                     Text(unit)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.gray)
+                        .foregroundStyle(PaserStyle.ink.opacity(0.65))
                 }
             }
         }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(fill))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(PaserStyle.ink, lineWidth: 1.5)
+        )
     }
 }
 
@@ -320,6 +359,8 @@ struct SavedView: View {
                 .foregroundStyle(Color.gray)
                 .multilineTextAlignment(.center)
         }
+        .padding(12)
+        .paserPanel(accent: PaserStyle.green)
     }
 
     private func summary(_ state: RunState) -> String {
@@ -344,6 +385,66 @@ struct MessageView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 4)
+        .padding(12)
+        .paserPanel(accent: PaserStyle.pink)
+    }
+}
+
+// The phone's run screen is a dark game board with cream ink, thick framed
+// cards and a coloured hard drop. These small primitives carry that same
+// neo-brutalist language to the wrist without importing phone-only assets.
+private enum PaserStyle {
+    static let background = Color(red: 11 / 255, green: 13 / 255, blue: 16 / 255)
+    static let card = Color(red: 21 / 255, green: 24 / 255, blue: 29 / 255)
+    static let cream = Color(red: 251 / 255, green: 247 / 255, blue: 238 / 255)
+    static let muted = Color(red: 174 / 255, green: 178 / 255, blue: 187 / 255)
+    static let ink = Color(red: 11 / 255, green: 13 / 255, blue: 16 / 255)
+    static let pink = Color(red: 236 / 255, green: 72 / 255, blue: 153 / 255)
+    static let teal = Color(red: 124 / 255, green: 240 / 255, blue: 208 / 255)
+    static let yellow = Color(red: 250 / 255, green: 204 / 255, blue: 21 / 255)
+    static let green = Color(red: 74 / 255, green: 222 / 255, blue: 128 / 255)
+}
+
+private struct PaserPanel: ViewModifier {
+    let accent: Color
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(accent)
+                    .offset(x: 3, y: 4)
+            )
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(PaserStyle.card)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(PaserStyle.cream, lineWidth: 2)
+            )
+    }
+}
+
+private extension View {
+    func paserPanel(accent: Color) -> some View {
+        modifier(PaserPanel(accent: accent))
+    }
+}
+
+private struct PaserActionStyle: ButtonStyle {
+    let accent: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                Capsule()
+                    .fill(PaserStyle.cream)
+                    .offset(x: 2, y: 3)
+            )
+            .background(Capsule().fill(accent))
+            .overlay(Capsule().stroke(PaserStyle.ink, lineWidth: 2))
+            .offset(y: configuration.isPressed ? 2 : 0)
+            .opacity(configuration.isPressed ? 0.88 : 1)
     }
 }

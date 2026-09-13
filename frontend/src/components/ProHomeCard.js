@@ -65,14 +65,14 @@ export default function ProHomeCard() {
         openPaywall('home');
       }}
       accessibilityRole="button"
-      accessibilityLabel="Paser Pro. Get more from every run. Strategy, insights and exclusive styles. Tap to explore"
+      accessibilityLabel="Paser Pro. More stats and styles. Tap to explore"
       style={[styles.card, { backgroundColor: colors.card, borderColor: GOLD }]}
     >
       <View style={{ flex: 1 }}>
         <Text style={[type.captionMedium, { color: GOLD }]}>PASER PRO</Text>
-        <Text style={[type.bodySmBold, { marginTop: 2 }]}>Get more from every run.</Text>
+        <Text style={[type.bodySmBold, { marginTop: 2 }]}>More stats. More styles.</Text>
         <Text style={[type.caption, { color: colors.textMuted, marginTop: 2 }]}>
-          Strategy · Insights · Exclusive styles
+          Planner · Run stats · Gear
         </Text>
       </View>
       <ChevronRight size={18} color={GOLD} strokeWidth={3} />

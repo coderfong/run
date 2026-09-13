@@ -14,6 +14,7 @@ rebuilt server-side from the stored route. /submit-path remains a pure
 streaming endpoint for partial GPS traces.
 """
 
+import logging
 import math
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
@@ -65,6 +66,7 @@ from ..ratelimit import limiter
 from ..security import current_user, require_admin
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 # Rivalry ledger floor: a clipped sliver isn't a rivalry beat (see the insert
 # in claim_run and migration 0016). 25 m² ≈ a 5×5 m patch.
@@ -452,6 +454,68 @@ def end_run(
     )
 
 
+def _collect_expired(db: Session, where: str = "", params: dict | None = None) -> list:
+    """Delete expired territory, log it as history, and charge its owners.
+
+    Both sweeps come through here, the hourly one over the whole map
+    (`run_expiry_sweep`) and the local one a claim runs over the ground it is
+    about to land on, so fading is recorded the same way wherever it is
+    noticed. `where` narrows the DELETE: an `AND ...` clause over alias `t`.
+
+    Returns every deleted row as (user_id, area_m2), verified or not, because
+    that is what the decay charge has always been levied on.
+
+    THE LOG WRITE RIDES ON THE DELETE, in one statement, because the row it
+    describes no longer exists a statement later. It is best effort like every
+    other write to the log: the statement runs inside a SAVEPOINT, and if its
+    insert half fails (a database not yet at 0045, a geometry GEOS will not
+    repair) it is rolled back and the plain DELETE runs instead. A lost history
+    row costs a line on somebody's land page; failing here would cost the sweep,
+    or the claim that triggered it.
+
+    Only verified ground is logged, since a shadow-flagged claim was never
+    logged when it landed either, and nothing under the log's sliver floor. The
+    beat is dated when the land EXPIRED, not when a sweep found it, which can be
+    an hour later.
+    """
+    params = {"life_per": settings.territory_life_days_per_strength, **(params or {})}
+    delete = "DELETE FROM territories t WHERE NOT (" + _live("t") + ") " + where
+    rows = None
+    try:
+        with db.begin_nested():
+            rows = db.execute(
+                text(
+                    f"""
+                    WITH gone AS (
+                        {delete}
+                        RETURNING t.user_id, t.area_m2, t.run_id, t.verified, t.polygon,
+                                  COALESCE(t.expires_at, t.created_at + make_interval(
+                                      secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
+                                  ) AS ended_at
+                    ), logged AS (
+                        INSERT INTO territory_events
+                            (actor_id, run_id, kind, area_m2, ground, lat, lon, created_at)
+                        SELECT g.user_id, g.run_id, :expire_kind, g.area_m2, v.geom,
+                               ST_Y(ST_Centroid(v.geom)), ST_X(ST_Centroid(v.geom)), g.ended_at
+                        FROM gone g
+                        CROSS JOIN LATERAL (SELECT ST_Multi(ST_CollectionExtract(
+                            ST_MakeValid(g.polygon), 3)) AS geom) v
+                        WHERE g.verified AND g.area_m2 >= :log_floor
+                    )
+                    SELECT user_id, area_m2 FROM gone
+                    """
+                ),
+                {**params, "expire_kind": territory_history.EXPIRE,
+                 "log_floor": territory_history.MIN_AREA_M2},
+            ).fetchall()
+    except Exception:  # noqa: BLE001 — the log is best effort, see the docstring
+        log.warning("expiry log write failed; sweeping without it", exc_info=True)
+    if rows is None:
+        rows = db.execute(text(delete + " RETURNING t.user_id, t.area_m2"), params).fetchall()
+    elo.record_expired_land(db, rows)
+    return rows
+
+
 def run_expiry_sweep(db: Session) -> dict:
     """The sweep itself, callable without a request.
 
@@ -475,11 +539,8 @@ def run_expiry_sweep(db: Session) -> dict:
     like /admin/recompute-season.
     """
     params = {"life_per": settings.territory_life_days_per_strength}
-    expired = db.execute(
-        text("DELETE FROM territories t WHERE NOT (" + _live("t") + ") RETURNING user_id, area_m2"), params
-    ).fetchall()
-    elo.record_expired_land(db, expired)
-    expired = len(expired)
+    # Every owner is told their ground faded on the way out; see `_collect_expired`.
+    expired = len(_collect_expired(db))
 
     # UPDATE ... RETURNING is both the worklist and the guard: the rows that
     # were actually stamped are exactly the ones this run may pay for, so a
@@ -1497,21 +1558,18 @@ def claim_territory(
     if route:
         lons = [p[0] for p in route]
         lats = [p[1] for p in route]
-        expired_rows = db.execute(
-            text(
-                "DELETE FROM territories t WHERE NOT (" + _live("t") + ") "
-                "AND ST_Intersects(t.polygon, ST_MakeEnvelope("
-                "  :min_lon, :min_lat, :max_lon, :max_lat, 4326)) RETURNING user_id, area_m2"
-            ),
+        # Logged and charged the same way the hourly sweep does it.
+        _collect_expired(
+            db,
+            "AND ST_Intersects(t.polygon, ST_MakeEnvelope("
+            ":min_lon, :min_lat, :max_lon, :max_lat, 4326))",
             {
                 # Padded by roughly a kilometre of degrees so the envelope
                 # covers every candidate placement, not just the trail itself.
                 "min_lon": min(lons) - 0.01, "min_lat": min(lats) - 0.01,
                 "max_lon": max(lons) + 0.01, "max_lat": max(lats) + 0.01,
-                "life_per": settings.territory_life_days_per_strength,
             },
-        ).fetchall()
-        elo.record_expired_land(db, expired_rows)
+        )
 
     # The area /end-run froze for this run, which is its slice of the day's
     # entitlement. Recomputing here would let a run claimed tomorrow be sized

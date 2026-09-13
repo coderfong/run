@@ -123,6 +123,16 @@ describe('paywall copy promises depth, never power', () => {
       }
     }
   });
+
+  it('keeps small paywall copy short', () => {
+    for (const ctx of all) {
+      expect((ctx.title || '').length).toBeLessThanOrEqual(32);
+      expect((ctx.subtitle || '').length).toBeLessThanOrEqual(64);
+      for (const [, label] of ctx.perks || []) {
+        expect(label.length).toBeLessThanOrEqual(40);
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

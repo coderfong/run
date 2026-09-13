@@ -33,6 +33,7 @@ import { COPY as PASERBY_COPY } from '../config/paserby';
 import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
 import RankRail from '../components/rank/RankRail';
+import YourLandCard from '../components/territory/YourLandCard';
 import { standingFrom } from '../config/rankLadder';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
@@ -416,6 +417,11 @@ export default function ProfileScreen({ navigation }) {
         )}
       </Reveal>
 
+      {/* Your land: what is happening to the ground the wall above counts.
+          The plots about to fade, what held, what was lost; the full list is
+          one tap away. Hides itself if the endpoint is not there. */}
+      <YourLandCard navigation={navigation} accent={accent} />
+
       {/* PASER PRO — shown only to non holders, and it is a POSTER: the crew,
           the wordmark, one line. Everything about what PRO actually gives you
           is a tap away on the paywall; a card on You that listed it was three
@@ -444,7 +450,7 @@ export default function ProfileScreen({ navigation }) {
           <PressableScale
             onPress={() => { haptic.light(); openPaywall('profile'); }}
             accessibilityRole="button"
-            accessibilityLabel="Paser Pro. Strategy, insights and style. Territory planner, territory intelligence, advanced analytics, rival intelligence and exclusive customisation. Tap to explore"
+            accessibilityLabel="Paser Pro. Planning, stats and styles. Tap to explore"
           >
             <Framed
               frame={frameVariant('featured', 'pro:you')}
@@ -475,7 +481,7 @@ export default function ProfileScreen({ navigation }) {
                     things it does sell; the full list lives on the paywall,
                     which is where somebody who taps this is going anyway. */}
                 <Text style={[type.bodySm, styles.proSub]}>
-                  Strategy. Insights. Style.
+                  Planning. Stats. Style.
                 </Text>
                 <Framed
                   frame={frameVariant('chip', 'Explore PRO')}

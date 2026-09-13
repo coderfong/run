@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   AppState,
+  InteractionManager,
   StatusBar,
   TouchableOpacity,
   useWindowDimensions,
@@ -18,28 +19,12 @@ import {
   NavigationContainer,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { enableFreeze } from 'react-native-screens';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { X } from 'lucide-react-native';
-import {
-  SpaceGrotesk_500Medium,
-  SpaceGrotesk_700Bold,
-} from '@expo-google-fonts/space-grotesk';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  // The share card's poster face (fonts.poster). Anton was here until
-  // 2026-08-25 and is gone with it: the card's numbers are a heavy grotesque
-  // now, which is the type on the reference card everybody is comparing it to,
-  // and one weight of a family already loaded costs nothing extra to ship.
-  Inter_900Black,
-} from '@expo-google-fonts/inter';
-import { Poppins_700Bold, Poppins_900Black } from '@expo-google-fonts/poppins';
 
 import HomeScreen from './src/screens/HomeScreen';
 import RunningScreen from './src/screens/RunningScreen';
@@ -70,6 +55,7 @@ import PasersScreen from './src/screens/PasersScreen';
 import RivalsScreen from './src/screens/RivalsScreen';
 import RivalDetailScreen from './src/screens/RivalDetailScreen';
 import CrossroadsScreen from './src/screens/CrossroadsScreen';
+import TerritoryScreen from './src/screens/TerritoryScreen';
 import RunnerProfileScreen from './src/screens/RunnerProfileScreen';
 import RunShareCard from './src/components/share/RunShareCard';
 
@@ -96,11 +82,15 @@ import { hydrateProExposure } from './src/pro/exposure';
 import { hydrateCache } from './src/api/cache';
 import { warmUp } from './src/api/client';
 import { preloadCriticalImages, preloadStartupImages } from './src/config/screenAssets';
+import { addWatchCommandListener, publishToWatch } from './src/watch/watchLink';
+import { commandAllowed, PHASE as WATCH_PHASE } from './src/watch/watchState';
 // No static `colors` here on purpose — App used to build the nav theme and the
 // header chrome from it, which pinned both to the dark palette. Everything
 // theme-dependent now reads useTheme(); `darkColors` stays only for the record
 // modal, which is deliberately dark in either theme.
 import { darkColors, fonts, ThemeProvider, useTheme } from './src/theme';
+import { FONT_FILES } from './src/theme/fontFiles';
+import HeaderTitle from './src/components/ui/HeaderTitle';
 
 // A production navigator has neither the screen nor its deep-link mapping.
 // Keeping the require behind the same compile-time flag also lets Metro drop
@@ -156,6 +146,9 @@ function useHeaderChrome() {
     () => ({
       headerStyle: { backgroundColor: colors.bg },
       headerTitleStyle: { color: colors.text, fontFamily: fonts.display },
+      // Drawn by us: native-stack cannot change its own title's case, and
+      // every heading is lowercase (HEADING_CASE in theme/tokens.js).
+      headerTitle: (props) => <HeaderTitle {...props} />,
       headerTintColor: colors.text,
       headerShadowVisible: false,
       // Without this iOS labels the back button with the PREVIOUS ROUTE'S
@@ -328,6 +321,9 @@ function YouStack() {
         options={{ headerShown: true, title: 'Rivalry' }}
       />
       <YouStackNav.Screen name="Crossroads" component={CrossroadsScreen} />
+      {/* Your land: the full list behind the "Your land" card on the profile.
+          Draws its own panel header, like Rivals. */}
+      <YouStackNav.Screen name="Territory" component={TerritoryScreen} />
       <YouStackNav.Screen
         name="RunnerProfile"
         component={RunnerProfileScreen}
@@ -354,46 +350,91 @@ const MapTab = withBoundary(MapStack);
 const ClubTab = withBoundary(ClubStack);
 const YouTab = withBoundary(YouStack);
 
-// Native bottom tabs let react-native-screens detach and freeze inactive tab
-// trees. The former pager kept every visited tab attached to one wide native
-// view; Mapbox's GL surface was therefore still part of the hierarchy while
-// scrolling Home, Club or Profile.
-const Tab = createBottomTabNavigator();
+// Material top-tabs (native pager under the hood) give horizontal swipe between
+// tabs while keeping our custom bottom bar via tabBarPosition="bottom". Swipe is
+// disabled on Map so Mapbox panning isn't hijacked (Map sits mid-order, so it
+// bookends the swipe: Home↔Map and Club↔You swipe; leave Map by tapping).
+//
+// NOT BOTTOM TABS, AND NOT FROZEN. Build 68 swapped this for native bottom tabs
+// with `freezeOnBlur` and `detachInactiveScreens`, on the theory that the
+// preloaded tabs were the lag. It made every tab switch dearer instead. A
+// frozen tab is suspended by react-freeze, React hides suspended content with
+// `display: none`, and Fabric does not mount a `display: none` subtree, so
+// leaving a tab tore down its whole native view tree and coming back built it
+// again, on every switch. `lazy` put Map's Mapbox context back inside the first
+// tap, the swipe between tabs went, and GlobalMapScreen's bottom inset (see its
+// note on SafeAreaInsetsContext) is measured for THIS navigator. Hidden tabs are
+// kept cheap the targeted way: loops park on `useOnScreen`, first fetches wait
+// for focus (useQuery), and a refresh that changes nothing re-renders nothing
+// (api/cache.js).
+const Tab = createMaterialTopTabNavigator();
+
+// How long after launch the other three tabs get built. Long enough that Home
+// has drawn and its first requests are away; short enough that nobody has
+// finished reading the screen and reached for a tab.
+const TAB_PRELOAD_DELAY_MS = 1500;
 
 function MainTabs() {
   const { colors } = useTheme();
+  const { width } = useWindowDimensions();
 
-  // KEEP EXPENSIVE TAB TREES OUT OF MEMORY UNTIL THEY ARE ACTUALLY OPENED.
+  // PRELOAD THE OTHER TABS — BUT NOT DURING LAUNCH, AND NOT DURING THE SWIPE.
   //
-  // Preloading every tab after launch looked smooth in a narrow navigation
-  // test, but left Mapbox's native GL surface plus three complete screen trees
-  // resident for the rest of the session. That memory/commit pressure made
-  // unrelated taps, scrolling and animations progressively janky. TabBar
-  // warms each destination's bitmap assets on press-in, so demand-mounting the
-  // actual tree keeps most of the first-visit benefit without the permanent
-  // app-wide cost.
+  // `lazyPreloadDistance: 3` is what stops a tab tap from being a mount, and
+  // it is worth keeping. As a FIXED option, though, it is a mount cost paid
+  // at the worst possible moment either way: set to 0, the first swipe to
+  // each tab pays for that tab's mount — Mapbox's GL context included — right
+  // in the middle of the pager's swipe animation, which is the stutter this
+  // was rewritten to fix and instead reintroduced. Set to 3 from launch,
+  // opening the app builds all four tabs at once, racing the screen the
+  // runner is actually looking at.
+  //
+  // So it starts at zero and moves to three once the app is idle. Home mounts
+  // alone, draws, and settles; the other three are built behind it a beat
+  // later — off the interaction path, not inside a gesture — and are ready
+  // by the time anybody swipes or taps a tab. Changing a screen option
+  // remounts nothing — the tabs that already exist stay exactly as they are.
+  const [preloadDistance, setPreloadDistance] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    let task = null;
+    const timer = setTimeout(() => {
+      task = InteractionManager.runAfterInteractions(() => {
+        if (alive) setPreloadDistance(3);
+      });
+    }, TAB_PRELOAD_DELAY_MS);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      task?.cancel?.();
+    };
+  }, []);
+
   const screenOptions = useMemo(
-    () => ({
-      headerShown: false,
-      lazy: true,
-      freezeOnBlur: true,
-      animation: 'none',
-      sceneStyle: { backgroundColor: colors.bg },
-    }),
-    [colors.bg]
+    () => ({ swipeEnabled: true, lazy: true, lazyPreloadDistance: preloadDistance }),
+    [preloadDistance]
   );
 
   return (
     <Tab.Navigator
+      tabBarPosition="bottom"
       tabBar={(props) => <TabBar {...props} />}
-      detachInactiveScreens
-      // Tabs mount on first use. useQuery still refreshes on focus, so a newly
-      // opened tab requests fresh data immediately while repeat visits can
-      // paint synchronously from the response cache.
+      initialLayout={{ width }}
+      // Our TabBar is a floating pill on a transparent dock, so the pager's own
+      // surface is what shows around and under it — state it explicitly rather
+      // than relying on the navigator's default.
+      style={{ backgroundColor: colors.bg }}
+      sceneContainerStyle={{ backgroundColor: colors.bg }}
+      // Lazy mounting's low initial cost, and every tab prepared before it is
+      // asked for — see `preloadDistance` above for why the second half of
+      // that is deferred rather than set at launch. Separately, useQuery
+      // (hooks/useQuery.js) gates each screen's FIRST fetch on that screen
+      // being focused, so a preloaded tab is built without also firing its
+      // network requests.
       screenOptions={screenOptions}
     >
       <Tab.Screen name="Home" component={HomeTab} />
-      <Tab.Screen name="Map" component={MapTab} />
+      <Tab.Screen name="Map" component={MapTab} options={{ swipeEnabled: false }} />
       <Tab.Screen name="Club" component={ClubTab} />
       {/* The steal popup and the tutorial still deep-link into You › Rivals /
           Pasers, which leaves the You stack sitting on that inner screen.
@@ -443,10 +484,10 @@ const RecordStackNav = createNativeStackNavigator();
 // is exactly how one `undefined` icon on the share sheet read as "PASER
 // crashes when I finish a run". The run flow is the worst possible place to
 // leave unguarded: it is the end of an effort the runner cannot repeat.
-function RecordModal() {
+function RecordModal({ route }) {
   return (
     <ErrorBoundary>
-      <RecordStack />
+      <RecordStack watchStartAt={route?.params?.watchStartAt} />
     </ErrorBoundary>
   );
 }
@@ -462,7 +503,7 @@ function RunShareModal(props) {
   );
 }
 
-function RecordStack() {
+function RecordStack({ watchStartAt }) {
   return (
     <RecordStackNav.Navigator
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: darkColors.bg } }}
@@ -470,6 +511,7 @@ function RecordStack() {
       <RecordStackNav.Screen
         name="Record"
         component={RunningScreen}
+        initialParams={{ watchStartAt }}
         options={({ navigation }) => ({
           headerShown: true,
           headerTransparent: false,
@@ -565,6 +607,47 @@ function FullScreenSpinner() {
 // screen inside it.
 const navigationRef = createNavigationContainerRef();
 
+// Offers Start on the watch throughout the signed-in app. A wrist press opens
+// Record with a short-lived token; RunningScreen owns the countdown, API call,
+// permissions and GPS exactly as it does for the phone's Start button.
+function WatchRunLauncher({ enabled }) {
+  const { isRecording } = useRecording();
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const [routeName, setRouteName] = useState(null);
+  const canStart = enabled && appActive && !isRecording && routeName !== 'Record';
+
+  useEffect(() => {
+    const appSub = AppState.addEventListener('change', (state) => {
+      setAppActive(state === 'active');
+    });
+    const syncRoute = () => setRouteName(navigationRef.getCurrentRoute()?.name || null);
+    syncRoute();
+    const navSub = navigationRef.addListener('state', syncRoute);
+    return () => {
+      appSub?.remove?.();
+      navSub?.();
+      publishToWatch({ phase: WATCH_PHASE.IDLE });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (routeName === 'Record' || isRecording) return;
+    publishToWatch({ phase: canStart ? WATCH_PHASE.READY : WATCH_PHASE.IDLE });
+  }, [canStart, enabled, isRecording, routeName]);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const sub = addWatchCommandListener((command) => {
+      if (!canStart || !commandAllowed(command, WATCH_PHASE.READY)) return;
+      if (!navigationRef.isReady()) return;
+      navigationRef.navigate('Record', { watchStartAt: command.at });
+    });
+    return () => sub.remove();
+  }, [canStart, enabled]);
+
+  return null;
+}
+
 function RootNavigator() {
   const { colors } = useTheme();
   const navTheme = useNavTheme();
@@ -656,6 +739,7 @@ function RootNavigator() {
         >
           <RootStack />
         </NavigationContainer>
+        <WatchRunLauncher enabled={navReady && locStatus === 'granted'} />
         {/* A tier lost while the app was closed, told once on the way back
             in. Outside the navigator like the alert hosts below. */}
         <RankDropWatcher navigationRef={navigationRef} ready={navReady} />
@@ -814,17 +898,8 @@ function App() {
   // small read and it overlaps the font load, so it costs no real time — but it
   // is raced anyway, because nothing on the launch path may block forever.
   const [cacheReady, setCacheReady] = useState(false);
-  const [fontsLoaded, fontError] = useFonts({
-    SpaceGrotesk_500Medium,
-    SpaceGrotesk_700Bold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Inter_900Black,
-    Poppins_700Bold,
-    Poppins_900Black,
-  });
+  // Every word in the app is the one hand-lettered face, in three pen widths.
+  const [fontsLoaded, fontError] = useFonts(FONT_FILES);
 
   useEffect(() => {
     let alive = true;

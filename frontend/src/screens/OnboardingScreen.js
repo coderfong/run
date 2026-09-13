@@ -49,7 +49,7 @@ const SLIDES = [
     headline: ['Run.', 'Turn distance'],
     accentLine: 'into territory.',
     accent: brand.pink,
-    body: 'Every run earns a claim zone as big as your distance. Drag it anywhere along your route.',
+    body: 'Run, then place your claim on the route.',
   },
   {
     key: 'clans',
@@ -59,7 +59,7 @@ const SLIDES = [
     headline: ['Clubs fight.'],
     accentLine: 'Defend your land.',
     accent: brand.purple,
-    body: 'Other clubs will try to take over your territory. Hold it together.',
+    body: 'Other clubs can take your land. Defend it together.',
   },
   {
     key: 'safety',
@@ -73,7 +73,7 @@ const SLIDES = [
     bullets: [
       { icon: ShieldCheck, title: 'Stay alert', body: 'Eyes up at crossings. A claim is never worth a red light.' },
       { icon: Route, title: 'Use safe routes', body: 'Pick paths and park connectors over traffic.' },
-      { icon: Flag, title: 'Follow the rules', body: 'Claims are validated on the server. No prize for cutting corners.' },
+      { icon: Flag, title: 'Play fair', body: 'Runs are checked for fair play.' },
     ],
   },
 ];

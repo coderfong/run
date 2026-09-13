@@ -267,7 +267,7 @@ export function RunPostEditorModal({ visible, onClose, ...props }) {
             <View style={{ flex: 1 }}>
               <Text style={[type.title, { color: colors.text }]}>Edit post</Text>
               <Text style={[type.caption, { color: colors.textMuted, marginTop: 2 }]}>
-                These photos and this caption appear on your Home runner card.
+                Shown on your run card.
               </Text>
             </View>
             {/* Was a bare 24pt icon on the plain background — easy to miss

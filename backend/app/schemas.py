@@ -1185,6 +1185,93 @@ class RivalDetail(BaseModel):
     analytics: Optional[RivalAnalytics] = None
 
 
+# ---------------------------------------------------------------------------
+# Your land — GET /me/territory (routes/my_territory.py)
+# ---------------------------------------------------------------------------
+
+
+class TerritoryPlot(BaseModel):
+    """One piece of ground the runner holds right now, with its own clock.
+
+    A holding is often several of these: the claim engine keeps each run's
+    footprint separable, so ground re-run on Wednesday outlives the Monday
+    ground beside it. Each row is a timer, so each row is a plot."""
+
+    id: str
+    area_m2: float
+    claimed_at: UtcDatetime
+    expires_at: UtcDatetime
+    # Inside the same window the "Territory expires soon" push uses
+    # (reminders.TERRITORY_EXPIRING_HOURS), so the two never disagree.
+    fading: bool = False
+    # 1.0 = fresh, 0.0 = gone. The same position the map fades a plot by.
+    life_left: float = 1.0
+    strength: float = 1.0
+    reinforcements: int = 0
+    # Club attributed ground, the kind the club board draws.
+    club: bool = False
+    # NO `verified`. A shadow-flagged claim is shown to its owner as ordinary
+    # ground on purpose (see `_claim_territory`), and a flag on this response
+    # would tell exactly the runner it was hidden from.
+    # Attacks on this plot that bounced, in the last `window_days`.
+    held: int = 0
+    last_held_at: Optional[UtcDatetime] = None
+    # The run that last renewed this ground, where the row still has one.
+    run_id: Optional[str] = None
+    run_distance_m: Optional[float] = None
+    # A point ON the plot, and its bounds [min_lon, min_lat, max_lon, max_lat]
+    # for the map to frame the whole of it.
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    bbox: List[float] = []
+    # Up to three of its largest outlines, thinned for a thumbnail.
+    rings: List[List[Tuple[float, float]]] = []
+
+
+TerritoryBeatKind = Literal["lost", "held", "faded"]
+
+
+class TerritoryBeat(BaseModel):
+    """Something that happened to the runner's ground."""
+
+    kind: TerritoryBeatKind
+    area_m2: float
+    at: UtcDatetime
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    # Who took it, or tried to. None for ground that faded.
+    rival_id: Optional[str] = None
+    rival_username: Optional[str] = None
+    rival_avatar: Optional[dict] = None
+    rival_rank_key: Optional[str] = None
+
+
+class TerritorySummary(BaseModel):
+    # Every live plot: equal to /me/stats' territory_count and total_area_m2.
+    plots: int = 0
+    area_m2: float = 0
+    fading_plots: int = 0
+    fading_m2: float = 0
+    next_expiry_at: Optional[UtcDatetime] = None
+    # Over the last `window_days`.
+    lost_times: int = 0
+    lost_m2: float = 0
+    held_times: int = 0
+    faded_times: int = 0
+    faded_m2: float = 0
+
+
+class MyTerritoryOut(BaseModel):
+    summary: TerritorySummary
+    # Soonest to fade first.
+    plots: List[TerritoryPlot]
+    # Newest first.
+    history: List[TerritoryBeat]
+    fading_hours: int
+    window_days: int
+    history_days: int
+
+
 class PaserRequestIn(BaseModel):
     user_id: str
 

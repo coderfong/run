@@ -45,7 +45,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { brand, space, toon, useTheme, useThemedType } from '../theme';
+import { brand, fonts, space, toon, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
@@ -302,5 +302,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
+  badgeText: { color: '#fff', fontSize: 11, fontFamily: fonts.bold },
 });

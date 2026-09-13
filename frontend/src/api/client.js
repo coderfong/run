@@ -477,6 +477,10 @@ export const api = {
   // YOU took from them. Ordered by most recent beat, not biggest score.
   rivals: (limit = 25) => request(`/me/rivals?limit=${limit}`),
   rivalDetail: (userId) => request(`/me/rivals/${userId}`),
+  // Your land: every plot you hold with its own clock, soonest to fade first,
+  // what bounced off it this week, and a fortnight of ground lost, held and
+  // faded. The summary agrees with /me/stats to the square metre.
+  myTerritory: () => request('/me/territory'),
   runnerProfile: (userId) => request(`/users/${userId}/profile`),
 
   // ----- route privacy ---------------------------------------------------

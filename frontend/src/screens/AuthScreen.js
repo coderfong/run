@@ -27,7 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { warmUp } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import ForgotPassword from '../auth/ForgotPassword';
-import { brand, nbField, radius, space, type, useTheme } from '../theme';
+import { brand, HEADING_CASE, nbField, radius, space, type, useTheme } from '../theme';
 import { Screen, Button, Card, Input } from '../components/ui';
 import { framePose, frameVariant } from '../ui/frameRegistry';
 import { Reveal, useReduceMotion } from '../ui/motion';
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
     fontSize: 68,
     lineHeight: 74,
     letterSpacing: -1,
-    textTransform: 'uppercase',
+    textTransform: HEADING_CASE,
     color: '#141414',
   },
   tagline: {

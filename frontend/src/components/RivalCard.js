@@ -10,7 +10,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { brand, nbTextOn, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
+import { brand, HEADING_CASE, nbTextOn, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { Framed, ToonButton, ToonCard, ToonGhostButton } from './ui';
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
 
   sides: { flexDirection: 'row', alignItems: 'center', marginTop: space.md, gap: space.sm },
   side: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  vs: { textTransform: 'uppercase', letterSpacing: 1 },
+  vs: { textTransform: HEADING_CASE, letterSpacing: 1 },
 
   bar: {
     flexDirection: 'row',

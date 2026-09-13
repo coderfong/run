@@ -1,10 +1,11 @@
 """Writing to the territory event log (migration 0038).
 
-This is instrumentation, and it ships DARK. Nothing reads these rows yet. They
-are being written now because the history they describe cannot be recovered
-later: `territories` is current state, the claim engine deletes and rewrites
-rows as it goes, and a timeline of a place has no source anywhere else. Every
-day this is not deployed is a day of history that does not exist.
+This is instrumentation, and it shipped DARK. The rows were written for weeks
+before anything read them, because the history they describe cannot be
+recovered later: `territories` is current state, the claim engine deletes and
+rewrites rows as it goes, and a timeline of a place has no source anywhere
+else. The first reader is the runner's own land page (routes/my_territory.py):
+the ground taken off them, the attacks that bounced, the ground that faded.
 
 WHERE IT IS CALLED FROM, and why that matters: inside `_claim_territory` in
 routes/runs.py, not from its callers. That function is the single point where
@@ -44,6 +45,12 @@ CLAIM = "claim"
 STEAL = "steal"
 DEFEND = "defend"
 REINFORCE = "reinforce"
+# Ground that ran out of time (0045). Written by the two sweeps that delete
+# expired land (`_collect_expired` in routes/runs.py), never by `record`: it is
+# a by-product of that DELETE and has to be written in the same statement, or
+# the row it describes is already gone. The actor is the runner whose ground it
+# was; there is no victim, because nobody took it.
+EXPIRE = "expire"
 
 # Below this, a row is a rounding artefact rather than a beat in anyone's
 # history — the same floor the rivalry ledger uses, for the same reason: a

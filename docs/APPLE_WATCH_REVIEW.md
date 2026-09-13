@@ -69,8 +69,9 @@ display and background haptics are not guaranteed; do not advertise them.
 
 ## Suggested additional review notes
 
-PASER on Apple Watch requires the paired iPhone nearby. Sign in on iPhone and
-open Record in the foreground, then open PASER on the watch and tap Start run.
+PASER on Apple Watch requires the paired iPhone nearby. Sign in and keep PASER
+in the foreground on any phone screen, then open PASER on the watch and tap
+Start run. The watch opens Record on the phone and begins the countdown.
 The phone records GPS; the watch displays the run and offers pause, resume and
 hold-to-finish controls. During a paused run the iPhone location session may
 remain active to support wrist resume; paused points are excluded from the

@@ -13,6 +13,11 @@ from sqlalchemy import text
 
 LOCAL_TIME_ZONE = "Asia/Singapore"
 
+# How close to expiring land has to be before its owner is told. The land page
+# (routes/my_territory.py) calls a plot "fading" inside this same window, so the
+# push and the list can never disagree about which ground is about to go.
+TERRITORY_EXPIRING_HOURS = 36
+
 
 def _consecutive_streak(run_dates, today: date) -> int:
     """Consecutive run days ending yesterday; reminders only run before the
@@ -93,7 +98,7 @@ def scheduled_reminders(db) -> list[dict]:
             WHERE NOT COALESCE(u.is_bot, false)
               AND t.verified
               AND t.expires_at > now()
-              AND t.expires_at <= now() + interval '36 hours'
+              AND t.expires_at <= now() + make_interval(hours => :soon_h)
               AND NOT EXISTS (
                   SELECT 1 FROM notifications n
                   WHERE n.user_id = t.user_id
@@ -104,7 +109,7 @@ def scheduled_reminders(db) -> list[dict]:
             GROUP BY t.user_id
             """
         ),
-        {"tz": LOCAL_TIME_ZONE, "today": today},
+        {"tz": LOCAL_TIME_ZONE, "today": today, "soon_h": TERRITORY_EXPIRING_HOURS},
     ).fetchall()
 
     for uid, count, area_m2, lat, lon in territory_rows:

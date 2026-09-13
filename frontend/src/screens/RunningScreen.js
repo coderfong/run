@@ -44,7 +44,7 @@ import { writeWorkout } from '../health';
 import { useIsFocused } from '@react-navigation/native';
 import useWatchRun from '../watch/useWatchRun';
 import { watchAppInstalled, beginRunSave, endRunSave } from '../watch/watchLink';
-import { PHASE as WATCH_PHASE } from '../watch/watchState';
+import { commandAllowed, PHASE as WATCH_PHASE } from '../watch/watchState';
 import { NB, darkColors, nbInk, radius, runTuning as T, space, toon, type } from '../theme';
 import { ToonButton } from '../components/ui';
 import { haptic, PressableScale, Pulse } from '../ui/motion';
@@ -280,7 +280,7 @@ function HoldToFinishButton({ onFinish }) {
   );
 }
 
-export default function RunningScreen({ navigation }) {
+export default function RunningScreen({ navigation, route }) {
   const { user } = useAuth();
   const { setRecording } = useRecording();
   const { color } = useClan();
@@ -369,6 +369,12 @@ export default function RunningScreen({ navigation }) {
   const [afterRun, setAfterRun] = useState(null);
   const [starting, setStarting] = useState(false);
   const startingRef = useRef(false);
+  // Phone and watch controls can land in the same event-loop turn. These
+  // synchronous locks make Finish and /end-run single-flight before React's
+  // phase update has time to hide either control. The server is idempotent as
+  // the final backstop, but duplicate requests should not leave the phone.
+  const finishingRef = useRef(false);
+  const savingRef = useRef(false);
   const [startCountdown, setStartCountdown] = useState(null);
 
   // Small event queue: a kilometre and claim qualification can land on the
@@ -400,7 +406,15 @@ export default function RunningScreen({ navigation }) {
     warmUp();
     (async () => {
       const granted = await prepareLocation();
-      if (granted) await checkOrphanedRun();
+      if (granted) {
+        const foundOrphan = await checkOrphanedRun();
+        const watchStartAt = Number(route?.params?.watchStartAt);
+        const freshWatchStart = commandAllowed(
+          { cmd: 'start', at: watchStartAt },
+          WATCH_PHASE.READY
+        );
+        if (!foundOrphan && freshWatchStart) await startRun();
+      }
     })();
     return () => {
       stopWatchingLocation();
@@ -609,7 +623,7 @@ export default function RunningScreen({ navigation }) {
     } catch {}
     if (!saved || !saved.runId || !Array.isArray(saved.path) || saved.path.length < 2) {
       clearActiveRun();
-      return;
+      return false;
     }
     Alert.alert(
       'Unfinished run found',
@@ -623,6 +637,7 @@ export default function RunningScreen({ navigation }) {
         { text: 'Discard', style: 'destructive', onPress: clearActiveRun },
       ]
     );
+    return true;
   }
 
   async function resumeRun(saved) {
@@ -986,6 +1001,8 @@ export default function RunningScreen({ navigation }) {
   }
 
   async function finishRun() {
+    if (finishingRef.current || !isRunningRef.current) return;
+    finishingRef.current = true;
     haptic.light();
     // Finishing while paused ends the run where it paused, the moment its
     // clock stopped. Read before `paused` is cleared below.
@@ -1035,6 +1052,7 @@ export default function RunningScreen({ navigation }) {
     } finally {
       bgHeldRef.current = false;
       await endRunSave();
+      finishingRef.current = false;
     }
   }
 
@@ -1049,6 +1067,8 @@ export default function RunningScreen({ navigation }) {
       workoutEndMs = Date.now(),
     } = {}
   ) {
+    if (savingRef.current) return;
+    savingRef.current = true;
     // A retry after a failed save puts the watch back on "saving". Runs that
     // never went through finishRun (an orphan submitted anyway, the dev
     // simulator) have no afterRun and leave the watch alone.
@@ -1107,6 +1127,8 @@ export default function RunningScreen({ navigation }) {
           { text: 'Later', style: 'cancel' },
         ]
       );
+    } finally {
+      savingRef.current = false;
     }
   }
 
@@ -1415,7 +1437,7 @@ export default function RunningScreen({ navigation }) {
         <Text style={styles.openPathLine}>
           {claimBlocker
             ? claimBlocker
-            : 'Your route grows into territory. After your run, choose where along it to secure the ground.'}
+            : 'Finish to place your territory on the route.'}
         </Text>
 
         {!isRunning ? (

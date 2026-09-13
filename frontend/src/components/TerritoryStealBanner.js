@@ -13,15 +13,16 @@
 // so the three beats read as one hit rather than three effects in a stack.
 //
 // The heads are NOT pre-baked PNG pairs: PASER avatars are composited at
-// runtime by CharacterRig, so a "sad" head is the same equipped set with the
-// face slot swapped to `sad`. Both variants render stacked and cross-fade, so
-// hair, hat and colours can never jump between the two.
+// runtime by CharacterRig, so a "sad" head is the same runner with the face
+// slot swapped to `sad`. The rig draws both faces in the face's own place in
+// the stack and cross-fades them (`altFace`), so hair, hat and colours can
+// never jump between the two.
 //
 // One shared `clock` (0 → TIMING.total ms) drives every interpolation, which
 // keeps the beats locked to each other no matter what the frame rate does.
 // Reduce Motion skips straight to the settled bar.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   cancelAnimation,
@@ -37,7 +38,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { brand, toon, toonType, useTheme, withAlpha } from '../theme';
+import { brand, fonts, toon, toonType, useTheme, withAlpha } from '../theme';
 import EffectPlayer from '../effects/EffectPlayer';
 import { haptic, useOnScreen, useReduceMotion } from '../ui/motion';
 import AppIcon, { STEAL_ICON_SIZE } from './AppIcon';
@@ -242,10 +243,12 @@ function BurstHead({ victim, clock, index, size }) {
         style,
       ]}
     >
-      {/* Crisp, like the heads on the bar below: this one is thrown by the
-          blast and the entry overshoots to 1.12, so the layers are decoded for
-          the size they reach rather than the size they land at. */}
-      <CharacterBust equipped={victim.avatar || {}} size={size} bg="transparent" crisp />
+      {/* Decoded for the size it is drawn at, like the heads on the bar. It
+          overshoots to 1.14 for a few frames of flight, which a bitmap sized
+          for the bust carries without anybody seeing it. A full-resolution
+          decode here meant eight 512px layers per head, taken at the very
+          moment the blast is trying to play. */}
+      <CharacterBust equipped={victim.avatar || {}} size={size} bg="transparent" />
     </Animated.View>
   );
 }
@@ -254,10 +257,19 @@ function BurstHead({ victim, clock, index, size }) {
 // is on the screen being looked at. It matters more here than almost anywhere:
 // a feed carries one of these per head per steal, Home stays mounted behind
 // every other tab, and a sulk nobody can see is still a whole-tree commit on
-// every frame it moves (see useOnScreen).
+// every frame it moves (see useOnScreen). `looping` is also off while the card
+// is scrolled away inside the feed, which keeps two screens of rows either side
+// mounted.
+//
+// ONE RUNNER PER HEAD. The sad face used to be a whole second bust stacked on
+// this one and cross-faded, so every head was two complete rigs, and with the
+// head thrown by the blast a four-victim steal carried thirteen rigs on one
+// card. Only the FACE changes, so only the face is doubled, inside the rig. And
+// no full-resolution decode: the bust passes 1.0 only during its entry, by 12%,
+// for under half a second, and a 31pt head does not need eight 512px layers
+// held in memory for that. A feed of steals was keeping hundreds of them.
 function SettledHead({ victim, clock, index, size, reduced, looping, trigger, playToken }) {
   const faceMix = useSharedValue(0);
-  const sadAvatar = useMemo(() => ({ ...(victim.avatar || {}), face: 'sad' }), [victim.avatar]);
 
   useEffect(() => {
     cancelAnimation(faceMix);
@@ -315,31 +327,19 @@ function SettledHead({ victim, clock, index, size, reduced, looping, trigger, pl
     ],
   }));
 
-  const defaultStyle = useAnimatedStyle(() => ({ opacity: 1 - faceMix.value }));
-  const sadStyle = useAnimatedStyle(() => ({ opacity: faceMix.value }));
-
   return (
     <Animated.View style={[{ width: size, height: size, marginRight: 4 }, entryStyle]}>
       <Animated.View style={[{ width: size, height: size }, reactionStyle]}>
-        <Animated.View style={defaultStyle}>
-          {/* No ring: on the bar the heads read as a row of faces, and a clan
-              stroke around each one turned that into a row of bordered chips.
-              The face alone is the thing that says who lost the ground. */}
-          <CharacterBust
-            equipped={victim.avatar || {}}
-            size={size}
-            bg="transparent"
-            crisp
-          />
-        </Animated.View>
-        <Animated.View style={[styles.stackedHead, sadStyle]}>
-          <CharacterBust
-            equipped={sadAvatar}
-            size={size}
-            bg="transparent"
-            crisp
-          />
-        </Animated.View>
+        {/* No ring: on the bar the heads read as a row of faces, and a clan
+            stroke around each one turned that into a row of bordered chips.
+            The face alone is the thing that says who lost the ground. */}
+        <CharacterBust
+          equipped={victim.avatar || {}}
+          size={size}
+          bg="transparent"
+          altFace="sad"
+          altFaceMix={faceMix}
+        />
       </Animated.View>
     </Animated.View>
   );
@@ -357,6 +357,10 @@ function SettledHead({ victim, clock, index, size, reduced, looping, trigger, pl
  *                                 the feed uses: twenty cards detonating
  *                                 themselves as you scroll is not a payoff.
  * @param {boolean} haptics        the detonation buzz. Off in a list.
+ * @param {boolean} active         false while the bar is scrolled off screen
+ *                                 inside a screen that IS focused (a feed row
+ *                                 still mounted two screens away): the heads
+ *                                 hold still. Focus itself is useOnScreen's.
  */
 export default function TerritoryStealBanner({
   trigger,
@@ -367,6 +371,7 @@ export default function TerritoryStealBanner({
   onComplete,
   autoPlay = true,
   haptics = true,
+  active = true,
 }) {
   const { colors } = useTheme();
   const reduced = useReduceMotion();
@@ -376,13 +381,29 @@ export default function TerritoryStealBanner({
   // 0 = settled, no blast. Bumped to replay; reset whenever the subject changes.
   const [playToken, setPlayToken] = useState(autoPlay ? 1 : 0);
   const [blastFx, setBlastFx] = useState(0);
+  // Is a detonation playing? The bomb, the blast sheets and the thrown heads
+  // exist only while one is. Settled, which is how a feed shows every steal but
+  // at most one, they used to stay mounted at opacity zero: a hidden bomb and a
+  // whole extra runner per head, on every card, for as long as it was mounted.
+  const [bursting, setBursting] = useState(false);
   useEffect(() => { setPlayToken(autoPlay ? 1 : 0); }, [trigger, autoPlay]);
 
   const heads = useMemo(() => (victims || []).slice(0, MAX_STEAL_HEADS), [victims]);
   const sulking = useOnScreen(!reduced && heads.length > 0);
+  // `useOnScreen` answers yes when it is not asked, so the row's own answer is
+  // applied here rather than passed into it.
+  const looping = sulking && active;
   const size = HEAD_SIZE;
 
-  const finish = () => done.current?.();
+  // The end of a play, called from the timing's worklet callback. One stable
+  // function for the life of the banner, which reads the CURRENT callbacks
+  // when it fires rather than the ones captured when the timing started.
+  const settleRef = useRef(null);
+  settleRef.current = () => {
+    setBursting(false);
+    done.current?.();
+  };
+  const settle = useCallback(() => settleRef.current?.(), []);
 
   useEffect(() => {
     cancelAnimation(clock);
@@ -390,16 +411,20 @@ export default function TerritoryStealBanner({
     if (reduced || playToken === 0) {
       // Straight to the settled bar: label on, heads in place, no blast.
       clock.value = TIMING.total;
-      finish();
+      settle();
       return undefined;
     }
 
+    // The sheets mount at the flash, not now: a player mounted with the last
+    // play's token would go off before the bomb has landed.
+    setBlastFx(0);
+    setBursting(true);
     clock.value = 0;
     clock.value = withTiming(
       TIMING.total,
       { duration: TIMING.total, easing: Easing.linear },
       (finished) => {
-        if (finished) runOnJS(finish)();
+        if (finished) runOnJS(settle)();
       }
     );
 
@@ -411,7 +436,7 @@ export default function TerritoryStealBanner({
       clearTimeout(lottieBang);
       cancelAnimation(clock);
     };
-  }, [clock, haptics, playToken, reduced]);
+  }, [clock, haptics, playToken, reduced, settle]);
 
   const labelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
@@ -506,7 +531,7 @@ export default function TerritoryStealBanner({
               clock={clock}
               size={size}
               reduced={reduced}
-              looping={sulking}
+              looping={looping}
               trigger={trigger}
               playToken={playToken}
             />
@@ -543,7 +568,7 @@ export default function TerritoryStealBanner({
         </Animated.View>
       </Animated.View>
 
-      {!reduced && (
+      {!reduced && bursting && (
         <>
           <Bomb clock={clock} />
           {blastFx > 0 ? <Blast token={blastFx} /> : null}
@@ -615,10 +640,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  stackedHead: { position: 'absolute', left: 0, top: 0 },
   // Reads beside two full-size heads rather than after six shrunken ones,
   // so it carries the whole remainder and is sized to be noticed.
-  extra: { fontSize: 13, marginLeft: 4, fontWeight: '800' },
+  extra: { fontSize: 13, marginLeft: 4, fontFamily: fonts.bold },
 
   label: {
     position: 'absolute',

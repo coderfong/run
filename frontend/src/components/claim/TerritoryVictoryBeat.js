@@ -32,7 +32,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { fonts, toon } from '../../theme';
+import { fonts, HEADING_CASE, toon } from '../../theme';
 import { CAPTURE_LAYER } from '../../effects/layers';
 import { haptic } from '../../ui/motion';
 import AppIcon, { STEAL_ICON_SIZE } from '../AppIcon';
@@ -462,8 +462,8 @@ const styles = StyleSheet.create({
   echo: { alignItems: 'center', justifyContent: 'center' },
   // Was `toonType.label` (Inter SemiBold, a UI-chip weight) stretched to 27px
   // — the wrong font family for a slam-down headline, not just the wrong
-  // size. `fonts.hero` is Poppins Black (900), the app's actual chunky
-  // display face — same family `toonType.hero`/`headline` use for real
+  // size. `fonts.hero` is the hand face's Bold, the app's heading
+  // face — same family `toonType.hero`/`headline` use for real
   // headlines. Bigger again too (27→34) and the outline width above went
   // 2→3 to match.
   labelText: {
@@ -472,6 +472,7 @@ const styles = StyleSheet.create({
     fontSize: 34,
     lineHeight: 40,
     letterSpacing: 0.6,
+    textTransform: HEADING_CASE,
   },
   labelIcon: { marginLeft: 10 },
 });

@@ -1,7 +1,7 @@
 // Home — PACER header, season carousel and shortcuts form the scrollable
 // header above run cards. Pulling back to the top reveals them again.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Image } from '../ui/image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -223,12 +223,18 @@ const FIRST_PAGE_ANIMATED = 4;
 // time the feed response is re-seeded from cache — identical content, new
 // identity, which a shallow compare cannot tell from a real change.
 const FeedRow = React.memo(
-  function FeedRow({ item, index, navigation, autoPlaySteal, screenFocused, animate }) {
+  function FeedRow({ item, index, navigation, visibility, screenFocused, animate }) {
+    // This row's two answers from the feed's visibility store, read HERE so a
+    // row scrolling in or out re-renders itself and nothing else.
+    const id = item.id;
+    const onScreen = useSyncExternalStore(visibility.subscribe, () => visibility.isOnScreen(id));
+    const autoPlaySteal = useSyncExternalStore(visibility.subscribe, () => visibility.plays(id));
     const card = (
       <FeedCard
         item={item}
         navigation={navigation}
         autoPlaySteal={autoPlaySteal}
+        onScreen={onScreen}
         screenFocused={screenFocused}
       />
     );
@@ -240,12 +246,86 @@ const FeedRow = React.memo(
     );
   },
   (prev, next) =>
-    prev.autoPlaySteal === next.autoPlaySteal &&
+    prev.visibility === next.visibility &&
     prev.screenFocused === next.screenFocused &&
     prev.animate === next.animate &&
     prev.navigation === next.navigation &&
     sameRow(prev.item, next.item)
 );
+
+// WHICH FEED ROWS ARE ON SCREEN, held outside React state.
+//
+// Two things on a card want to know. A steal's heads sulk on an endless loop,
+// and the list keeps two screens of rows mounted either side of the one being
+// read, so most of the loops running on Home were on cards nobody could see.
+// And exactly one steal per visit plays its detonation by itself, which is only
+// worth doing where somebody is looking.
+//
+// Build 66 kept the visible ids in FeedList STATE and handed the list an
+// `extraData`, so every row entering or leaving the viewport re-rendered the
+// whole list, and "the first visible steal" moved as you scrolled: each steal
+// you reached went off, scrolling back set it off again, and so did every
+// return to Home. Here each row subscribes to its own two answers, a change
+// re-renders only the rows whose answer changed, and the one autoplay is spent
+// the first time it is used.
+const AUTOPLAY_SPENT = {};
+
+export function createFeedVisibility() {
+  let onScreen = new Set();
+  // Ids at least mostly on screen for a beat, in list order.
+  let seen = [];
+  // Ids of rows that took land off somebody.
+  let steals = new Set();
+  // The one row allowed to detonate by itself, then AUTOPLAY_SPENT for good.
+  let autoPlay = null;
+  // Home is the screen in front, motion is allowed, and the feed has landed.
+  let allowed = false;
+  const listeners = new Set();
+  const emit = () => listeners.forEach((listener) => listener());
+
+  const latch = () => {
+    if (autoPlay !== null || !allowed) return;
+    const id = seen.find((candidate) => steals.has(candidate));
+    if (id === undefined) return;
+    autoPlay = id;
+    emit();
+  };
+
+  return {
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    isOnScreen: (id) => onScreen.has(id),
+    plays: (id) => autoPlay === id,
+    setOnScreen: (ids) => {
+      const next = new Set(ids);
+      if (next.size === onScreen.size && [...next].every((id) => onScreen.has(id))) return;
+      onScreen = next;
+      // Scrolled away, the detonation is spent: coming back to that card
+      // later shows the settled bar, not the bomb again.
+      if (autoPlay !== null && autoPlay !== AUTOPLAY_SPENT && !onScreen.has(autoPlay)) {
+        autoPlay = AUTOPLAY_SPENT;
+      }
+      emit();
+    },
+    setSeen: (ids) => {
+      seen = ids;
+      latch();
+    },
+    setSteals: (ids) => {
+      steals = new Set(ids);
+      latch();
+    },
+    setAllowed: (next) => {
+      allowed = next;
+      latch();
+    },
+  };
+}
+
+const viewableIds = (entries) =>
+  entries.filter((entry) => entry.isViewable).map((entry) => entry.item?.id);
 
 // Everything about a feed row that a card can DRAW differently.
 //
@@ -285,15 +365,25 @@ function FeedList({ navigation, header }) {
   // One focus subscription for the feed, passed down as a primitive. The tab
   // stays mounted, but every open reaction picker should close when it leaves.
   const screenFocused = useIsFocused();
-  const [visibleRunIds, setVisibleRunIds] = useState([]);
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60, minimumViewTime: 180 }).current;
-  const onViewableItemsChanged = useCallback(({ viewableItems }) => {
-    const ids = viewableItems.filter((entry) => entry.isViewable).map((entry) => entry.item.id);
-    setVisibleRunIds((previous) => (
-      previous.length === ids.length && previous.every((id, index) => id === ids[index])
-        ? previous : ids
-    ));
-  }, []);
+  // Which rows are on screen, and which one steal may play itself. One store
+  // for the life of the list; see createFeedVisibility.
+  const visibilityRef = useRef(null);
+  if (visibilityRef.current === null) visibilityRef.current = createFeedVisibility();
+  const visibility = visibilityRef.current;
+  // Two thresholds, because the two questions differ. Is ANY of the card on
+  // screen, so its heads may sulk? Has it been properly SEEN, so the one steal
+  // that goes off by itself is one somebody is looking at? FlatList refuses
+  // pairs that change after mount, hence the ref.
+  const viewabilityPairs = useRef([
+    {
+      viewabilityConfig: { itemVisiblePercentThreshold: 5 },
+      onViewableItemsChanged: ({ viewableItems }) => visibility.setOnScreen(viewableIds(viewableItems)),
+    },
+    {
+      viewabilityConfig: { itemVisiblePercentThreshold: 60, minimumViewTime: 180 },
+      onViewableItemsChanged: ({ viewableItems }) => visibility.setSeen(viewableIds(viewableItems)),
+    },
+  ]).current;
   // The first page comes from the cache, so coming back to Home shows the feed
   // you were just looking at instead of four skeletons and a round trip. Later
   // pages are deliberately NOT cached: they're append-only scroll state, and
@@ -346,11 +436,15 @@ function FeedList({ navigation, header }) {
   };
 
   const rows = loading ? Array.from({ length: 4 }, (_, i) => ({ id: `skeleton-${i}` })) : items;
-  // Virtualized rows mount before they appear. Play only the first visible
-  // steal so its explosion is seen, and stop autoplay when Home loses focus.
-  const autoStealId = (!loading && screenFocused && !reduce
-    ? rows.find((row) => row.victims?.length && visibleRunIds.includes(row.id))?.id
-    : null) ?? null;
+  // What the visibility store needs from the list itself: which rows are
+  // steals, and whether one may play yet (Home in front, motion allowed, the
+  // feed landed). Each row's on-screen answer comes from the viewability pairs.
+  useEffect(() => {
+    visibility.setSteals(items.filter((row) => row.victims?.length).map((row) => row.id));
+  }, [items, visibility]);
+  useEffect(() => {
+    visibility.setAllowed(screenFocused && !reduce && !loading);
+  }, [screenFocused, reduce, loading, visibility]);
 
   // A FEED CARD IS 86 NATIVE VIEWS — measured, not estimated, and down from
   // 241 before the frames learned to nine-slice themselves natively (see
@@ -384,7 +478,7 @@ function FeedList({ navigation, header }) {
             item={item}
             index={index}
             navigation={navigation}
-            autoPlaySteal={item.id === autoStealId}
+            visibility={visibility}
             screenFocused={screenFocused}
             animate={!reduce && index < FIRST_PAGE_ANIMATED}
           />
@@ -401,7 +495,7 @@ function FeedList({ navigation, header }) {
         {index === Math.min(2, rows.length - 1) && !loading ? <ProHomeCard /> : null}
       </View>
     ),
-    [loading, styles.feedRow, navigation, autoStealId, screenFocused, reduce, rows.length]
+    [loading, styles.feedRow, navigation, visibility, screenFocused, reduce, rows.length]
   );
 
   return (
@@ -420,9 +514,7 @@ function FeedList({ navigation, header }) {
       style={styles.list}
       contentContainerStyle={{ paddingBottom: space.xxl, flexGrow: 1 }}
       data={rows}
-      extraData={autoStealId}
-      viewabilityConfig={viewabilityConfig}
-      onViewableItemsChanged={onViewableItemsChanged}
+      viewabilityConfigCallbackPairs={viewabilityPairs}
       keyExtractor={(it) => it.id}
       ListHeaderComponent={header}
       ListEmptyComponent={
@@ -430,7 +522,7 @@ function FeedList({ navigation, header }) {
           <EmptyState
             art={require('../../assets/art/empty-runs.png')}
             title="Your feed is quiet"
-            body="Runs from you and your pasers show up here. Add pasers to see theirs."
+            body="Your runs and your pasers' runs appear here."
             actionLabel="Start run"
             onAction={() => navigation.navigate('Record')}
             accent={accent}

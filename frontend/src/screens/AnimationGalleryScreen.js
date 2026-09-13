@@ -22,7 +22,7 @@ import { choreographySignature } from '../effects/choreography';
 import { EFFECT_CATEGORY_LABELS } from '../effects/effectCategories';
 import { getAllEffects } from '../effects/effectRegistry';
 import { useAvatar } from '../state/avatar';
-import { radius, space, useTheme, useThemedType } from '../theme';
+import { fonts, radius, space, useTheme, useThemedType } from '../theme';
 
 const PREFS_KEY = 'dev:animation-gallery:v1';
 const BACKGROUNDS = ['dark', 'light', 'checkerboard', 'map'];
@@ -46,7 +46,7 @@ function Chip({ label, active, onPress }) {
         { borderColor: colors.border, backgroundColor: active ? colors.text : colors.card },
       ]}
     >
-      <Text style={{ color: active ? colors.bg : colors.text, fontSize: 12, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: active ? colors.bg : colors.text, fontSize: 12, fontFamily: fonts.bold }}>{label}</Text>
     </Pressable>
   );
 }

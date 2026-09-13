@@ -6,7 +6,7 @@ import * as ExpoNotifications from 'expo-notifications';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { brand, NB, nbInk, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { brand, fonts, NB, nbInk, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Skeleton, EmptyState } from '../components/ui';
 import AppIcon, { STEAL_ICON_SIZE } from '../components/AppIcon';
 import PortraitBorder from '../components/PortraitBorder';
@@ -102,7 +102,7 @@ export default function NotificationsScreen({ navigation }) {
         <EmptyState
           art={require('../../assets/art/empty-notifications.png')}
           title="Nothing yet"
-          body="Attacks, successful defenses, captures, reminders, and social updates land here."
+          body="Attacks, captures, reminders and updates appear here."
         />
       </Screen>
     );
@@ -188,7 +188,7 @@ const makeStyles = (colors, scheme) =>
     },
     captureTitle: { color: brand.pink },
     metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5, gap: space.sm },
-    viewLand: { fontSize: 11, fontWeight: '800', color: brand.pink, letterSpacing: 0.5 },
+    viewLand: { fontSize: 11, fontFamily: fonts.bold, color: brand.pink, letterSpacing: 0.5 },
     // The portrait needs room for the badge hanging off its corner, so it is
     // sized past the frame rather than clipped to it.
     actor: { width: 40, height: 40 },

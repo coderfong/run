@@ -18,12 +18,25 @@
 // is true only when there is genuinely nothing to show, so skeletons survive
 // for the first-ever visit and for a fresh install, which is where they belong.
 //
-// Revalidation is tied to FOCUS, not mount. Tab stacks remain mounted after
-// their first visit, so a mount-only fetch would leave a tab showing
-// minutes-old data; a focus fetch refreshes exactly when you look at it.
-// `staleMs` stops a quick swipe through the tabs from firing the same request
-// three times, and concurrent callers of one endpoint are coalesced into a
-// single request by the cache.
+// Revalidation is tied to FOCUS, not mount. The tab navigator keeps all four
+// tabs mounted (lazyPreloadDistance: 3), so a mount-only fetch would leave a
+// tab showing minutes-old data; a focus fetch refreshes exactly when you look
+// at it. `staleMs` stops a quick swipe through the tabs from firing the same
+// request three times, and concurrent callers of one endpoint are coalesced
+// into a single request by the cache. The FIRST load is focus-gated too, for
+// the same reason: a screen the tab navigator merely preloaded is mounted
+// without being looked at, and firing its fetch anyway meant opening the app
+// fired four screens' worth of requests in one burst. See the first-load
+// effect below.
+//
+// A REFRESH THAT CHANGES NOTHING RENDERS NOTHING. Every focus used to cost
+// each query two renders of its screen whatever came back: `refreshing`
+// flipped on and off (and no screen reads it; the pull-to-refresh spinners
+// all keep their own state), and the response arrived as a new object with
+// the same contents. ProfileScreen runs seven queries, so opening You was
+// fourteen full renders of the page to redraw it as it was. Now the cache
+// hands back the object it already holds when the JSON matches, which React
+// skips, and `refreshing` only re-renders a component that reads it.
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavigationContext } from '@react-navigation/native';
@@ -69,6 +82,11 @@ export function useQuery(key, fetcher, options = {}) {
   const [raw, setRaw] = useState(() => (active ? getCached(key) : undefined));
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Has anything READ `refreshing`? Set by the getter on the returned object.
+  // Until something does, the flag is not tracked at all: flipping it costs a
+  // render on the way into every fetch and another on the way out, for a value
+  // nobody draws.
+  const refreshingRead = useRef(false);
 
   // Screens pass inline arrows, so the fetcher's identity changes every render.
   // Holding it in a ref keeps `key` the only thing that can retrigger a fetch.
@@ -109,8 +127,10 @@ export function useQuery(key, fetcher, options = {}) {
       // force the next look to refetch.
       if (!force && staleMs > 0 && Date.now() - touchedAt(key) < staleMs) return undefined;
       markAttempt(key);
-      setRefreshing(true);
+      if (refreshingRead.current) setRefreshing(true);
       try {
+        // The CACHED value: an unchanged response comes back as the object
+        // already in `raw`, and setting it is a no-op React skips.
         const next = await fetchAndCache(key, () => fetcherRef.current());
         if (mounted.current) {
           setRaw(next);
@@ -128,7 +148,7 @@ export function useQuery(key, fetcher, options = {}) {
         }
         return undefined;
       } finally {
-        if (mounted.current) setRefreshing(false);
+        if (mounted.current && refreshingRead.current) setRefreshing(false);
       }
     },
     [active, key, staleMs]
@@ -144,8 +164,14 @@ export function useQuery(key, fetcher, options = {}) {
   // coalescing makes that free when two screens really do ask at once.
   //
   // Gated on focus for a screen that HAS a navigation context and is not
-  // focused. Nested stack screens can be mounted before they are shown; those
-  // get their first fetch from the focus listener below instead.
+  // focused: the tab navigator keeps all four tabs mounted at once
+  // (lazyPreloadDistance: 3), so without this every one of them fired its
+  // first fetch in the same burst the instant the app opened, whether or not
+  // the tab was ever looked at. A preloaded-but-unfocused screen now gets its
+  // first fetch from the `focus` listener below instead, when the tab is
+  // actually opened — that `run()` call still fetches (unforced doesn't mean
+  // skipped, only throttled) because nothing has been attempted yet, so nothing
+  // about what a freshly-opened tab shows changes, only when the request fires.
   useEffect(() => {
     if (!active) return;
     // Deferring only holds together because the focus listener below is what
@@ -166,6 +192,8 @@ export function useQuery(key, fetcher, options = {}) {
   // example a foreground land capture updates the notification inbox while
   // Home is visible). Mirror those cache writes into hook state immediately so
   // the bell badge and any open list do not wait for another focus event.
+  // An unchanged publication carries the object already held, so it costs
+  // nothing unless it clears an error.
   useEffect(() => {
     if (!active) return undefined;
     return subscribeCached(key, (next) => {
@@ -187,13 +215,15 @@ export function useQuery(key, fetcher, options = {}) {
   // and back shows the new state rather than reverting to the last response.
   // Kept out of the state updater on purpose: React may run an updater twice,
   // and writing to the cache from inside one would make that a double write.
+  // What is set is what the cache KEPT, so a write that changes nothing keeps
+  // the identity already on screen.
   const rawRef = useRef(raw);
   rawRef.current = raw;
   const setData = useCallback(
     (next) => {
       const value = typeof next === 'function' ? next(rawRef.current) : next;
-      setRaw(value);
-      if (active) setCached(key, value);
+      const kept = active ? setCached(key, value) : value;
+      setRaw(kept === undefined ? value : kept);
     },
     [active, key]
   );
@@ -208,16 +238,24 @@ export function useQuery(key, fetcher, options = {}) {
     [raw]
   );
 
-  return {
+  const result = {
     data,
     // Nothing to paint yet — the only state that should produce a skeleton.
     loading: raw === undefined,
-    // A refresh is running over content that is already on screen.
-    refreshing,
     error,
     refresh,
     setData,
   };
+  // A refresh is running over content that is already on screen. A getter,
+  // because READING it is what turns the tracking on (see `refreshingRead`).
+  Object.defineProperty(result, 'refreshing', {
+    enumerable: true,
+    get() {
+      refreshingRead.current = true;
+      return refreshing;
+    },
+  });
+  return result;
 }
 
 export default useQuery;

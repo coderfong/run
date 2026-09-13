@@ -16,7 +16,7 @@ import AppIcon from '../components/AppIcon';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
-import { NB, brand, fonts, nbDrop, nbRadius, radius, shadow, space, tintOn, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { HEADING_CASE, NB, brand, fonts, nbDrop, nbRadius, radius, shadow, space, tintOn, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
 import {
   Card,
   Framed,
@@ -297,7 +297,7 @@ const INFO_SECTIONS = [
   },
   {
     title: 'Rewards',
-    body: 'Level up to unlock gifts. Tap a bright gift to collect it. PRO members get extra gifts.',
+    body: 'Level up for gifts. PRO adds extras.',
   },
 ];
 
@@ -966,7 +966,8 @@ const styles = StyleSheet.create({
   lane: { height: LANE_H },
   laneContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.md },
   laneLabel: { alignSelf: 'stretch' },
-  laneText: { ...toonType.button, fontSize: 16, letterSpacing: 0.9, color: '#ffffff' },
+  // A lane's heading, not a button, so it takes the heading case.
+  laneText: { ...toonType.button, fontSize: 16, letterSpacing: 0.9, textTransform: HEADING_CASE, color: '#ffffff' },
 
   tierRow: { flexDirection: 'row', alignItems: 'stretch' },
   singleTierRow: { paddingRight: SPINE_W },

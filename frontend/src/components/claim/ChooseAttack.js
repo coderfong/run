@@ -342,7 +342,7 @@ export function ChooseAttackPending({ team }) {
       <ActivityIndicator size="small" color={team.glow} />
       <View style={{ flex: 1 }}>
         <Text style={styles.pendingTitle}>Reading the ground…</Text>
-        <Text style={styles.pendingBody}>Claiming now takes the ground shown above.</Text>
+        <Text style={styles.pendingBody}>This is the ground you'll claim.</Text>
       </View>
     </Framed>
   );

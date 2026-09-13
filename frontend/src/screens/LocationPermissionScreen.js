@@ -110,7 +110,7 @@ export default function LocationPermissionScreen({ onDone }) {
 
       <View style={{ alignItems: 'center' }}>
         <Text style={styles.title}>
-          {denied ? 'Location is off' : 'We use your location to record your run and claim the ground you cover.'}
+          {denied ? 'Location is off' : 'PASER uses your location to record runs.'}
         </Text>
         {denied ? (
           <Text style={styles.body}>

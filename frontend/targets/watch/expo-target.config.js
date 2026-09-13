@@ -22,7 +22,8 @@ module.exports = {
   // Xcode's convention for a companion watch app, and the App ID EAS
   // provisions. Changing it later means a new App ID and a new profile.
   bundleIdentifier: '.watchkitapp',
-  // watchOS 10 runs on Series 4 and later. Nothing in the app needs newer.
-  deploymentTarget: '10.0',
+  // Keep the companion available to watches that cannot update to watchOS 10.
+  // The UI intentionally stays within watchOS 9 APIs.
+  deploymentTarget: '9.0',
   icon: '../../assets/icon.png',
 };

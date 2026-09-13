@@ -14,6 +14,7 @@ const { buildWatchState, PHASE, WATCH_COMMANDS } = require('../src/watch/watchSt
 
 const WATCH_DIR = path.join(__dirname, '..', 'targets', 'watch');
 const read = (file) => fs.readFileSync(path.join(WATCH_DIR, file), 'utf8');
+const watchConfig = require('../targets/watch/expo-target.config');
 
 function enumCases(source, name) {
   const block = source.match(new RegExp(`enum ${name}: String \\{([\\s\\S]*?)\\}`));
@@ -64,5 +65,17 @@ describe('watch app copy', () => {
       (s) => /[–—]/.test(s) || /[A-Za-z]-[A-Za-z]/.test(s)
     );
     expect(offending).toEqual([]);
+  });
+});
+
+describe('watch app compatibility', () => {
+  it('remains installable on watchOS 9', () => {
+    expect(watchConfig.deploymentTarget).toBe('9.0');
+  });
+
+  it('does not use the watchOS 10 only two-argument onChange overload', () => {
+    expect(read('RunScreen.swift')).not.toMatch(
+      /\.onChange\(of:\s*scenePhase\)\s*\{\s*_,\s*\w+\s+in/
+    );
   });
 });

@@ -355,7 +355,7 @@ function RunnerSheet({ encounter, busy, onClose, onHighFive, onOpen, onHide }) {
           onPress={() =>
             confirm(
               `Remove ${encounter.username}?`,
-              'They leave your Crossroads. You can still cross paths with them again on a future run.',
+              'Remove them from Crossroads? You can meet again on a future run.',
               'Remove',
               () => onHide(encounter)
             )

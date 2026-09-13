@@ -2,9 +2,9 @@ import React from 'react';
 import { View, useWindowDimensions } from 'react-native';
 import { registerRootComponent } from 'expo';
 import { useFonts } from 'expo-font';
-import { Poppins_900Black } from '@expo-google-fonts/poppins';
 
 import RunShareCard from './src/components/share/RunShareCard';
+import { FONT_FILES } from './src/theme/fontFiles';
 
 const PATH = Array.from({ length: 48 }, (_, i) => ({
   latitude: 1.29 + Math.sin((i / 48) * Math.PI * 2) * (0.0025 + 0.0007 * Math.sin(i * 1.7)),
@@ -12,7 +12,7 @@ const PATH = Array.from({ length: 48 }, (_, i) => ({
 }));
 
 function Preview() {
-  const [loaded] = useFonts({ Poppins_900Black });
+  const [loaded] = useFonts(FONT_FILES);
   const { width, height } = useWindowDimensions();
   if (!loaded) return null;
   const cardWidth = Math.min(380, width * 0.9, height * 0.52);

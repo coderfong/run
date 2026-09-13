@@ -66,10 +66,10 @@ export const PLANS = [
 // renders as nothing at all rather than erroring, which is a blank row nobody
 // notices in review.
 export const PRO_PERKS = [
-  ['route', 'Plan a route and see the land it would take'],
-  ['layers', 'Territory intelligence overlays'],
-  ['steal', 'Full head to head history with your rivals'],
-  ['streak', 'Deep running and territory analytics'],
-  ['trophy', 'Every leaderboard filter and your rank over time'],
-  ['sparkles', 'Exclusive trails, share cards and capture styles'],
+  ['route', 'Territory route planner'],
+  ['layers', 'Territory map layers'],
+  ['steal', 'Rival history'],
+  ['streak', 'Run and territory stats'],
+  ['trophy', 'Rank history and filters'],
+  ['sparkles', 'Exclusive styles'],
 ];

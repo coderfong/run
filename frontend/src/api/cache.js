@@ -48,6 +48,11 @@ const MAX_ENTRY_BYTES = 256 * 1024;
 
 // key -> { data, at }
 let store = new Map();
+// key -> the JSON that key's stored `data` serialises to. A refresh that comes
+// back as the same JSON is the same answer, and keeps the object already stored
+// (see setCached). Held beside the store rather than inside it, so the blob on
+// disk does not carry every payload twice.
+let signatures = new Map();
 // key -> when we last ASKED, which is not the same as when we last succeeded.
 // Failures have to be recorded too or a dead endpoint is retried on every
 // render. It lives here rather than in the hook so that invalidating a key
@@ -107,7 +112,11 @@ export async function hydrateCache() {
         for (const [key, entry] of Object.entries(parsed?.entries || {})) {
           if (!entry || typeof entry.at !== 'number' || entry.at < cutoff) continue;
           const live = store.get(key);
-          if (!live || entry.at > live.at) store.set(key, entry);
+          if (!live || entry.at > live.at) {
+            store.set(key, entry);
+            // Worked out again the first time a refresh is compared with it.
+            signatures.delete(key);
+          }
         }
       }
     }
@@ -127,6 +136,7 @@ export function setCacheOwner(userKey) {
   if (next === owner) return;
   if (owner !== null && next !== null) {
     store = new Map();
+    signatures = new Map();
     attempts = new Map();
   }
   owner = next;
@@ -137,6 +147,7 @@ export function setCacheOwner(userKey) {
 // second account signing in straight after can't race the write.
 export function clearCache() {
   store = new Map();
+  signatures = new Map();
   attempts = new Map();
   inFlight.clear();
   owner = null;
@@ -156,6 +167,7 @@ export function getCached(key) {
   if (!entry) return undefined;
   if (Date.now() - entry.at > MAX_AGE_MS) {
     store.delete(key);
+    signatures.delete(key);
     return undefined;
   }
   return entry.data;
@@ -172,18 +184,55 @@ export function markAttempt(key) {
   attempts.set(key, Date.now());
 }
 
-export function setCached(key, data) {
-  if (data === undefined) return;
-  let size = 0;
-  try {
-    size = JSON.stringify(data)?.length || 0;
-  } catch {
-    return; // not serialisable — it would poison the whole blob
+// Does `json` say exactly what the entry already stored for `key` says?
+function sameAsStored(key, entry, json) {
+  let stored = signatures.get(key);
+  if (stored === undefined) {
+    // Hydrated from disk: nothing has been compared with it yet.
+    try {
+      stored = JSON.stringify(entry.data);
+    } catch {
+      return false;
+    }
+    signatures.set(key, stored);
   }
-  if (size > MAX_ENTRY_BYTES) return;
-  store.set(key, { data, at: Date.now() });
+  return stored === json;
+}
+
+// Store `data` for `key` and publish it to the queries watching that key.
+//
+// Returns what is now CACHED, and that is not always `data`. A response that
+// serialises to exactly what is already stored keeps the STORED object, so a
+// screen already holding it is handed the identity it has and React has
+// nothing to render. Before this, every focus revalidation and the inbox poll
+// (every 12s, for as long as the app is open) delivered a new object with the
+// same contents, and every screen reading it re-rendered in full to draw what
+// was already on the screen.
+export function setCached(key, data) {
+  if (data === undefined) return data;
+  let json;
+  try {
+    json = JSON.stringify(data);
+  } catch {
+    return data; // not serialisable — it would poison the whole blob
+  }
+  if ((json?.length || 0) > MAX_ENTRY_BYTES) return data;
+  const now = Date.now();
+  const entry = store.get(key);
+  if (entry && sameAsStored(key, entry, json)) {
+    // The same answer, confirmed fresh. It is still PUBLISHED, because a
+    // publication is what clears an error a query is holding, but with the
+    // object subscribers already have, so it renders nothing. There is
+    // nothing new to write to disk.
+    entry.at = now;
+    subscribers.get(key)?.forEach((listener) => listener(entry.data));
+    return entry.data;
+  }
+  store.set(key, { data, at: now });
+  signatures.set(key, json);
   subscribers.get(key)?.forEach((listener) => listener(data));
   schedulePersist();
+  return data;
 }
 
 export function subscribeCached(key, listener) {
@@ -203,10 +252,14 @@ export function subscribeCached(key, listener) {
 export function invalidate(prefix) {
   if (!prefix) {
     store = new Map();
+    signatures = new Map();
     attempts = new Map();
   } else {
     for (const key of [...store.keys()]) {
-      if (key.startsWith(prefix)) store.delete(key);
+      if (key.startsWith(prefix)) {
+        store.delete(key);
+        signatures.delete(key);
+      }
     }
     // Clearing the attempt stamps as well is what makes an invalidation
     // actually take: a screen that asked moments ago would otherwise decide
@@ -258,6 +311,8 @@ const AFTER_CLAIM = [
   // A claim is the only thing that moves a rivalry, and the head-to-head
   // screen is keyed per opponent — hence the prefix rather than one key.
   'rival:',
+  // Your land: a claim adds a plot, restarts a clock, or eats one it covers.
+  'me:territory',
 ];
 const AFTER_LAND_LOSS = [
   'feed',
@@ -269,6 +324,7 @@ const AFTER_LAND_LOSS = [
   'me:clan',
   'clan:',
   'season:',
+  'me:territory',
 ];
 
 // PASER PRO started or ended. Nothing about the WORLD changed, but several
@@ -325,8 +381,9 @@ export function dedupe(key, fetcher) {
 
 // Fetch through the cache: shared in flight, written on success. The returned
 // promise rejects like the raw call does, so callers keep their own error paths.
+// It resolves to the CACHED value, so a response identical to the one already
+// stored hands back the object callers already hold (see setCached).
 export async function fetchAndCache(key, fetcher) {
   const data = await dedupe(key, fetcher);
-  setCached(key, data);
-  return data;
+  return setCached(key, data);
 }

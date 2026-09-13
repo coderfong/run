@@ -33,8 +33,7 @@ export const DEFAULT_CONTEXT = {
   key: 'default',
   source: 'profile',
   title: 'PASER PRO',
-  subtitle:
-    'Plan your ground, read your history, know your rivals. Running, claiming and the board stay free.',
+  subtitle: 'Planning, stats and styles. Running and claiming stay free.',
   perks: PRO_PERKS,
   cta: null, // null → the sheet's standard "Subscribe · price per period"
 };
@@ -46,28 +45,26 @@ export const PRO_CONTEXTS = {
   // --- the map ------------------------------------------------------------
   territory_planner: {
     source: 'map_planner',
-    title: 'Plan smarter. Capture more.',
-    subtitle:
-      'See the ground a route crosses before you run it · yours, theirs and open land.',
+    title: 'Plan your route.',
+    subtitle: 'Check the land before you run.',
     perks: [
-      ['route', 'Unlimited route planning, on any ground'],
-      ['layers', 'See whose land a route crosses before you go'],
-      ['steal', 'Spot the plots worth taking back'],
-      ['streak', 'Deep running and territory analytics'],
+      ['route', 'Unlimited route planning'],
+      ['layers', 'Land along the route'],
+      ['steal', 'Plots to take back'],
+      ['streak', 'Run and territory stats'],
     ],
     cta: 'Unlock Territory Planner',
   },
 
   territory_intelligence: {
     source: 'map_intelligence',
-    title: 'Read the whole board.',
-    subtitle:
-      'Layers over the map · what is ageing, what is contested, and which of yours is about to go.',
+    title: 'View more map layers.',
+    subtitle: 'See ageing, contested and expiring land.',
     perks: [
-      ['layers', 'Territory age, contested ground and strongholds'],
-      ['claim', 'Your own land, ranked by what expires first'],
-      ['route', 'Plan a route and see the land it would take'],
-      ['streak', 'Deep running and territory analytics'],
+      ['layers', 'Age, contests and strongholds'],
+      ['claim', 'Land expiring first'],
+      ['route', 'Territory route planner'],
+      ['streak', 'Run and territory stats'],
     ],
     cta: 'Unlock territory intelligence',
   },
@@ -75,28 +72,26 @@ export const PRO_CONTEXTS = {
   // --- after a run --------------------------------------------------------
   run_insights: {
     source: 'result',
-    title: "There's more behind this run.",
-    subtitle:
-      'Your land gains, your rival impact and how this run compares to your recent form.',
+    title: 'More run stats.',
+    subtitle: 'See land, rivals and recent form.',
     perks: [
-      ['streak', 'This run against your last 30 days'],
-      ['claim', 'Which of your land is about to decay'],
-      ['trophy', 'Every leaderboard filter and your rank over time'],
-      ['steal', 'Full head to head history with your rivals'],
+      ['streak', 'Compare with the last 30 days'],
+      ['claim', 'Land expiring soon'],
+      ['trophy', 'Rank history and filters'],
+      ['steal', 'Rival history'],
     ],
     cta: 'See the full analysis',
   },
 
   run_detail: {
     source: 'run_detail',
-    title: 'Read the run properly.',
-    subtitle:
-      'How this run compares to the rest, and what it won you.',
+    title: 'Run details.',
+    subtitle: 'Compare this run with your others.',
     perks: [
-      ['streak', 'Pace and distance trends across your runs'],
-      ['route', 'Land earned per kilometre, run by run'],
-      ['claim', 'Territory efficiency and what it cost you'],
-      ['trophy', 'Your rank over time'],
+      ['streak', 'Pace and distance trends'],
+      ['route', 'Land per kilometre'],
+      ['claim', 'Territory efficiency'],
+      ['trophy', 'Rank history'],
     ],
     cta: 'See the full analysis',
   },
@@ -104,28 +99,26 @@ export const PRO_CONTEXTS = {
   // --- people -------------------------------------------------------------
   rival_insights: {
     source: 'rival_detail',
-    title: 'Know your rival.',
-    subtitle:
-      'The full head to head · streaks, form and the ground you keep fighting over. The score stays free.',
+    title: 'Rival details.',
+    subtitle: 'See history, form and contested land.',
     perks: [
-      ['steal', 'Full head to head history'],
-      ['claim', 'The ground you two keep fighting over'],
-      ['streak', 'Momentum and current form'],
-      ['trophy', 'Every leaderboard filter and your rank over time'],
+      ['steal', 'Full rival history'],
+      ['claim', 'Contested land'],
+      ['streak', 'Recent form'],
+      ['trophy', 'Rank history and filters'],
     ],
     cta: 'View full rivalry',
   },
 
   leaderboard_history: {
     source: 'leaderboard',
-    title: 'See where you are going.',
-    subtitle:
-      'Your rank over time, every board and every filter. Today’s standing stays free.',
+    title: 'Rank history.',
+    subtitle: 'See every board and filter.',
     perks: [
       ['trophy', 'Weekly, monthly and all time boards'],
-      ['locate', 'Local and club only fields'],
-      ['streak', 'Your rank over time'],
-      ['claim', 'Land gained and lost across the season'],
+      ['locate', 'Local and club filters'],
+      ['streak', 'Rank over time'],
+      ['claim', 'Season land changes'],
     ],
     cta: 'Unlock every board',
   },
@@ -133,56 +126,52 @@ export const PRO_CONTEXTS = {
   // --- expression ---------------------------------------------------------
   cosmetics: {
     source: 'avatar',
-    title: 'Make your runner yours.',
-    subtitle:
-      'The PRO collection · pieces you won’t find on the free ladder or in the shop.',
+    title: 'More styles.',
+    subtitle: 'Unlock the PRO collection.',
     perks: [
-      ['sparkles', 'Exclusive trails, share cards and capture styles'],
-      ['customize', 'The full PRO wardrobe'],
-      ['crown', 'Rare pieces with no other route in'],
-      ['route', 'Plan a route and see the land it would take'],
+      ['sparkles', 'Exclusive trails and cards'],
+      ['customize', 'PRO wardrobe'],
+      ['crown', 'Rare gear'],
+      ['route', 'Territory route planner'],
     ],
     cta: 'Unlock the PRO collection',
   },
 
   share: {
     source: 'share',
-    title: 'Post it properly.',
-    subtitle:
-      'Premium share cards for the runs worth showing. Free cards stay free.',
+    title: 'More share cards.',
+    subtitle: 'Unlock PRO card styles.',
     perks: [
       ['share', 'Premium share card styles'],
-      ['sparkles', 'Exclusive trails, share cards and capture styles'],
-      ['customize', 'The full PRO wardrobe'],
-      ['streak', 'Deep running and territory analytics'],
+      ['sparkles', 'Exclusive trails and cards'],
+      ['customize', 'PRO wardrobe'],
+      ['streak', 'Run and territory stats'],
     ],
     cta: 'Unlock premium cards',
   },
 
   season: {
     source: 'season',
-    title: 'Take the season further.',
-    subtitle:
-      'The PRO reward lane, plus every board filter.',
+    title: 'More season rewards.',
+    subtitle: 'Get the PRO lane and every board filter.',
     perks: [
       ['sparkles', 'The PRO reward lane, all season'],
-      ['trophy', 'Every leaderboard filter and your rank over time'],
-      ['customize', 'The full PRO wardrobe'],
-      ['streak', 'Deep running and territory analytics'],
+      ['trophy', 'Rank history and filters'],
+      ['customize', 'PRO wardrobe'],
+      ['streak', 'Run and territory stats'],
     ],
     cta: null,
   },
 
   progression: {
     source: 'progression',
-    title: 'Every tier, both lanes.',
-    subtitle:
-      'A PRO reward lane beside the free one, all the way to level 50. What you’ve earned stays yours.',
+    title: 'Unlock the PRO lane.',
+    subtitle: 'Extra rewards up to level 50.',
     perks: [
       ['sparkles', 'The PRO reward lane, every level'],
-      ['crown', 'Rare pieces with no other route in'],
-      ['customize', 'The full PRO wardrobe'],
-      ['route', 'Plan a route and see the land it would take'],
+      ['crown', 'Rare gear'],
+      ['customize', 'PRO wardrobe'],
+      ['route', 'Territory route planner'],
     ],
     cta: null,
   },
@@ -192,9 +181,8 @@ export const PRO_CONTEXTS = {
 
   home: {
     source: 'home',
-    title: 'Get more from every run.',
-    subtitle:
-      'Strategy, insights and exclusive styles. Running, claiming and the board stay the same.',
+    title: 'More stats. More styles.',
+    subtitle: 'Planning, stats and gear.',
     perks: PRO_PERKS,
     cta: null,
   },
@@ -202,12 +190,11 @@ export const PRO_CONTEXTS = {
   onboarding: {
     source: 'onboarding',
     title: 'PASER PRO',
-    subtitle:
-      'Take PASER further whenever you want. None of it is needed to run, claim or climb.',
+    subtitle: 'Optional planning, stats and styles.',
     perks: [
       ['route', 'Plan territory runs'],
-      ['streak', 'Advanced insights'],
-      ['customize', 'Exclusive customisation'],
+      ['streak', 'More stats'],
+      ['customize', 'Exclusive styles'],
     ],
     cta: null,
   },

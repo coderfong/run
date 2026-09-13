@@ -1,11 +1,12 @@
 /**
  * Every endless loop parks when its screen is not the one being looked at.
  *
- * Bottom tabs now freeze inactive tab trees, but stack screens within the
- * active tab and components rendered outside navigation can still remain
- * mounted. Reanimated 4 on iOS applies every animated frame as a commit of the
- * shadow tree, which every React update then has to queue behind. A loop nobody
- * can see is a tax on every tap in the app, so each primitive that loops asks
+ * The app's tabs are never frozen: material top tabs carry no react-freeze, so
+ * Home's feed, the avatar studio, a Missions screen left on top of a stack —
+ * all stay mounted and live behind whatever tab is showing. And Reanimated 4
+ * on iOS applies every animated frame as a commit of the whole shadow tree,
+ * which every React update then has to queue behind. A loop nobody can see is
+ * a tax on every tap in the app, so each primitive that loops asks
  * `useOnScreen` first. These pin that it does.
  */
 
@@ -126,6 +127,34 @@ describe('a loop on a screen nobody is looking at', () => {
     );
     expect(withRepeat).not.toHaveBeenCalled();
     act(() => screen.show(true));
+    expect(withRepeat).toHaveBeenCalledTimes(victims.length);
+    act(() => tree.unmount());
+  });
+
+  it('a steal banner scrolled out of view holds its heads still, on a focused screen', () => {
+    // The feed keeps two screens of rows mounted either side of the one being
+    // read. Their screen IS focused, so only the row's own answer parks them.
+    const victims = [
+      { user_id: 'a', username: 'ana', avatar: {} },
+      { user_id: 'b', username: 'bo', avatar: {} },
+    ];
+    const screen = fakeScreen(true);
+    const banner = (active) => (
+      <NavigationContext.Provider value={screen}>
+        <TerritoryStealBanner
+          trigger="run-2"
+          victims={victims}
+          amount="0.3 km²"
+          autoPlay={false}
+          haptics={false}
+          active={active}
+        />
+      </NavigationContext.Provider>
+    );
+    let tree;
+    act(() => { tree = renderer.create(banner(false)); });
+    expect(withRepeat).not.toHaveBeenCalled();
+    act(() => tree.update(banner(true)));
     expect(withRepeat).toHaveBeenCalledTimes(victims.length);
     act(() => tree.unmount());
   });

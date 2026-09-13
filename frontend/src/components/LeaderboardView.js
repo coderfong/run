@@ -221,7 +221,7 @@ export default function LeaderboardView({ board = 'land' }) {
           art={require('../../assets/art/empty-leaderboard.png')}
           title={board === 'rank' ? 'No rated battles yet' : 'Nobody has claimed land yet'}
           body={board === 'rank'
-            ? 'Attack rival territory or defend your own to enter the rank standings.'
+            ? 'Attack or defend land to get ranked.'
             : 'Be first. Run a loop and the ground inside is yours.'}
           style={{ paddingTop: space.xl }}
         />

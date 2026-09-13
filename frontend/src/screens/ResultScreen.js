@@ -70,7 +70,7 @@ import { fetchAndCache, invalidate, invalidateAfterClaim } from '../api/cache';
 import { shouldReveal } from '../config/paserby';
 import { preloadScreenImages } from '../config/screenAssets';
 import { RUN_TIER } from '../config/economy';
-import { NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, runTuning, shadow, space, toon, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
+import { HEADING_CASE, NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, runTuning, shadow, space, toon, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
 import { Framed, HardShadow, OutlinedText, ToonButton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { useClan } from '../state/clan';
@@ -2166,7 +2166,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     paddingVertical: 4,
   },
   stepDot: { width: 7, height: 7, borderRadius: 4 },
-  stepChipText: { ...type.captionMedium, letterSpacing: 0.8 },
+  stepChipText: { ...type.captionMedium, letterSpacing: 0.8, textTransform: HEADING_CASE },
   // White fill plus the fixed ink outline remains readable over both the light
   // street map and the dark map. Theme text in light mode was black-on-black
   // once OutlinedText added its ink stroke, which produced the blob seen on
@@ -2193,6 +2193,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     ...type.captionMedium,
     color: colors.textDim,
     letterSpacing: 1,
+    textTransform: HEADING_CASE,
     marginBottom: 3,
   },
   takeTitle: { ...type.bodySmBold, color: colors.text, marginBottom: space.sm },

@@ -16,7 +16,7 @@ import Svg, { Path } from 'react-native-svg';
 
 import Chest, { Sparkle, chestColors } from './Chest';
 import { haptic, useReduceMotion } from '../../ui/motion';
-import { fonts, space } from '../../theme';
+import { fonts, HEADING_CASE, space } from '../../theme';
 
 // How long a single tap's reveal takes end to end. The swoosh reads at 320ms
 // and the wash needs to finish inside the same beat or two quick taps overlap
@@ -444,6 +444,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 26,
     letterSpacing: 3,
+    textTransform: HEADING_CASE,
     color: '#ffffff',
     marginBottom: space.xl,
   },

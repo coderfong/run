@@ -47,7 +47,7 @@ const CARDS = [
     icon: Flag,
     aspect: 1,
     title: () => 'Every run earns you ground',
-    sub: 'Finish a run, then place your claim anywhere along the route you took. Longer runs claim more.',
+    sub: 'Finish, then place your claim. Longer runs claim more.',
     cta: 'Next',
   },
   {
@@ -56,7 +56,7 @@ const CARDS = [
     icon: Zap,
     aspect: 4 / 3,
     title: () => 'Claiming costs Energy',
-    sub: 'Running earns it back, and your first claim each day is half price.',
+    sub: 'Running restores Energy. Your first daily claim costs half.',
     cta: 'Next',
   },
   {
@@ -65,7 +65,7 @@ const CARDS = [
     icon: Swords,
     aspect: 1,
     title: () => 'Land you take is never safe',
-    sub: 'Anyone who runs over your ground can claim it back. Reinforce it on your next run, or join a club so your teammates help you hold it.',
+    sub: 'Others can take your land. Run there again or get help from your club.',
     cta: 'Next',
   },
   {
@@ -74,7 +74,7 @@ const CARDS = [
     icon: ShieldCheck,
     aspect: 1,
     title: () => "Territory can wait. Traffic can't.",
-    sub: 'Eyes up at crossings. Every run is checked, so there is no prize for cutting corners.',
+    sub: 'Watch the road. Runs are checked for fair play.',
     cta: 'Next',
   },
   {

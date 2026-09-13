@@ -23,7 +23,7 @@ import * as WebBrowser from 'expo-web-browser';
 
 import { useAuth } from '../auth/AuthContext';
 import { appleIdentityFromCredential } from '../auth/onboardingIdentity';
-import { space } from '../theme';
+import { fonts, space } from '../theme';
 import { framePose, frameVariant } from '../ui/frameRegistry';
 import { toast } from '../ui/toast';
 import Framed from './ui/Framed';
@@ -212,7 +212,7 @@ export default function SocialAuthButtons() {
 const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: space.md },
   line: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.25)' },
-  orText: { color: 'rgba(255,255,255,0.6)', marginHorizontal: space.md, fontSize: 12 },
+  orText: { color: 'rgba(255,255,255,0.6)', marginHorizontal: space.md, fontSize: 12, fontFamily: fonts.body },
   btn: {
     height: 52,
   },
@@ -224,6 +224,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
   },
+  // The Google button stays in the system face on purpose: it is Google's
+  // mark, not PASER copy, and Google's sign-in guidelines own its lettering.
   btnText: { fontSize: 16, fontWeight: '600' },
   glyph: { fontSize: 18, fontWeight: '700', width: 18, textAlign: 'center' },
   gGlyph: { color: '#4285F4' },
