@@ -14,9 +14,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
-import Chest, { Sparkle, chestColors } from './Chest';
+import {
+  ChestBase,
+  ChestLid,
+  ChestLidInside,
+  Sparkle,
+  chestColors,
+  chestSize,
+} from './Chest';
 import { haptic, useReduceMotion } from '../../ui/motion';
-import { fonts, HEADING_CASE, space } from '../../theme';
+import { fonts, space } from '../../theme';
 
 // How long a single tap's reveal takes end to end. The swoosh reads at 320ms
 // and the wash needs to finish inside the same beat or two quick taps overlap
@@ -214,7 +221,8 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
   const spentRef = useRef(0);
 
   const chestW = Math.min(280, width * 0.62);
-  const chestH = chestW * 0.82;
+  const chestMetrics = chestSize(chestW);
+  const chestH = chestMetrics.height;
 
   const bob = useSharedValue(0);
   const squash = useSharedValue(0);
@@ -340,11 +348,23 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
       { scaleY: 1 - 0.12 * squash.value },
     ],
   }));
-  const lidStyle = useAnimatedStyle(() => ({
+  // Both lid drawings pivot around the seam at the bottom of their box. The
+  // front collapses first; the hollow then rises from the same line. Keeping
+  // this in 2D avoids React Native's fractional transformOrigin parsing bug.
+  const closedLidStyle = useAnimatedStyle(() => ({
+    opacity: lid.value < 0.55 ? 1 : 0,
     transform: [
-      { perspective: 600 },
-      { translateY: -chestW * 0.18 * lid.value },
-      { rotateX: `${-65 * lid.value}deg` },
+      { translateY: chestMetrics.lidH / 2 },
+      { scaleY: Math.max(0.02, 1 - lid.value * 2) },
+      { translateY: -chestMetrics.lidH / 2 },
+    ],
+  }));
+  const openLidStyle = useAnimatedStyle(() => ({
+    opacity: lid.value > 0.38 ? 1 : 0,
+    transform: [
+      { translateY: chestMetrics.insideH / 2 },
+      { scaleY: Math.max(0.02, (lid.value - 0.35) / 0.65) },
+      { translateY: -chestMetrics.insideH / 2 },
     ],
   }));
   const beamStyle = useAnimatedStyle(() => ({
@@ -394,7 +414,27 @@ export default function LootboxGamble({ visible, sequence, onOpened, onClose }) 
                 {/* The shadow travels with the chest, so the bob reads as
                     hovering rather than as the whole picture sliding. */}
                 <View style={[styles.shadow, { backgroundColor: tint.shade, width: chestW * 0.72, top: chestH * 0.93 }]} />
-                <Chest width={chestW} rarity={rarity} open={opening} lidStyle={lidStyle} />
+                <View style={{ width: chestW, height: chestH }}>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.chestPiece,
+                      { top: chestMetrics.lidH - chestMetrics.insideH },
+                      openLidStyle,
+                    ]}
+                  >
+                    <ChestLidInside width={chestW} rarity={rarity} />
+                  </Animated.View>
+                  <View style={[styles.chestPiece, { top: chestMetrics.lidH }]}>
+                    <ChestBase width={chestW} rarity={rarity} open={opening} />
+                  </View>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.chestPiece, { top: 0 }, closedLidStyle]}
+                  >
+                    <ChestLid width={chestW} rarity={rarity} />
+                  </Animated.View>
+                </View>
 
               </Animated.View>
 
@@ -444,12 +484,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.display,
     fontSize: 26,
     letterSpacing: 3,
-    textTransform: HEADING_CASE,
     color: '#ffffff',
     marginBottom: space.xl,
   },
 
   chestBox: { alignItems: 'center', justifyContent: 'center' },
+  chestPiece: { position: 'absolute', left: 0 },
   shadow: {
     position: 'absolute',
     alignSelf: 'center',

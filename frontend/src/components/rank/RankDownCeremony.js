@@ -8,17 +8,23 @@
 //   2. TURN   at the bottom of the sink, small and dim, the badge changes to
 //             the lower tier. The swap happens where you are not looking, for
 //             the same reason the promotion hides its swap in the glare.
-//   3. LAND   it rises back into place, the plaque names where you stand now,
-//             and one line says how to get back. "Tap to continue".
+//   3. LAND   it rises back into place, the lower tier's world comes up above
+//             it, the plaque names where you stand now, and one line says how
+//             to get back. "Tap to continue".
 //
 // NO LIGHT AND NO CONFETTI. A demotion that celebrates reads as a bug. It still
 // takes the whole screen, though: finding out from a smaller badge on the You
 // page a week later is worse than being told once, plainly.
 //
+// THE WORLD COMES UP AFTER THE TURN, never before it: shown any earlier, it
+// names the lower tier while the old badge is still standing. Like the
+// promotion's, it sits above the badge and nothing is drawn over it (see
+// RankWorld).
+//
 // REDUCE MOTION shows beat 3 at once, the same way the promotion does.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -31,6 +37,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import RankBadge, { RankPlaque } from './RankBadge';
+import RankWorld from './RankWorld';
 import { tierAt } from '../../config/rankLadder';
 import { haptic, useReduceMotion } from '../../ui/motion';
 import { fonts, space } from '../../theme';
@@ -43,7 +50,12 @@ const TURN_AT = SINK_AT + SINK_MS;  // the bottom of the sink
 const RISE_MS = 520;
 const LAND_AT = TURN_AT + RISE_MS * 0.6;
 
+// Sized and placed the way the promotion does it (see RankUpCeremony): the
+// badge gives way on a short screen, and the stage centres above "Tap to
+// continue" rather than on the whole page.
 const BADGE = 150;
+const BADGE_OF_HEIGHT = 0.18;
+const CONTINUE_CLEARANCE = space.huge * 2;
 
 /**
  * @param {boolean}  visible
@@ -54,6 +66,7 @@ const BADGE = 150;
  */
 export default function RankDownCeremony({ visible, from, to, equipped, onDone }) {
   const reduced = useReduceMotion();
+  const { width, height } = useWindowDimensions();
   const timers = useRef([]);
 
   const [turned, setTurned] = useState(false);
@@ -63,6 +76,9 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
   const sink = useSharedValue(0);
   const drain = useSharedValue(0);
   const settle = useSharedValue(0);
+  // The lower tier's world. Its own value for the reason the promotion gives:
+  // it has to be absent before the turn, not merely at rest.
+  const world = useSharedValue(0);
 
   // Keyed on `visible` and Reduce Motion only, like RankUpCeremony: the shared
   // values change identity on every render under the reanimated jest mock, and
@@ -80,6 +96,7 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
       sink.value = 0;
       drain.value = 1;
       settle.value = 1;
+      world.value = 1;
       haptic.medium();
       return undefined;
     }
@@ -89,6 +106,7 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
     sink.value = 0;
     drain.value = 0;
     settle.value = 0;
+    world.value = 0;
 
     // 1. SLIP. One shudder, then the badge lets go.
     shake.value = withSequence(
@@ -107,6 +125,12 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
     drain.value = withDelay(
       SINK_AT,
       withTiming(1, { duration: SINK_MS + RISE_MS, easing: Easing.inOut(Easing.quad) })
+    );
+    // The world comes up with the plaque, by which point the page has all but
+    // finished draining into the ink its edges fade into.
+    world.value = withDelay(
+      LAND_AT,
+      withTiming(1, { duration: RISE_MS + 220, easing: Easing.out(Easing.quad) })
     );
     haptic.light();
 
@@ -129,6 +153,7 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
       cancelAnimation(sink);
       cancelAnimation(drain);
       cancelAnimation(settle);
+      cancelAnimation(world);
     };
   }, [visible, reduced]);
 
@@ -144,6 +169,7 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
   const drainStyle = useAnimatedStyle(() => ({ opacity: drain.value }));
   const oldWashStyle = useAnimatedStyle(() => ({ opacity: 0.3 * (1 - drain.value) }));
   const newWashStyle = useAnimatedStyle(() => ({ opacity: 0.22 * drain.value }));
+  const worldStyle = useAnimatedStyle(() => ({ opacity: world.value }));
   const settleStyle = useAnimatedStyle(() => ({
     opacity: settle.value,
     transform: [{ translateY: 14 * (1 - settle.value) }],
@@ -156,6 +182,7 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
   const oldTier = tierAt(was.tier);
   const newTier = tierAt(to.tier);
   const shownTier = tierAt(shown.tier);
+  const badgeSize = Math.min(BADGE, Math.round(height * BADGE_OF_HEIGHT));
 
   return (
     <Modal visible transparent={false} animationType="fade" statusBarTranslucent onRequestClose={onDone}>
@@ -179,11 +206,13 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
         />
 
         <View style={styles.stage}>
-          <Animated.View style={badgeStyle}>
+          <RankWorld tierKey={newTier.key} ink={newTier.ink} width={width} style={worldStyle} />
+
+          <Animated.View style={[styles.badge, badgeStyle]}>
             <RankBadge
               tierKey={shownTier.key}
               equipped={equipped}
-              size={BADGE}
+              size={badgeSize}
               division={shown.division}
               color={shownTier.color}
               showStars={landed || reduced}
@@ -203,8 +232,14 @@ export default function RankDownCeremony({ visible, from, to, equipped, onDone }
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  page: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: CONTINUE_CLEARANCE,
+  },
   stage: { alignItems: 'center', justifyContent: 'center' },
+  badge: { marginTop: space.sm },
   settled: { alignItems: 'center', marginTop: space.xl },
   line: {
     fontFamily: fonts.bodyMedium,

@@ -5,6 +5,16 @@
 	<key>WKApplication</key>
 	<true/>
 	<key>WKRunsIndependentlyOfCompanionApp</key>
-	<false/>
+	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>PASER reads heart rate during your run.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>PASER saves runs and routes recorded on your watch.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>PASER uses your watch location to record distance and route.</string>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>workout-processing</string>
+	</array>
 </dict>
 </plist>

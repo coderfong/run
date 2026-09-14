@@ -18,7 +18,8 @@
 // active palette so they don't stay dark-on-cream there.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Check,
   Crown,
@@ -38,7 +39,7 @@ import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useProEntitlement } from '../pro/ProProvider';
 
 import { NB, nbInk, nbRadius, radius, space, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
-import { Button, Framed, Screen, HardShadow } from '../components/ui';
+import { BackButton, Button, Framed, Screen, HardShadow, PANEL_INK } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { RARITY_COLOR } from '../components/RewardArt';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
@@ -215,7 +216,7 @@ const GridCell = React.memo(function GridCell({ item, slot, equipped, isUnlocked
   );
 });
 
-export default function AvatarStudioScreen({ standalone = false, onDone }) {
+export default function AvatarStudioScreen({ navigation, standalone = false, onDone }) {
   const { scheme, colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
@@ -227,8 +228,11 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
   // body (size x BODY_RATIO) plus the headroom the rig reserves above it for
   // tall hair, plus the stage's own padding. `cover` crops whichever scene is
   // showing to that box, so light and dark stay the same height here too.
-  const sceneMinH = RIG_SIZE * BODY_RATIO * (1 + RIG_HEADROOM) + space.md * 2;
-  const { height: sceneH } = useSceneBackdrop({ minHeight: sceneMinH });
+  const insets = useSafeAreaInsets();
+  const skyTop = standalone ? 0 : insets.top + space.xs;
+  const headerH = standalone ? 0 : 48 + space.md;
+  const sceneMinH = RIG_SIZE * BODY_RATIO * (1 + RIG_HEADROOM) + space.md * 2 + headerH;
+  const { height: sceneH } = useSceneBackdrop({ minHeight: sceneMinH, skyAbove: skyTop });
   const rigRef = useRef(null);
   const [slotKey, setSlotKey] = useState('hair');
   const [saving, setSaving] = useState(false);
@@ -344,6 +348,7 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
 
   return (
     <Screen gutter={false} edges={standalone ? ['top', 'bottom'] : []} style={{ flex: 1 }}>
+      {!standalone ? <StatusBar barStyle="dark-content" /> : null}
       {standalone && (
         <View style={{ paddingHorizontal: space.gutter, marginTop: space.md }}>
           <Text style={type.title}>Build your runner</Text>
@@ -359,7 +364,26 @@ export default function AvatarStudioScreen({ standalone = false, onDone }) {
             crop has to come off the sky rather than off the pavement. */}
         {/* Wind through the scene. Denser drift than the You page: this box
             is a stage rather than a header behind a stat wall. */}
-        <SceneBackdrop minHeight={sceneMinH} anchor="bottom" ambient="leaves" ambientDensity={1.4} />
+        <SceneBackdrop
+          minHeight={sceneMinH}
+          skyAbove={skyTop}
+          anchor="bottom"
+          ambient="leaves"
+          ambientDensity={1.4}
+        />
+        {!standalone ? (
+          <View style={[styles.sceneHeader, { paddingTop: skyTop }]} pointerEvents="box-none">
+            <BackButton
+              onPress={() => navigation?.goBack()}
+              fill="#fff"
+              ink={PANEL_INK}
+              on="#F7EDCB"
+              size={40}
+            />
+            <Text style={[type.title, styles.sceneTitle]}>Your runner</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+        ) : null}
         {/* The runner is the subject, so they stand in the CENTRE of the scene.
             The dice used to sit in the same flex row, which pushed the
             character off-centre by half the button. It stays out of the layout
@@ -494,6 +518,26 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
   // flex-end so the rig's feet land on the road at the bottom of the scene
   // instead of floating in the sky above it.
   stage: { alignItems: 'center', justifyContent: 'flex-end', paddingVertical: space.md },
+  sceneHeader: {
+    position: 'absolute',
+    top: 0,
+    left: space.gutter,
+    right: space.gutter,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 6,
+    elevation: 6,
+  },
+  sceneTitle: {
+    color: PANEL_INK,
+    textAlign: 'center',
+    textShadowColor: 'rgba(255,255,255,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  headerSpacer: { width: 40, height: 40 },
   // Full width so the runner is centred on the SCENE, not on whatever the row
   // happens to contain.
   runnerRow: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'flex-end' },

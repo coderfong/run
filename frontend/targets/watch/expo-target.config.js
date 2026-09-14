@@ -1,6 +1,5 @@
-// The PASER Apple Watch app: a SwiftUI companion that mirrors the run the
-// iPhone is recording and carries its start, pause, resume and finish
-// controls. See docs/APPLE_WATCH.md.
+// PASER's standalone watch workout app. It records outdoor runs using the
+// watch's GPS and HealthKit even when the iPhone is not nearby.
 //
 // @bacons/apple-targets turns this folder into a watchOS target at prebuild
 // (every file in it joins the target), embeds it in the iOS app, syncs its
@@ -8,9 +7,8 @@
 // extra.eas.build.experimental.ios.appExtensions so EAS signs it.
 //
 // Info.plist beside this file is hand kept and merged over what Xcode
-// generates: WKApplication marks a single target SwiftUI watch app, and
-// WKRunsIndependentlyOfCompanionApp false says it needs PASER on the iPhone,
-// which is true (the phone does all the recording).
+// generates: WKApplication marks a single target SwiftUI watch app, and the
+// independent flag plus HealthKit entitlement enable wrist only recording.
 
 /** @type {import('@bacons/apple-targets/app.plugin').Config} */
 module.exports = {
@@ -25,5 +23,8 @@ module.exports = {
   // Keep the companion available to watches that cannot update to watchOS 10.
   // The UI intentionally stays within watchOS 9 APIs.
   deploymentTarget: '9.0',
+  entitlements: {
+    'com.apple.developer.healthkit': true,
+  },
   icon: '../../assets/icon.png',
 };

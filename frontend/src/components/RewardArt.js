@@ -41,6 +41,21 @@ function parseItemKey(key) {
   return slot && id ? { slot, id } : null;
 }
 
+// Cosmetic sources share a square canvas, but the painted area differs by
+// slot (glasses and shoes occupy much less of it than hair or a jacket). These
+// restrained optical corrections make the *visible object* read at one size
+// without changing the tile or clipping the more expansive rewards.
+const COSMETIC_PREVIEW_SCALE = {
+  face: 1,
+  hair: 1.04,
+  headwear: 1.08,
+  glasses: 1.28,
+  top: 1.1,
+  bottom: 1.16,
+  footwear: 1.22,
+  accessory: 1.08,
+};
+
 export default function RewardArt({ reward, size = 56, equipped, accent = '#ec4899', animated = false }) {
   const { colors } = useTheme();
   if (!reward) return null;
@@ -50,9 +65,12 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
     const ref = parseItemKey(key);
     const item = ref && getItem(ref.slot, ref.id);
     if (item) {
+      const previewScale = COSMETIC_PREVIEW_SCALE[ref.slot] || 1;
       return (
-        <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-          <PartThumb slot={ref.slot} item={item} size={size} />
+        <View style={[styles.cosmeticFrame, { width: size, height: size }]}>
+          <View style={{ transform: [{ scale: previewScale }] }}>
+            <PartThumb slot={ref.slot} item={item} size={size} />
+          </View>
         </View>
       );
     }
@@ -96,6 +114,7 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
 }
 
 const styles = StyleSheet.create({
+  cosmeticFrame: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   borderCore: { position: 'absolute' },
   energyText: { position: 'absolute', bottom: -2, fontSize: 12 },
 });

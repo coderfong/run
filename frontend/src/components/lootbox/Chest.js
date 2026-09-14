@@ -14,15 +14,25 @@
 // the material changed. Recolouring the whole chest would read as a different
 // chest arriving.
 //
-// TWO SVGS, NOT ONE. The lid is its own element so it can be hinged with a
-// plain `rotateX` on its container — no animated SVG props, no platform
-// branch, and `transformOrigin` puts the pivot on the seam where the hinge
-// actually is. One SVG with an animated <G> would have meant driving matrix
-// props from a worklet for a rotation a View does natively.
+// THE LID IS TWO FLAT DRAWINGS, AND NOTHING HERE IS 3D. It used to be one lid
+// hinged with `rotateX` under a `perspective`, pivoted by a transformOrigin
+// string built from the width: `${width / 2}px ${lidH}px`. React Native reads
+// that string with /\d+(?:%|px)/, whole numbers only, so any fractional size
+// was shredded into a garbage origin. On a 393pt iPhone "121.83px 101.89px"
+// became [83, 0, 89418181818182]; that z, multiplied through the perspective,
+// put every point of the lid behind the camera, and the gamble drew a base
+// with nothing on it. Other widths drew the lid, then flung it to infinity the
+// moment it opened. No width ever got a working hinge.
+//
+// Seen square on, a lid swinging back is its front face flattening into the
+// seam and then its hollow rising out of the same line, so that is what is
+// drawn: `ChestLid`, squashed onto its bottom edge, then `ChestLidInside`,
+// grown up from it. Both are plain 2D scales pivoted by a translate / scale /
+// translate sandwich, which every renderer agrees on. Never hand these a
+// transformOrigin string; if a pivot ever needs one, pass numbers in an array.
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 // The rarity palette. `body` is the panel inside the gold, `shade` is the same
@@ -55,6 +65,22 @@ export function chestColors(rarity) {
 const W = 220;
 const LID_H = 92;
 const BASE_H = 88;
+// The lid thrown open. Shorter than the shut lid, because it leans back past
+// upright and is seen a little foreshortened.
+const INSIDE_H = 78;
+// The opening the panels frame, which is where the light comes out.
+const MOUTH_W = 168;
+
+/**
+ * Every measurement a caller needs to stack or hinge the pieces, at `width`.
+ * `height` is the shut chest; the lid thrown open stands inside the same box.
+ */
+export function chestSize(width) {
+  const k = width / W;
+  const lidH = k * LID_H;
+  const baseH = k * BASE_H;
+  return { lidH, baseH, insideH: k * INSIDE_H, mouthW: k * MOUTH_W, height: lidH + baseH };
+}
 
 /**
  * A four pointed sparkle, the reference's one decorative mark.
@@ -73,7 +99,7 @@ export function Sparkle({ size = 18, color = '#ffffff', style, opacity = 1 }) {
   );
 }
 
-/** The lid, hinged at its bottom edge. */
+/** The lid's face, hinged at its bottom edge. */
 function Lid({ width, rarity }) {
   const c = chestColors(rarity);
   const height = (width / W) * LID_H;
@@ -106,8 +132,63 @@ function Lid({ width, rarity }) {
   );
 }
 
-/** The body, and the dark interior that shows once the lid is off it. */
-function Base({ width, rarity, open }) {
+/**
+ * The shut lid and the clasp that hangs off its seam, as one piece.
+ *
+ * Its box is exactly the lid (`lidH` tall); the clasp overhangs the base below
+ * it. So a caller hinging it on its bottom edge is hinging it on the seam.
+ */
+export function ChestLid({ width, rarity }) {
+  const { lidH } = chestSize(width);
+  const claspSize = width * 0.2;
+  return (
+    <View style={{ width, height: lidH }}>
+      <Lid width={width} rarity={rarity} />
+      <View style={[styles.piece, { left: width / 2 - claspSize / 2, top: lidH - claspSize * 0.62 }]}>
+        <Clasp width={width} />
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The lid thrown open: its hollow, framed by the rim, standing on the hinge.
+ *
+ * The rim is lit from BELOW, because the light is coming out of the chest.
+ * That is what stops it reading as the shut lid in a darker colour.
+ */
+export function ChestLidInside({ width, rarity }) {
+  const c = chestColors(rarity);
+  const { insideH } = chestSize(width);
+  const H = INSIDE_H;
+  return (
+    <Svg width={width} height={insideH} viewBox={`0 0 ${W} ${H}`}>
+      <Defs>
+        <LinearGradient id="rimLit" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={GOLD_DARK} />
+          <Stop offset="1" stopColor={GOLD_LIGHT} />
+        </LinearGradient>
+        <LinearGradient id="hollow" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={c.ink} />
+          <Stop offset="1" stopColor={c.deep} />
+        </LinearGradient>
+      </Defs>
+      {/* The clasp, pointing up off what is now the far edge. */}
+      <Rect x="99" y="0" width="22" height="16" rx="6" fill={GOLD_DARK} />
+      <Path
+        d={`M 10 ${H} L 10 32 Q 10 8 34 8 L 186 8 Q 210 8 210 32 L 210 ${H} Z`}
+        fill="url(#rimLit)"
+      />
+      <Path
+        d={`M 24 ${H} L 24 36 Q 24 22 38 22 L 182 22 Q 196 22 196 36 L 196 ${H} Z`}
+        fill="url(#hollow)"
+      />
+    </Svg>
+  );
+}
+
+/** The body, and the lit lip of its mouth once the lid is off it. */
+export function ChestBase({ width, rarity, open }) {
   const c = chestColors(rarity);
   const height = (width / W) * BASE_H;
   return (
@@ -149,48 +230,35 @@ function Clasp({ width }) {
 }
 
 /**
- * The whole chest.
+ * The whole chest, standing still: shut, or open with its lid thrown back.
  *
- * `width` sizes everything; the drawing's own proportions do the rest.
- * `open` swaps the base's panel for its interior — the LIFT itself is the
- * caller's, because only the caller knows how the lid should leave.
- * `lidStyle` is where that animation is applied, and it is applied to a view
- * whose origin is already on the hinge.
+ * `width` sizes everything; the drawing's own proportions do the rest. The
+ * gamble does not use this: it stacks the pieces above itself so it can swing
+ * the lid between them. Icons and rows use this.
  */
-export default function Chest({ width = 240, rarity = 'common', open = false, lidStyle, style }) {
-  const lidH = (width / W) * LID_H;
-  const baseH = (width / W) * BASE_H;
-  const claspSize = width * 0.2;
+export default function Chest({ width = 240, rarity = 'common', open = false, style }) {
+  const { lidH, insideH, height } = chestSize(width);
 
   return (
-    <View style={[{ width, height: lidH + baseH }, style]}>
-      {/* Base first: the lid draws over it, and when the lid rotates back it
-          has to pass BEHIND nothing at all. */}
-      <View style={[styles.base, { top: lidH }]}>
-        <Base width={width} rarity={rarity} open={open} />
-      </View>
-
-      {/* transformOrigin on the seam, so a rotateX hinges the lid instead of
-          spinning it about its own middle. */}
-      <Animated.View
-        style={[
-          styles.lid,
-          { width, height: lidH, transformOrigin: `${width / 2}px ${lidH}px` },
-          lidStyle,
-        ]}
-        pointerEvents="none"
-      >
-        <Lid width={width} rarity={rarity} />
-        <View style={[styles.clasp, { left: width / 2 - claspSize / 2, top: lidH - claspSize * 0.62 }]}>
-          <Clasp width={width} />
+    <View style={[{ width, height }, style]}>
+      {/* The open lid stands BEHIND the base: its hinge is the back edge. */}
+      {open ? (
+        <View style={[styles.piece, { left: 0, top: lidH - insideH }]}>
+          <ChestLidInside width={width} rarity={rarity} />
         </View>
-      </Animated.View>
+      ) : null}
+      <View style={[styles.piece, { left: 0, top: lidH }]}>
+        <ChestBase width={width} rarity={rarity} open={open} />
+      </View>
+      {!open ? (
+        <View style={[styles.piece, { left: 0, top: 0 }]}>
+          <ChestLid width={width} rarity={rarity} />
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  base: { position: 'absolute', left: 0 },
-  lid: { position: 'absolute', left: 0, top: 0 },
-  clasp: { position: 'absolute' },
+  piece: { position: 'absolute' },
 });

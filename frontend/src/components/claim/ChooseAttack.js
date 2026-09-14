@@ -58,23 +58,12 @@ const ACTION_LABEL = {
   fortified: 'Storm a defended border',
 };
 
-// Who is under the claim, in one line: how many lose ground and how many hold.
-// Both halves are said whenever both exist, because the map is showing the
-// runner every one of those plots and a sentence that counts only half of them
-// reads as a miscount. Kept to counts rather than names — three faces sit
-// beside it, and the ledger after the claim names everybody. The mixed line
-// drops "here": it shares a single row with the move and three portraits, and
-// the word it can afford to lose is the one the whole panel already implies.
-export function rivalNote(takeable, held) {
-  if (takeable > 0 && held > 0) {
-    return `${takeable} lose ground · ${held} hold${held === 1 ? 's' : ''}`;
-  }
-  if (takeable > 0) {
-    return takeable === 1
-      ? '1 runner loses ground here'
-      : `${takeable} runners lose ground here`;
-  }
-  if (held > 0) return 'defence holds here';
+// The chooser is a targeting screen, not a result screen. At this point the
+// player should know who they are attacking, but not be told who will defend
+// successfully before the attack has played out.
+export function rivalNote(count) {
+  if (count === 1) return 'attacking 1 runner';
+  if (count > 1) return `attacking ${count} runners`;
   return '';
 }
 
@@ -419,8 +408,6 @@ export default function ChooseAttack({
   // map, read the breakdown as broken rather than as the fight it describes.
   // Server order is takeable first, so the faces that matter survive the cap.
   const rivals = p?.rivals || [];
-  const takeable = rivals.filter((r) => !r.defended);
-  const held = rivals.filter((r) => r.defended);
   const shownRivals = rivals.slice(0, 3);
   const MoveIcon = p?.action === 'attack' || p?.action === 'fortified'
     ? Swords
@@ -506,13 +493,6 @@ export default function ChooseAttack({
       >
         <GroundMetric label="NEW" value={landStr(p?.new_m2)} color={team.glow} dim={!p?.new_m2} />
         <GroundMetric label="ENEMY" value={landStr(p?.enemy_m2)} color={D.danger} dim={!p?.enemy_m2} />
-        {/* Rival ground that holds. It used to live only in the sentence
-            underneath, so a stretch where every border out-defends you read as
-            ENEMY 0.000 — as though nobody was there. It is the number the
-            runner is deciding against, so it belongs beside the rest. Always
-            rendered, dim at zero like its neighbours: a row that appeared and
-            vanished would reflow the panel under a moving finger. */}
-        <GroundMetric label="THEIRS" value={landStr(p?.defended_m2)} color={withAlpha(D.danger, 0.5)} dim={!p?.defended_m2} />
         <GroundMetric label="YOURS" value={landStr(p?.mine_m2)} color={withAlpha(team.glow, 0.5)} dim={!p?.mine_m2} />
         <GroundMetric label="GAIN" value={landStr(gained)} color={team.glow} dim={!gained} />
       </Framed>
@@ -537,7 +517,7 @@ export default function ChooseAttack({
                   <CharacterBust
                     equipped={r.avatar}
                     size={25}
-                    ring={r.defended ? D.border : D.danger}
+                    ring={D.danger}
                     bg={D.cardAlt}
                   />
                 </View>
@@ -546,7 +526,7 @@ export default function ChooseAttack({
           )}
           {rivals.length > 0 && (
             <Text style={styles.moveNote} numberOfLines={1}>
-              {rivalNote(takeable.length, held.length)}
+              {rivalNote(rivals.length)}
             </Text>
           )}
         </View>
@@ -577,14 +557,6 @@ export default function ChooseAttack({
         </View>
       ) : null}
 
-      {/* the honest caveat: defended ground gets carved back out, so the
-          claim that lands here is smaller than the one being previewed */}
-      {p?.defended_m2 > 0 && (
-        <Text style={styles.defendedNote}>
-          That ground is too well defended, so it stays theirs. You hold{' '}
-          {landStr(p.held_m2)} of {landStr(p.area_m2)}.
-        </Text>
-      )}
     </View>
   );
 }

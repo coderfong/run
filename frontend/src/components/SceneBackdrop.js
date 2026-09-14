@@ -189,6 +189,19 @@ export default function SceneBackdrop({
             resizeMode="cover"
             fadeDuration={0}
           />
+          {/* Hung from the bottom, the art already reaches the top of the box,
+              so the sky goes OVER its upper edge rather than above it. Same
+              flat strip and fade as below, so a header reads the same on the
+              tall night scene as on the day one. */}
+          {skyAbove > 0 ? (
+            <>
+              <View style={{ position: 'absolute', top: 0, width, height: skyAbove, backgroundColor: sky }} />
+              <LinearGradient
+                colors={[sky, clear]}
+                style={{ position: 'absolute', top: skyAbove, width, height: SKY_FADE }}
+              />
+            </>
+          ) : null}
           {life}
         </View>
       );

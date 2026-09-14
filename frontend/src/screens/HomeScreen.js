@@ -98,7 +98,7 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
             >
               {title}
             </Text>
-            <Text style={[type.bodySm, styles.heroSub]}>{sub}</Text>
+            {sub ? <Text style={[type.bodySm, styles.heroSub]}>{sub}</Text> : null}
           </View>
           <Framed
             frame={frameVariant('chip', cta)}
@@ -163,7 +163,6 @@ function HeroCarousel({ navigation }) {
           art={require('../../assets/art/card-solo.png')}
           eyebrow="START A RUN TODAY"
           title="LET'S RUN"
-          sub="Make today your next run"
           cta="Start a run"
           onPressIn={() => preloadScreenImages('Record')}
           onPress={() => navigation.navigate('Record')}

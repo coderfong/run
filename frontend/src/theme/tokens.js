@@ -6,44 +6,31 @@ import { darkColors as colors } from './dark';
 
 // ---------------------------------------------------------------------------
 // Fonts (the values must be families App.js loads — see theme/fontFiles.js)
-//
-// PASER sets EVERYTHING in one hand-lettered face, Pistachio Cloud Magnolia,
-// since 2026-09-13. It replaced four families (Poppins Black headings, Space
-// Grotesk stats, Inter body, Inter Black on the share card), so the hierarchy
-// they carried now comes from three pen widths of the one hand: Regular is the
-// specimen sheet's own pen, Medium sits between, Bold is the marker for
-// headings, buttons, labels and numbers.
-//
-// The traced face keeps Inter's line box (0.96 / -0.25 em), so text boxes are
-// the height they were, and sets within 2% of Inter's width, so nothing that
-// fitted before needs to wrap. Its figures answer `tabular-nums` with a real
-// `tnum` feature, so the live stats still do not jitter.
+// PASER: Poppins Black (900) is the heading font (wordmark + hero/display/
+// title), Space Grotesk for stats (tabular figures), Inter for everything
+// else.
 // ---------------------------------------------------------------------------
 
-// Every heading, eyebrow and wordmark is set lowercase, like the sheet
-// (2026-09-13, the user's call). It is a TRANSFORM, not the copy: strings
-// such as 'TERRITORY CLAIMED' stay as written in the source, where logic and
-// tests match on them, and simply draw lowercase. Back to capitals is this
-// one word.
-export const HEADING_CASE = 'lowercase';
-
-const HAND = {
-  regular: 'PistachioCloudMagnolia_400Regular',
-  medium: 'PistachioCloudMagnolia_500Medium',
-  bold: 'PistachioCloudMagnolia_700Bold',
-};
-
 export const fonts = {
-  hero: HAND.bold,
-  // Kept for anything still asking for the poster face by name. The share
-  // card sets in `hero` (see RUN_FONT in RunShareCard).
-  poster: HAND.bold,
-  display: HAND.bold,
-  displayMedium: HAND.medium,
-  body: HAND.regular,
-  bodyMedium: HAND.medium,
-  semibold: HAND.bold,
-  bold: HAND.bold,
+  hero: 'Poppins_900Black',
+  // The share card's own face, and only the share card's: the three enormous
+  // numbers, their units, and the wordmark under them.
+  //
+  // Anton until 2026-08-25. Poppins Black was the first attempt and read as
+  // kiddy on something people post to their story; Anton fixed that but is a
+  // CONDENSED poster face, and side by side with the card everybody compares
+  // this to the numbers were visibly narrower and lighter than the reference.
+  // Inter Black is the heavy neutral grotesque that reference actually uses:
+  // wide digits, small counters, nothing stylised. It is also a weight of a
+  // family the app already loads, so the switch adds no new font to the
+  // bundle — it takes one away.
+  poster: 'Inter_900Black',
+  display: 'SpaceGrotesk_700Bold',
+  displayMedium: 'SpaceGrotesk_500Medium',
+  body: 'Inter_400Regular',
+  bodyMedium: 'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
 };
 
 // '#2563eb' + 0.32 -> 'rgba(37,99,235,0.32)'. For map fill/stroke colours.
@@ -242,14 +229,13 @@ export const shadow = {
 const TABULAR = ['tabular-nums'];
 
 export const type = {
-  // Headings in the hand face, LOWERCASE like the specimen sheet (see
-  // HEADING_CASE). The ~1.3× lineHeight dates from Poppins Black, which
-  // clipped at tighter leading; it now also gives lowercase headings room for
-  // their descenders, which capitals never had.
-  hero: { fontFamily: fonts.hero, fontSize: 40, lineHeight: 52, letterSpacing: 0.3, textTransform: HEADING_CASE, color: colors.text },
-  display: { fontFamily: fonts.hero, fontSize: 30, lineHeight: 40, letterSpacing: 0.3, textTransform: HEADING_CASE, color: colors.text },
-  title: { fontFamily: fonts.hero, fontSize: 21, lineHeight: 28, letterSpacing: 0.3, textTransform: HEADING_CASE, color: colors.text },
-  heading: { fontFamily: fonts.display, fontSize: 18, textTransform: HEADING_CASE, color: colors.text },
+  // Anton hero styles — condensed athletic caps (PACER headlines/wordmark).
+  // lineHeight ~1.3× the size — Poppins Black is tall and clips at tighter
+  // leading (the onboarding headline was being cropped).
+  hero: { fontFamily: fonts.hero, fontSize: 40, lineHeight: 52, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.text },
+  display: { fontFamily: fonts.hero, fontSize: 30, lineHeight: 40, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.text },
+  title: { fontFamily: fonts.hero, fontSize: 21, lineHeight: 28, letterSpacing: 0.3, textTransform: 'uppercase', color: colors.text },
+  heading: { fontFamily: fonts.display, fontSize: 18, color: colors.text },
 
   statHero: { fontFamily: fonts.display, fontSize: 44, letterSpacing: -1, fontVariant: TABULAR, color: colors.text },
   stat: { fontFamily: fonts.displayMedium, fontSize: 28, fontVariant: TABULAR, color: colors.text },
@@ -262,9 +248,9 @@ export const type = {
   bodySm: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.text },
   bodySmBold: { fontFamily: fonts.bold, fontSize: 13, color: colors.text },
 
-  // The only eyebrow style: the Bold pen, letter-spaced, cased like headings.
-  label: { fontFamily: fonts.semibold, fontSize: 13, letterSpacing: 0.4, textTransform: HEADING_CASE, color: colors.textMuted },
-  labelSm: { fontFamily: fonts.semibold, fontSize: 12, letterSpacing: 0.6, textTransform: HEADING_CASE, color: colors.textMuted },
+  // The only eyebrow style: uppercase Inter 12/600, letter-spaced.
+  label: { fontFamily: fonts.semibold, fontSize: 13, letterSpacing: 0.4, textTransform: 'uppercase', color: colors.textMuted },
+  labelSm: { fontFamily: fonts.semibold, fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase', color: colors.textMuted },
 
   caption: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
   captionMedium: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },

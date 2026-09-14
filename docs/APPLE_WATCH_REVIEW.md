@@ -1,6 +1,6 @@
 # Apple Watch submission review
 
-Checked 2026-09-11. This is a source audit, not App Review approval. The audit
+Checked 2026-09-14. This is a source audit, not App Review approval. The audit
 does not establish that a signed archive compiles or that all store metadata
 and production services pass review. Existing unrelated workspace changes were
 preserved.
@@ -24,18 +24,18 @@ use-before-declaration or undefined references across 277 files. Expo prebuild
 configuration resolved the Watch signing target. Swift compilation, archive
 validation and device behavior remain unverified.
 
-The watch declares WKApplication and does not run independently of its iPhone.
+The watch declares WKApplication and runs independently of its iPhone.
 The installed apple-targets plugin generates WKCompanionAppBundleIdentifier,
 syncs the marketing version, and registers the watch signing target. Expo config
-resolves com.pacerrun.app.watchkitapp as PaserWatch. The companion requests no
-HealthKit, location, microphone or tracking permissions and has no ad SDK,
+resolves com.pacerrun.app.watchkitapp as PaserWatch. The watch requests
+HealthKit and location for workout recording and has no ad SDK,
 purchase UI, or direct network client. These findings do not replace inspection
 of the final archived app and its embedded frameworks/privacy manifests.
 
-The watch is a remote display/controller; the phone must remain nearby. Starting
-requires Record in the foreground on iPhone. It does not independently record
-workouts or heart rate. Without a Watch workout session, continuous foreground
-display and background haptics are not guaranteed; do not advertise them.
+The watch starts its own outdoor running workout, records a filtered GPS route,
+and reads live heart rate during that workout. The workout session supports
+continued execution with the display lowered. The phone does not need to be
+nearby for start, pause, resume, finish, or HealthKit save.
 
 ## Release gates still requiring evidence
 
@@ -69,16 +69,12 @@ display and background haptics are not guaranteed; do not advertise them.
 
 ## Suggested additional review notes
 
-PASER on Apple Watch requires the paired iPhone nearby. Sign in and keep PASER
-in the foreground on any phone screen, then open PASER on the watch and tap
-Start run. The watch opens Record on the phone and begins the countdown.
-The phone records GPS; the watch displays the run and offers pause, resume and
-hold-to-finish controls. During a paused run the iPhone location session may
-remain active to support wrist resume; paused points are excluded from the
-route. Finish stops location and requests limited background time to save.
-If saving fails, open PASER on iPhone to retry. Land placement is on iPhone.
-The watch does not access HealthKit or independently record GPS/heart rate.
-It follows the system Return to Clock behavior.
+PASER on Apple Watch records outdoor runs without the paired iPhone nearby.
+Tap Start Run and grant Workout, Health, and Location access on first use.
+After the 3, 2, 1 countdown, the watch records elapsed time, distance, pace,
+route, and live heart rate. Swipe between metric and control screens. Pause and
+resume act locally. Hold Finish for one second to stop and save the workout and
+route to Apple Health. Territory placement remains in the iPhone run flow.
 
 ## Sources
 

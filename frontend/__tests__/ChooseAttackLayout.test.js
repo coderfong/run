@@ -64,11 +64,7 @@ describe('capture placement controls', () => {
     act(() => tree.unmount());
   });
 
-  it('shows the ground that holds as its own number', () => {
-    // A stretch where every border out-defends the runner used to read as
-    // ENEMY 0.000 with the real figure buried in a sentence. ATTACK stays
-    // pressable there (the server points it at the fight it can see), and the
-    // breakdown says how much of the ground is theirs.
+  it('keeps the defence result hidden until after the attack', () => {
     const defendedPose = {
       ...placement(0.55, 45),
       action: 'fortified',
@@ -100,17 +96,13 @@ describe('capture placement controls', () => {
       .flat(Infinity)
       .filter((value) => typeof value === 'string')
       .join(' ');
-    expect(copy).toContain('THEIRS');
-    expect(copy).toContain('0.043 km²');
+    expect(copy).toContain('attacking 1 runner');
+    expect(copy).not.toContain('THEIRS');
+    expect(copy).not.toContain('defence holds');
     act(() => tree.unmount());
   });
 
-  it('counts everyone under the claim, not only the ones who lose', () => {
-    // THE BUG. The row dropped the defended half whenever anything at all was
-    // takeable, so a claim covering four borders said "1 runner loses ground
-    // here" and showed one face. With the map now drawing exactly the tier the
-    // claim fights, every one of those plots is on screen — a sentence that
-    // counts one of them reads as a miscount rather than as a fight.
+  it('counts everyone targeted without revealing the outcome', () => {
     const mixed = {
       ...placement(0.55, 45),
       action: 'attack',
@@ -139,8 +131,9 @@ describe('capture placement controls', () => {
       .flat(Infinity)
       .filter((value) => typeof value === 'string')
       .join(' ');
-    expect(copy).toContain('1 lose ground');
-    expect(copy).toContain('2 hold');
+    expect(copy).toContain('attacking 3 runners');
+    expect(copy).not.toContain('lose ground');
+    expect(copy).not.toContain('hold');
     act(() => tree.unmount());
   });
 
@@ -186,18 +179,11 @@ test('enables Attack for a live rival overlap missed by preset suggestions', () 
 // mixed one is the case that used to go missing and the singular ones are
 // where a naive `${n} runners` reads as a typo.
 describe('rivalNote', () => {
-  it('names both sides when the claim meets both', () => {
-    expect(rivalNote(2, 1)).toBe('2 lose ground · 1 holds');
-    expect(rivalNote(1, 3)).toBe('1 lose ground · 3 hold');
-  });
-  it('stays grammatical when only ground is lost', () => {
-    expect(rivalNote(1, 0)).toBe('1 runner loses ground here');
-    expect(rivalNote(4, 0)).toBe('4 runners lose ground here');
-  });
-  it('says the defence held when nothing gives way', () => {
-    expect(rivalNote(0, 2)).toBe('defence holds here');
+  it('only says how many runners are being attacked', () => {
+    expect(rivalNote(1)).toBe('attacking 1 runner');
+    expect(rivalNote(4)).toBe('attacking 4 runners');
   });
   it('says nothing when nobody is there', () => {
-    expect(rivalNote(0, 0)).toBe('');
+    expect(rivalNote(0)).toBe('');
   });
 });

@@ -193,6 +193,18 @@ const animations = {
     ...dotBurst('Rank Spark', C.pink, 32, 88, 4),
   ]),
 
+  // A self-contained level marker. It deliberately has no bounce: the disc
+  // resolves with one eased scale-up, then the arrow travels through it while
+  // the halo dissipates. Keeping it in Lottie means the avatar never inherits
+  // the marker's transform or timing.
+  'level-up-arrow.json': composition('PASER Level Up Arrow', 66, [
+    ellipse({ name: 'Arrow Halo', stroke: C.gold, size: [150, 150], strokeWidth: 8, s: [{ t: 16, v: [68, 68, 100] }, { t: 48, v: [118, 118, 100] }], o: [{ t: 16, v: 0 }, { t: 20, v: 70 }, { t: 48, v: 0 }] }),
+    ellipse({ name: 'Arrow Disc Outline', color: C.white, size: [132, 132], s: [{ t: 12, v: [72, 72, 100] }, { t: 34, v: [100, 100, 100] }], o: [{ t: 12, v: 0 }, { t: 18, v: 100 }] }),
+    ellipse({ name: 'Arrow Disc', color: C.orange, size: [112, 112], s: [{ t: 12, v: [72, 72, 100] }, { t: 34, v: [100, 100, 100] }], o: [{ t: 12, v: 0 }, { t: 18, v: 100 }] }),
+    rect({ name: 'Arrow Stem', color: C.white, size: [24, 62], roundness: 8, p: [{ t: 18, v: [128, 154, 0] }, { t: 42, v: [128, 121, 0] }], s: [{ t: 18, v: [100, 45, 100] }, { t: 36, v: [100, 100, 100] }], o: [{ t: 18, v: 0 }, { t: 24, v: 100 }] }),
+    pathShape({ name: 'Arrow Head', color: C.white, points: [[0, -34], [38, 8], [15, 8], [15, 28], [-15, 28], [-15, 8], [-38, 8]], p: [{ t: 18, v: [128, 134, 0] }, { t: 42, v: [128, 101, 0] }], s: [{ t: 18, v: [72, 72, 100] }, { t: 38, v: [100, 100, 100] }], o: [{ t: 18, v: 0 }, { t: 24, v: 100 }] }),
+  ]),
+
   'club-goal-progress.json': composition('PASER Club Goal Progress', 52, [
     rect({ name: 'Progress Dash', color: C.teal, size: [92, 14], roundness: 7, p: [{ t: 0, v: [42, 128, 0] }, { t: 34, v: [210, 128, 0] }], s: [{ t: 0, v: [30, 100, 100] }, { t: 14, v: [100, 100, 100] }], o: [{ t: 0, v: 0 }, { t: 4, v: 100 }, { t: 36, v: 100 }, { t: 48, v: 0 }] }),
     ellipse({ name: 'Goal Endpoint', stroke: C.gold, size: [70, 70], strokeWidth: 9, p: [210, 128, 0], s: [{ t: 25, v: [10, 10, 100] }, { t: 48, v: [110, 110, 100] }], o: [{ t: 25, v: 0 }, { t: 30, v: 100 }, { t: 50, v: 0 }] }),

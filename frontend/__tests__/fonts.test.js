@@ -2,10 +2,9 @@
 //
 // A family name that is not registered does not throw: iOS and Android both
 // quietly fall back to the system font, so a typo here ships as a screen of
-// San Francisco in the middle of a hand-lettered app.
+// San Francisco in the middle of the app.
 
-import { fonts, HEADING_CASE, type } from '../src/theme/tokens';
-import { toonType } from '../src/theme/toon';
+import { fonts } from '../src/theme/tokens';
 import { FONT_FILES } from '../src/theme/fontFiles';
 
 describe('font tokens', () => {
@@ -23,15 +22,11 @@ describe('font tokens', () => {
     }
   });
 
-  // Headings read lowercase, like the specimen sheet (the user's call,
-  // 2026-09-13). One switch drives every heading style, so none can drift.
-  it('sets every heading style in the one heading case', () => {
-    expect(HEADING_CASE).toBe('lowercase');
-    for (const key of ['hero', 'display', 'title', 'heading', 'label', 'labelSm']) {
-      expect(type[key].textTransform).toBe(HEADING_CASE);
-    }
-    for (const key of ['hero', 'headline', 'sub', 'title', 'label']) {
-      expect(toonType[key].textTransform).toBe(HEADING_CASE);
+  // Each weight is imported by name from its own subpath, and a wrong name
+  // imports undefined rather than failing, which loads no font at all.
+  it('resolves every family to a font file', () => {
+    for (const family of Object.keys(FONT_FILES)) {
+      expect(FONT_FILES[family]).toBeDefined();
     }
   });
 });

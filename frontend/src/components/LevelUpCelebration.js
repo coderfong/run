@@ -40,13 +40,12 @@ import Animated, {
   useSharedValue,
   withDelay,
   withRepeat,
-  withSequence,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 
 import CharacterRig, { BODY_RATIO, HEADROOM } from './character/CharacterRig';
 import GameAnimation from './GameAnimation';
+import GameLottie from './GameLottie';
 import { RevealRays } from './RewardReveal';
 import { Framed, OutlinedText } from './ui';
 import { levelBandColor } from '../config/progression';
@@ -108,16 +107,14 @@ export default function LevelUpCelebration({ visible, level, equipped, accent, o
         -1,
         false
       );
-      // Up onto the stage and settling, rather than fading in. The overshoot is
-      // the arrival; the second spring is the landing.
+      // A clean camera-like reveal: a small rise and scale settles exactly at
+      // 1. There is deliberately no spring/overshoot here; making the runner
+      // bounce turned the person into part of the UI effect.
       hero.value = withDelay(
         90,
-        withSequence(
-          withSpring(1.08, { damping: 9, stiffness: 240 }),
-          withSpring(1, { damping: 14, stiffness: 200 })
-        )
+        withTiming(1, { duration: 520, easing: Easing.out(Easing.cubic) })
       );
-      label.value = withDelay(420, withTiming(1, { duration: 240 }));
+      label.value = withDelay(680, withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) }));
     }
 
     const timer = setTimeout(() => onClose?.(), reduced ? AUTO_MS_REDUCED : AUTO_MS);
@@ -133,12 +130,10 @@ export default function LevelUpCelebration({ visible, level, equipped, accent, o
     transform: [{ rotate: `${spin.value * 360}deg` }],
   }));
   const heroStyle = useAnimatedStyle(() => ({
-    opacity: hero.value > 0 ? 1 : 0,
+    opacity: hero.value,
     transform: [
-      { scale: hero.value },
-      // Rises INTO the light. Without the lift the character simply appears at
-      // full size, which is a dissolve rather than an entrance.
-      { translateY: (1 - Math.min(1, hero.value)) * 60 },
+      { scale: 0.94 + hero.value * 0.06 },
+      { translateY: (1 - hero.value) * 28 },
     ],
   }));
   const labelStyle = useAnimatedStyle(() => ({
@@ -182,9 +177,7 @@ export default function LevelUpCelebration({ visible, level, equipped, accent, o
         </View>
 
         <View style={styles.center} pointerEvents="none">
-          {/* One stage, so the burst, the character and the badge at its feet
-              share a centre. Centred separately on the screen they would drift
-              apart on every device size. */}
+          {/* The runner owns only the runner entrance and its impact light. */}
           <Animated.View style={[{ alignItems: 'center' }, heroStyle]}>
             {/* Behind the runner, and only behind them: the gold hit is what
                 makes the arrival land. It fires once, keyed on the level, so
@@ -192,16 +185,13 @@ export default function LevelUpCelebration({ visible, level, equipped, accent, o
             <View style={[StyleSheet.absoluteFill, styles.stageFx]}>
               <GameAnimation name="impactGold" size={rigSize * 1.5} trigger={level} />
             </View>
-            <CharacterRig equipped={equipped} size={rigSize} animate={!reduced} clanColor={tint} />
-            {/* The pack's own level-up badge, struck at the character's feet
-                rather than over the words — which is where it used to be, and
-                the reason those words could not be read. */}
-            <View style={styles.badge} pointerEvents="none">
-              <GameAnimation name="levelUpBronze" size={rigSize * 0.5} trigger={level} still={reduced} />
-            </View>
+            <CharacterRig equipped={equipped} size={rigSize} animate={false} clanColor={tint} />
           </Animated.View>
 
           <Animated.View style={[styles.labelWrap, labelStyle]}>
+            {/* A standalone Lottie with its own authored motion and lifecycle.
+                It is a level-change symbol, not part of the avatar rig. */}
+            <GameLottie name="levelUpArrow" size={72} trigger={level} />
             <OutlinedText style={[toonType.hero, { color: '#fff' }]} outline={toon.ink} width={3}>
               LEVEL UP
             </OutlinedText>
@@ -237,8 +227,7 @@ const styles = StyleSheet.create({
   bleed: { overflow: 'hidden' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg },
   stageFx: { alignItems: 'center', justifyContent: 'center' },
-  badge: { marginTop: space.sm, alignItems: 'center' },
-  labelWrap: { alignItems: 'center', marginTop: space.xl },
+  labelWrap: { alignItems: 'center', marginTop: space.lg, gap: space.xs },
   chip: { marginTop: space.md },
   chipText: { letterSpacing: 1, paddingHorizontal: space.sm },
   hint: { color: 'rgba(255,255,255,0.62)', marginTop: space.md },

@@ -11,7 +11,13 @@ import renderer, { act } from 'react-test-renderer';
 import { Text } from 'react-native';
 
 import LootboxGamble from '../src/components/lootbox/LootboxGamble';
-import Chest, { CHEST_COLORS, chestColors } from '../src/components/lootbox/Chest';
+import Chest, {
+  CHEST_COLORS,
+  ChestBase,
+  ChestLid,
+  ChestLidInside,
+  chestColors,
+} from '../src/components/lootbox/Chest';
 
 // Sequences exactly as backend/app/lootbox.py hands them over.
 const lucky = {
@@ -73,6 +79,15 @@ describe('the chest drawing', () => {
     expect(t.toJSON()).toBeTruthy();
     act(() => { t.update(<Chest width={200} rarity="epic" open />); });
     expect(t.toJSON()).toBeTruthy();
+  });
+
+  test('the gamble keeps both lid poses mounted so opening can animate', () => {
+    let t;
+    act(() => { t = renderer.create(<LootboxGamble visible sequence={lucky} />); });
+    expect(t.root.findAllByType(ChestLid)).toHaveLength(1);
+    expect(t.root.findAllByType(ChestLidInside)).toHaveLength(1);
+    expect(t.root.findAllByType(ChestBase)).toHaveLength(1);
+    act(() => t.unmount());
   });
 });
 

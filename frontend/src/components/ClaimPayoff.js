@@ -394,8 +394,8 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
                 numberOfLines={2}
               >
                 {taken.length === 1
-                  ? `YOU TOOK LAND FROM ${String(taken[0].username || 'A RUNNER').toUpperCase()}`
-                  : `YOU TOOK LAND FROM ${taken.length} RUNNERS`}
+                  ? `CAPTURED FROM ${String(taken[0].username || 'A RUNNER').toUpperCase()}`
+                  : `CAPTURED FROM ${taken.length} RUNNERS`}
               </OutlinedText>
               {faces.map((v) => (
                 <View key={v.user_id} style={[styles.row, { gap: d.rowGap, marginTop: d.rowGap }]}>
@@ -441,8 +441,8 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
               <ShieldOff size={16} color={colors.textMuted} />
               <Text style={[type.caption, { color: colors.textMuted }]}>
                 {held.length === 1
-                  ? `${held[0].username} held their ground`
-                  : `${held.length} runners held their ground`}
+                  ? `DEFENDED · ${held[0].username} held their ground`
+                  : `DEFENDED · ${held.length} runners held their ground`}
               </Text>
             </View>
           )}

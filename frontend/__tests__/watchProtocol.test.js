@@ -79,3 +79,21 @@ describe('watch app compatibility', () => {
     );
   });
 });
+
+describe('standalone watch recording', () => {
+  const recorder = read('WorkoutManager.swift');
+  const plist = read('Info.plist');
+
+  it('records a workout and route on the watch', () => {
+    expect(recorder).toMatch(/HKWorkoutSession/);
+    expect(recorder).toMatch(/HKLiveWorkoutBuilder/);
+    expect(recorder).toMatch(/HKWorkoutRouteBuilder/);
+    expect(recorder).toMatch(/CLLocationManager/);
+  });
+
+  it('does not require the companion phone app', () => {
+    expect(plist).toMatch(/WKRunsIndependentlyOfCompanionApp[\s\S]*?<true\/>/);
+    expect(plist).toMatch(/workout-processing/);
+    expect(read('RunScreen.swift')).not.toMatch(/out of reach/i);
+  });
+});

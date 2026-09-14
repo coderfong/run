@@ -2,7 +2,7 @@
 // runner takes a bow under confetti, then the app opens.
 
 import React, { useEffect, useRef } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import { space } from '../../theme';
@@ -13,7 +13,6 @@ import GameAnimation, { AnimationStack } from '../../components/GameAnimation';
 import { animationSpec } from '../../config/gameAnimations';
 import { useAvatar } from '../../state/avatar';
 import { StepHeadline } from '../ui';
-import { toonType } from '../toon';
 
 // How long the banner lingers on its last frame before dissolving, and how long
 // the dissolve takes.
@@ -68,9 +67,6 @@ export default function ReadyStep({ name, onContinue }) {
           </Animated.View>
           <CharacterRig ref={rigRef} equipped={equipped} size={110} animate />
         </View>
-        <Text style={[toonType.body, styles.note]}>
-          Change your look any time in You → Your runner. New gear unlocks as you run.
-        </Text>
 
         {/* With the payoff, not pinned to the bottom edge below it. */}
         <ToonButton title="Let's run" onPress={onContinue} style={styles.cta} />
@@ -95,6 +91,5 @@ const styles = StyleSheet.create({
   stage: { alignItems: 'center', marginTop: space.lg },
   celebrationFx: { position: 'absolute', top: 76, left: 0, right: 0, alignItems: 'center' },
   wellDone: { marginBottom: -30 },
-  note: { color: 'rgba(255,255,255,0.6)', marginTop: space.lg },
   cta: { marginTop: space.xl },
 });

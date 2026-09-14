@@ -18,6 +18,7 @@ export const LOTTIE_ANIMATIONS = {
   kudos: { source: require('../../assets/lottie/fx-kudos-burst.json'), duration: 950 },
   streakStamp: { source: require('../../assets/lottie/fx-streak-ignite.json'), duration: 1200 },
   rankUp: { source: require('../../assets/lottie/rank-up.json'), duration: 1100 },
+  levelUpArrow: { source: require('../../assets/lottie/level-up-arrow.json'), duration: 1100 },
   clubProgress: { source: require('../../assets/lottie/club-goal-progress.json'), duration: 870 },
   clubComplete: { source: require('../../assets/lottie/club-goal-complete.json'), duration: 1600 },
 };

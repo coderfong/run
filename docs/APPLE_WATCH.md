@@ -1,31 +1,25 @@
 # PASER on Apple Watch
 
-Added 2026-09-11. PASER ships a companion watchOS app inside the iOS app. The
-iPhone still records the run. The watch shows that run and controls it.
+Added 2026-09-11 and upgraded 2026-09-14. PASER ships a standalone watchOS
+workout app inside the iOS app. The watch records an outdoor run with its own
+GPS and heart rate sensor, so the iPhone does not need to be nearby.
 
 ## What the runner gets
 
-- **Before the run.** While the signed-in PASER iPhone app is in front, the
-  watch shows **Start run** from any phone screen. Pressing it opens Record on
-  the phone and runs the normal 3, 2, 1 countdown. If the phone app is closed
-  or in the background, the watch asks the runner to open it because iOS does
-  not allow PASER's foreground location permission to begin recording there.
-- **During the run.** Elapsed time, distance, pace, land earned, GPS signal,
-  and the same "what this run still needs" line as the phone. There is a
-  pause/resume button and a **hold to finish** bar, which needs a one second
-  press the same way the phone's finish button needs a hold. The Always On
-  display shows the numbers without the controls.
-- **Same run, two controls.** The phone and watch control one shared run ID.
-  Client-side single-flight locks collapse simultaneous Finish presses, and
-  the server replays a repeated end request without awarding or counting it
-  again.
+- **Before the run.** The watch shows GPS readiness and a large Start Run
+  control. It requests Workout, Health, and Location permission on first use,
+  then runs a haptic 3, 2, 1 countdown.
+- **During the run.** Three swipeable pages show distance, active time, pace,
+  live heart rate, and large pause, resume, and finish controls. Finish needs a
+  one second hold so a wet sleeve or accidental touch cannot end a run.
+- **Wrist first controls.** Start, pause, resume, and finish act immediately on
+  the watch workout and never wait for phone reachability.
 - **Taps on the wrist** mark the countdown, the start, a pause, a resume, each
   kilometre, the moment the run earns land, and the run being saved or failing
   to save. Button presses get no extra taps.
-- **After the run.** "Run saved" with distance and time, then "Claim your land
-  on your iPhone". The phone opens the full Result flow automatically, where
-  the runner can move and rotate the earned shape, preview rivals, and place
-  the territory; claim placement stays on the phone.
+- **After the run.** The watch saves an Apple Health running workout and its
+  GPS route, then shows an animated Paser summary with distance, time, and
+  pace. Phone based territory claiming remains a separate phone run flow.
 
 ## How it fits together
 
@@ -66,17 +60,25 @@ never queued.
 `__tests__/watchProtocol.test.js` fails if a field, phase or command exists on
 one side only, or if a watch string contains a dash.
 
+## Standalone recording
+
+`WorkoutManager.swift` owns an `HKWorkoutSession`, `HKLiveWorkoutBuilder`,
+`HKWorkoutRouteBuilder`, and `CLLocationManager`. The workout session keeps the
+app active during the run and provides live heart rate. Filtered GPS fixes feed
+both the on-screen distance and the HealthKit route. Paused time and movement
+are excluded. The target carries the HealthKit entitlement, workout background
+mode, permission copy, and `WKRunsIndependentlyOfCompanionApp` is true.
+
+The older phone command protocol remains in the project for compatibility with
+phone initiated runs, but the primary watch UI does not depend on reachability.
+
 ## Decisions worth knowing before changing anything
 
-- **The watch does no HealthKit and runs no workout session.** A watch app
-  normally stays on screen through a run by running an `HKWorkoutSession`. Only
-  one session can run at a time, though, so starting ours would end an Apple
-  Workout the runner already had going, and it would need Health permissions
-  on the watch. That breaks the write only Health rule in `src/health.js`. The
-  cost is that the watch app follows the system's Return to Clock setting.
-  Runners who want PASER to stay up can set Watch app > General > Return to
-  Clock > PASER > After 1 hour. The watch catches up the moment it is raised
-  or reopened.
+- **PASER starts a real workout session on the watch.** watchOS permits one
+  active workout app at a time. Starting PASER while another workout is active
+  asks watchOS to resolve that conflict. The iPhone app's write only Health
+  rule is unchanged; the watch requests heart rate read access only for its
+  live workout screen.
 - **A pause holds the background location session open when PASER is on a
   paired watch.** With the phone locked in a pocket, that session is the only
   thing keeping the app process alive. Without it, a Resume pressed on the
@@ -88,9 +90,8 @@ one side only, or if a watch string contains a dash.
   background task API, then stops location before saving. The grant is released
   after saving or when iOS expires it. It does not guarantee an upload completes
   before suspension; a failed save must remain recoverable on the phone.
-- **The watch app requires the iPhone app**
-  (`WKRunsIndependentlyOfCompanionApp` false). It has no GPS or network code of
-  its own.
+- **The watch app runs without the iPhone**
+  (`WKRunsIndependentlyOfCompanionApp` true) and records GPS locally.
 - **Versions.** apple-targets syncs the watch target's marketing version to
   `app.json`, and EAS writes the build number into every target it signs, so
   the watch always matches the phone. Nothing in `targets/watch` pins a

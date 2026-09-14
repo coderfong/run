@@ -16,7 +16,7 @@ import AppIcon from '../components/AppIcon';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
-import { HEADING_CASE, NB, brand, fonts, nbDrop, nbRadius, radius, shadow, space, tintOn, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
+import { NB, brand, fonts, nbDrop, nbRadius, radius, shadow, space, tintOn, toon, toonType, useTheme, useThemedType, withAlpha } from '../theme';
 import {
   Card,
   Framed,
@@ -81,7 +81,12 @@ function TrackTile({ rewards, accent, unlocked, claimed, gated, busy, onPress, e
   // Opaque, not an alpha wash: the plaza is painted behind this page and an
   // alpha fill lets the paving show through, and the drop paints behind it.
   const kind = shown[0]?.kind;
-  const cardTone = rarityTint || KIND_TONE[kind] || accent;
+  // FREE cosmetics deliberately keep a restrained, neutral backing. Their
+  // actual art remains honest and full-size, while PRO keeps the rarity colour
+  // treatment that makes its exclusive wardrobe feel like the premium lane.
+  const cardTone = kind === 'cosmetic' && !isPro
+    ? FREE_COSMETIC_TONE
+    : rarityTint || KIND_TONE[kind] || accent;
   const dark = scheme === 'dark';
   const fill = tintOn(colors.card, cardTone, dark ? 0.28 : 0.32);
   // Claimable wears the heavier stroke and the lane's own colour as its drop,
@@ -338,7 +343,6 @@ function PassHeader({ top, onBack, onInfo, level, eyebrow, pct }) {
   return (
     <View style={[styles.passHeader, { paddingTop: top + 8 }]}>
       <View style={styles.headerTools}>
-        <Image source={art('railPass')} style={styles.headerScroll} resizeMode="contain" />
         <BackButton onPress={onBack} fill="#ffffff" ink={PANEL_INK} size={36} />
       </View>
       <View style={styles.headerCopy}>
@@ -385,6 +389,7 @@ function PassHeader({ top, onBack, onInfo, level, eyebrow, pct }) {
           ) : null}
         </View>
       </View>
+      <Image source={art('railPass')} style={styles.headerScroll} resizeMode="contain" pointerEvents="none" />
     </View>
   );
 }
@@ -883,6 +888,7 @@ const KIND_TONE = {
   lootbox: '#F09B72',
   border: '#69AF85',
 };
+const FREE_COSMETIC_TONE = '#9CA3AF';
 // Reward art: ONE size for every kind, so the ladder is a grid rather than an
 // assortment. Up from 64/46 — the tile is nothing but the object now that the
 // caption has gone, so the object is what should have the room.
@@ -913,8 +919,10 @@ const styles = StyleSheet.create({
   // title + this line (~86pt) matches the 85pt the cut-out already sets the row
   // at; any taller and the header grows again.
   passHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: brand.pink, paddingHorizontal: space.gutter, paddingBottom: 14, borderBottomWidth: 3, borderColor: PANEL_INK, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
-  headerTools: { width: 42, alignItems: 'center', gap: 10 },
-  headerScroll: { width: 36, height: 32 },
+  headerTools: { width: 42, alignItems: 'center' },
+  // The pass-scroll flourish belongs at the far edge of the panel; keeping it
+  // out of the back-button column also makes that control vertically stable.
+  headerScroll: { position: 'absolute', right: space.gutter + 2, top: 10, width: 40, height: 36 },
   headerCopy: { flex: 1, marginLeft: 22, paddingRight: 4 },
   headerLine: {
     flexDirection: 'row',
@@ -966,8 +974,7 @@ const styles = StyleSheet.create({
   lane: { height: LANE_H },
   laneContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.md },
   laneLabel: { alignSelf: 'stretch' },
-  // A lane's heading, not a button, so it takes the heading case.
-  laneText: { ...toonType.button, fontSize: 16, letterSpacing: 0.9, textTransform: HEADING_CASE, color: '#ffffff' },
+  laneText: { ...toonType.button, fontSize: 16, letterSpacing: 0.9, color: '#ffffff' },
 
   tierRow: { flexDirection: 'row', alignItems: 'stretch' },
   singleTierRow: { paddingRight: SPINE_W },

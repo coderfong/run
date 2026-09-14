@@ -398,35 +398,41 @@ const TYPE_X_SCALE = 1.32;
 // the fitter, and `adjustsFontSizeToFit` on a Text with an explicit lineHeight
 // is exactly what was cropping the numbers.
 //
-// MEASURED FROM THE FACE THE CARD ACTUALLY SETS IN. RUN_FONT is `fonts.hero`,
-// which since 2026-09-13 is the hand-lettered face's Bold, and these widths
-// came out of `assets/fonts/PistachioCloudMagnolia-Bold.ttf` (hmtx /
-// unitsPerEm 1000). This is the third face the card has set in: the table
-// held Inter Black's widths, then Poppins Black's, and each time it was left
-// behind by a face change the numbers lost either their size or their edges.
+// MEASURED FROM THE FACE THE CARD ACTUALLY SETS IN, which for a while it was
+// not. These widths came out of
+// `node_modules/@expo-google-fonts/poppins/900Black/Poppins_900Black.ttf`
+// (hmtx / unitsPerEm 1000) — RUN_FONT is `fonts.hero`, Poppins Black.
 //
-// THE FIGURES ARE TABULAR NOW, which inverts what this table used to rest on.
-// `type.statHero` asks for tabular figures (fontVariant: ['tabular-nums']) and
-// Poppins could not answer, so proportional widths were safe. The hand face
-// DOES answer: its GSUB carries a real `tnum`, so every digit sets at the one
-// tabular width, 0.538em, whatever its own shape. Each digit entry is that
-// width, which is also the widest figure, so no string of digits can come out
-// wider than its estimate.
+// The table used to hold INTER Black's widths, left behind when the card moved
+// off `fonts.poster`. Inter is the more even face: its '1' sets 0.645em where
+// Poppins' sets 0.399em, so a clock like 1:30:01 was budgeted 4.13em and drew
+// 3.38em. The type is sized by dividing the column by that estimate, so every
+// number on the card was being drawn about a fifth smaller than the column it
+// was given, and the art column was pushed right to make room for type that
+// was never there.
+//
+// PROPORTIONAL WIDTHS ARE SAFE HERE, which is the fact the whole table rests
+// on. `type.statHero` asks for tabular figures (fontVariant: ['tabular-nums']),
+// and if the face answered, every digit would set at one width and a
+// 1-heavy string would render WIDER than these entries — the underestimate
+// that fires the fitter and crops glyphs. Poppins Black ships no `tnum`
+// feature (its GSUB carries only Devanagari shaping plus ss01-ss04), so the
+// request cannot apply and the digits are always these.
 //
 // IF THE POSTER FACE CHANGES AGAIN: re-measure this table in the same pass and
 // re-check the new face for `tnum`. Both halves matter.
 const EM = {
-  '0': 0.538, '1': 0.538, '2': 0.538, '3': 0.538, '4': 0.538,
-  '5': 0.538, '6': 0.538, '7': 0.538, '8': 0.538, '9': 0.538,
-  '.': 0.197, ':': 0.197, "'": 0.271, '"': 0.448, ' ': 0.304, '/': 0.534,
-  '²': 0.383, '±': 0.493,
+  '0': 0.662, '1': 0.399, '2': 0.566, '3': 0.615, '4': 0.704,
+  '5': 0.660, '6': 0.633, '7': 0.512, '8': 0.657, '9': 0.597,
+  '.': 0.319, ':': 0.319, "'": 0.265, '"': 0.490, ' ': 0.170, '/': 0.399,
+  '²': 0.422, '±': 0.551,
   // The units are the only letters on the card and they are drawn uppercase,
   // so these are caps.
-  B: 0.617, E: 0.628, H: 0.618, K: 0.662, M: 0.948, S: 0.570, T: 0.726,
+  B: 0.684, E: 0.556, H: 0.755, K: 0.755, M: 0.951, S: 0.625, T: 0.616,
 };
-// Anything not in the table, which should be nothing: W is the widest capital
-// the face has (1.056em), so an unlisted character is over-budgeted rather
-// than under — the safe direction, since under is what crops.
+// Anything not in the table, which should be nothing: W is the widest glyph
+// Poppins Black has, so an unlisted character is over-budgeted rather than
+// under — the safe direction, since under is what crops.
 const EM_DEFAULT = 1.1;
 function emWidth(s) {
   let w = 0;
@@ -482,10 +488,9 @@ const TONE = {
   shadow: NB.ink,
 };
 
-// The sticker sets in the app's hero face like everything else: the
-// hand-lettered Bold, the pen that survives the outline at poster size. Keep
-// this local to the share sticker so changing the type here cannot quietly
-// restyle the rest of the app.
+// Poppins Black has the wide, rounded, sports-poster silhouette in the visual
+// reference. Keep this local to the share sticker so changing the type here
+// cannot quietly restyle the rest of the app.
 const RUN_FONT = fonts.hero;
 
 // One number, drawn as big as its column allows.

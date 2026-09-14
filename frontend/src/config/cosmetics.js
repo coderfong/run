@@ -106,38 +106,38 @@ export const ITEMS = {
   ],
   hair: [
     { id: 'none', label: 'Bald', art: null, rarity: 'common', unlock: free },
-    { id: 'curtains', label: 'Curtains', art: ART.hairM1, layout: { top: -0.0237, dx: 0.0067 }, rarity: 'common', unlock: free },
-    { id: 'middlepart', label: 'Middle part', art: ART.hairM4, rarity: 'common', unlock: free },
-    { id: 'swept', label: 'Swept', art: ART.hairM3, layout: { w: 0.8067, top: -0.0397, dx: 0.0017 }, rarity: 'common', unlock: free },
-    { id: 'curls', label: 'Curls', art: ART.hairM5, layout: { top: -0.045 }, bulky: true, rarity: 'common', unlock: free },
-    { id: 'pixie', label: 'Pixie', art: ART.hairW10, layout: { w: 0.8167, top: -0.0295, dx: -0.0083 }, rarity: 'common', unlock: free },
-    { id: 'bluntbob', label: 'Blunt bob', art: ART.hairW4, layout: { top: -0.0134, dx: -0.0133 }, rarity: 'common', unlock: free },
-    { id: 'fringebob', label: 'Fringe bob', art: ART.hairW2, rarity: 'common', unlock: free },
-    { id: 'sleeklong', label: 'Sleek long', art: ART.hairW5, layout: { top: -0.0031 }, rarity: 'common', unlock: free },
-    { id: 'messy', label: 'Messy', art: ART.hairM10, layout: { w: 1.0467, top: -0.0786, dx: 0.0033 }, rarity: 'common', unlock: passOnly },
-    { id: 'longwaves', label: 'Long waves', art: ART.hairW1, layout: { top: -0.0173, dx: 0.0033 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
-    { id: 'flow', label: 'Flow', art: ART.hairM6, layout: { w: 1.0033, top: -0.0522, dx: 0.0017 }, rarity: 'common', unlock: passOnly },
-    { id: 'ravenlong', label: 'Straight long', art: ART.hairW6, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'bangs', label: 'Bangs', art: ART.hairW11, layout: { top: -0.0592, dx: 0.0033 }, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
-    { id: 'roundfro', label: 'Round fro', art: ART.hairM8, layout: { w: 0.9367, top: -0.067, dx: 0.0017 }, bulky: true, rarity: 'rare', unlock: passOnly },
-    { id: 'softwaves', label: 'Soft waves', art: ART.hairW12, layout: { top: 0.0021, dx: 0.0033 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'topknot', label: 'Top knot', art: ART.hairM2, layout: { w: 0.8, top: -0.0793 }, bulky: true, rarity: 'rare', unlock: passOnly },
-    { id: 'sidepony', label: 'Side pony', art: ART.hairW9, layout: { top: -0.032, dx: 0.05 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
-    { id: 'fringebun', label: 'Fringe bun', art: ART.hairM7, layout: { w: 0.7733, top: -0.1331 }, bulky: true, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
-    { id: 'highpony', label: 'High pony', art: ART.hairW7, layout: { w: 0.8733, top: -0.105, dx: 0.0433 }, bulky: true, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
-    { id: 'surfer', label: 'Surfer', art: ART.hairM9, rarity: 'epic', unlock: passOnly },
-    { id: 'spacebuns', label: 'Space buns', art: ART.hairW8, layout: { w: 1.0, top: -0.06 }, bulky: true, rarity: 'epic', unlock: zones(10, 'Hold 10 zones') },
-    { id: 'hijab', label: 'Sports hijab', art: ART.hairW14, layout: { w: 0.76, top: 0.0097, dx: -0.0033 }, rarity: 'common', unlock: free },
-    { id: 'curtainlong', label: 'Curtain long', art: ART.hairW17, layout: { w: 0.8767, top: -0.0085 }, rarity: 'common', unlock: free },
-    { id: 'twoblock', label: 'Two block', art: ART.hairM11, layout: { w: 0.8233, top: -0.01, dx: 0.0117 }, rarity: 'common', unlock: free },
-    { id: 'buzz', label: 'Buzz cut', art: ART.hairM12, layout: { w: 0.72, top: 0.005 }, rarity: 'common', unlock: free },
-    { id: 'braids', label: 'Braided pigtails', art: ART.hairW15, layout: { w: 0.8167, top: -0.02, dx: 0.005 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
-    { id: 'bunstrands', label: 'Soft bun', art: ART.hairW16, layout: { w: 0.7933, top: -0.0865, dx: 0.0133 }, bulky: true, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'comma', label: 'Comma fringe', art: ART.hairM13, layout: { w: 0.82, top: -0.0266, dx: 0.0133 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'texturedcrop', label: 'Textured crop', art: ART.hairM14, layout: { w: 0.84, top: -0.039, dx: -0.0033 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
+    { id: 'curtains', label: 'Curtains', art: ART.hairM1, layout: { w: 0.8650, top: -0.0174, dx: 0.0034 }, rarity: 'common', unlock: free },
+    { id: 'middlepart', label: 'Middle part', art: ART.hairM4, layout: { w: 0.8683, top: -0.0183, dx: 0.0045 }, rarity: 'common', unlock: free },
+    { id: 'swept', label: 'Swept', art: ART.hairM3, layout: { w: 0.8385, top: -0.0352, dx: 0.0052 }, rarity: 'common', unlock: free },
+    { id: 'curls', label: 'Curls', art: ART.hairM5, layout: { w: 0.8484, top: -0.0311, dx: 0.0023 }, bulky: true, rarity: 'common', unlock: free },
+    { id: 'pixie', label: 'Pixie', art: ART.hairW10, layout: { w: 0.8319, top: -0.0413, dx: 0.0064 }, rarity: 'common', unlock: free },
+    { id: 'bluntbob', label: 'Blunt bob', art: ART.hairW4, layout: { w: 0.8897, top: -0.0275, dx: 0.0089 }, rarity: 'common', unlock: free },
+    { id: 'fringebob', label: 'Fringe bob', art: ART.hairW2, layout: { w: 0.8749, top: -0.0263, dx: 0.0090 }, rarity: 'common', unlock: free },
+    { id: 'sleeklong', label: 'Sleek long', art: ART.hairW5, layout: { w: 0.9590, top: -0.0368, dx: 0.0010 }, rarity: 'common', unlock: free },
+    { id: 'messy', label: 'Messy', art: ART.hairM10, layout: { w: 0.8864, top: -0.0393, dx: -0.0009 }, rarity: 'common', unlock: passOnly },
+    { id: 'longwaves', label: 'Long waves', art: ART.hairW1, layout: { w: 0.9541, top: -0.0374, dx: 0.0005 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
+    { id: 'flow', label: 'Flow', art: ART.hairM6, layout: { w: 0.9260, top: -0.0302, dx: 0.0030 }, rarity: 'common', unlock: passOnly },
+    { id: 'ravenlong', label: 'Straight long', art: ART.hairW6, layout: { w: 0.9293, top: -0.0387 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'bangs', label: 'Bangs', art: ART.hairW11, layout: { w: 0.8517, top: -0.0350, dx: -0.0023 }, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
+    { id: 'roundfro', label: 'Round fro', art: ART.hairM8, layout: { w: 0.9508, top: -0.0313, dx: 0.0066 }, bulky: true, rarity: 'rare', unlock: passOnly },
+    { id: 'softwaves', label: 'Soft waves', art: ART.hairW12, layout: { w: 1.0069, top: -0.0320, dx: 0.0037 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
+    { id: 'topknot', label: 'Top knot', art: ART.hairM2, layout: { w: 0.7709, top: -0.0886, dx: 0.0001 }, bulky: true, rarity: 'rare', unlock: passOnly },
+    { id: 'sidepony', label: 'Side pony', art: ART.hairW9, layout: { w: 0.8831, top: -0.0563, dx: 0.0487 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
+    { id: 'fringebun', label: 'Fringe bun', art: ART.hairM7, layout: { w: 0.8369, top: -0.0776, dx: -0.0035 }, bulky: true, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
+    { id: 'highpony', label: 'High pony', art: ART.hairW7, layout: { w: 0.8650, top: -0.0876, dx: 0.0570 }, bulky: true, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
+    { id: 'surfer', label: 'Surfer', art: ART.hairM9, layout: { w: 0.9376, top: -0.0230, dx: 0.0135 }, rarity: 'epic', unlock: passOnly },
+    { id: 'spacebuns', label: 'Space buns', art: ART.hairW8, layout: { w: 0.9442, top: -0.0446, dx: 0.0062 }, bulky: true, rarity: 'epic', unlock: zones(10, 'Hold 10 zones') },
+    { id: 'hijab', label: 'Sports hijab', art: ART.hairW14, layout: { w: 0.8138, top: -0.0551, dx: 0.0086 }, rarity: 'common', unlock: free },
+    { id: 'curtainlong', label: 'Curtain long', art: ART.hairW17, layout: { w: 0.8732, top: -0.0498, dx: 0.0121 }, rarity: 'common', unlock: free },
+    { id: 'twoblock', label: 'Two block', art: ART.hairM11, layout: { w: 0.9359, top: -0.0494, dx: 0.0171 }, rarity: 'common', unlock: free },
+    { id: 'buzz', label: 'Buzz cut', art: ART.hairM12, layout: { w: 0.8039, top: -0.0438, dx: 0.0120 }, rarity: 'common', unlock: free },
+    { id: 'braids', label: 'Braided pigtails', art: ART.hairW15, layout: { w: 0.7362, top: -0.0140, dx: 0.0253 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
+    { id: 'bunstrands', label: 'Soft bun', art: ART.hairW16, layout: { w: 0.7808, top: -0.0747, dx: 0.0036 }, bulky: true, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'comma', label: 'Comma fringe', art: ART.hairM13, layout: { w: 0.9244, top: -0.0451, dx: 0.0032 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
+    { id: 'texturedcrop', label: 'Textured crop', art: ART.hairM14, layout: { w: 0.8815, top: -0.0390, dx: 0.0112 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     // --- wave 3 (2026-07-31) ---
-    { id: 'bigafro', label: 'Big afro', img: require('../../assets/character/hair/hairX24.png'), layout: { w: 0.9343, top: -0.0187, dx: -0.0112 }, bulky: true, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'highbun', label: 'High bun', img: require('../../assets/character/hair/hairX25.png'), layout: { w: 1.013, top: -0.1228, dx: -0.0836 }, bulky: true, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
+    { id: 'bigafro', label: 'Big afro', img: require('../../assets/character/hair/hairX24.png'), layout: { w: 1.1769, top: -0.0828, dx: 0.0060 }, bulky: true, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
+    { id: 'highbun', label: 'High bun', img: require('../../assets/character/hair/hairX25.png'), layout: { w: 1.0185, top: -0.1967, dx: -0.1973 }, bulky: true, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
   ],
   headwear: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
@@ -428,9 +428,18 @@ ITEMS.footwear = [
 // Everything left out is still FREE — it is simply met later, in the Avatar
 // Studio, where the rest of the catalogue is the point.
 //
-// Slots not listed here (face, glasses, footwear, extras) show their unlocked
-// list unchanged: they are small already, or they are not part of the flow.
+// Faces get the smallest rack of all, because faces are the collection: most
+// of them unlock as you run or come off the pass, and the first run is where
+// that collection starts, not where it is handed out. List FREE faces only.
+// During the first run /me/stats has usually not landed, and `isUnlocked`
+// reads a stat gate with no stats behind it as open (so the studio never locks
+// something wrongly while it loads). That put every stat gated face in the
+// signup grid as a free pick; the rack is what keeps them out of it.
+//
+// Slots not listed here (glasses, footwear, extras) show their unlocked list
+// unchanged: they are small already, or they are not part of the flow.
 export const FIRST_RUN_ITEMS = {
+  face: ['smiley', 'chill', 'laugh'],
   hair: [
     'none', 'buzz', 'twoblock', 'curtains', 'middlepart', 'swept',
     'curls', 'pixie', 'bluntbob', 'fringebob', 'sleeklong', 'hijab',

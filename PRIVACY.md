@@ -31,8 +31,9 @@ Apple Health sync is optional and off until you turn it on in **You > Settings
 
 - PASER **writes only**. When sync is on, each run you finish is saved to Apple
   Health as a running workout with its start time, end time, and distance.
-- PASER **never reads** Apple Health data. It does not request read access, so
-  no other app's health data is available to it.
+- The iPhone app does not read Apple Health. PASER on Apple Watch reads live
+  heart rate only while you record a workout with PASER, for display on the
+  workout screen. It does not read workout history from other apps.
 - Data written to Apple Health stays on your device under Apple's control.
   PASER does not send it to our servers, and health data is never used for
   advertising, marketing, or sale, or disclosed to third parties.
@@ -40,13 +41,13 @@ Apple Health sync is optional and off until you turn it on in **You > Settings
   are yours to keep or delete in the Health app, and deleting your PASER
   account does not remove them.
 
-## Apple Watch companion
+## Apple Watch app
 
-The paired iPhone records the run. PASER sends run status, elapsed time,
-distance, pace and land earned to your Apple Watch through Apple's
-WatchConnectivity framework. The watch sends start, pause, resume and finish
-commands back to the phone. It does not independently record GPS, read Apple
-Health, or send data directly to PASER's servers.
+PASER on Apple Watch can independently record an outdoor run when your iPhone
+is not nearby. During a run it uses the watch's location to calculate distance
+and record your route, and reads live heart rate for the workout display. When
+you finish, it saves the running workout and route to Apple Health. It does not
+send watch workout data directly to PASER's servers.
 
 During a paused run with the companion installed, the iPhone's location session
 may remain active so you can resume from the watch. Points received during the

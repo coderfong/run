@@ -418,6 +418,17 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
       {dark && !overview && (
         <LineLayer id={`${id}-glow`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 6, lineOpacity: 0.5, lineBlur: 3 }} />
       )}
+      {!overview && (
+        <LineLayer
+          id={`${id}-attack-glow`}
+          style={{
+            lineColor: ['get', 'strokeColor'],
+            lineWidth: ['case', ['==', ['get', 'attackGlow'], 1], 12, 0],
+            lineOpacity: ['case', ['==', ['get', 'attackGlow'], 1], 0.95, 0],
+            lineBlur: 7,
+          }}
+        />
+      )}
       {!overview ? (
         <LineLayer id={`${id}-stroke`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 2.5 }} />
       ) : null}

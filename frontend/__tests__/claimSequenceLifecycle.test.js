@@ -155,6 +155,28 @@ describe('claim sequence cancellation and skip safety', () => {
     act(() => tree.unmount());
   });
 
+  test('runners who defend are still shown in the attack animation', async () => {
+    let tree;
+    let run;
+    await act(async () => { tree = renderer.create(<Harness />); });
+    await act(async () => {
+      run = latest.start({
+        territory: {},
+        victims: [
+          { user_id: 'captured', defended: false },
+          { user_id: 'held', defended: true },
+        ],
+      }, center, { captureStyle: 'meteor_claim' });
+      await flush();
+    });
+    expect(latest.defenderCount).toBe(2);
+    expect(latest.defenders.map((v) => v.defended)).toEqual([false, true]);
+    expect(latest.showCast).toBe(true);
+    act(() => latest.skip());
+    await act(async () => { await run; });
+    act(() => tree.unmount());
+  });
+
   test('empty ground casts nobody and skips the cutscene entirely', async () => {
     // RETUNED 2026-08-14: this used to play the full choreography anyway (a
     // meteor falling on a field nobody was standing in). There is nobody for

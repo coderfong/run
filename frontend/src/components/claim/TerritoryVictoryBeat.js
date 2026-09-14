@@ -19,7 +19,7 @@
 // border pulse still follows the real territory, because that one IS the map.
 
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { Dimensions, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import Animated, {
   Easing,
@@ -32,7 +32,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { fonts, HEADING_CASE, toon } from '../../theme';
+import { fonts, toon } from '../../theme';
 import { CAPTURE_LAYER } from '../../effects/layers';
 import { haptic } from '../../ui/motion';
 import AppIcon, { STEAL_ICON_SIZE } from '../AppIcon';
@@ -217,6 +217,7 @@ function TerritoryVictoryBeat({
   claimScreenPoint,
   bounds,
   label,
+  victims = [],
   strokeColor = '#EC4899',
   reducedMotion = false,
   playToken = 0,
@@ -365,6 +366,11 @@ function TerritoryVictoryBeat({
   }));
 
   const equipped = useMemo(() => withFace(attacker, 'victory'), [attacker]);
+  const outcome = useMemo(() => {
+    const defended = victims.filter((v) => v?.defended).length;
+    const captured = victims.length - defended;
+    return { defended, captured };
+  }, [victims]);
 
   if (!visible || !claimScreenPoint) return null;
 
@@ -394,6 +400,13 @@ function TerritoryVictoryBeat({
 
   return (
     <View pointerEvents="none" style={[StyleSheet.absoluteFill, { zIndex: CAPTURE_LAYER.VICTORY }]}>
+      {victims.length > 0 && (
+        <View style={styles.outcomeRow}>
+          <Text style={[styles.outcomeText, styles.captured]}>{`CAPTURED ${outcome.captured}`}</Text>
+          <Text style={styles.outcomeDivider}>•</Text>
+          <Text style={[styles.outcomeText, styles.defended]}>{`DEFENDED ${outcome.defended}`}</Text>
+        </View>
+      )}
       {/* 3. one pulse of the territory border, drawn from the same projected
           rings the reveal used. Anchored to the map, not to the column — this
           is the actual ground, wherever on screen it sits. */}
@@ -443,6 +456,20 @@ function TerritoryVictoryBeat({
 }
 
 const styles = StyleSheet.create({
+  outcomeRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 22,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 9,
+  },
+  outcomeText: { fontFamily: fonts.heading, fontSize: 15, letterSpacing: 0.8 },
+  outcomeDivider: { color: '#FFFFFF', fontSize: 15 },
+  captured: { color: '#2DD4BF' },
+  defended: { color: '#FBBF24' },
   fxAnchor: { position: 'absolute' },
   // The column is the only thing positioned: everything inside it is in flow,
   // which is what guarantees the words and the character share a centre line.
@@ -462,8 +489,8 @@ const styles = StyleSheet.create({
   echo: { alignItems: 'center', justifyContent: 'center' },
   // Was `toonType.label` (Inter SemiBold, a UI-chip weight) stretched to 27px
   // — the wrong font family for a slam-down headline, not just the wrong
-  // size. `fonts.hero` is the hand face's Bold, the app's heading
-  // face — same family `toonType.hero`/`headline` use for real
+  // size. `fonts.hero` is Poppins Black (900), the app's actual chunky
+  // display face — same family `toonType.hero`/`headline` use for real
   // headlines. Bigger again too (27→34) and the outline width above went
   // 2→3 to match.
   labelText: {
@@ -472,7 +499,6 @@ const styles = StyleSheet.create({
     fontSize: 34,
     lineHeight: 40,
     letterSpacing: 0.6,
-    textTransform: HEADING_CASE,
   },
   labelIcon: { marginLeft: 10 },
 });

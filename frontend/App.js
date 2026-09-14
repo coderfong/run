@@ -90,7 +90,6 @@ import { commandAllowed, PHASE as WATCH_PHASE } from './src/watch/watchState';
 // modal, which is deliberately dark in either theme.
 import { darkColors, fonts, ThemeProvider, useTheme } from './src/theme';
 import { FONT_FILES } from './src/theme/fontFiles';
-import HeaderTitle from './src/components/ui/HeaderTitle';
 
 // A production navigator has neither the screen nor its deep-link mapping.
 // Keeping the require behind the same compile-time flag also lets Metro drop
@@ -146,9 +145,6 @@ function useHeaderChrome() {
     () => ({
       headerStyle: { backgroundColor: colors.bg },
       headerTitleStyle: { color: colors.text, fontFamily: fonts.display },
-      // Drawn by us: native-stack cannot change its own title's case, and
-      // every heading is lowercase (HEADING_CASE in theme/tokens.js).
-      headerTitle: (props) => <HeaderTitle {...props} />,
       headerTintColor: colors.text,
       headerShadowVisible: false,
       // Without this iOS labels the back button with the PREVIOUS ROUTE'S
@@ -298,10 +294,12 @@ function YouStack() {
       <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
       {/* Draws its own panel header (with a back button) — see HomeStack. */}
       <YouStackNav.Screen name="Progression" component={ProgressionScreen} />
+      {/* Draws its own header: the scene runs up under the status bar with
+          the NB back tile on its sky, like the You page it is opened from. */}
       <YouStackNav.Screen
         name="AvatarStudio"
         component={AvatarStudioScreen}
-        options={{ headerShown: true, title: 'Your runner' }}
+        options={{ title: 'Your runner' }}
       />
       <YouStackNav.Screen
         name="RunDetail"
@@ -898,7 +896,6 @@ function App() {
   // small read and it overlaps the font load, so it costs no real time — but it
   // is raced anyway, because nothing on the launch path may block forever.
   const [cacheReady, setCacheReady] = useState(false);
-  // Every word in the app is the one hand-lettered face, in three pen widths.
   const [fontsLoaded, fontError] = useFonts(FONT_FILES);
 
   useEffect(() => {

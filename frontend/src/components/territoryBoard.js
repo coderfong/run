@@ -54,7 +54,8 @@ function ringsOf(t) {
 // GeoJSON features for the TerritoryLayer. Own land reads a touch stronger and
 // uses the viewer accent; everyone else uses their clan colour. Opacity fades
 // with freshness so decaying land visibly weakens.
-export function buildBoardFeatures(territories, { userId, accent }) {
+export function buildBoardFeatures(territories, { userId, accent, highlightedUserIds = [] }) {
+  const highlighted = new Set(highlightedUserIds);
   const features = [];
   for (const t of territories || []) {
     const mine = t.user_id === userId;
@@ -74,6 +75,7 @@ export function buildBoardFeatures(territories, { userId, accent }) {
           fillColor: fill,
           strokeColor: fill,
           fillOpacity: (mine ? 0.45 : 0.32) * (0.35 + 0.65 * (t.freshness ?? 1)),
+          attackGlow: !mine && highlighted.has(t.user_id) ? 1 : 0,
         },
       });
     });

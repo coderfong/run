@@ -41,7 +41,6 @@ import {
   toonType,
   useTheme,
   useThemedType,
-  HEADING_CASE,
 } from '../../theme';
 import { Bar, PressableScale } from '../../ui/motion';
 import HardShadow from './HardShadow';
@@ -724,7 +723,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginBottom: space.sm,
   },
-  eyebrow: { color: brand.pink, textTransform: HEADING_CASE },
+  eyebrow: { color: brand.pink, textTransform: 'uppercase' },
 
   // --- panel variant (Home hero-card format) -------------------------------
   // Text left, art right, flat ground, no scrim and no shadow. The panel
@@ -740,7 +739,7 @@ const styles = StyleSheet.create({
   // `pinArt`: the column takes the whole row after all, which is exactly what
   // parks the cut-out on the right edge whatever the title says.
   panelTextPinned: { flex: 1 },
-  panelEyebrow: { color: PANEL_INK, opacity: 0.75, textTransform: HEADING_CASE },
+  panelEyebrow: { color: PANEL_INK, opacity: 0.75, textTransform: 'uppercase' },
   panelTitle: { color: PANEL_INK, marginTop: 2 },
   panelSub: { color: PANEL_INK, opacity: 0.72, marginTop: 6, textAlign: 'left' },
   // Sits INSIDE the header's gutter. It used to bleed right by a full gutter so

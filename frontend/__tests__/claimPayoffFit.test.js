@@ -77,7 +77,7 @@ describe('the payoff fits the screen it is on', () => {
     // The headline still says six; the faces that did not fit are counted.
     const tree = render(claim({ victims: Array.from({ length: 6 }, (_, i) => victim(i)) }));
     const text = copy(tree);
-    expect(text).toContain('YOU TOOK LAND FROM 6 RUNNERS');
+    expect(text).toContain('CAPTURED FROM 6 RUNNERS');
     expect(text).toMatch(/and \d+ more/);
     act(() => tree.unmount());
   });

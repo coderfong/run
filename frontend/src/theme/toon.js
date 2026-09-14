@@ -8,7 +8,7 @@
 // saturated accent shadow on dark, near-black stroke and near-black shadow on
 // light. The tokens behind that live in theme/nb.js.
 
-import { fonts, HEADING_CASE } from './tokens';
+import { fonts } from './tokens';
 import { NB, hardShadow, nbDrop, nbInk } from './nb';
 
 const PINK = '#ec4899';
@@ -43,18 +43,16 @@ export const ctaFills = {
   neutral: { colors: ['#FFFFFF', '#EDEDF2', '#C9C9D2'], border: '#0C0C10' },
 };
 
-// Display type: the app's heading face, cased like every other heading
-// (HEADING_CASE: lowercase, like the specimen sheet). Much of the copy these
-// set is written in capitals in the source ('TERRITORY CLAIMED'); the
-// transform is what draws it lowercase. Buttons and body keep their case.
+// Display type: the app's heading font WITHOUT the uppercase transform, so
+// headlines read friendly rather than athletic.
 export const toonType = {
-  hero: { fontFamily: fonts.hero, fontSize: 30, lineHeight: 38, letterSpacing: 0.2, textAlign: 'center', textTransform: HEADING_CASE },
-  headline: { fontFamily: fonts.hero, fontSize: 25, lineHeight: 33, letterSpacing: 0.2, textAlign: 'center', textTransform: HEADING_CASE },
-  sub: { fontFamily: fonts.hero, fontSize: 17, lineHeight: 24, letterSpacing: 0.2, textAlign: 'center', textTransform: HEADING_CASE },
-  title: { fontFamily: fonts.hero, fontSize: 22, lineHeight: 29, letterSpacing: 0.2, textTransform: HEADING_CASE },
+  hero: { fontFamily: fonts.hero, fontSize: 30, lineHeight: 38, letterSpacing: 0.2, textAlign: 'center' },
+  headline: { fontFamily: fonts.hero, fontSize: 25, lineHeight: 33, letterSpacing: 0.2, textAlign: 'center' },
+  sub: { fontFamily: fonts.hero, fontSize: 17, lineHeight: 24, letterSpacing: 0.2, textAlign: 'center' },
+  title: { fontFamily: fonts.hero, fontSize: 22, lineHeight: 29, letterSpacing: 0.2 },
   button: { fontFamily: fonts.hero, fontSize: 18, letterSpacing: 0.4 },
   body: { fontFamily: fonts.bodyMedium, fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  label: { fontFamily: fonts.semibold, fontSize: 13, letterSpacing: 0.4, textTransform: HEADING_CASE },
+  label: { fontFamily: fonts.semibold, fontSize: 13, letterSpacing: 0.4 },
 };
 
 // Snapped to the limited 0/12/24 scale (see `radius` in tokens.js). These were

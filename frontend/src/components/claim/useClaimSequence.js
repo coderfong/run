@@ -78,9 +78,10 @@ export function pickCaptureVariant(seed) {
   return CAPTURE_VARIANTS[hash % CAPTURE_VARIANTS.length];
 }
 
-// Who the attacker actually took ground from. Only runners who LOST land are
-// defenders — if everyone held, there is nobody in the scene and the style's
-// empty-ground choreography is the honest thing to play.
+// Everyone targeted by the attack enters the scene. The result (captured or
+// defended) is deliberately retained on each cast member for the outcome beat;
+// filtering defended runners here made them disappear before the player ever
+// saw who the attack was against.
 //
 // This list is now the ONLY thing that decides whether rivals appear. It used
 // to be gated behind `encounterMode === DUEL`, so a claim against three people
@@ -89,7 +90,6 @@ export function pickCaptureVariant(seed) {
 export function resolveDefenders(claim) {
   const victims = claim?.victims || [];
   return victims
-    .filter((v) => !v.defended)
     .map((v) => ({
       id: v.user_id,
       user_id: v.user_id,
@@ -97,6 +97,7 @@ export function resolveDefenders(claim) {
       avatar: v.avatar,
       clan_color: v.clan_color,
       rank_key: v.rank_key,
+      defended: !!v.defended,
     }));
 }
 
