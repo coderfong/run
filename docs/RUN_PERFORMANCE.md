@@ -22,9 +22,9 @@ During an active run, with GPS on `high` (`theme/tokens.js` `gpsHigh`):
 | Run clock redraw | **4/s** | `RunningScreen.js:147` |
 | Elapsed tick | 1/s | `RunningScreen.js:996` |
 | Vehicle window check | 1 per 45s | `RunningScreen.startVehicleWatch` |
-| Live marker pulse | continuous | `Pulse` in the render |
-| Route head effect | continuous | `GameLottie name="routeHead"` |
-| Nearby-land portraits | up to **24 rigs** | `boardPortraits` |
+| Live marker | static | `CharacterBust` in the render |
+| Route head effect | removed | — |
+| Nearby-land portraits | up to **12 rigs** | `boardPortraits` |
 
 ## Proven from the source, in priority order
 
@@ -54,19 +54,17 @@ memo never short-circuits. Every `setPath` therefore re-renders the whole map
 subtree, not just the trail. Same class of problem as the 2026-08-15 pass where
 unstable callbacks defeated Mapbox's own `PureComponent` gate.
 
-### 3. Up to 24 character rigs are mounted on the map
+### 3. Up to 12 character rigs are mounted on the map
 
-`boardPortraits` keeps `.slice(0, 24)` owner busts, each a `CharacterBust`, and
+`boardPortraits` keeps `.slice(0, 12)` owner busts, each a `CharacterBust`, and
 they sit inside the same subtree that re-renders on every fix per item 2. Rigs
 were already a measured cost in the 2026-08-14 pass.
 
-### 4. Two continuous animations run for the whole length of a run
+### 4. Continuous run-marker animations — fixed
 
-The live marker's `Pulse` and the `routeHead` Lottie both loop for as long as
-the run lasts. `useOnScreen` in `ui/motion.js` parks loops behind hidden tabs,
-but the run screen is by definition the visible one, so nothing gates these.
-They are cheap per frame and very long-lived, which makes them a thermal
-question rather than a jank one.
+The live marker's `Pulse` and `routeHead` Lottie used to loop for the entire
+run. The marker is now static, removing two permanent render loops from a
+surface that can remain open for hours.
 
 ## Needs a profiler on hardware
 

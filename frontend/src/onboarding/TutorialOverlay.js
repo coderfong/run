@@ -28,7 +28,7 @@ import { toon, toonType } from './toon';
 // matches the source art so `contain` never letterboxes oddly: the existing
 // story art is square, new panels are 4:3.
 //
-// Each card stays intentionally terse: illustration, headline and action.
+// Each card stays terse, but the objective and the safety rule are explicit.
 const CARDS = [
   {
     key: 'welcome',
@@ -36,6 +36,7 @@ const CARDS = [
     icon: Flag,
     aspect: 4 / 3,
     title: (name) => (name ? `Welcome to PASER, ${name}!` : 'Welcome to PASER!'),
+    sub: 'Run outside, claim the ground you cover, and defend it from other runners.',
     cta: 'Next',
   },
   {
@@ -44,6 +45,7 @@ const CARDS = [
     icon: Flag,
     aspect: 1,
     title: () => 'Every run earns you ground',
+    sub: 'Finish a run, then place the territory you earned along your route.',
     cta: 'Next',
   },
   {
@@ -68,6 +70,7 @@ const CARDS = [
     icon: ShieldCheck,
     aspect: 1,
     title: () => "Territory can wait. Traffic can't.",
+    sub: 'This is about safety: stop at crossings. A claim is never worth taking a risk.',
     cta: 'Next',
   },
   {
@@ -181,6 +184,8 @@ export default function TutorialOverlay({ name, onDone, onStartRun }) {
             {card.title(name)}
           </OutlinedText>
 
+          {card.sub ? <Text style={styles.sub}>{card.sub}</Text> : null}
+
           <ToonButton title={card.cta} onPress={advance} />
         </View>
       </Animated.View>
@@ -220,6 +225,12 @@ const styles = StyleSheet.create({
     gap: space.lg,
   },
   title: { alignSelf: 'stretch' },
+  sub: {
+    ...toonType.body,
+    color: 'rgba(255,255,255,0.84)',
+    alignSelf: 'stretch',
+    marginTop: -space.sm,
+  },
   dots: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
   dot: {
     width: 7,

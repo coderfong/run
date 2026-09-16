@@ -48,10 +48,9 @@ import { watchAppInstalled, beginRunSave, endRunSave } from '../watch/watchLink'
 import { commandAllowed, PHASE as WATCH_PHASE } from '../watch/watchState';
 import { NB, darkColors, nbInk, radius, runTuning as T, space, toon, type, withAlpha } from '../theme';
 import { ToonButton } from '../components/ui';
-import { haptic, PressableScale, Pulse } from '../ui/motion';
+import { haptic, PressableScale } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { landCaptureAlert } from '../components/LandCaptureAlert';
-import GameLottie from '../components/GameLottie';
 import { RunEventOverlay, RunStartOverlay } from '../components/run/RunGameplayFx';
 
 // In-progress run persisted here so an OS kill / crash can't lose a run.
@@ -570,7 +569,10 @@ export default function RunningScreen({ navigation, route }) {
           if (av && at) portraits.push({ id: t.id, at, avatar: av, mine, ring: fill, area: t.area_m2 || 0 });
         });
         setBoard({ type: 'FeatureCollection', features: feats });
-        setBoardPortraits(portraits.sort((a, b) => b.area - a.area).slice(0, 24));
+        // The run screen is held open for much longer than the board. Keep a
+        // small set of the largest nearby owners so character rigs do not turn
+        // a one-hour workout into a sustained rendering benchmark.
+        setBoardPortraits(portraits.sort((a, b) => b.area - a.area).slice(0, 12));
         rivalTerritoriesRef.current = rivalTerritories;
       })
       .catch(() => {});
@@ -1426,21 +1428,13 @@ export default function RunningScreen({ navigation, route }) {
 
         {path.length > 0 && <MapPoint id="start" point={path[0]} color={accent} />}
 
-        {/* The runner is their character portrait, not a dot. It breathes, so
-            that among a screenful of other people's portraits the live one is
-            obviously the one that is you. Slow and shallow on purpose — this
-            sits on screen for the length of a run. Holds still under Reduce
-            Motion, like everything else in ui/motion. */}
+        {/* The runner is their character portrait, not a dot. Keep it static:
+            this surface can stay open for hours, so a permanently looping
+            Lottie plus scale animation is needless battery and thermal work. */}
         {currentLocation && (
           <UserMarker point={currentLocation}>
             <View style={styles.liveMarker}>
-              {isRunning ? <GameLottie name="routeHead" size={62} style={styles.routeHeadFx} /> : null}
-              <Pulse min={1} max={1.06} durationMs={1400}>
-                {/* The one bust in the app whose PARENT scales it. The rig
-                    cannot see a Pulse above it, so the full-resolution decode
-                    is asked for by hand here. */}
-                <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg={D.bust} crisp />
-              </Pulse>
+              <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg={D.bust} crisp />
             </View>
           </UserMarker>
         )}
@@ -1620,7 +1614,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: D.bg },
   map: { flex: 1 },
   liveMarker: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center' },
-  routeHeadFx: { position: 'absolute' },
 
   topBar: {
     position: 'absolute',

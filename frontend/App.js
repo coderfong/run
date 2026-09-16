@@ -142,6 +142,7 @@ function useNavTheme() {
 // it was previously spread into the options of each screen one at a time.
 function useHeaderChrome() {
   const { colors } = useTheme();
+  const reduced = useReduceMotion();
   return useMemo(
     () => ({
       headerStyle: { backgroundColor: colors.bg },
@@ -152,8 +153,15 @@ function useHeaderChrome() {
       // NAME — Season showed a chevron reading "HomeMain". Route names are
       // internal identifiers, not copy; show the chevron alone.
       headerBackButtonDisplayMode: 'minimal',
+      // State the transition instead of inheriting a platform-dependent
+      // default. Forward navigation pushes the next page in; back follows the
+      // same gesture in reverse. Accessibility Reduce Motion turns it into a
+      // clean cut without making every other runner's navigation feel static.
+      animation: reduced ? 'none' : 'slide_from_right',
+      gestureEnabled: true,
+      fullScreenGestureEnabled: !reduced,
     }),
-    [colors]
+    [colors, reduced]
   );
 }
 
@@ -377,6 +385,7 @@ const TAB_PRELOAD_STEP_MS = 160;
 
 function MainTabs() {
   const { colors } = useTheme();
+  const reduced = useReduceMotion();
   const { width } = useWindowDimensions();
 
   // PRELOAD THE OTHER TABS — BUT NOT DURING LAUNCH, AND NOT DURING THE SWIPE.
@@ -425,8 +434,13 @@ function MainTabs() {
   }, []);
 
   const screenOptions = useMemo(
-    () => ({ swipeEnabled: true, lazy: true, lazyPreloadDistance: preloadDistance }),
-    [preloadDistance]
+    () => ({
+      swipeEnabled: true,
+      animationEnabled: !reduced,
+      lazy: true,
+      lazyPreloadDistance: preloadDistance,
+    }),
+    [preloadDistance, reduced]
   );
 
   return (

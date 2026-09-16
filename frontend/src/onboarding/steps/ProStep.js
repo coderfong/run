@@ -47,9 +47,9 @@ import { toon, toonType } from '../toon';
 // this step and because none of it means anything to somebody who has not run
 // yet — see the header.
 const PERKS = [
-  'Plan territory runs',
-  'Advanced insights',
-  'Exclusive customisation',
+  'Draw routes and preview territory before you run',
+  'See rival, rank and territory history',
+  'Unlock exclusive outfits and map styles',
 ];
 
 export default function ProStep({ onContinue }) {
@@ -76,7 +76,7 @@ export default function ProStep({ onContinue }) {
           PASER PRO
         </OutlinedText>
         <Text style={[toonType.body, styles.kicker]}>
-          Take PASER further, whenever you want to.
+          Plan smarter. See more. Stand out.
         </Text>
 
         <ComicPanel

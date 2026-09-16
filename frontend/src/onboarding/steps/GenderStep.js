@@ -1,15 +1,11 @@
-// "Who is our paser?" — the step between the birthday and the character
-// creator.
+// A neutral starting-style shortcut between birthday and the character creator.
 //
-// It does two jobs. It records `gender` on the local profile, and it seeds the
-// HAIR slot so the runner opens the creator already looking roughly like the
-// person picked instead of always the same default head.
+// It seeds the HAIR slot so the runner opens the creator near a style they
+// like. It deliberately does not ask the runner to label their gender.
 //
-// Both are conveniences, so the step is OPTIONAL: pick nothing and the button
-// reads "Skip for now" and carries you through with `gender` left empty. A
-// character creator you cannot reach without declaring a gender is required
-// personal information, and the seed it buys is one you change on the very
-// next screen anyway.
+// This is a convenience, so the step is OPTIONAL: pick nothing and the button
+// reads "Skip for now". The seed is only a shortcut for a choice the runner
+// can change on the very next screen.
 //
 // You pick a FACE, not a word. The two options are the actual runner wearing
 // each seed, so the choice previews itself: the old version was a list of text
@@ -37,8 +33,8 @@ import { toonType } from '../toon';
 // creator's own filter and leave the slot empty. The colour is FIRST_RUN_HAIR,
 // so both previews open on the same blonde the flow starts everyone at.
 export const GENDER_OPTIONS = [
-  { key: 'man', label: 'Man', seed: { hair: 'twoblock', hairColor: FIRST_RUN_HAIR } },
-  { key: 'woman', label: 'Woman', seed: { hair: 'sleeklong', hairColor: FIRST_RUN_HAIR } },
+  { key: 'short', label: 'Short hair', seed: { hair: 'twoblock', hairColor: FIRST_RUN_HAIR } },
+  { key: 'long', label: 'Long hair', seed: { hair: 'sleeklong', hairColor: FIRST_RUN_HAIR } },
 ];
 
 const BUST = 132;
@@ -59,8 +55,8 @@ export default function GenderStep({ value, onChange, onContinue, onSkip }) {
         showsVerticalScrollIndicator={false}
       >
         <StepHeadline
-          title="Who is our paser?"
-          sub="Just a starting point. You can change everything next."
+          title="Pick a starting style"
+          sub="Choose either one, or skip. Everything can be changed next."
         />
 
         <View style={styles.options}>

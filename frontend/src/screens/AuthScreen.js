@@ -58,11 +58,11 @@ function passwordError(pw, isSignup) {
   return null;
 }
 
-// Optional, so blank is valid. Anything typed has to look like an address:
-// this is the only chance to catch a typo before the day it is needed.
-function emailError(raw) {
+// Signup requires a recovery address. The second argument keeps the helper
+// reusable for any future optional-email surface without weakening signup.
+function emailError(raw, isSignup = false) {
   const e = (raw || '').trim();
-  if (!e) return null;
+  if (!e) return isSignup ? 'Enter an email so you can reset your password.' : null;
   if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) return 'That email does not look right.';
   return null;
 }
@@ -163,13 +163,13 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
   const isSignup = mode === 'signup';
   const uErr = touched ? usernameError(username) : null;
   const pErr = touched ? passwordError(password, isSignup) : null;
-  const eErr = touched ? emailError(email) : null;
+  const eErr = touched ? emailError(email, isSignup) : null;
 
   const onSubmit = async () => {
     setTouched(true);
     setApiError(null);
     if (usernameError(username) || passwordError(password, isSignup)) return;
-    if (isSignup && emailError(email)) return;
+    if (isSignup && emailError(email, true)) return;
     const u = username.trim().toLowerCase();
     setBusy(true);
     try {
@@ -215,14 +215,13 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
             accessibilityLabel="Username"
           />
           {uErr ? <Text style={s.fieldError}>{uErr}</Text> : null}
-          {isSignup && !uErr ? <Text style={s.fieldHint}>3 to 32 characters: letters, numbers, underscore.</Text> : null}
         </Reveal>
 
         <Reveal delay={170}>
           <Text style={s.label}>Password</Text>
           <Input
             style={[s.input, pErr && s.inputError]}
-            placeholder={isSignup ? 'At least 8 characters, letter + digit' : 'Your password'}
+            placeholder="Your password"
             placeholderTextColor={colors.textDim}
             secureTextEntry
             autoCapitalize="none"
@@ -249,9 +248,9 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
           ) : null}
         </Reveal>
 
-        {/* Optional at signup and skippable, but it is the whole of account
-            recovery: an account with no confirmed address cannot be got back
-            if the password goes. Said plainly rather than buried in a hint. */}
+        {/* Required at signup: without an address there is no password recovery
+            path, so accepting a blank value would create an account that the
+            runner can permanently lose. */}
         {isSignup ? (
           <Reveal delay={210}>
             <Text style={s.label}>Email</Text>
@@ -265,16 +264,9 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
               value={email}
               onChangeText={(v) => { setEmail(v); setApiError(null); }}
               maxLength={254}
-              accessibilityLabel="Email, optional, used to reset your password"
+              accessibilityLabel="Email, required for password recovery"
             />
-            {eErr ? (
-              <Text style={s.fieldError}>{eErr}</Text>
-            ) : (
-              <Text style={s.fieldHint}>
-                Optional. It is the only way to reset your password later, and nobody else on PASER
-                can see it.
-              </Text>
-            )}
+            {eErr ? <Text style={s.fieldError}>{eErr}</Text> : null}
           </Reveal>
         ) : null}
 

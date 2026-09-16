@@ -161,10 +161,8 @@ export default function PrivacySettings({ nested = false }) {
 
       <Card>
         <Text style={type.labelSm}>Hide the start and end of my routes</Text>
-        <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
-          Other runners never see this much of each end. Your own runs always show in full.
-        </Text>
         <Segmented
+          style={{ marginTop: space.md }}
           options={TRIM_OPTIONS.map((o) => ({ ...o, key: String(o.key) }))}
           value={String(nearest(TRIM_OPTIONS, data.route_trim_m ?? 0))}
           onChange={(k) => save({ route_trim_m: Number(k) })}
@@ -174,10 +172,8 @@ export default function PrivacySettings({ nested = false }) {
 
       <Card style={{ marginTop: space.md }}>
         <Text style={type.labelSm}>Publish my routes after</Text>
-        <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
-          A delay keeps anyone from seeing where you are while you're still out there.
-        </Text>
         <Segmented
+          style={{ marginTop: space.md }}
           options={DELAY_OPTIONS.map((o) => ({ ...o, key: String(o.key) }))}
           value={String(nearest(DELAY_OPTIONS, data.publish_delay_h ?? 0))}
           onChange={(k) => save({ publish_delay_h: Number(k) })}
@@ -187,13 +183,9 @@ export default function PrivacySettings({ nested = false }) {
 
       <Card style={{ marginTop: space.md }}>
         <Text style={type.labelSm}>Private areas</Text>
-        <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
-          Home, school, work. Anything you run through inside one of these is cut out
-          before anyone else sees the route.
-        </Text>
 
         {zones.length === 0 ? (
-          <Text style={[type.caption, { color: colors.textDim, marginBottom: space.md }]}>
+          <Text style={[type.caption, { color: colors.textDim, marginTop: space.sm, marginBottom: space.md }]}>
             None yet.
           </Text>
         ) : (

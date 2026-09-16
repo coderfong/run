@@ -82,10 +82,6 @@ export default function HealthSyncSettings({ nested = false }) {
         <View style={styles.row}>
           <View style={styles.label}>
             <Text style={type.body}>Save my runs to Apple Health</Text>
-            <Text style={[type.caption, { marginTop: 2 }]}>
-              Each finished run is added as a running workout with its distance and time.
-              PASER only writes. It never reads anything from Health.
-            </Text>
           </View>
           <Switch
             value={on}
