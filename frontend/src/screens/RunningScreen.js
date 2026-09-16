@@ -37,6 +37,7 @@ import {
 import { createGpsFilter, DROP, filterPoints, haversineM, pathDistanceM } from '../run/gpsFilter';
 import { buildSimulatedRun, FALLBACK_ORIGIN } from '../run/simulatedRun';
 import { withoutPausedPoints } from '../run/pauseWindows';
+import { createVehicleGate } from '../run/vehicleGate';
 import { useClan, NEUTRAL } from '../state/clan';
 import { useRecording } from '../state/recording';
 import { useSettings } from '../state/settings';
@@ -325,10 +326,47 @@ export default function RunningScreen({ navigation, route }) {
   const pedometerSubRef = useRef(null);
   const pedometerOkRef = useRef(false);
   // Vehicle/spoof gate: consecutive too-fast fixes + a distance-vs-steps
-  // watchdog. Either tripping auto-pauses the run.
-  const fastPointsRef = useRef(0);
+  // watchdog. Either tripping RAISES A NOTICE. It does not pause, it does not
+  // block, and it says its piece once.
+  //
+  // It used to auto-pause behind a modal Alert, which is what testers hit as
+  // "the run screen locks up". Two things made that trap: `vehiclePause`
+  // guarded on `isRunningRef`, which is true from the first fix until FINISH
+  // and is not cleared by a pause, so the guard never bit; and the only other
+  // guard was `pauseRun`'s `if (paused) return` on React state, which is stale
+  // for the rest of the tick it is read in. Every extra call therefore pushed
+  // another entry into `pauseWindowsRef` (quietly corrupting pause accounting)
+  // and stacked another modal on top of a screen whose Pause and End controls
+  // were already behind it.
+  //
+  // It is also enforcement the client does not owe. `_check_stride` in
+  // backend/app/anticheat.py catches this exact signature (ground covered with
+  // no strides) when the run is submitted, and it is in HARD_REASONS, so the
+  // server unverifies the run on its own authority. The banner below is a
+  // courtesy telling the runner what the server is going to do.
+  // Decision logic in run/vehicleGate.js; this screen owns only the timer that
+  // asks it and the notice that answers. The "at most once per run" rule lives
+  // in there, where it is one function rather than a flag three call sites
+  // have to remember to check.
   const vehicleTimerRef = useRef(null);
-  const vehicleWindowRef = useRef({ dist: 0, steps: 0 });
+  const vehicleGateRef = useRef(null);
+  if (!vehicleGateRef.current) {
+    vehicleGateRef.current = createVehicleGate({
+      fastPointsNeeded: T.vehicleFastPoints,
+      windowDistanceM: T.vehicleWindowDistanceM,
+      minStepsPerWindow: T.vehicleMinStepsPerWindow,
+    });
+  }
+  // Mirrors `paused` for the same reason isRunningRef mirrors isRunning: the
+  // pause/resume guards are read inside timers and location callbacks that
+  // outlive the render they closed over.
+  const pausedRef = useRef(false);
+  // The running total, mirrored off the filter's own incremental figure. The
+  // watchdog used to re-walk the whole trail with totalDistanceMeters every
+  // 45s, which is a haversine per recorded point, on the JS thread, forever —
+  // an O(n) sweep on a timer is exactly the kind of background work item 12
+  // says must not land on the UI thread.
+  const distanceMRef = useRef(0);
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [path, setPath] = useState([]);
@@ -348,6 +386,9 @@ export default function RunningScreen({ navigation, route }) {
   // value actually moves.
   const [paceSPerKm, setPaceSPerKm] = useState(null);
   const [accuracyM, setAccuracyM] = useState(null);
+  // The vehicle notice. A line of text in the HUD, dismissible, over a screen
+  // that stays fully usable behind it.
+  const [vehicleNotice, setVehicleNotice] = useState(false);
   const [permDenied, setPermDenied] = useState(false);
   // Dev harness only (see simulateRun / DevRunSimulator); false in every build
   // a player can install.
@@ -462,6 +503,7 @@ export default function RunningScreen({ navigation, route }) {
       pathRef.current = out;
       setPath(out);
       setDistance(distanceM);
+      distanceMRef.current = distanceM;
       gpsFilterRef.current.seed(out, distanceM);
       persistActiveRun(out);
     }
@@ -564,33 +606,35 @@ export default function RunningScreen({ navigation, route }) {
   // ---- vehicle / spoof gate ----------------------------------------------
   // Buses and trains produce medium speeds the GPS filters won't reject, but
   // (a) sustained > vehicleSpeedMps is never on foot, and (b) ground covered
-  // with no steps means wheels. Either auto-pauses the run.
+  // with no steps means wheels. Either raises the notice. See the refs above
+  // for why neither one pauses the run any more.
 
-  function vehiclePause() {
-    if (!isRunningRef.current) return;
-    pauseRun();
+  // `raised` is true only on the single call that flips the gate, so this
+  // cannot show the notice twice however many signals arrive.
+  function announceVehicle(raised) {
+    if (!raised || !isRunningRef.current) return;
     haptic.light();
-    Alert.alert(
-      'Vehicle detected',
-      "Recording paused. PASER only logs runs on foot, so hit play when you're back on your feet."
-    );
+    setVehicleNotice(true);
   }
 
   function startVehicleWatch() {
     stopVehicleWatch();
-    vehicleWindowRef.current = {
-      dist: totalDistanceMeters(pathRef.current),
+    vehicleGateRef.current.armWindow({
+      distanceM: distanceMRef.current,
       steps: stepCountRef.current,
-    };
+    });
     vehicleTimerRef.current = setInterval(() => {
-      const dist = totalDistanceMeters(pathRef.current);
-      const steps = stepCountRef.current;
-      const dDist = dist - vehicleWindowRef.current.dist;
-      const dSteps = steps - vehicleWindowRef.current.steps;
-      vehicleWindowRef.current = { dist, steps };
-      if (pedometerOkRef.current && dDist > T.vehicleWindowDistanceM && dSteps < T.vehicleMinStepsPerWindow) {
-        vehiclePause();
-      }
+      // Nothing left to measure once the run is flagged: the server judges the
+      // trace either way, so the timer stops doing arithmetic rather than keep
+      // a windowed sum nobody reads.
+      if (vehicleGateRef.current.flagged) return;
+      announceVehicle(
+        vehicleGateRef.current.onWindow({
+          distanceM: distanceMRef.current,
+          steps: stepCountRef.current,
+          pedometerOk: pedometerOkRef.current,
+        })
+      );
     }, T.vehicleCheckMs);
   }
 
@@ -665,6 +709,7 @@ export default function RunningScreen({ navigation, route }) {
     lastTierRef.current = runTier(resumedDistance, resumedElapsed / 1000);
     setPath(saved.path);
     setDistance(resumedDistance);
+    distanceMRef.current = resumedDistance;
     setElapsedS(Math.max(0, Math.floor(resumedElapsed / 1000)));
     setIsRunning(true);
     isRunningRef.current = true;
@@ -729,9 +774,14 @@ export default function RunningScreen({ navigation, route }) {
 
       setPath([]);
       setDistance(0);
+      distanceMRef.current = 0;
       setElapsedS(0);
       setPaused(false);
+      pausedRef.current = false;
       setLocked(false);
+      // A fresh run starts unflagged, with no stale notice from the last one.
+      vehicleGateRef.current.reset();
+      setVehicleNotice(false);
       setIsRunning(true);
       isRunningRef.current = true;
       setRecording(true);
@@ -865,8 +915,7 @@ export default function RunningScreen({ navigation, route }) {
     // Vehicle gate, first half: the OS's own speed estimate needs no path
     // context, so it is judged before the fix can reach the trail at all.
     if (reportedSpeed != null && reportedSpeed > T.vehicleSpeedMps) {
-      fastPointsRef.current += 1;
-      if (fastPointsRef.current >= T.vehicleFastPoints) vehiclePause();
+      announceVehicle(vehicleGateRef.current.onFastFix());
       return;
     }
 
@@ -882,12 +931,11 @@ export default function RunningScreen({ navigation, route }) {
     // against the trail is what used to pause honest runs under a bridge.
     if (res.reason === DROP.TELEPORT) {
       if (reportedSpeed == null) {
-        fastPointsRef.current += 1;
-        if (fastPointsRef.current >= T.vehicleFastPoints) vehiclePause();
+        announceVehicle(vehicleGateRef.current.onFastFix());
       }
       return;
     }
-    fastPointsRef.current = 0;
+    vehicleGateRef.current.onGoodFix();
     if (!res.advanced) return;
 
     const nextPoint = res.point;
@@ -895,6 +943,7 @@ export default function RunningScreen({ navigation, route }) {
     pathRef.current = newPath;
     setPath(newPath);
     setDistance(res.distanceM);
+    distanceMRef.current = res.distanceM;
 
     // Crash snapshot every N accepted points.
     if (newPath.length % T.persistEveryNPoints === 0) persistActiveRun(newPath);
@@ -958,7 +1007,13 @@ export default function RunningScreen({ navigation, route }) {
   // shifts the start reference by the paused duration so time stays honest.
 
   function pauseRun() {
-    if (paused) return;
+    // The ref, not the state. `paused` is whatever it was when this closure
+    // was made, so two calls inside one tick both saw false and both opened a
+    // pause window — a duplicate entry with `to: null` that resumeFromPause
+    // closes only one of, leaving the run permanently mid-pause as far as
+    // withoutPausedPoints is concerned.
+    if (pausedRef.current) return;
+    pausedRef.current = true;
     const now = Date.now();
     pausedAtRef.current = now;
     pauseWindowsRef.current.push({ from: now, to: null });
@@ -974,7 +1029,9 @@ export default function RunningScreen({ navigation, route }) {
     bgHeldRef.current = watchAppInstalled();
     if (!bgHeldRef.current) stopBackgroundTrack();
     stopVehicleWatch();
-    fastPointsRef.current = 0;
+    // A pause is not evidence of anything: the run of fast fixes that was
+    // building when it started must not carry across the gap.
+    vehicleGateRef.current.onGoodFix();
     if (tickRef.current) {
       clearInterval(tickRef.current);
       tickRef.current = null;
@@ -983,7 +1040,8 @@ export default function RunningScreen({ navigation, route }) {
   }
 
   async function resumeFromPause() {
-    if (!paused) return;
+    if (!pausedRef.current) return;
+    pausedRef.current = false;
     const now = Date.now();
     const pausedFor = now - (pausedAtRef.current || now);
     startedAtRef.current += pausedFor;
@@ -1014,6 +1072,7 @@ export default function RunningScreen({ navigation, route }) {
     // Finishing while paused ends the run where it paused, the moment its
     // clock stopped. Read before `paused` is cleared below.
     const endedAt = paused && pausedAtRef.current ? pausedAtRef.current : Date.now();
+    pausedRef.current = false;
     setPaused(false);
     setLocked(false);
     stopWatchingLocation();
@@ -1164,7 +1223,9 @@ export default function RunningScreen({ navigation, route }) {
       pathRef.current = sim.points;
       startedAtRef.current = sim.startedAtMs;
       setPath(sim.points);
-      setDistance(totalDistanceMeters(sim.points));
+      const simDistance = totalDistanceMeters(sim.points);
+      setDistance(simDistance);
+      distanceMRef.current = simDistance;
       await commitRun(run, sim.points, {
         steps: sim.stepCount,
         simulated: true,
@@ -1412,6 +1473,26 @@ export default function RunningScreen({ navigation, route }) {
         </View>
       </View>
 
+      {/* The vehicle notice. It sits UNDER the status bar and OVER the map,
+          never over the panel, so Pause, End run and the back control are all
+          still there and still tappable while it is up. Tapping it dismisses
+          it; nothing else about the run changes either way, because the run
+          was never stopped. It cannot come back a second time in one run (see
+          run/vehicleGate.js), so no overlay keeps reappearing. */}
+      {vehicleNotice ? (
+        <Pressable
+          style={styles.vehicleNotice}
+          onPress={() => setVehicleNotice(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Possible vehicle movement detected. We will review this section when your run ends. Tap to dismiss."
+        >
+          <Text style={styles.vehicleNoticeTitle}>Possible vehicle movement detected</Text>
+          <Text style={styles.vehicleNoticeBody}>
+            {"We'll review this section when your run ends."}
+          </Text>
+        </Pressable>
+      ) : null}
+
       <View style={styles.panel}>
         {/* hero distance + supporting stats (PACER layout) */}
         <View style={styles.heroRow}>
@@ -1562,6 +1643,26 @@ const styles = StyleSheet.create({
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
   topText: { ...type.caption, color: D.muted },
   topTime: { ...type.statSm, color: D.muted },
+
+  // Docked under the status bar, wearing the same glass and ink as the rest of
+  // the HUD so it reads as part of the screen rather than something thrown on
+  // top of it. Deliberately NOT centred, NOT full-bleed and NOT animated: it
+  // is a notice, and the thing item 12 asks for is that it stay out of the way.
+  vehicleNotice: {
+    position: 'absolute',
+    top: space.md + 52,
+    left: space.md,
+    right: space.md,
+    backgroundColor: D.glassStrong,
+    borderWidth: NB.strokeThin,
+    borderColor: nbInk('dark', D.card),
+    borderRadius: radius.md,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.lg,
+    gap: 2,
+  },
+  vehicleNoticeTitle: { ...type.bodySmBold, color: D.text },
+  vehicleNoticeBody: { ...type.caption, color: D.muted },
 
   prompt: {
     position: 'absolute',
