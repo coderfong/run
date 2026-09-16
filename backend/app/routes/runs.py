@@ -185,7 +185,11 @@ def _end_run_replay(db: Session, run) -> schemas.RunResultOut:
     stored area, which are both frozen, so it is identical every time.
     """
     tier = run.tier or economy.CLAIMABLE
-    eligible = economy.claim_allowed(tier) and run.claimed_at is None
+    # Land that was never placed is still owed until its window closes. After
+    # that the replay reports the run as spent, and `claim_expires_at` (now in
+    # the past) is how the client tells "lapsed" from "never earned any".
+    waiting = economy.claim_allowed(tier) and run.claimed_at is None
+    eligible = waiting and economy.claim_window_open(run.ended_at)
     area = float(run.claim_area_m2 or 0.0)
     claim_ring = []
     if eligible and area > 0:
@@ -218,6 +222,9 @@ def _end_run_replay(db: Session, run) -> schemas.RunResultOut:
         coins_gained=int(run.reward_coins or 0),
         energy_gained=int(run.reward_energy or 0),
         replayed=True,
+        claim_expires_at=(
+            economy.claim_deadline(run.ended_at) if waiting and area > 0 else None
+        ),
     )
 
 
@@ -451,6 +458,10 @@ def end_run(
         energy_gained=award["energy"],
         coins_capped=award["coins_capped"],
         energy_capped=award["energy_capped"],
+        # The land can be placed now or planned later, up to this moment.
+        claim_expires_at=(
+            economy.claim_deadline(run.ended_at) if eligible and area > 0 else None
+        ),
     )
 
 
@@ -1206,6 +1217,108 @@ def _price_placements(
     return est, first_of_day, neutral_left
 
 
+# --- claiming later ---------------------------------------------------------
+#
+# The result screen does not hold a runner to a decision: they can leave
+# without placing their land and plan the attack later. These two are the way
+# back. The list is what Home shows; the resume payload reopens the same claim
+# screen for one run. Neither pays or changes anything, and both apply the
+# window every claim endpoint enforces (`claim_defer_hours`).
+
+
+@router.get("/me/pending-claims", response_model=List[schemas.PendingClaimOut])
+def pending_claims(
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Finished runs whose land is still waiting to be placed, newest first.
+
+    Listed while the run is unclaimed, earned ground, still counts as
+    claimable, has a route to grow the shape from, and is inside the window.
+    Shadow-flagged runs are listed like any other: to their owner they must
+    look exactly like a normal run.
+    """
+    params = {
+        "u": user.id,
+        "claimable": economy.CLAIMABLE,
+        "tiers": [economy.CLAIMABLE, economy.SHADOW_FLAGGED],
+    }
+    window = ""
+    hours = settings.claim_defer_hours
+    if hours and hours > 0:
+        window = "AND r.ended_at > :since"
+        params["since"] = datetime.utcnow() - timedelta(hours=hours)
+    rows = db.execute(
+        text(
+            f"""
+            SELECT r.id::text, r.ended_at, r.distance_m, r.duration_s, r.claim_area_m2
+            FROM runs r
+            WHERE r.user_id = :u
+              AND r.ended_at IS NOT NULL
+              AND r.claimed_at IS NULL
+              AND r.path IS NOT NULL
+              AND COALESCE(r.claim_area_m2, 0) > 0
+              AND COALESCE(r.tier, :claimable) = ANY(:tiers)
+              {window}
+            ORDER BY r.ended_at DESC
+            LIMIT 10
+            """
+        ),
+        params,
+    ).fetchall()
+    return [
+        schemas.PendingClaimOut(
+            run_id=row[0],
+            ended_at=row[1],
+            distance_m=float(row[2] or 0.0),
+            duration_s=float(row[3] or 0.0),
+            claim_area_m2=float(row[4] or 0.0),
+            claim_expires_at=economy.claim_deadline(row[1]),
+        )
+        for row in rows
+    ]
+
+
+@router.get("/runs/{run_id}/claim-resume", response_model=schemas.ClaimResumeOut)
+def claim_resume(
+    run_id: str,
+    user: models.User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Reopen the claim screen for a run finished earlier.
+
+    The result is /end-run's own answer REPLAYED, never recomputed, so opening
+    this pays nothing a second time; the client shows only what the claim
+    itself adds. Refused, with a reason the screen can say, once there is no
+    land left to place, rather than opening a map with nothing on it.
+    """
+    run = db.get(models.Run, run_id)
+    if run is None or run.user_id != user.id:
+        raise HTTPException(404, "run not found")
+    if run.ended_at is None:
+        raise HTTPException(409, "run not finished yet")
+    if run.claimed_at is not None:
+        raise HTTPException(409, economy.REASON_ALREADY_CLAIMED)
+    if not economy.claim_window_open(run.ended_at):
+        raise HTTPException(410, economy.REASON_CLAIM_EXPIRED)
+
+    result = _end_run_replay(db, run)
+    if not result.claim_eligible or result.claim_area_m2 <= 0:
+        raise HTTPException(422, run.gate_reason or economy.REASON_MIN_CLAIM_DISTANCE)
+    if len(result.claim_ring) < 3:
+        raise HTTPException(422, "run has no usable route to claim from")
+
+    splits = db.execute(
+        text("SELECT km, seconds FROM run_splits WHERE run_id = :rid ORDER BY km"),
+        {"rid": run.id},
+    ).fetchall()
+    return schemas.ClaimResumeOut(
+        result=result,
+        path=_run_route(db, run),
+        splits=[schemas.RunSplit(km=s[0], seconds=float(s[1])) for s in splits],
+    )
+
+
 @router.get("/runs/{run_id}/claim-options", response_model=schemas.ClaimOptionsOut)
 def claim_options(
     run_id: str,
@@ -1227,6 +1340,9 @@ def claim_options(
         raise HTTPException(409, "run not finished yet")
     if run.claimed_at is not None:
         raise HTTPException(409, economy.REASON_ALREADY_CLAIMED)
+    # Planning later is allowed, but not for ever: see `claim_defer_hours`.
+    if not economy.claim_window_open(run.ended_at):
+        raise HTTPException(410, economy.REASON_CLAIM_EXPIRED)
 
     # The band this claim fights in. Read ONCE here and threaded through, so
     # the breakdown, the reward quote and the tier the client scopes its map to
@@ -1435,6 +1551,8 @@ def claim_preview(
         raise HTTPException(409, "run not finished yet")
     if run.claimed_at is not None:
         raise HTTPException(409, economy.REASON_ALREADY_CLAIMED)
+    if not economy.claim_window_open(run.ended_at):
+        raise HTTPException(410, economy.REASON_CLAIM_EXPIRED)
 
     area = float(run.claim_area_m2 or 0.0)
     if area <= 0:
@@ -1527,6 +1645,12 @@ def claim_territory(
                 replay.energy_cost = 0
             return replay
         raise HTTPException(409, economy.REASON_ALREADY_CLAIMED)
+
+    # Past its window the land has lapsed. Checked after the replay, so a
+    # retry of a claim that DID land still gets its answer, and before
+    # anything that could charge for or change a thing.
+    if not economy.claim_window_open(run.ended_at):
+        raise HTTPException(410, economy.REASON_CLAIM_EXPIRED)
 
     # The route, as stored. Everything about the claim's SHAPE comes from here.
     route = _run_route(db, run)
@@ -1946,7 +2070,7 @@ def claim_territory(
         from_str = f" from {stolen_from}" if stolen_from else ""
         background.add_task(
             notify, [str(user.id)], "captured", "Territory captured",
-            f"You took {stolen_m2 / 1_000_000:.3f} km²{from_str} · +{xp_gain} XP.",
+            f"You took {stolen_m2 / 1_000_000:.3f} km²{from_str} and earned {xp_gain} XP.",
             {
                 "kind": "territory_captured",
                 "screen": "map",

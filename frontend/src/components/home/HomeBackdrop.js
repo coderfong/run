@@ -30,7 +30,7 @@
 // the seam down. One decode and one slot against the OTA asset budget.
 //
 // ONE PAINTING, TWO THEMES. There is no night street, and a midday sky behind a
-// dark page reads as a bug, so dark mode lays the page's own near-black over
+// dark page reads as a bug, so dark mode lays the page's own night colour over
 // the whole thing — the same dusk treatment, and the same reasoning, as the
 // pass plaza and the rivals park.
 //
@@ -42,7 +42,7 @@ import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Image } from '../../ui/image';
 import { art, HOME_STREET } from '../../config/onboardingArt';
-import { useTheme } from '../../theme';
+import { darkColors, useTheme, withAlpha } from '../../theme';
 
 const SRC = art('homeStreet');
 
@@ -50,7 +50,11 @@ const SRC = art('homeStreet');
 // strength that leaves the skyline and the hedges readable and the sky no
 // longer daylight. Exported for anything drawing ON the backdrop that has to
 // know which of the two it is sitting on.
-export const HOME_NIGHT = 'rgba(11,13,16,0.72)';
+//
+// DERIVED, not copied. It was the old charcoal typed out as an rgba, so when the
+// night palette moved off grey the painting would have kept a grey wash and
+// stopped matching every page around it.
+export const HOME_NIGHT = withAlpha(darkColors.bg, 0.72);
 
 // The most of the window the two bands may take between them, so a short one
 // (a small phone with the text size wound up, or a window we don't ship today)

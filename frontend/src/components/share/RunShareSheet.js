@@ -659,7 +659,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
                 return (
                   <Chip
                     key={option.key}
-                    label={locked ? `${option.label} · PRO` : option.label}
+                    label={locked ? `${option.label} (PRO)` : option.label}
                     on={styleKey === option.key}
                     onPress={() => applyStyle(option)}
                   />

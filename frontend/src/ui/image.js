@@ -14,10 +14,40 @@
 // the entire screen's art from scratch — the "assets take forever on every
 // screen" symptom — no matter how much had been prefetched beforehand.
 //
-// expo-image (SDWebImage / Glide) has a memory cache with a sane budget, and
-// `allowDownscaling` decodes to the size the view actually draws at instead of
-// the source's full resolution. Warmed art comes back instantly on the second
-// visit, which is the entire point.
+// expo-image (SDWebImage / Glide) has a memory cache with no size cap of its
+// own (it empties on a memory warning), so warmed art comes back instantly on
+// the second visit, which is the entire point.
+//
+// HOW BUNDLED ART ACTUALLY LOADS, and why the defaults below are what they are.
+// Read out of expo-image 3.0's ImageView.swift and SDWebImage 5.21 on
+// 2026-09-15. None of it can be seen from a dev build or a test, which is how
+// the old defaults survived six "still laggy" passes:
+//
+//   * A MEMORY hit is synchronous: the art is on screen in the same frame as
+//     its view. Everything else here is about getting art into memory before
+//     it is asked for, and doing no work on the way out of it.
+//   * The DISK cache is read AND DECODED on one serial queue (SDImageCache's
+//     ioQueue). `memory-disk`, the old default, therefore meant that after
+//     every cold start each screen's art decoded one image at a time — a feed
+//     of runners is dozens of layers, single file — and it wrote a second copy
+//     of every bundled PNG into Caches on the way. Bundled art is already a
+//     file on the device, so the disk cache bought nothing but that queue.
+//     `memory` skips it: a miss goes straight to the loader, which reads and
+//     decodes up to six files at once.
+//   * `allowDownscaling`, expo-image's default, does NOT decode smaller. The
+//     whole image is decoded and cached either way; downscaling then REDRAWS
+//     it at view size with CoreGraphics, on the MAIN thread, every time a view
+//     shows it — memory hits included. A screen of runner busts was dozens of
+//     main-thread redraws landing inside the transition that opened it. Bundled
+//     art is now drawn from the decode itself and the GPU scales it (expo-image
+//     sets a trilinear filter), which costs the main thread nothing and keeps
+//     no per-view copy.
+//   * `priority: 'high'` puts a view's own load ahead of background warming
+//     (utils/imagePreload.js) in the loader's queue.
+//
+// A remote image (club photos, run media) keeps the old defaults. It does want
+// the disk cache — the alternative is the network — and a 12 megapixel photo in
+// a 60pt circle is exactly what downscaling is for.
 //
 // The wrapper exists so call sites keep RN's prop names — swapping the import
 // line is the whole migration:
@@ -45,32 +75,36 @@ const CONTENT_FIT = {
 };
 
 /**
- * `crisp` turns OFF expo-image's `allowDownscaling`.
- *
- * That option decodes to the size the view draws at RIGHT NOW, which is a big
- * win for a static grid of art and a bug for anything that then animates its
- * own scale: the bitmap was decoded for the resting size, so a spring up to
- * 1.12 (the rig's tap and swap reactions) or a blow-up to full screen (the
- * reveal's backdrop) magnifies pixels that were never decoded at that size.
- * That is the "character goes blurry when I tap them" symptom, and it is not
- * fixable by shipping bigger art — the decode, not the source, is the limit.
- *
- * So: `crisp` on anything whose scale moves, default everywhere else. It costs
- * a full-resolution decode, which is exactly what it is buying.
+ * Art that ships inside the app. Metro hands a `require()`d asset around as a
+ * number; anything else — a `{ uri }`, an http string — came from somewhere the
+ * notes above do not describe, and keeps expo-image's own behaviour.
+ */
+export function isBundledSource(source) {
+  return typeof source === 'number';
+}
+
+/**
+ * `crisp` turns OFF expo-image's `allowDownscaling` for a REMOTE image whose
+ * own scale animates: a bitmap redrawn for the resting size magnifies into mush
+ * on a spring up to 1.12. Bundled art is never downscaled at all (see above),
+ * so on a `require()`d source it changes nothing.
  */
 export const Image = React.forwardRef(function Image(
-  { resizeMode, fadeDuration, contentFit, transition, cachePolicy, crisp, allowDownscaling, ...rest },
+  { source, resizeMode, fadeDuration, contentFit, transition, cachePolicy, crisp, allowDownscaling, priority, ...rest },
   ref
 ) {
+  const bundled = isBundledSource(source);
   return (
     <ExpoImage
       ref={ref}
-      allowDownscaling={allowDownscaling ?? (crisp ? false : undefined)}
+      source={source}
+      allowDownscaling={allowDownscaling ?? (bundled || crisp ? false : undefined)}
       // Art is local and already decoded once — cross-fading it in reads as a
       // slow load rather than a transition, so default to an instant swap.
       transition={transition ?? (fadeDuration ? { duration: fadeDuration } : 0)}
       contentFit={contentFit ?? CONTENT_FIT[resizeMode] ?? 'cover'}
-      cachePolicy={cachePolicy ?? 'memory-disk'}
+      cachePolicy={cachePolicy ?? (bundled ? 'memory' : 'memory-disk')}
+      priority={priority ?? (bundled ? 'high' : undefined)}
       {...rest}
     />
   );

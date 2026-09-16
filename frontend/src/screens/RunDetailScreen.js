@@ -9,7 +9,8 @@ import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { NEUTRAL } from '../state/clan';
 import { NB, nbField, nbInk, nbRadius, radius, space, toonSurface, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Card, Row, Input, Skeleton, BackButton } from '../components/ui';
+import { Screen, Card, Row, Input, Skeleton, BackButton, ToonButton } from '../components/ui';
+import { claimTimeLeft } from '../utils/claimWindow';
 import { PressableScale, haptic } from '../ui/motion';
 import GameMap, { MAP_READY, TerritoryFill, Trail, MapPoint } from '../components/GameMap';
 import { toast } from '../ui/toast';
@@ -145,6 +146,8 @@ export default function RunDetailScreen({ navigation, route }) {
   // still return sticker-only rows; omit those instead of putting emojis back
   // into the discussion.
   const textComments = (comments || []).filter((cm) => cm.body?.trim());
+  // How long this run's waiting land has left, when it has any.
+  const planLeft = claimTimeLeft(d.claim_expires_at);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -153,7 +156,7 @@ export default function RunDetailScreen({ navigation, route }) {
         <Row gap={12} style={{ paddingVertical: 10 }}>
           <BackButton onPress={() => navigation.goBack()} />
           <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[type.title, { fontSize: 23 }]}>{d.clan_tag ? `[${d.clan_tag}] ` : ''}{d.username}{d.is_you ? ' · you' : ''}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[type.title, { fontSize: 23 }]}>{d.clan_tag ? `[${d.clan_tag}] ` : ''}{d.username}{d.is_you ? ' (you)' : ''}</Text>
             <Text numberOfLines={1} adjustsFontSizeToFit style={type.caption}>{longDateTime(d.created_at)}</Text>
           </View>
           {!d.is_you ? <PressableScale accessibilityRole="button" accessibilityLabel={`Safety options for ${d.username}`} onPress={() => openSafetyActions({ userId: d.user_id, username: d.username, context: `run ${runId}`, onBlocked: () => navigation.goBack() })}><MoreHorizontal size={24} color={colors.text} /></PressableScale> : null}
@@ -179,6 +182,22 @@ export default function RunDetailScreen({ navigation, route }) {
             </View>
           ))}
         </View>
+
+        {/* This run's land, if its attack was put off and the land is still
+            waiting. The run's own page is one way back to it; Home is the
+            other. */}
+        {d.is_you && d.claim_pending && !planLeft.expired ? (
+          <View style={styles.planRow}>
+            <ToonButton
+              title="Plan your attack"
+              size="sm"
+              onPress={() => navigation.navigate('PlanAttack', { runId })}
+              containerStyle={styles.planButton}
+              style={styles.planButtonFill}
+            />
+            {planLeft.label ? <Text style={[type.caption, styles.planNote]}>{planLeft.label}</Text> : null}
+          </View>
+        ) : null}
 
         {splits.length > 0 ? <ProLockedSection context="run_detail" feature="run_splits" title="Splits" style={{ marginTop: 10 }}>
           <View style={[styles.summary, { display: 'flex', flexDirection: 'column', marginTop: 10, padding: 12 }]}>
@@ -217,7 +236,7 @@ export default function RunDetailScreen({ navigation, route }) {
         style={[styles.framedPanel, { marginTop: space.xl }]}
       >
         <Text style={[type.label, { color: colors.textMuted, marginBottom: space.md }]}>
-          Comments{textComments.length ? ` · ${textComments.length}` : ''}
+          Comments{textComments.length ? ` (${textComments.length})` : ''}
         </Text>
         {comments === undefined ? (
           <Skeleton width="100%" height={16} />
@@ -229,7 +248,7 @@ export default function RunDetailScreen({ navigation, route }) {
               <Row between>
                 <Text style={type.bodySmBold}>
                   {cm.username}
-                  {cm.is_you ? ' · you' : ''}
+                  {cm.is_you ? ' (you)' : ''}
                   <Text style={[type.caption, { color: colors.textDim }]}>  {timeAgo(cm.created_at)}</Text>
                 </Text>
                 {!cm.is_you ? (
@@ -297,6 +316,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   summary: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: colors.card, borderRadius: 14, borderWidth: 2, borderColor: colors.text, paddingVertical: 5 },
   mapPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  // The way back to land whose attack was put off: the button, and how long
+  // the land has left beside it.
+  planRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: 10 },
+  planButton: { flex: 1 },
+  planButtonFill: { width: '100%' },
+  planNote: { color: colors.textMuted },
   kudos: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, paddingVertical: space.sm },
   kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
   kudosFx: { position: 'absolute', zIndex: 4 },

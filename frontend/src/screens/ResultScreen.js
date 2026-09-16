@@ -36,7 +36,7 @@ import ClaimPayoff from '../components/ClaimPayoff';
 import GameAnimation from '../components/GameAnimation';
 import RouteThumb, { hasRouteData } from '../components/RouteThumb';
 import CaptureEncounter from '../components/claim/CaptureEncounter';
-import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import CaptureStylePlayer, { captureStyleImageSources } from '../effects/CaptureStylePlayer';
 import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
 import { ROLE, isExitAction } from '../effects/choreography';
 import useCaptureStage from '../effects/useCaptureStage';
@@ -69,7 +69,9 @@ import { api } from '../api/client';
 import { fetchAndCache, invalidate, invalidateAfterClaim } from '../api/cache';
 import { shouldReveal } from '../config/paserby';
 import { preloadScreenImages } from '../config/screenAssets';
+import { preloadImages } from '../utils/imagePreload';
 import { RUN_TIER } from '../config/economy';
+import { claimTimeLeft } from '../utils/claimWindow';
 import { NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, runTuning, shadow, space, toon, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
 import { Framed, HardShadow, OutlinedText, ToonButton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
@@ -232,7 +234,9 @@ function computeSplits(path) {
   for (let i = 1; i < path.length; i++) {
     let segD = haversine(path[i - 1], path[i]);
     let segT = (path[i].timestamp - path[i - 1].timestamp) / 1000;
-    if (segT <= 0 || !isFinite(segD)) continue;
+    // `!(segT > 0)` rather than `segT <= 0`: a point with no timestamp is NaN,
+    // and has to be skipped too rather than poison every split after it.
+    if (!(segT > 0) || !isFinite(segD)) continue;
     while (kmDist + segD >= 1000) {
       const need = 1000 - kmDist;
       const frac = need / segD;
@@ -328,6 +332,11 @@ export default function ResultScreen({ navigation, route }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const { result } = route.params;
+  // Reopened from Home or the run's own page to place land the runner chose
+  // to plan later (PlanAttackScreen). The claim is identical; what differs is
+  // everything that belonged to the moment the run finished, which was shown
+  // then and must not be celebrated or paid out a second time.
+  const deferred = !!route.params.deferred;
   const { color, clan } = useClan();
   const { equipped, rankKey } = useAvatar();
   const { user } = useAuth();
@@ -428,6 +437,13 @@ export default function ResultScreen({ navigation, route }) {
   // ground taken, the victory beat, then the payoff and standings.
   const mapRef = useRef(null);
   const seq = useClaimSequence({ mapRef, userId: user.id });
+  // The capture's sprite sheets, decoded while the run replay is still flying.
+  // The style is picked the moment the sequence starts, seconds before its
+  // first beat, and a sheet decoded as its step fires lands a beat late (see
+  // captureStyleImageSources).
+  useEffect(() => {
+    if (seq.captureStyle) preloadImages(captureStyleImageSources(seq.captureStyle));
+  }, [seq.captureStyle]);
 
   // The palette the CAPTURE draws in: the reveal, the glow seams, every tinted
   // primitive and the victory beat. Identical to `team` in every real claim —
@@ -827,7 +843,12 @@ export default function ResultScreen({ navigation, route }) {
   const gainedM2 = claim.gained_m2 != null ? claim.gained_m2 : (captured ? t.area_m2 : 0);
   const reinforcedM2 = claim.reinforced_m2 || 0;
   const heroAreaM2 = captured ? gainedM2 : claimArea;
-  const splits = useMemo(() => computeSplits(path), [path]);
+  // A run reopened later brings the server's own splits: its stored route has
+  // no timestamps to work them out from again.
+  const splits = useMemo(
+    () => (result.splits?.length ? result.splits : computeSplits(path)),
+    [result.splits, path]
+  );
   // RouteThumb (and `rings`) speak the feed's convention — [lon, lat] pairs.
   // The recorder's `path` is `{latitude, longitude}` objects instead, same
   // conversion RunShareCard already does for its own route drawing.
@@ -838,8 +859,11 @@ export default function ResultScreen({ navigation, route }) {
     [path]
   );
   const stolen = claim.stolen_m2 || 0;
-  const achievements = result.achievements || [];
-  const xpGained = result.xp_gained || 0;
+  // Reopened later, the run's own payouts were banked and shown when it
+  // finished. Only what the claim adds is new on this visit.
+  const achievements = deferred ? [] : result.achievements || [];
+  const xpGained = deferred ? 0 : result.xp_gained || 0;
+  const coinsGained = deferred ? 0 : result.coins_gained || 0;
   const totalXp = xpGained + (claim.xp_gained || 0);
 
   // Where the run left this runner on the ladder. /end-run banks its XP before
@@ -961,20 +985,27 @@ export default function ResultScreen({ navigation, route }) {
   // misreading — it invited the merged holding to be the number.
   // Under a square metre is a rounding artefact, not a border that moved.
   const wonGround = gainedM2 >= 1;
+  // How long the land waits if the runner puts the attack off. Also how the
+  // recap tells land that lapsed from land the server never shaped.
+  const claimExpiry = claimTimeLeft(result.claim_expires_at);
   const heroCaption = captured
     ? (wonGround ? 'new ground' : 'no new ground, this one reinforced')
     : canPlace
-    ? 'your ground is ready, take it above'
+    ? 'ground waiting to be claimed'
+    : claimArea > 0 && claimExpiry.expired
+    ? 'the land from this run expired'
     : claimArea > 0
     ? 'this run earned ground, but the server sent no shape for it'
     : 'run a little further to earn a claim';
-  // Celebrate the finish once, on mount.
-  const [showConfetti, setShowConfetti] = useState(true);
+  // Celebrate the finish once, on mount. Not on a later visit to place the
+  // land: nothing has just finished, and the claim has its own celebration.
+  const [showConfetti, setShowConfetti] = useState(!deferred);
   useEffect(() => {
+    if (deferred) return undefined;
     haptic.success();
     const id = setTimeout(() => setShowConfetti(false), 2800);
     return () => clearTimeout(id);
-  }, []);
+  }, [deferred]);
 
   // --- PASERBY ---------------------------------------------------------
   // Who this run crossed. Asked for on mount and left to land while the claim
@@ -998,12 +1029,21 @@ export default function ResultScreen({ navigation, route }) {
   // arrives while the first is still queued: `Math.max` keeps the one that
   // means something. `celebratedLevel` is what stops a dismissed celebration
   // from being re-armed by a late gain (the claim's XP lands after the run's).
+  //
+  // Held as `{ level, from }`. `from` is where the runner stood before the
+  // first boundary this moment covers, and it is kept when a later crossing
+  // raises the level, so a run that crosses two levels counts up from the
+  // number it really started at rather than from the one below the last.
   const [levelUp, setLevelUp] = useState(null);
   const celebratedLevel = useRef(0);
-  const onLevelUp = useCallback((reached) => {
+  const onLevelUp = useCallback((reached, left) => {
     if (!(reached > celebratedLevel.current)) return;
     celebratedLevel.current = reached;
-    setLevelUp((prev) => (prev == null ? reached : Math.max(prev, reached)));
+    setLevelUp((prev) => (
+      prev == null
+        ? { level: reached, from: left ?? reached - 1 }
+        : { level: Math.max(prev.level, reached), from: prev.from }
+    ));
   }, []);
   // Stable while the modal is open. LevelUpCelebration owns a timer and an
   // animation effect; an inline lambda here changed identity on every result
@@ -1058,7 +1098,9 @@ export default function ResultScreen({ navigation, route }) {
   const [highFiving, setHighFiving] = useState(false);
   const [highFivedAll, setHighFivedAll] = useState(false);
   useEffect(() => {
-    if (!result.run_id) return undefined;
+    // Crossed paths belong to the moment the run finished, and were shown
+    // then. A later visit to place the land does not replay them.
+    if (!result.run_id || deferred) return undefined;
     let alive = true;
     api
       .paserbyReveal(result.run_id)
@@ -1075,7 +1117,7 @@ export default function ResultScreen({ navigation, route }) {
       // here must never disturb the run's own result.
       .catch(() => {});
     return () => { alive = false; };
-  }, [result.run_id]);
+  }, [result.run_id, deferred]);
 
   const placeClaim = async () => {
     if (!center || claiming || !canPlace) return;
@@ -1107,6 +1149,8 @@ export default function ResultScreen({ navigation, route }) {
       // board are now wrong in the cache. Drop them so the tabs behind this
       // screen rebuild from the server rather than from before the claim.
       invalidateAfterClaim();
+      // ...and this run's own page, which offers the claim while it waits.
+      invalidate(`run:${result.run_id}`);
       // The payoff carries the celebration now — no toast on top of it. It is
       // held here but only shown when the sequence reaches its payoff phase.
       setPayoff({ ...out, center });
@@ -1182,6 +1226,14 @@ export default function ResultScreen({ navigation, route }) {
     }
   };
 
+  // Where leaving goes. After a run this screen sits inside the Record modal,
+  // and leaving closes the whole modal; reopened later it is a screen of its
+  // own at the root (PlanAttackScreen), and leaving is just going back.
+  const closeScreen = () => {
+    if (deferred) navigation.goBack();
+    else navigation.getParent()?.goBack();
+  };
+
   // Leaving the result screen: the crossed-paths beat is owed to the runner
   // even when they never claimed, so it plays before the screen closes.
   //
@@ -1197,7 +1249,7 @@ export default function ResultScreen({ navigation, route }) {
       setCrossedOpen(true);
       return;
     }
-    navigation.getParent()?.goBack();
+    closeScreen();
   };
 
   // --- stages ---------------------------------------------------------
@@ -1208,9 +1260,21 @@ export default function ResultScreen({ navigation, route }) {
   // them reads the same claim, sequence, payoff and crossed-paths state, and
   // routing that between screens would mean either duplicating it or
   // threading it through params.
-  const goToSummary = () => {
+  // "Plan later": leave the land unplaced. It waits (the server holds it for
+  // `claim_defer_hours` after the run) and Home offers it back. After a run
+  // that means carrying on to the recap, which offers a way back in too; on a
+  // visit made only to place it there is nothing else here, so it closes.
+  const planLater = () => {
     haptic.light();
-    setStage(STAGE.SUMMARY);
+    if (deferred) closeScreen();
+    else setStage(STAGE.SUMMARY);
+  };
+  // From the recap back to the map (ToonButton does its own haptic). The map
+  // mounts afresh, so the camera has to be framed on the neighbourhood again
+  // rather than left wherever it happens to open.
+  const backToPlanning = () => {
+    fitted.current = false;
+    setStage(STAGE.CLAIM);
   };
   const goToShare = () => {
     haptic.light();
@@ -1484,7 +1548,7 @@ export default function ResultScreen({ navigation, route }) {
             pointerEvents="box-none"
           >
             <LinearGradient
-              colors={[scheme === 'dark' ? 'rgba(11,13,16,0.92)' : 'rgba(255,255,255,0.94)', 'transparent']}
+              colors={[scheme === 'dark' ? withAlpha(colors.bg, 0.92) : 'rgba(255,255,255,0.94)', 'transparent']}
               style={StyleSheet.absoluteFill}
               pointerEvents="none"
             />
@@ -1502,7 +1566,7 @@ export default function ResultScreen({ navigation, route }) {
                 >
                   <View style={[styles.stepDot, { backgroundColor: team.stroke }]} />
                   <Text style={[styles.stepChipText, { color: team.stroke }]}>
-                    {!canPlace ? 'GROUND TAKEN' : '1 · PICK A SPOT'}
+                    {!canPlace ? 'GROUND TAKEN' : 'PICK A SPOT'}
                   </Text>
                 </Framed>
                 <OutlinedText
@@ -1515,14 +1579,30 @@ export default function ResultScreen({ navigation, route }) {
                   {!canPlace ? 'Territory claimed' : 'Drop your land!'}
                 </OutlinedText>
               </View>
-              {canPlace && !seq.isRunning && (
+              {/* The way out, for a runner who does not want to plan right
+                  now. It was a muted "Later" in body text, floating over a
+                  busy map, which read as a caption rather than a control, so
+                  it wears the chip every other tap target here wears. Gone
+                  while a claim is in flight or playing: that land is already
+                  on its way. */}
+              {canPlace && !seq.isRunning && !claiming && (
                 <PressableScale
-                  onPress={goToSummary}
+                  onPress={planLater}
                   accessibilityRole="button"
-                  accessibilityLabel="Skip claiming for now"
-                  hitSlop={12}
+                  accessibilityLabel="Plan your attack later"
+                  hitSlop={10}
                 >
-                  <Text style={styles.claimLater}>Later</Text>
+                  <Framed
+                    frame={frameVariant('chip', 'plan-later')}
+                    tint={toon.ink}
+                    fill="#ffffff"
+                    weight={INK.thin}
+                    pose={framePose('plan-later')}
+                    inset={false}
+                    contentStyle={styles.laterChip}
+                  >
+                    <Text style={styles.laterText}>Plan later</Text>
+                  </Framed>
                 </PressableScale>
               )}
             </View>
@@ -1592,7 +1672,7 @@ export default function ResultScreen({ navigation, route }) {
                       <View key={r.id} style={styles.takeRow}>
                         <CharacterBust equipped={r.avatar} size={26} ring={r.ring} bg={colors.cardAlt} />
                         <Text style={styles.takeName} numberOfLines={1}>
-                          {r.username}{r.clanTag ? ` · ${r.clanTag}` : ''}
+                          {r.clanTag ? `[${r.clanTag}] ` : ''}{r.username}
                         </Text>
                         <Text style={[styles.takeArea, { color: team.glow }]}>{formatArea(r.area)}</Text>
                       </View>
@@ -1666,6 +1746,8 @@ export default function ResultScreen({ navigation, route }) {
         <PaserbyReveal
           visible={crossedOpen}
           reveal={crossed}
+          path={path}
+          myAvatar={equipped}
           highFiving={highFiving}
           highFivedAll={highFivedAll}
           onHighFiveAll={highFiveAll}
@@ -1724,6 +1806,35 @@ export default function ResultScreen({ navigation, route }) {
           </Text>
         </Reveal>
       ) : null}
+
+      {/* The land this run earned and the runner chose not to place yet. It
+          waits, and this is the way back to the map; Home offers it too once
+          the recap is closed. Only ever here after "Plan later": a claim that
+          landed, or a run that earned nothing, has no land waiting. */}
+      {canPlace && (
+        <Reveal from="up" style={styles.waitingWrap}>
+          <HardShadow radius={nbRadius.sm} accent={team.glow} style={styles.cardShadow}>
+            <View style={styles.waitingCard}>
+              <View style={styles.waitingText}>
+                <Text style={[styles.waitingEyebrow, { color: team.glow }]}>LAND WAITING</Text>
+                <Text style={styles.waitingTitle}>Plan your attack</Text>
+                <Text style={styles.waitingNote}>
+                  {claimExpiry.label ? `${claimExpiry.label} left, also on Home` : 'Waiting for you on Home'}
+                </Text>
+              </View>
+              <ToonButton
+                title="PLAN NOW"
+                onPress={backToPlanning}
+                size="sm"
+                accessibilityLabel="Plan your attack now"
+                containerStyle={styles.waitingButtonWrap}
+                style={styles.claimButton}
+                fill={{ color: team.glow, colors: [team.glow, team.glow, team.glow], border: toon.ink }}
+              />
+            </View>
+          </HardShadow>
+        </Reveal>
+      )}
 
       {/* the shareable card */}
       <Reveal delay={canPlace ? 140 : 0}>
@@ -1797,7 +1908,7 @@ export default function ResultScreen({ navigation, route }) {
 
         {/* What the run paid, under the bar it just moved — coins used to sit
             above the whole card as a receipt with nothing to attach to. */}
-        {result.coins_gained > 0 && (
+        {coinsGained > 0 && (
           <Reveal from="up" delay={COINS_DELAY} style={styles.earnRow}>
             {/* THE PAYOUT, as a coin arriving rather than a line of text.
                 This was a bare "+47 coins" that faded up with everything else
@@ -1825,7 +1936,7 @@ export default function ResultScreen({ navigation, route }) {
                   </View>
                   <View style={styles.earnAmount}>
                     <CountUpText
-                      value={result.coins_gained}
+                      value={coinsGained}
                       from={0}
                       delay={COINS_DELAY}
                       format={fmtCoins}
@@ -1850,7 +1961,7 @@ export default function ResultScreen({ navigation, route }) {
               </Text>
             ) : (
               <Text style={[styles.deltaText, { color: team.glow }]}>
-                +{formatArea(heroAreaM2)} · {label} holds more
+                +{formatArea(heroAreaM2)}, now {label} holds more
               </Text>
             )}
           </View>
@@ -1989,6 +2100,8 @@ export default function ResultScreen({ navigation, route }) {
     <PaserbyReveal
       visible={crossedOpen}
       reveal={crossed}
+      path={path}
+      myAvatar={equipped}
       highFiving={highFiving}
       highFivedAll={highFivedAll}
       onHighFiveAll={highFiveAll}
@@ -2010,7 +2123,8 @@ export default function ResultScreen({ navigation, route }) {
         arrive after it rather than on top of it. */}
     <LevelUpCelebration
       visible={levelUp != null && !seq.showPayoff && !seq.showLeaderboard && !crossedOpen}
-      level={levelUp}
+      level={levelUp?.level ?? null}
+      from={levelUp?.from}
       equipped={equipped}
       accent={team.glow}
       onClose={closeLevelUp}
@@ -2150,7 +2264,29 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     paddingBottom: space.lg,
   },
   claimHeadRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  claimLater: { ...type.bodySmBold, color: colors.textMuted, paddingTop: 6 },
+  // "Plan later": the chip every tap target in this style wears, white with
+  // an ink edge, so it reads as a control over any map, not as a caption.
+  laterChip: { paddingHorizontal: space.md, paddingVertical: 7 },
+  laterText: { ...type.buttonSm, color: '#141414' },
+  // ...and the way back, on the recap: the land still waiting, and a button
+  // to the map. A full stroke like the recap card under it, because it is a
+  // thing to act on rather than an aside.
+  waitingWrap: { marginBottom: space.md },
+  waitingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.md,
+    backgroundColor: colors.card,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.stroke,
+    borderColor: nbInk(scheme, colors.card),
+    padding: space.md,
+  },
+  waitingText: { flex: 1, minWidth: 0 },
+  waitingEyebrow: { ...type.captionMedium, letterSpacing: 1 },
+  waitingTitle: { ...type.bodySmBold, fontSize: 18, color: colors.text, marginTop: 2 },
+  waitingNote: { ...type.caption, color: colors.textMuted, marginTop: 2 },
+  waitingButtonWrap: { width: 120, flexShrink: 0 },
   claimSheet: {
     backgroundColor: colors.card,
     borderTopWidth: 2.5,

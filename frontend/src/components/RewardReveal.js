@@ -55,14 +55,24 @@ import Animated, {
 
 import Svg, { Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
-import RewardArt, { RARITY_COLOR } from './RewardArt';
+import RewardArt, { RARITY_COLOR, RARITY_LABEL } from './RewardArt';
 import GameAnimation from './GameAnimation';
+import { getItem } from '../config/cosmetics';
 import { brand, radius, space, toon, toonType, useTheme, useThemedType } from '../theme';
 import { OutlinedText } from './ui';
 import { Confetti, useReduceMotion } from '../ui/motion';
 
 // How many rewards get named under the card before the rest become a count.
 const MAX_NAMED = 6;
+
+function rewardRarity(reward) {
+  if (!reward) return null;
+  if (reward.rarity) return reward.rarity;
+  if (reward.kind === 'lootbox') return reward.key;
+  if (reward.kind !== 'cosmetic') return null;
+  const [slot, id] = String(reward.key || '').split(':');
+  return slot && id ? getItem(slot, id)?.rarity || null : null;
+}
 
 // The flat fill behind everything. Deliberately a CONSTANT and not a themed
 // colour: this is a lightbox, and a reveal that is charcoal-on-charcoal in
@@ -470,7 +480,7 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
 
   const list = rewards || [];
   const headline = list.length > 1 ? `${list.length} rewards` : list[0]?.label;
-  const rarity = list[0]?.kind === 'lootbox' ? list[0].key : null;
+  const rarity = rewardRarity(list[0]);
   const tint = (rarity && RARITY_COLOR[rarity]) || accent || brand.pink;
   // The build's own ink. A rarity tint on the deep ink reads; the same tint on
   // the lootbox gold does not, so the gold gets white and keeps the contrast.
@@ -587,7 +597,7 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
                       reward={r}
                       equipped={equipped}
                       accent={tint}
-                      size={list.length > 1 ? 72 : 96}
+                      size={list.length > 1 ? 92 : 136}
                       // One card, one focal reward — this is the moment the
                       // chest should be moving.
                       animated
@@ -617,6 +627,11 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
             <OutlinedText style={[toonType.sub, { color: '#fff' }]} outline={toon.ink} width={2}>
               {headline || 'Claimed'}
             </OutlinedText>
+            {rarity ? (
+              <Text style={[styles.rarity, { color: tint }]}>
+                {(RARITY_LABEL[rarity] || rarity).toUpperCase()}
+              </Text>
+            ) : null}
             {/* Claim-all can hand over a hundred things at once. Naming a few
                 of them tells you what kind of haul it was; naming all hundred
                 is a paragraph nobody reads. */}
@@ -628,8 +643,8 @@ export default function RewardReveal({ visible, rewards, equipped, accent, fromL
                 ]}
                 numberOfLines={2}
               >
-                {list.slice(0, MAX_NAMED).map((r) => r.label).join(' · ')}
-                {list.length > MAX_NAMED ? ` · +${list.length - MAX_NAMED} more` : ''}
+                {list.slice(0, MAX_NAMED).map((r) => r.label).join(', ')}
+                {list.length > MAX_NAMED ? `, plus ${list.length - MAX_NAMED} more` : ''}
               </Text>
             ) : null}
             {/* Last in, on its own fade. The reveal has to look finished
@@ -668,11 +683,12 @@ const styles = StyleSheet.create({
   burst: { position: 'absolute', width: BURST_SIZE, height: BURST_SIZE, alignItems: 'center', justifyContent: 'center' },
   rewardWrap: { alignItems: 'center' },
   card: {
-    minWidth: 168,
-    paddingHorizontal: space.xl,
-    paddingVertical: space.xl,
+    minWidth: 224,
+    minHeight: 204,
+    paddingHorizontal: space.xxl,
+    paddingVertical: space.xxl,
     borderRadius: radius.card,
-    borderWidth: 3,
+    borderWidth: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -681,4 +697,5 @@ const styles = StyleSheet.create({
   sparkTop: { top: -26, right: -22 },
   sparkBottom: { bottom: -20, left: -24 },
   labelWrap: { alignItems: 'center', marginTop: space.lg, paddingHorizontal: space.xl },
+  rarity: { ...toonType.label, marginTop: 6, letterSpacing: 1.8 },
 });

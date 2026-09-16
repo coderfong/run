@@ -159,7 +159,7 @@ describe('TerritoryScreen', () => {
     const t = texts(tree).join('|');
     expect(t).toContain('Fades in 10h');
     expect(t).toContain('5d left');
-    expect(t).toContain('Held 2 attacks · Reinforced 1×');
+    expect(t).toContain('Held 2 attacks, reinforced 1×');
     // The summary strip over the list.
     expect(t).toContain('Fading soon');
     expect(t).toContain('Held this week');

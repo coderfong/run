@@ -72,7 +72,7 @@ export default function ProHomeCard() {
         <Text style={[type.captionMedium, { color: GOLD }]}>PASER PRO</Text>
         <Text style={[type.bodySmBold, { marginTop: 2 }]}>More stats. More styles.</Text>
         <Text style={[type.caption, { color: colors.textMuted, marginTop: 2 }]}>
-          Planner · Run stats · Gear
+          Planner, run stats and gear
         </Text>
       </View>
       <ChevronRight size={18} color={GOLD} strokeWidth={3} />

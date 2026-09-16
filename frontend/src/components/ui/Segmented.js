@@ -2,7 +2,7 @@
 //
 // THE ACTIVE SEGMENT IS AN INK FILL, not a surface step. It used to be
 // `colors.card` sitting in a `colors.bgElevated` trough, which is invisible:
-// in the dark palette those two tokens are the SAME value (#15181D), and in
+// in the dark palette those two tokens are the SAME value (SURFACE.raised), and in
 // the light one they are #FFFFFF on #EEF0F4 — a ~3% step. Either way you
 // could not tell which option was selected. `primary`/`primaryInk` is the
 // app's neutral high-contrast pairing (the same one Button uses when there is

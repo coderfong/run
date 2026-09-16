@@ -20,7 +20,7 @@ import { useQuery } from '../hooks/useQuery';
 import { useAccent } from '../hooks/useAccent';
 import { brand, radius, space, useTheme, useThemedType } from '../theme';
 import { Reveal } from '../ui/motion';
-import { Card, EmptyState, Segmented, Skeleton, ToonHeader } from '../components/ui';
+import { Card, EmptyState, PageTexture, Segmented, Skeleton, ToonHeader } from '../components/ui';
 import AppIcon from '../components/AppIcon';
 import LandSummary from '../components/territory/LandSummary';
 import PlotRow from '../components/territory/PlotRow';
@@ -157,6 +157,7 @@ export default function TerritoryScreen({ navigation }) {
 
   return (
     <View style={[styles.page, { backgroundColor: colors.bg }]}>
+      <PageTexture />
       {header}
       <ScrollView
         style={styles.scroll}

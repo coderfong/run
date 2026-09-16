@@ -179,11 +179,18 @@ export function Reveal({ delay = 0, from = 'down', duration = 340, children, sty
 //
 // The reveal plays ONCE. A screen re-fading every time its data refreshes is
 // a flicker, not an entrance.
+//
+// `whenOnScreen` holds both `ready` and `armed` until the screen is the one in
+// front, read HERE rather than by the caller. A tab screen that read focus
+// itself to pass in re-rendered its whole tree on every tab switch; this way
+// the only thing that re-renders is this wrapper, and the children it holds are
+// the same elements they were, which React leaves alone.
 // ---------------------------------------------------------------------------
 
 export function ScreenIn({
-  ready = true,
-  armed = true,
+  ready: readyProp = true,
+  armed: armedProp = true,
+  whenOnScreen = false,
   duration = 420,
   delay = 0,
   timeoutMs = 1400,
@@ -191,6 +198,9 @@ export function ScreenIn({
   children,
   ...rest
 }) {
+  const onScreen = useOnScreen(whenOnScreen);
+  const ready = readyProp && onScreen;
+  const armed = armedProp && onScreen;
   const reduced = useReduceMotion();
   const opacity = useSharedValue(reduced ? 1 : 0);
   const [expired, setExpired] = useState(false);

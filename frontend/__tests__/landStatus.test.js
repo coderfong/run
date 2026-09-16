@@ -109,16 +109,16 @@ describe('life left', () => {
 describe('the line under a plot', () => {
   test('what it has been through comes first, two facts at most', () => {
     expect(plotDetail({ held: 2, reinforcements: 3, club: true })).toBe(
-      'Held 2 attacks · Reinforced 3×'
+      'Held 2 attacks, reinforced 3×'
     );
     expect(plotDetail({ held: 1, run_distance_m: 5230 })).toBe(
-      'Held 1 attack · From a 5.2 km run'
+      'Held 1 attack, from a 5.2 km run'
     );
   });
 
   test('a quiet plot says where it came from', () => {
     expect(plotDetail({ run_distance_m: 5230, claimed_at: at(-3 * 24 * H) })).toBe(
-      'From a 5.2 km run · Claimed 3d ago'
+      'From a 5.2 km run, claimed 3d ago'
     );
     expect(plotDetail({ claimed_at: at(-2 * H) })).toBe('Claimed 2h ago');
   });

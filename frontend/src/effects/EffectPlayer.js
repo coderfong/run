@@ -1,6 +1,7 @@
 import React, { Component, useCallback, useEffect, useRef, useState } from 'react';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 
+import { Image } from '../ui/image';
 import { useReduceMotion } from '../ui/motion';
 import AnimatedImageEffect from './AnimatedImageEffect';
 import LottieEffect from './LottieEffect';

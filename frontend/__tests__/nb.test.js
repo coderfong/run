@@ -9,6 +9,7 @@
 import {
   INK_MIN_CONTRAST,
   NB,
+  NB_DECK,
   NB_DROP_DARK,
   contrastRatio,
   darkColors,
@@ -19,6 +20,8 @@ import {
   nbInk,
   radius,
   shadow,
+  tintOn,
+  toRgb,
   toonSurface,
 } from '../src/theme';
 
@@ -129,5 +132,51 @@ describe('radius scale', () => {
   it('is limited to 0 / 12 / 24 (plus the pill)', () => {
     const distinct = new Set(Object.values(radius).filter((r) => r !== radius.pill));
     expect([...distinct].sort((a, b) => a - b)).toEqual([0, 12, 24]);
+  });
+});
+
+describe('the night palette', () => {
+  const STEPS = [darkColors.bg, darkColors.card, darkColors.cardAlt];
+  // Spread between the strongest and weakest channel. A grey has none.
+  const chroma = (color) => {
+    const { r, g, b } = toRgb(color);
+    return Math.max(r, g, b) - Math.min(r, g, b);
+  };
+
+  // The dark scheme used to be three neutral greys, and that is the dull look
+  // this replaced: every other surface in the style is a flat saturated fill,
+  // and the page was the one thing with no colour in it.
+  it('is a colour, not a grey, on every step', () => {
+    STEPS.forEach((surface) => expect(chroma(surface)).toBeGreaterThanOrEqual(32));
+  });
+
+  it('keeps type readable on every step', () => {
+    STEPS.forEach((surface) => {
+      expect(contrastRatio(darkColors.text, surface)).toBeGreaterThanOrEqual(7);
+    });
+    // Muted is white at an alpha, so judge it the way it lands: composited.
+    const muted = tintOn(darkColors.card, '#ffffff', toRgb(darkColors.textMuted).a);
+    expect(contrastRatio(muted, darkColors.card)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  // A saturated page is only an improvement while the deck still stands on it.
+  it('lets every deck colour stand clear of the page', () => {
+    NB_DECK.forEach((accent) => {
+      expect(contrastRatio(accent, darkColors.bg)).toBeGreaterThanOrEqual(INK_MIN_CONTRAST);
+    });
+  });
+
+  // The dot grid is texture, not line work. It has to be there, and it has to
+  // sit well under the stroke floor, or it competes with the boxes it is meant
+  // to set off.
+  it('draws a dot grid that shows but stays quieter than any stroke', () => {
+    const dot = tintOn(darkColors.bg, darkColors.grid, toRgb(darkColors.grid).a);
+    const ratio = contrastRatio(dot, darkColors.bg);
+    expect(ratio).toBeGreaterThan(1.2);
+    expect(ratio).toBeLessThan(INK_MIN_CONTRAST);
+  });
+
+  it('leaves the paper plain', () => {
+    expect(lightColors.grid).toBeNull();
   });
 });

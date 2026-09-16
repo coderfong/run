@@ -194,6 +194,12 @@ class RunResultOut(BaseModel):
     # True when this response is a replay of an already-finished run rather
     # than a fresh calculation. Nothing was paid a second time.
     replayed: bool = False
+    # Until when this run's land can still be placed. The result screen lets a
+    # runner leave without claiming and plan the attack later from Home; after
+    # this moment the land lapses. Set while there is land waiting (and left
+    # set, in the past, on a replay of a run that let it lapse, so the client
+    # can tell "lapsed" from "never earned any"). Null when the window is off.
+    claim_expires_at: Optional[UtcDatetime] = None
 
     def model_post_init(self, __context) -> None:  # pydantic v2 hook
         # One source of truth, two names on the wire.
@@ -860,6 +866,35 @@ class RunDetail(BaseModel):
     my_reaction: Optional[str] = None
     caption: Optional[str] = None
     media: List[str] = []
+    # Owner only: this run's land is still waiting to be placed, and until when
+    # (null when there is no deadline). Always false on somebody else's run.
+    claim_pending: bool = False
+    claim_expires_at: Optional[UtcDatetime] = None
+
+
+class PendingClaimOut(BaseModel):
+    """A finished run whose land is still waiting to be placed: the way back
+    to a claim the runner chose to plan later."""
+
+    run_id: str
+    ended_at: UtcDatetime
+    distance_m: float
+    duration_s: float
+    claim_area_m2: float
+    claim_expires_at: Optional[UtcDatetime] = None
+
+
+class ClaimResumeOut(BaseModel):
+    """Everything the claim screen needs to reopen for a run finished earlier.
+
+    `result` is what /end-run answered, replayed rather than recomputed, so
+    nothing is paid twice. `path` is the stored route as [lon, lat], which is
+    all the claim map draws. `splits` are the server's own, because the stored
+    route carries no timestamps to work them out from again."""
+
+    result: RunResultOut
+    path: List[Tuple[float, float]] = []
+    splits: List[RunSplit] = []
 
 
 class RunPostIn(BaseModel):

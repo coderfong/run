@@ -50,6 +50,7 @@ export default function BirthdayStep({ value, onChange, onContinue, onSkip, bott
   return (
     <View style={styles.fill}>
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
       >
@@ -65,11 +66,11 @@ export default function BirthdayStep({ value, onChange, onContinue, onSkip, bott
           </Text>
         </View>
 
-        <Text style={[toonType.body, styles.note]}>
-          {tooYoung
-            ? `You need to be ${MIN_AGE} or older to use PASER.`
-            : 'Optional. Only used to check your age. Never shown to other runners.'}
-        </Text>
+        {tooYoung ? (
+          <Text style={[toonType.body, styles.note]}>
+            {`You need to be ${MIN_AGE} or older to use PASER.`}
+          </Text>
+        ) : null}
 
         {/* Continue sits with the step, under the date it confirms. The wheel
             stays docked below because it is the INPUT — a spinner you have to
@@ -105,6 +106,10 @@ export default function BirthdayStep({ value, onChange, onContinue, onSkip, bott
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  // Constrain the content to the space left above the docked wheel. Without
+  // this, shorter screens let the ScrollView measure at its full content
+  // height and the translucent footer paints over Continue.
+  scroll: { flex: 1, minHeight: 0 },
   // flexGrow + centred content: the step sits in the middle of whatever room
   // it has, and scrolls instead of clipping when it doesn't have enough. The
   // Continue button lives INSIDE this column now, which is exactly the height

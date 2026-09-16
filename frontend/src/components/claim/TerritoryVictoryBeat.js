@@ -403,7 +403,6 @@ function TerritoryVictoryBeat({
       {victims.length > 0 && (
         <View style={styles.outcomeRow}>
           <Text style={[styles.outcomeText, styles.captured]}>{`CAPTURED ${outcome.captured}`}</Text>
-          <Text style={styles.outcomeDivider}>•</Text>
           <Text style={[styles.outcomeText, styles.defended]}>{`DEFENDED ${outcome.defended}`}</Text>
         </View>
       )}
@@ -464,10 +463,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 9,
+    gap: 18,
   },
   outcomeText: { fontFamily: fonts.heading, fontSize: 15, letterSpacing: 0.8 },
-  outcomeDivider: { color: '#FFFFFF', fontSize: 15 },
   captured: { color: '#2DD4BF' },
   defended: { color: '#FBBF24' },
   fxAnchor: { position: 'absolute' },

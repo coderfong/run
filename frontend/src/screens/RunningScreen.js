@@ -45,7 +45,7 @@ import { useIsFocused } from '@react-navigation/native';
 import useWatchRun from '../watch/useWatchRun';
 import { watchAppInstalled, beginRunSave, endRunSave } from '../watch/watchLink';
 import { commandAllowed, PHASE as WATCH_PHASE } from '../watch/watchState';
-import { NB, darkColors, nbInk, radius, runTuning as T, space, toon, type } from '../theme';
+import { NB, darkColors, nbInk, radius, runTuning as T, space, toon, type, withAlpha } from '../theme';
 import { ToonButton } from '../components/ui';
 import { haptic, PressableScale, Pulse } from '../ui/motion';
 import { toast } from '../ui/toast';
@@ -67,6 +67,13 @@ const D = {
   muted: darkColors.textMuted,
   dim: darkColors.textDim,
   danger: darkColors.danger,
+  // See-through steps of the same surfaces, for chrome floating over the map.
+  // Derived rather than typed out: these were the old charcoal as literal
+  // rgba, and would have stayed charcoal beside panels that follow the palette.
+  glass: withAlpha(darkColors.card, 0.82),
+  glassStrong: withAlpha(darkColors.card, 0.95),
+  bust: withAlpha(darkColors.card, 0.9),
+  veil: withAlpha(darkColors.bg, 0.55),
 };
 
 // The dark game-board look now comes from the Mapbox dark style URL
@@ -1346,7 +1353,7 @@ export default function RunningScreen({ navigation, route }) {
         {/* owner portrait in the middle of each nearby territory */}
         {boardPortraits.map((m) => (
           <UserMarker key={m.id} point={m.at}>
-            <CharacterBust equipped={m.avatar} size={m.mine ? 34 : 30} ring={m.mine ? accent : m.ring} bg="rgba(21,24,29,0.9)" />
+            <CharacterBust equipped={m.avatar} size={m.mine ? 34 : 30} ring={m.mine ? accent : m.ring} bg={D.bust} />
           </UserMarker>
         ))}
 
@@ -1371,7 +1378,7 @@ export default function RunningScreen({ navigation, route }) {
                 {/* The one bust in the app whose PARENT scales it. The rig
                     cannot see a Pulse above it, so the full-resolution decode
                     is asked for by hand here. */}
-                <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg="rgba(21,24,29,0.9)" crisp />
+                <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg={D.bust} crisp />
               </Pulse>
             </View>
           </UserMarker>
@@ -1542,11 +1549,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(21,24,29,0.82)',
+    backgroundColor: D.glass,
     // Heavier cream stroke — this HUD is always dark, so the NB edge is the
     // cream ink, not the hairline D.border it used to carry.
     borderWidth: NB.strokeThin,
-    borderColor: nbInk('dark', 'rgba(21,24,29,1)'),
+    borderColor: nbInk('dark', D.card),
     borderRadius: radius.pill,
     paddingVertical: space.sm,
     paddingHorizontal: space.lg,
@@ -1624,7 +1631,7 @@ const styles = StyleSheet.create({
   },
   lockOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(11,13,16,0.55)',
+    backgroundColor: D.veil,
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingBottom: 64,
@@ -1633,7 +1640,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(21,24,29,0.95)',
+    backgroundColor: D.glassStrong,
     borderRadius: radius.pill,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',

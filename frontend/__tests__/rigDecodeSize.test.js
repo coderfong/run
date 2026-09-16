@@ -1,25 +1,18 @@
 /**
- * What size the character art is DECODED at.
+ * Which character layers ask for a crisp (never downscaled) draw.
  *
- * The rig is drawn two very different ways, and the difference costs real
- * memory. In the studio it is one large runner that springs on a tap and on a
- * part landing, so every layer has to be decoded at full resolution or the
- * scale-up magnifies a bitmap that was never that big (see ui/image.js —
- * `crisp` is what turns expo-image's `allowDownscaling` off). Everywhere else
- * it is a 26-44pt PORTRAIT that never moves: on every feed card, over every
- * territory on the map, beside every leaderboard row.
+ * The rule: crisp only where the rig's own scale can move — `animateSwaps`
+ * (the studio's part-landing spring) or a `ref` (the only route to the
+ * imperative `play()` nod) — and never on a still portrait or a catalogue tile.
  *
- * Those portraits used to take the studio's treatment too. The character art
- * is ~512px square, so a single layer is about a megabyte of decoded bitmap
- * and a dressed runner is eight of them — paid per bust, for a thumbnail. A
- * screenful of runners was hundreds of megabytes of bitmap, which is most of
- * why building one was slow and holding several on screen was worse.
- *
- * The rule is now "decode crisply only when the rig's own scale can move",
- * and it is decidable from the props: `animateSwaps`, or a `ref` (the only
- * route to the imperative `play()` nod). This pins both halves of it, because
- * a regression in either direction is invisible — one costs memory silently,
- * the other blurs the runner only while they are mid-spring.
+ * What the prop BUYS changed on 2026-09-15. It maps to expo-image's
+ * `allowDownscaling`, and this file used to say that downscaling the busts
+ * saved hundreds of megabytes of bitmap. It did not: SDWebImage decodes the
+ * whole image and caches it either way, and downscaling only added a redraw at
+ * view size, on the main thread, for every layer of every bust. ui/image.js now
+ * draws all bundled art — which is all character art — from its full decode,
+ * so for these layers the prop is inert. It is still pinned because it is still
+ * the contract for a remote source.
  */
 
 import React from 'react';

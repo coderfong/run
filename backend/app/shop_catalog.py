@@ -48,8 +48,8 @@ SHOP_ITEMS = {
     "royalrobe": ("accessory", "legendary"),  # Royal robe
     "lacebib": ("accessory", "common"),  # Lace bib
     # --- bottom ---
-    "wb065": ("bottom", "rare"),  # Shorts · Yellow 1
-    "wb105": ("bottom", "rare"),  # Trousers · Sand 6
+    "wb065": ("bottom", "rare"),  # Yellow cargo shorts
+    "wb105": ("bottom", "rare"),  # Sand chinos
     # --- face ---
     "wink": ("face", "common"),  # Wink
     "tongueout": ("face", "common"),  # Cheeky
@@ -65,18 +65,18 @@ SHOP_ITEMS = {
     "sob": ("face", "rare"),  # Sob
     "sly": ("face", "rare"),  # Sly
     # --- footwear ---
-    "wf015": ("footwear", "rare"),  # Shoes · Charcoal 2
-    "wf020": ("footwear", "rare"),  # Shoes · Blush 4
-    "wf022": ("footwear", "epic"),  # Shoes · Charcoal 3
-    "wf025": ("footwear", "rare"),  # Shoes · Mint 2
-    "wf030": ("footwear", "rare"),  # Shoes · Pink 1
-    "wf040": ("footwear", "rare"),  # Shoes · Grey 1
-    "wf045": ("footwear", "rare"),  # Shoes · Cream 9
-    "wf050": ("footwear", "rare"),  # Shoes · Charcoal 7
-    "wf055": ("footwear", "epic"),  # Shoes · Lilac 2
-    "wf060": ("footwear", "rare"),  # Shoes · Red 3
-    "wf070": ("footwear", "rare"),  # Shoes · Coral 4
-    "wf085": ("footwear", "rare"),  # Shoes · Maroon 3
+    "wf015": ("footwear", "rare"),  # Black knit runners
+    "wf020": ("footwear", "rare"),  # Lavender sneakers
+    "wf022": ("footwear", "epic"),  # Black and gold high tops
+    "wf025": ("footwear", "rare"),  # Mint canvas sneakers
+    "wf030": ("footwear", "rare"),  # Berry sneakers
+    "wf040": ("footwear", "rare"),  # Teal trim slip ons
+    "wf045": ("footwear", "rare"),  # Bow espadrilles
+    "wf050": ("footwear", "rare"),  # Navy clogs
+    "wf055": ("footwear", "epic"),  # Lilac Mary Janes
+    "wf060": ("footwear", "rare"),  # Red canvas high tops
+    "wf070": ("footwear", "rare"),  # Cream strap shoes
+    "wf085": ("footwear", "rare"),  # Burgundy strap heels
     # --- glasses ---
     "rounds": ("glasses", "common"),  # Rounds
     "wayfarer": ("glasses", "common"),  # Wayfarers
@@ -230,21 +230,21 @@ SHOP_ITEMS = {
     "frilltop": ("top", "common"),  # Frill top
     "maidapron": ("top", "rare"),  # Maid apron
     "bowcami": ("top", "common"),  # Bow cami
-    "o3t": ("top", "rare"),  # Zip hoodie · Yellow
-    "o9t": ("top", "epic"),  # Loose tee · Sea glass
-    "o13t": ("top", "rare"),  # Ringer tee · Yellow
-    "o14t": ("top", "epic"),  # Loose tee · Black
-    "o18t": ("top", "rare"),  # Loose tee · Mint
-    "o48t": ("top", "rare"),  # Polo · Lilac
-    "o54t": ("top", "rare"),  # Baseball jacket · Blush
-    "o68t": ("top", "rare"),  # Pullover hoodie · Black
-    "o78t": ("top", "rare"),  # Pullover hoodie · Jet
-    "o88t": ("top", "rare"),  # Hooded puffer · Ash
-    "o89t": ("top", "rare"),  # Flight bomber · Green
-    "o93t": ("top", "rare"),  # Blazer · Navy
-    "o94t": ("top", "rare"),  # Striped knit · Cream
-    "k6t": ("top", "rare"),  # Track hoodie · Blue
-    "k12t": ("top", "rare"),  # Crop jacket · Blush
+    "o3t": ("top", "rare"),  # Yellow zip hoodie
+    "o9t": ("top", "epic"),  # Sea glass tee
+    "o13t": ("top", "rare"),  # Yellow ringer tee
+    "o14t": ("top", "epic"),  # Black loose tee
+    "o18t": ("top", "rare"),  # Mint loose tee
+    "o48t": ("top", "rare"),  # Lilac polo
+    "o54t": ("top", "rare"),  # Blush shrug
+    "o68t": ("top", "rare"),  # Black hoodie
+    "o78t": ("top", "rare"),  # Jet black hoodie
+    "o88t": ("top", "rare"),  # Ash hooded puffer
+    "o89t": ("top", "rare"),  # Green bomber jacket
+    "o93t": ("top", "rare"),  # Navy blazer
+    "o94t": ("top", "rare"),  # Cream striped knit
+    "k6t": ("top", "rare"),  # Blue track hoodie
+    "k12t": ("top", "rare"),  # Blush crop jacket
     "o61o": ("top", "rare"),  # Pirate coat
     "o69o": ("top", "epic"),  # Tactical rig
 }

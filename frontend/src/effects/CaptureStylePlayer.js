@@ -53,6 +53,7 @@ import { getEffect } from './effectRegistry';
 import { CAPTURE_LAYER } from './layers';
 import ReactionEffect from './ReactionEffect';
 import { getReactionEffect } from './reactionRegistry';
+import { EFFECT_TYPE } from './effectTypes';
 
 // Two named slots, and that is the ceiling: one hero sprite and one thing it
 // caused. It used to be three, evicted oldest-first, so which art survived
@@ -105,6 +106,26 @@ export function effectIdForCaptureStep(step) {
   if (step.effect) return step.effect;
   if (step.reaction) return getReactionEffect(step.reaction);
   return null;
+}
+
+/**
+ * Every image a style can put on screen, for warming before it plays.
+ *
+ * A capture sheet is up to 34 MB of bitmap at 3x. Decoded as its step fires,
+ * it lands a beat after the step that called for it; decoded while the run
+ * replay is still flying (ResultScreen asks for this the moment the style is
+ * picked), it is already in memory when the first beat lands. Lottie steps are
+ * left out: their source is a document, not an image.
+ */
+export function captureStyleImageSources(styleId) {
+  const captureStyle = resolveCaptureStyle(styleId);
+  const sources = [];
+  (captureStyle?.sequence || []).forEach((step) => {
+    const id = effectIdForCaptureStep(step);
+    const spec = id ? getEffect(id) : null;
+    if (spec?.source != null && spec.type !== EFFECT_TYPE.LOTTIE) sources.push(spec.source);
+  });
+  return sources;
 }
 
 /**

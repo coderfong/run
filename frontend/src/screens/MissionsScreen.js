@@ -34,8 +34,6 @@ import DayStrip from '../components/missions/DayStrip';
 import MissionCard from '../components/missions/MissionCard';
 import CoinFly from '../components/missions/CoinFly';
 import LootboxGamble from '../components/lootbox/LootboxGamble';
-import RewardReveal from '../components/RewardReveal';
-import { RARITY_COLOR } from '../components/RewardArt';
 import { rollCosmetic } from '../config/lootboxRoll';
 import { toast } from '../ui/toast';
 import { CountUpText, Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
@@ -146,7 +144,6 @@ export default function MissionsScreen({ navigation }) {
 
   const [busy, setBusy] = useState(null);
   const [gamble, setGamble] = useState(null);
-  const [reveal, setReveal] = useState(null);
 
   // Coin flight endpoints, measured rather than guessed: the card can be
   // anywhere down a scrolling page and the counter moves with the safe area.
@@ -209,35 +206,28 @@ export default function MissionsScreen({ navigation }) {
       // Straight into the gamble. The box IS the reward, and a toast saying
       // one was added to a list somewhere is how this moment gets thrown away.
       const sequence = await api.openLootbox();
+      const rarity = sequence.final_rarity || sequence.rarity;
+      const roll = rollCosmetic(rarity, isUnlocked);
+      await api.addUnlock(roll.item.id);
       invalidate('me:missions');
       invalidate('me:progression');
       refresh();
-      setGamble(sequence);
+      setGamble({
+        ...sequence,
+        reward: { kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label },
+      });
+      refreshUnlocks?.();
     } catch (e) {
       if (e.status === 409 || e.status === 403) refresh();
       else toast.error(e.message || 'Could not collect the box');
     } finally {
       setBusy(null);
     }
-  }, [busy, day, refresh]);
+  }, [busy, day, isUnlocked, refresh, refreshUnlocks]);
 
-  // The gamble finished: roll an item of whatever rarity it landed on, keep
-  // it, and show it.
-  const onOpened = useCallback(async (rarity) => {
+  const onCollect = useCallback(() => {
     setGamble(null);
-    try {
-      const roll = rollCosmetic(rarity, isUnlocked);
-      await api.addUnlock(roll.item.id);
-      setReveal({
-        rewards: [{ kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label }],
-        accent: RARITY_COLOR[rarity] || brand.pink,
-        fromLootbox: true,
-      });
-      refreshUnlocks?.();
-    } catch (e) {
-      toast.error(e.message || 'Could not open that box');
-    }
-  }, [isUnlocked, refreshUnlocks]);
+  }, []);
 
   const state = data;
   const label = useMemo(
@@ -375,15 +365,9 @@ export default function MissionsScreen({ navigation }) {
       <LootboxGamble
         visible={!!gamble}
         sequence={gamble}
-        onOpened={onOpened}
+        reward={gamble?.reward}
+        onCollect={onCollect}
         onClose={() => setGamble(null)}
-      />
-      <RewardReveal
-        visible={!!reveal}
-        rewards={reveal?.rewards}
-        accent={reveal?.accent}
-        fromLootbox={!!reveal?.fromLootbox}
-        onClose={() => setReveal(null)}
       />
     </Screen>
   );

@@ -93,17 +93,17 @@ export function LeaderboardRow({ item, isMe = false, board = 'land', celebrateDe
       <View style={[styles.dot, { backgroundColor: c.stroke }]} />
       <View style={{ flex: 1 }}>
         <Text style={type.bodyBold}>
-          {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}{isMe ? ' · you' : ''}
+          {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}{isMe ? ' (you)' : ''}
         </Text>
         <Text style={type.caption}>
           {board === 'rank'
-            ? `${item.rank_label || 'Wood'} · ${item.elo_matches || 0} rated ${item.elo_matches === 1 ? 'battle' : 'battles'}`
+            ? `${item.rank_label || 'Wood'}, ${item.elo_matches || 0} rated ${item.elo_matches === 1 ? 'battle' : 'battles'}`
             : `${item.clan_tag ? 'club' : 'solo'}${
                 // Null for the synthetic row the post-claim board builds for a
                 // runner below the fetched page: /leaderboard/standing knows
                 // their rank and their land, not how many pieces it is in.
                 // Saying nothing beats saying "undefined territories".
-                item.territory_count != null ? ` · ${item.territory_count} territories` : ''
+                item.territory_count != null ? `, ${item.territory_count} territories` : ''
               }`}
         </Text>
       </View>
@@ -351,7 +351,7 @@ export default function LeaderboardView({ board = 'land' }) {
           <Text style={styles.rank}>#{myRow.rank}</Text>
           <View style={[styles.dot, { backgroundColor: (myRow.clan_color || NEUTRAL).stroke }]} />
           <View style={{ flex: 1 }}>
-            <Text style={type.bodyBold}>{myRow.username} · you</Text>
+            <Text style={type.bodyBold}>{myRow.username} (you)</Text>
           </View>
           <Text style={[styles.area, { color: (myRow.clan_color || NEUTRAL).stroke }]}>
             {board === 'rank'
@@ -365,7 +365,10 @@ export default function LeaderboardView({ board = 'land' }) {
 }
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
-  list: { backgroundColor: colors.bg },
+  // Transparent: the list stands inside a Screen, which owns the page colour
+  // and, on the night palette, the dot grid under it. Opaque, it painted the
+  // grid out below the header.
+  list: { backgroundColor: 'transparent' },
   listContent: { paddingHorizontal: space.gutter, paddingTop: space.md, paddingBottom: space.xxl },
   // A standings row is a STACK of identical boxes, which is the one shape the
   // hard drop is wrong for: forty rows each casting a solid block four points

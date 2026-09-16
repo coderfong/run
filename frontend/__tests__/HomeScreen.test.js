@@ -366,18 +366,28 @@ describe('feed reactions', () => {
 
   it('closes the inline picker when Home loses navigation focus', () => {
     const item = runner({ reactions: [], my_reaction: null });
+    // The card listens for the navigator's own blur event while its picker is
+    // open, so this navigation keeps its listeners in order to fire one, the
+    // way leaving the tab does.
+    const listeners = {};
+    const leaving = {
+      ...navigation,
+      addListener: jest.fn((type, listener) => {
+        if (!listeners[type]) listeners[type] = new Set();
+        listeners[type].add(listener);
+        return () => listeners[type].delete(listener);
+      }),
+    };
     let tree;
     act(() => {
-      tree = renderer.create(
-        <FeedCard item={item} navigation={navigation} screenFocused />
-      );
+      tree = renderer.create(<FeedCard item={item} navigation={leaving} />);
     });
 
     openReactionPicker(tree);
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Love it' }).length).toBeGreaterThan(0);
 
     act(() => {
-      tree.update(<FeedCard item={item} navigation={navigation} screenFocused={false} />);
+      [...(listeners.blur || [])].forEach((listener) => listener());
     });
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Love it' })).toHaveLength(0);
     act(() => tree.unmount());

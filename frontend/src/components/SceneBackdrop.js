@@ -32,6 +32,7 @@ import { Image } from '../ui/image';
 
 import { art } from '../config/onboardingArt';
 import AmbientLayer from '../effects/AmbientLayer';
+import { useOnScreen } from '../ui/motion';
 import { useTheme } from '../theme';
 
 // Sky colour at each scene's top edge, so a scene shorter than the box it is
@@ -109,9 +110,12 @@ export function useSceneBackdrop({ aspect = DAY_ASPECT, minHeight = 0, variant =
  *           null for a still one. Opt in per caller, and draws nothing at all
  *           when its art is not in the build, so a caller never has to check.
  *
- * `playing` false parks everything moving in the scene. Tie it to screen focus:
- *           a backdrop drifting behind a screen nobody is on is battery spent
- *           on something literally invisible.
+ * `playing` false parks everything moving in the scene. The scene ALSO parks
+ *           itself whenever its screen is not the one in front (useOnScreen),
+ *           so a caller only passes this for a reason of its own. Both profile
+ *           pages used to read focus themselves and hand it down, which
+ *           re-rendered each whole page on every tab switch to tell one leaf
+ *           layer to stop.
  */
 /**
  * `skyAbove` points of sky drawn ABOVE the scene's top edge, for a header that
@@ -135,8 +139,11 @@ export default function SceneBackdrop({
   style,
 }) {
   const { source, width, height, sceneHeight, sky, clear, ground } = useSceneBackdrop({ aspect, minHeight, variant, skyAbove });
+  // Only a scene with something moving in it listens for focus at all.
+  const onScreen = useOnScreen(!!ambient && playing);
   if (!source || !height) return null;
 
+  const live = playing && onScreen;
   const artHeight = bleed ? sceneHeight : height - skyAbove;
 
   // The living layers, shared by both of the branches below so the two paths
@@ -150,7 +157,7 @@ export default function SceneBackdrop({
           width={width}
           height={height}
           density={ambientDensity}
-          playing={playing}
+          playing={live}
           // Seeded off the scene's own size so the same screen arranges its
           // drift the same way every time you open it, and the You page and
           // the studio do not get identical fields.

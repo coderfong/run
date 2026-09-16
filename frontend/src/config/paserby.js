@@ -127,7 +127,7 @@ export function badgeLabel(unseen) {
 export function encounterSubtitle(encounter) {
   const when = encounter?.when || 'Recently';
   const times = Number(encounter?.times_crossed) || 1;
-  return times > 1 ? `${when} · ${times} times` : when;
+  return times > 1 ? `${when}, ${times} times` : when;
 }
 
 // The server sends `familiarity_label`; this is the fallback for a client that

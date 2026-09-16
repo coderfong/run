@@ -15,7 +15,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
 import { nbField, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { art } from '../config/onboardingArt';
-import { Screen, Card, Framed, Row, Button, Input, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
+import { Screen, Card, Framed, Row, Button, Input, PageTexture, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import RankCard from '../components/rank/RankCard';
 import { standingFrom } from '../config/rankLadder';
@@ -172,8 +172,8 @@ function Directory({ navigation }) {
                   <View>
                     <Text style={type.bodyBold}>[{c.tag}] {c.name}</Text>
                     <Text style={type.caption}>
-                      {c.member_count} members{c.league ? ` · ${LEAGUE_LABEL[c.league]}` : ''}
-                      {c.privacy !== 'open' ? ' · invite only' : ''}
+                      {c.member_count} members{c.league ? `, ${LEAGUE_LABEL[c.league]} league` : ''}
+                      {c.privacy !== 'open' ? ', invite only' : ''}
                     </Text>
                   </View>
                 </Row>
@@ -382,7 +382,7 @@ function MemberHub({ clanId, navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>[{entry.tag}] {entry.name}</Text>
                 <Text style={type.caption}>
-                  {entry.elo_label || 'Wood'} · {entry.member_count} members
+                  {entry.elo_label || 'Wood'}, {entry.member_count} members
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
@@ -402,7 +402,7 @@ function MemberHub({ clanId, navigation }) {
   // bury the change.
   const hub = (
     <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+      style={{ flex: 1 }}
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
       refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={accent} />}
     >
@@ -560,10 +560,10 @@ function MemberHub({ clanId, navigation }) {
           >
             <View style={{ flex: 1 }}>
               <Row gap={8}>
-                <Text style={type.bodyBold}>{m.username}{m.user_id === user.id ? ' · you' : ''}</Text>
+                <Text style={type.bodyBold}>{m.username}{m.user_id === user.id ? ' (you)' : ''}</Text>
                 {m.role !== 'member' ? <Pill label={m.role} color={accent} /> : null}
               </Row>
-              <Text style={type.caption}>{km(m.week_distance_m)} km · {m.week_claims} claims this week</Text>
+              <Text style={type.caption}>{km(m.week_distance_m)} km and {m.week_claims} claims this week</Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -576,8 +576,11 @@ function MemberHub({ clanId, navigation }) {
   // Fades up only when the hub follows the placeholder blocks above. Coming
   // back to a club that is already in cache, this is a plain view and the fade
   // is skipped entirely — see useArrival.
+  // The page colour and its dot grid sit on the wrapper, under the scroll, so
+  // the grid holds still while the hub scrolls over it (see PageTexture).
   return (
-    <Arrival active={arriving} style={{ flex: 1 }}>
+    <Arrival active={arriving} style={{ flex: 1, backgroundColor: colors.bg }}>
+      <PageTexture />
       {hub}
     </Arrival>
   );

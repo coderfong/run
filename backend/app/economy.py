@@ -63,6 +63,9 @@ REASON_MIN_UNIQUE = "This route did not contain enough unique movement."
 REASON_NEUTRAL_LIMIT = "You have used today's neutral expansions."
 REASON_OFF_ROUTE = "Turned too far. This would claim streets you didn't run."
 REASON_ALREADY_CLAIMED = "This run has already been used for a claim."
+# Names no number, for the same reason as the neutral limit: the window is a
+# setting (`claim_defer_hours`), and a sentence that quotes it can drift.
+REASON_CLAIM_EXPIRED = "The land from this run has expired."
 
 
 def _meets_reward_bar(distance_m: float, duration_s: float) -> bool:
@@ -142,6 +145,25 @@ def claim_allowed(tier: str) -> bool:
 def consumes_entitlement(tier: str) -> bool:
     """Does this run eat into the day's territorial allowance? Only if real."""
     return tier == CLAIMABLE
+
+
+def claim_deadline(ended_at: datetime | None) -> datetime | None:
+    """When a finished run's unplaced land lapses, or None if it never does.
+
+    Measured from the END of the run, in the naive UTC the runs table stores,
+    so a run saved late (a retry after a dead network) still gets its whole
+    window from the moment the server first knew it had finished.
+    """
+    hours = settings.claim_defer_hours
+    if ended_at is None or not hours or hours <= 0:
+        return None
+    return ended_at + timedelta(hours=hours)
+
+
+def claim_window_open(ended_at: datetime | None, now: datetime | None = None) -> bool:
+    """May this run's land still be placed? Always, when there is no window."""
+    deadline = claim_deadline(ended_at)
+    return deadline is None or (now or datetime.utcnow()) < deadline
 
 
 def reward_gate_reason(distance_m: float, duration_s: float) -> str | None:

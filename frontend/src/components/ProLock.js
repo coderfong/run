@@ -57,7 +57,7 @@
 // those waiting on a rebuild. It costs nothing and it is illegible.
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Lock } from 'lucide-react-native';
 
 import { GOLD } from '../config/pro';
@@ -223,12 +223,16 @@ export function ProInlineLock({ context, feature, label, preview, style }) {
       radius={nbRadius.sm}
       style={[styles.dropSm, style]}
     >
-      <PressableShift
-        offset={NB.offsetSm}
+      <Pressable
         onPress={() => open()}
+        hitSlop={4}
         accessibilityRole="button"
         accessibilityLabel={`${named}. PASER PRO. Tap to unlock.`}
-        style={[styles.inline, { backgroundColor: colors.card, borderColor: GOLD }]}
+        style={({ pressed }) => [
+          styles.inline,
+          { backgroundColor: colors.card, borderColor: GOLD },
+          pressed && styles.inlinePressed,
+        ]}
       >
         {rows.length ? (
           <View style={styles.inlineRow}>
@@ -255,7 +259,7 @@ export function ProInlineLock({ context, feature, label, preview, style }) {
           </Text>
         )}
         <ProStrip type={type} tight />
-      </PressableShift>
+      </Pressable>
     </HardShadow>
   );
 }
@@ -288,6 +292,12 @@ const styles = StyleSheet.create({
     borderWidth: NB.strokeThin,
     borderRadius: nbRadius.sm,
     overflow: 'hidden',
+  },
+  inlinePressed: {
+    transform: [
+      { translateX: NB.offsetSm },
+      { translateY: NB.offsetSm },
+    ],
   },
   inlineRow: {
     flexDirection: 'row',

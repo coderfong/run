@@ -11,7 +11,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Flag, ShieldCheck, Swords, Zap } from 'lucide-react-native';
+import { ChevronLeft, Flag, ShieldCheck, Swords, Zap } from 'lucide-react-native';
 
 import { space } from '../theme';
 import { OutlinedText, ToonButton } from '../components/ui';
@@ -28,9 +28,7 @@ import { toon, toonType } from './toon';
 // matches the source art so `contain` never letterboxes oddly: the existing
 // story art is square, new panels are 4:3.
 //
-// `title` is the headline; `sub` is one plain sentence under it that carries
-// the actual mechanic (a headline alone can't). Keep `sub` short, plain and
-// dash-free — same voice rules as the rest of the app's copy.
+// Each card stays intentionally terse: illustration, headline and action.
 const CARDS = [
   {
     key: 'welcome',
@@ -38,7 +36,6 @@ const CARDS = [
     icon: Flag,
     aspect: 4 / 3,
     title: (name) => (name ? `Welcome to PASER, ${name}!` : 'Welcome to PASER!'),
-    sub: 'The streets you run become land you own.',
     cta: 'Next',
   },
   {
@@ -47,7 +44,6 @@ const CARDS = [
     icon: Flag,
     aspect: 1,
     title: () => 'Every run earns you ground',
-    sub: 'Finish, then place your claim. Longer runs claim more.',
     cta: 'Next',
   },
   {
@@ -56,7 +52,6 @@ const CARDS = [
     icon: Zap,
     aspect: 4 / 3,
     title: () => 'Claiming costs Energy',
-    sub: 'Running restores Energy. Your first daily claim costs half.',
     cta: 'Next',
   },
   {
@@ -65,7 +60,6 @@ const CARDS = [
     icon: Swords,
     aspect: 1,
     title: () => 'Land you take is never safe',
-    sub: 'Others can take your land. Run there again or get help from your club.',
     cta: 'Next',
   },
   {
@@ -74,7 +68,6 @@ const CARDS = [
     icon: ShieldCheck,
     aspect: 1,
     title: () => "Territory can wait. Traffic can't.",
-    sub: 'Watch the road. Runs are checked for fair play.',
     cta: 'Next',
   },
   {
@@ -82,7 +75,6 @@ const CARDS = [
     icon: Flag,
     aspect: 4 / 3,
     title: () => 'Go claim your first patch',
-    sub: 'Pick a loop around your block and watch it land on the map.',
     cta: 'Start my run',
     action: 'run',
   },
@@ -115,6 +107,12 @@ export default function TutorialOverlay({ name, onDone, onStartRun }) {
     onDone?.();
   };
 
+  const back = () => {
+    if (i === 0) return;
+    haptic.light();
+    setI((n) => Math.max(0, n - 1));
+  };
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* Dim the live app behind. Tapping the scrim advances — except on the
@@ -132,6 +130,20 @@ export default function TutorialOverlay({ name, onDone, onStartRun }) {
           <Text style={[toonType.label, { color: 'rgba(255,255,255,0.8)' }]}>Skip</Text>
         </Pressable>
       </View>
+
+      {i > 0 ? (
+        <View style={[styles.back, { top: insets.top + space.xs }]}>
+          <Pressable
+            onPress={back}
+            hitSlop={12}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <ChevronLeft size={24} color="#fff" strokeWidth={2.5} />
+          </Pressable>
+        </View>
+      ) : null}
 
       <Animated.View
         key={card.key}
@@ -169,8 +181,6 @@ export default function TutorialOverlay({ name, onDone, onStartRun }) {
             {card.title(name)}
           </OutlinedText>
 
-          {card.sub ? <Text style={styles.sub}>{card.sub}</Text> : null}
-
           <ToonButton title={card.cta} onPress={advance} />
         </View>
       </Animated.View>
@@ -181,6 +191,17 @@ export default function TutorialOverlay({ name, onDone, onStartRun }) {
 const styles = StyleSheet.create({
   scrim: { backgroundColor: 'rgba(6,6,10,0.66)' },
   skip: { position: 'absolute', right: space.gutter },
+  back: { position: 'absolute', left: space.gutter, zIndex: 1 },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(26,27,34,0.88)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
 
   stack: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   panel: {
@@ -199,13 +220,6 @@ const styles = StyleSheet.create({
     gap: space.lg,
   },
   title: { alignSelf: 'stretch' },
-  sub: {
-    ...toonType.body,
-    color: 'rgba(255,255,255,0.82)',
-    alignSelf: 'stretch',
-    marginTop: -space.sm,
-  },
-
   dots: { flexDirection: 'row', gap: 6, alignSelf: 'center' },
   dot: {
     width: 7,

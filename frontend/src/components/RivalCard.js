@@ -44,13 +44,13 @@ function headline(rival) {
   const when = ago(e.at);
   switch (e.kind) {
     case 'they_took':
-      return `${rival.username} took ${fmtArea(e.area_m2)} from you · ${when}`;
+      return `${rival.username} took ${fmtArea(e.area_m2)} from you ${when}`;
     case 'you_took':
-      return `You took ${fmtArea(e.area_m2)} from ${rival.username} · ${when}`;
+      return `You took ${fmtArea(e.area_m2)} from ${rival.username} ${when}`;
     case 'you_held':
-      return `You held ${fmtArea(e.area_m2)} against ${rival.username} · ${when}`;
+      return `You held ${fmtArea(e.area_m2)} against ${rival.username} ${when}`;
     default:
-      return `${rival.username} held ${fmtArea(e.area_m2)} against you · ${when}`;
+      return `${rival.username} held ${fmtArea(e.area_m2)} against you ${when}`;
   }
 }
 
@@ -91,7 +91,7 @@ function Side({ label, avatar, rankKey, area, times, align = 'left' }) {
         </Text>
         <Text style={[type.caption, { marginTop: 1, textAlign: align }]}>
           {fmtArea(area)}
-          {times ? ` · ${times}×` : ''}
+          {times ? `, ${times === 1 ? 'once' : `${times} times`}` : ''}
         </Text>
       </View>
     </View>

@@ -1,234 +1,157 @@
-// CROSSED PATHS — the last beat of the post-run sequence.
-//
-// It runs AFTER the territory reveal, the payoff and the standings, and only
-// when the run actually turned somebody up. Nothing above it is touched: this
-// is a separate overlay that opens when the celebration is otherwise finished,
-// so a run with no crossings ends exactly the way it always did.
-//
-// The stage is the plaza (PlazaScene) — the place the running paths meet, with
-// its clouds drifting and its butterflies out. The characters walk on one at a
-// time in their real cosmetics and wave, standing on the plaza's own ground
-// circles. Under Reduce Motion they are simply there, all at once, with no
-// stagger and no wave, and the plaza holds still behind them — the same rule
-// the rest of the app follows (see ui/motion.js).
-//
-// Deliberately short: three characters at ~420 ms apart is a beat and a half,
-// and the buttons are live from the moment the last one lands.
-//
-// EVERY piece of copy here sits on painted art, so it is white with an ink
-// outline rather than a themed text colour: `colors.text` is near-black in
-// light mode and would vanish into the plaza's paving.
-
+// PASERBY — the surprise beat after the ordinary result and sharing flow.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, StyleSheet, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
+import Svg, { Polyline } from 'react-native-svg';
 
-import { brand, space, toon, toonType } from '../../theme';
+import { EVENTS, track } from '../../analytics';
+import { brand, space, toon } from '../../theme';
 import { PressableScale, haptic, useReduceMotion } from '../../ui/motion';
 import { OutlinedText, ToonButton } from '../ui';
 import CharacterRig from '../character/CharacterRig';
-import PlazaScene from './PlazaScene';
-import { COPY, crossedPathsLine, familiarityLabel, moreLine, revealCast } from '../../config/paserby';
+import { makeProjection, svgPoints, THUMB_H, THUMB_W } from '../RouteThumb';
 
-// One character per beat. Three of them is ~1.3 s, which is a moment of
-// arrival rather than a cutscene.
-const STEP_MS = 420;
-const RIG_SIZE = 84;
+const PHASE = { WAIT: 'wait', CROSSING: 'crossing', FOUND: 'found' };
+const FALLBACK_ROUTE = [[103.81, 1.29], [103.815, 1.294], [103.82, 1.291], [103.827, 1.298]];
+const titleCase = (value) => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-function Encountered({ encounter, index, reduced }) {
-  const rig = useRef(null);
-
-  // The wave lands as they arrive, not before.
-  useEffect(() => {
-    if (reduced) return undefined;
-    const id = setTimeout(() => rig.current?.play('wave'), index * STEP_MS + 220);
-    return () => clearTimeout(id);
-  }, [index, reduced]);
-
+function RouteMoment({ path, myAvatar, reduced }) {
+  const raw = (path || []).map((p) => [p.longitude, p.latitude]).filter((p) => p.every(Number.isFinite));
+  const route = raw.length >= 2 ? raw : FALLBACK_ROUTE;
+  const points = makeProjection([route], 18, THUMB_H)(route);
+  const middle = points[Math.floor(points.length / 2)];
+  const left = Math.max(12, Math.min(82, (middle[0] / THUMB_W) * 100));
   return (
-    <Animated.View
-      style={styles.cast}
-      entering={reduced ? undefined : FadeInDown.delay(index * STEP_MS).duration(300)}
-    >
-      {/* The rig, not a bust: this is the whole runner walking on, wearing
-          exactly what they have equipped. */}
-      <View style={styles.rigWrap}>
-        <CharacterRig ref={rig} equipped={encounter.avatar} size={RIG_SIZE} animate />
+    <Animated.View entering={reduced ? undefined : FadeIn.duration(260)} style={styles.routeStage}>
+      <Svg style={StyleSheet.absoluteFill} viewBox={`0 0 ${THUMB_W} ${THUMB_H}`}>
+        <Polyline points={svgPoints(points)} fill="none" stroke="rgba(255,255,255,.18)" strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" />
+        <Polyline points={svgPoints(points)} fill="none" stroke={brand.pink} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+      <View style={[styles.routeRunner, { left: `${left - 8}%` }]}>
+        <CharacterRig equipped={myAvatar} size={34} animate={!reduced} />
       </View>
-      {/* No plate under the name — the ink outline is what makes white type
-          read on the plaza's pale paving, and a translucent chip behind every
-          character turned the stage into three labels. */}
-      <OutlinedText
-        style={[toonType.sub, styles.castName]}
-        outline={toon.ink}
-        width={2.5}
-        numberOfLines={1}
-      >
-        {encounter.username}
-      </OutlinedText>
-      <OutlinedText
-        style={[toonType.label, styles.castLabel]}
-        outline={toon.ink}
-        width={2}
-        numberOfLines={1}
-      >
-        {familiarityLabel(encounter)}
-      </OutlinedText>
+      <Animated.View entering={reduced ? undefined : ZoomIn.delay(500).duration(220)} style={[styles.routeRunner, { left: `${left + 5}%` }]}>
+        <View style={styles.silhouette}><Text style={styles.silhouetteMark}>?</Text></View>
+      </Animated.View>
     </Animated.View>
   );
 }
 
 export default function PaserbyReveal({
-  visible,
-  reveal,
-  onHighFiveAll,
-  onViewCrossroads,
-  onContinue,
-  highFiving = false,
-  highFivedAll = false,
+  visible, reveal, path, myAvatar, onHighFiveAll, onViewCrossroads, onContinue,
+  highFiving = false, highFivedAll = false,
 }) {
   const insets = useSafeAreaInsets();
   const reduced = useReduceMotion();
-  const { shown, more } = useMemo(() => revealCast(reveal), [reveal]);
-  // The buttons arrive with the last character, so nothing is tappable while
-  // people are still walking on — and under Reduce Motion, immediately.
-  const [ready, setReady] = useState(reduced);
+  const encounters = (reveal?.encounters || []).slice(0, 3);
+  const encounter = encounters[0];
+  const [phase, setPhase] = useState(PHASE.WAIT);
+  const timers = useRef([]);
 
   useEffect(() => {
-    if (!visible) {
-      setReady(reduced);
-      return undefined;
-    }
-    haptic.success();
-    if (reduced) {
-      setReady(true);
-      return undefined;
-    }
-    const id = setTimeout(() => setReady(true), shown.length * STEP_MS + 260);
-    return () => clearTimeout(id);
-  }, [visible, reduced, shown.length]);
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+    if (!visible || !encounter) { setPhase(PHASE.WAIT); return undefined; }
+    setPhase(PHASE.WAIT);
+    haptic.light();
+    if (reduced) { setPhase(PHASE.FOUND); return undefined; }
+    timers.current = [
+      setTimeout(() => setPhase(PHASE.CROSSING), 1050),
+      setTimeout(() => { setPhase(PHASE.FOUND); haptic.success(); }, 2650),
+    ];
+    return () => timers.current.forEach(clearTimeout);
+  }, [visible, encounter?.id, reduced]);
 
-  if (!visible || shown.length === 0) return null;
+  useEffect(() => {
+    if (phase === PHASE.FOUND && visible) {
+      track(EVENTS.PASERBY_REVEAL_VIEWED, { count: encounters.length, source: 'result' });
+    }
+  }, [phase, visible]);
 
-  const count = reveal?.new_count ?? shown.length;
+  const cards = useMemo(() => encounters.map((person) => ({
+    ...person,
+    meta: [person.clan_name || person.clan_tag, titleCase(person.rank_key)].filter(Boolean).join(', '),
+  })), [reveal]);
+
+  if (!visible || !encounter) return null;
+  const count = Math.min(3, Number(reveal?.new_count) || encounters.length);
+  const heading = count === 1
+    ? 'YOU CROSSED PATHS WITH SOMEONE 👀'
+    : count === 2 ? 'YOU CROSSED PATHS WITH 2 PASERS 👀' : '3 PASERBYS DISCOVERED 👀';
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onContinue}>
-      {/* `active` is tied to the modal being up, so the clouds and the
-          butterflies are not still running behind a dismissed screen. */}
-      <PlazaScene active={visible}>
-        {/* No scrims, no plates. The plaza is painted art and it stays at full
-            strength: every word on it is white with an ink outline, and the two
-            buttons carry their own ink-outlined fills. */}
-        <View style={styles.layout}>
-          <View style={[styles.headline, { paddingTop: insets.top + space.lg }]}>
-            <OutlinedText
-              style={[toonType.hero, { color: '#fff' }]}
-              outline={toon.ink}
-              width={3}
-            >
-              {COPY.revealHeading}
-            </OutlinedText>
-            <OutlinedText
-              style={[toonType.sub, styles.subline]}
-              outline={toon.ink}
-              width={2}
-            >
-              {crossedPathsLine(count)}
-            </OutlinedText>
-          </View>
-
-          {/* The cast stands in the lower half, which is where the plaza's own
-              ground circles are once the art is covered into a phone's taller
-              frame. */}
-          <View style={styles.stageArea}>
-            <View style={styles.stage}>
-              {shown.map((e, i) => (
-                <Encountered key={e.id} encounter={e} index={i} reduced={reduced} />
+    <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={phase === PHASE.FOUND ? onContinue : undefined}>
+      <View style={[styles.scrim, { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.lg }]}>
+        {phase === PHASE.WAIT && (
+          <Animated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(180)} style={styles.center}>
+            <OutlinedText style={styles.wait} outline={toon.ink} width={4}>WAIT…</OutlinedText>
+            <Text style={styles.prompt}>You crossed paths with someone 👀</Text>
+          </Animated.View>
+        )}
+        {phase === PHASE.CROSSING && (
+          <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(180)} style={styles.center}>
+            <Text style={styles.eyebrow}>EARLIER TODAY</Text>
+            <RouteMoment path={path} myAvatar={myAvatar} reduced={reduced} />
+          </Animated.View>
+        )}
+        {phase === PHASE.FOUND && (
+          <Animated.View entering={reduced ? undefined : FadeIn.duration(280)} style={styles.found}>
+            <Text style={styles.eyebrow}>{heading}</Text>
+            <View style={styles.cards}>
+              {cards.map((person, index) => (
+                <Animated.View key={person.id} entering={reduced ? undefined : ZoomIn.delay(index * 90).duration(300)} style={styles.card}>
+                  <View style={styles.portrait}>
+                    <CharacterRig equipped={person.avatar} size={count === 1 ? 82 : 50} animate={!reduced} />
+                  </View>
+                  <OutlinedText style={[styles.name, count > 1 && styles.nameSmall]} outline={toon.ink} width={2.5} numberOfLines={1}>
+                    {String(person.username || 'PASER').toUpperCase()}
+                  </OutlinedText>
+                  {person.meta ? <Text style={styles.meta} numberOfLines={2}>{person.meta}</Text> : null}
+                  <Text style={styles.when}>You crossed paths {String(person.when || 'recently').toLowerCase()}.</Text>
+                  <Text style={styles.familiar}>
+                    {Number(person.times_crossed) <= 1 ? 'FIRST ENCOUNTER' : "YOU'VE CROSSED PATHS BEFORE"}
+                  </Text>
+                </Animated.View>
               ))}
             </View>
-            {moreLine(more) ? (
-              <OutlinedText
-                style={[toonType.label, styles.more]}
-                outline={toon.ink}
-                width={2}
-              >
-                {moreLine(more)}
-              </OutlinedText>
-            ) : null}
-          </View>
-
-          <Animated.View
-            style={[styles.actions, { paddingBottom: insets.bottom + space.lg }]}
-            entering={reduced || !ready ? undefined : FadeIn.duration(220)}
-            pointerEvents={ready ? 'auto' : 'none'}
-          >
-            {ready ? (
-              <>
-                <ToonButton
-                  title={highFivedAll ? COPY.highFiveSent : COPY.highFiveAll}
-                  variant={highFivedAll ? 'teal' : 'primary'}
-                  loading={highFiving}
-                  disabled={highFivedAll || highFiving}
-                  onPress={onHighFiveAll}
-                />
-                <ToonButton
-                  title={COPY.viewCrossroads}
-                  variant="neutral"
-                  labelColor={toon.ink}
-                  size="sm"
-                  onPress={onViewCrossroads}
-                />
-                {/* Outlined rather than the shared ghost button: a plain white
-                    label has nothing to hold it off the plaza's planting, and
-                    a plate under it is exactly what this screen does not do. */}
-                <PressableScale
-                  onPress={onContinue}
-                  accessibilityRole="button"
-                  accessibilityLabel={COPY.continue}
-                  style={styles.continue}
-                >
-                  <OutlinedText style={[toonType.label, styles.continueLabel]} outline={toon.ink} width={2}>
-                    {COPY.continue}
-                  </OutlinedText>
-                </PressableScale>
-              </>
-            ) : null}
+            <View style={styles.actions}>
+              <ToonButton title={highFivedAll ? 'HIGH FIVED 👋' : '👋  HIGH FIVE'} loading={highFiving} disabled={highFivedAll || highFiving} onPress={() => {
+                track(EVENTS.PASERBY_HIGH_FIVE, { count, source: 'result' });
+                onHighFiveAll?.();
+              }} />
+              <ToonButton title={count === 1 ? 'VIEW PROFILE' : 'VIEW CROSSROADS'} variant="neutral" size="sm" onPress={onViewCrossroads} />
+              <PressableScale onPress={onContinue} accessibilityRole="button" accessibilityLabel="Done" style={styles.done}>
+                <Text style={styles.doneText}>DONE</Text>
+              </PressableScale>
+            </View>
           </Animated.View>
-        </View>
-      </PlazaScene>
+        )}
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  layout: { flex: 1, justifyContent: 'space-between' },
-  continue: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 16 },
-  continueLabel: { color: '#fff', fontSize: 14 },
-  headline: { paddingHorizontal: space.gutter, alignItems: 'center' },
-  subline: { color: '#fff', fontSize: 15, marginTop: space.xs, textAlign: 'center' },
-
-  // Sits low on purpose: the plaza's paved circles are in its lower half, and
-  // the characters should be standing ON them rather than floating over the
-  // treeline. The top padding is the nudge that drops their feet from just
-  // above the first row of circles onto it — measured against a 390x844 crop,
-  // and forgiving either way because the deck is a band, not a line.
-  stageArea: { alignItems: 'center', paddingTop: space.xl, paddingBottom: space.xs },
-  stage: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: space.sm,
-    paddingHorizontal: space.gutter,
-  },
-  cast: { alignItems: 'center', maxWidth: 118 },
-  // The rig is taller than its width (BODY_RATIO) and overflows upward for
-  // hair, so it gets its own box rather than being laid out inline.
-  rigWrap: { height: RIG_SIZE * 2.9, justifyContent: 'flex-end', alignItems: 'center' },
-  castName: { color: '#fff', fontSize: 14, marginTop: 2 },
-  castLabel: { color: brand.teal, fontSize: 10 },
-
-  more: { color: '#fff', marginTop: space.sm },
-  actions: { paddingHorizontal: space.gutter, gap: space.sm },
+  scrim: { flex: 1, backgroundColor: 'rgba(7,8,12,.96)', paddingHorizontal: space.gutter },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  wait: { color: '#fff', fontSize: 48, textAlign: 'center' },
+  prompt: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: space.md, textAlign: 'center' },
+  eyebrow: { color: brand.teal, fontSize: 14, fontWeight: '900', letterSpacing: 2.2, textAlign: 'center' },
+  routeStage: { width: '100%', aspectRatio: THUMB_W / THUMB_H, marginTop: space.xl, justifyContent: 'center' },
+  routeRunner: { position: 'absolute', top: '10%', width: 42, height: 92, alignItems: 'center', justifyContent: 'flex-end' },
+  silhouette: { width: 38, height: 58, borderRadius: 20, backgroundColor: '#171923', borderWidth: 2, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  silhouetteMark: { color: '#fff', fontSize: 24, fontWeight: '900' },
+  found: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  cards: { alignSelf: 'stretch', flexDirection: 'row', justifyContent: 'center', gap: space.sm, marginTop: space.lg },
+  card: { flex: 1, maxWidth: 250, alignItems: 'center' },
+  portrait: { height: 176, justifyContent: 'flex-end', alignItems: 'center' },
+  name: { color: '#fff', fontSize: 34, textAlign: 'center' },
+  nameSmall: { fontSize: 18 },
+  meta: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 4, textAlign: 'center' },
+  when: { color: 'rgba(255,255,255,.72)', fontSize: 12, marginTop: space.md, textAlign: 'center' },
+  familiar: { color: brand.teal, fontSize: 9, fontWeight: '900', letterSpacing: .7, marginTop: 6, textAlign: 'center' },
+  actions: { alignSelf: 'stretch', gap: space.sm, marginTop: space.xl },
+  done: { alignSelf: 'center', paddingHorizontal: 20, paddingVertical: 10 },
+  doneText: { color: 'rgba(255,255,255,.72)', fontSize: 13, fontWeight: '900', letterSpacing: 1.4 },
 });

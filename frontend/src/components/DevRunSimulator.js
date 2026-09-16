@@ -55,7 +55,7 @@ export default function DevRunSimulator({
   return (
     <View style={[styles.root, { borderColor: colors.border, backgroundColor: colors.cardAlt }, style]}>
       <View style={styles.headerRow}>
-        <Text style={[type.caption, { color: colors.textMuted }]}>DEV · simulate a finished run</Text>
+        <Text style={[type.caption, { color: colors.textMuted }]}>DEV: simulate a finished run</Text>
         {busy ? <ActivityIndicator size="small" color={colors.textMuted} /> : null}
       </View>
       <Text style={[type.caption, { color: colors.textDim }]}>Set up the next result</Text>

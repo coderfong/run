@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExtern
 import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Image } from '../ui/image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import AppIcon from '../components/AppIcon';
 
@@ -29,6 +29,8 @@ import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import SideRail from '../components/SideRail';
+import PendingClaimCard from '../components/claim/PendingClaimCard';
+import { openClaims } from '../utils/claimWindow';
 import HomeBackdrop from '../components/home/HomeBackdrop';
 import ProHomeCard from '../components/ProHomeCard';
 import { useAvatar } from '../state/avatar';
@@ -171,7 +173,7 @@ function HeroCarousel({ navigation }) {
           width={cardW}
           bg={brand.pink}
           art={require('../../assets/art/season-banner.png')}
-          eyebrow={`SEASON ${SEASON_NO} · ${SEASON_CITY}`}
+          eyebrow={`${SEASON_CITY} SEASON ${SEASON_NO}`}
           title="LEADERBOARDS"
           sub={countdown()}
           cta="View leaderboards"
@@ -186,7 +188,7 @@ function HeroCarousel({ navigation }) {
             artWidth="66%"
             eyebrow="PASER PRO"
             title="GO PRO"
-            sub="Strategy · Insights · Exclusive styles"
+            sub="Strategy, insights and exclusive styles"
             cta="See the plans"
             onPress={() => {
               track(EVENTS.TEASER_TAP, { source: 'home', context: 'home', feature: 'home_hero' });
@@ -222,7 +224,7 @@ const FIRST_PAGE_ANIMATED = 4;
 // time the feed response is re-seeded from cache — identical content, new
 // identity, which a shallow compare cannot tell from a real change.
 const FeedRow = React.memo(
-  function FeedRow({ item, index, navigation, visibility, screenFocused, animate }) {
+  function FeedRow({ item, index, navigation, visibility, animate }) {
     // This row's two answers from the feed's visibility store, read HERE so a
     // row scrolling in or out re-renders itself and nothing else.
     const id = item.id;
@@ -234,7 +236,6 @@ const FeedRow = React.memo(
         navigation={navigation}
         autoPlaySteal={autoPlaySteal}
         onScreen={onScreen}
-        screenFocused={screenFocused}
       />
     );
     if (!animate) return card;
@@ -246,7 +247,6 @@ const FeedRow = React.memo(
   },
   (prev, next) =>
     prev.visibility === next.visibility &&
-    prev.screenFocused === next.screenFocused &&
     prev.animate === next.animate &&
     prev.navigation === next.navigation &&
     sameRow(prev.item, next.item)
@@ -361,9 +361,6 @@ function FeedList({ navigation, header }) {
   const styles = useThemedStyles(makeStyles);
   const accent = useAccent();
   const reduce = useReduceMotion();
-  // One focus subscription for the feed, passed down as a primitive. The tab
-  // stays mounted, but every open reaction picker should close when it leaves.
-  const screenFocused = useIsFocused();
   // Which rows are on screen, and which one steal may play itself. One store
   // for the life of the list; see createFeedVisibility.
   const visibilityRef = useRef(null);
@@ -441,9 +438,20 @@ function FeedList({ navigation, header }) {
   useEffect(() => {
     visibility.setSteals(items.filter((row) => row.victims?.length).map((row) => row.id));
   }, [items, visibility]);
+  // Whether Home is the screen in front, told to the store by the navigator's
+  // own events rather than read with useIsFocused. Reading it here re-rendered
+  // this list — and with it every card on the feed, the heaviest component in
+  // the app — twice per tab switch, to keep one flag only the store reads.
   useEffect(() => {
-    visibility.setAllowed(screenFocused && !reduce && !loading);
-  }, [screenFocused, reduce, loading, visibility]);
+    const allow = (focused) => visibility.setAllowed(focused && !reduce && !loading);
+    allow(navigation?.isFocused ? navigation.isFocused() : true);
+    const offFocus = navigation?.addListener?.('focus', () => allow(true));
+    const offBlur = navigation?.addListener?.('blur', () => allow(false));
+    return () => {
+      offFocus?.();
+      offBlur?.();
+    };
+  }, [navigation, reduce, loading, visibility]);
 
   // A FEED CARD IS 86 NATIVE VIEWS — measured, not estimated, and down from
   // 241 before the frames learned to nine-slice themselves natively (see
@@ -478,7 +486,6 @@ function FeedList({ navigation, header }) {
             index={index}
             navigation={navigation}
             visibility={visibility}
-            screenFocused={screenFocused}
             animate={!reduce && index < FIRST_PAGE_ANIMATED}
           />
         )}
@@ -494,7 +501,7 @@ function FeedList({ navigation, header }) {
         {index === Math.min(2, rows.length - 1) && !loading ? <ProHomeCard /> : null}
       </View>
     ),
-    [loading, styles.feedRow, navigation, visibility, screenFocused, reduce, rows.length]
+    [loading, styles.feedRow, navigation, visibility, reduce, rows.length]
   );
 
   return (
@@ -565,6 +572,14 @@ export default function HomeScreen({ navigation }) {
     fallback: { unread: 0, items: [] },
   });
   const unread = notifs?.unread || 0;
+  // Land from a run the runner chose to plan later. The claim screen can be
+  // left without placing it, and this is how Home offers it back. The key is
+  // dropped from the cache after every run and every claim, so it is fresh on
+  // the next visit.
+  const { data: pendingClaims } = useQuery('me:pending-claims', api.pendingClaims, {
+    fallback: [],
+  });
+  const waiting = openClaims(pendingClaims);
 
   useFocusEffect(
     useCallback(() => preloadScreenImagesAfterInteractions([
@@ -669,6 +684,17 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Land from a run whose attack was put off. Above the hero, because it
+          is the one thing on Home that runs out. */}
+      {waiting.length > 0 && (
+        <PendingClaimCard
+          claim={waiting[0]}
+          count={waiting.length}
+          onPress={() => navigation.navigate('PlanAttack', { runId: waiting[0].run_id })}
+          style={styles.pendingClaim}
+        />
+      )}
+
       <HeroCarousel navigation={navigation} />
 
       {/* These shortcuts replace the redundant Feed/Leaderboard switch and
@@ -713,6 +739,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   feedHeader: { paddingHorizontal: space.gutter, paddingTop: space.sm },
   feedRow: { paddingHorizontal: space.gutter },
   shortcutRow: { marginTop: space.lg, marginBottom: space.md },
+  // Clear of the hero below it, plus the room the card's own drop falls into.
+  pendingClaim: { marginBottom: space.md + NB.offset },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

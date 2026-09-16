@@ -433,13 +433,23 @@ export default function ProgressionScreen({ navigation }) {
   // therefore opens as. Nothing here rolls anything, so there is no re-roll to
   // be had by backgrounding the app mid sequence.
   //
-  // Then the gamble screen spends those taps, and `onGambleOpened` below turns
-  // whatever rarity it landed on into an actual item.
+  // The item is granted in the same action that opens the box, before its
+  // reveal begins. That lets the opening stay one modal all the way through
+  // to Collect, and means dismissing the celebration can never lose the item.
   const openBox = async () => {
     if (opening) return;
     setOpening(true);
     try {
-      setGamble(await api.openLootbox());
+      const sequence = await api.openLootbox();
+      const rarity = sequence.final_rarity || sequence.rarity;
+      const roll = rollCosmetic(rarity, isUnlocked);
+      await api.addUnlock(roll.item.id);
+      setGamble({
+        ...sequence,
+        reward: { kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label },
+      });
+      refreshUnlocks?.();
+      await load();
     } catch (e) {
       // 404 means the box list on screen is stale (another device opened it,
       // or the claim that granted it never landed) — reload rather than
@@ -455,28 +465,8 @@ export default function ProgressionScreen({ navigation }) {
     }
   };
 
-  // The lid came off. `rarity` is what the taps actually bid it up to, not
-  // what the box was granted at.
-  const onGambleOpened = async (rarity) => {
+  const onGambleCollect = () => {
     setGamble(null);
-    try {
-      const roll = rollCosmetic(rarity, isUnlocked);
-      // The unlock is what you actually keep, so a failure to write it must
-      // not be swallowed by the celebration that follows.
-      await api.addUnlock(roll.item.id);
-      setReveal({
-        rewards: [{ kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label }],
-        accent: RARITY_COLOR[rarity] || brand.pink,
-        fromLootbox: true,
-      });
-      // The equippable set changed — without this the item is in your
-      // collection but the studio still shows it locked until a restart.
-      refreshUnlocks?.();
-      await load();
-    } catch (e) {
-      toast.error(e.message || 'Could not open lootbox');
-      load();
-    }
   };
 
   const claim = async (tierLevel, track) => {
@@ -838,7 +828,8 @@ export default function ProgressionScreen({ navigation }) {
       <LootboxGamble
         visible={!!gamble}
         sequence={gamble}
-        onOpened={onGambleOpened}
+        reward={gamble?.reward}
+        onCollect={onGambleCollect}
         onClose={() => setGamble(null)}
       />
       <RewardReveal

@@ -30,6 +30,11 @@ export const colors = {
   // The neo-brutalist stroke. See `nbInk` for picking it against a surface.
   ink: NB.ink,
 
+  // No dot grid on paper: the texture belongs to the night page (dark.js). An
+  // explicit null rather than a missing key, so PageTexture reads one token in
+  // both schemes and the choice is visible here.
+  grid: null,
+
   text: '#0c0c10',
   textMuted: '#5c5a55',
   textDim: '#8f8b82',

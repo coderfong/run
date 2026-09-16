@@ -293,28 +293,20 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     // mounts cannot assume that decode has finished, so this swaps every
     // layer back to RN's own synchronous Image for that one render tree only.
     captureSafe = false,
-    // FULL-RESOLUTION DECODE. Off unless the rig's own scale can move.
+    // Asks for full-resolution layers where the rig's own scale can move: a
+    // spring to 1.12 on a tap or a part landing magnifies whatever was drawn.
+    // The default is the honest test of that — `animateSwaps` is the studio's
+    // part-landing spring, and a `ref` is the only route to the imperative
+    // `play()` nod. A caller whose PARENT scales it (RunningScreen's live
+    // marker sits in a Pulse) can ask for it by hand.
     //
-    // Every layer used to be drawn `crisp` — that is, with expo-image's
-    // `allowDownscaling` turned OFF, decoding the source PNG at its full size
-    // whatever the view draws at. The character art is ~512px square, so one
-    // layer is about a megabyte of bitmap and a dressed runner is eight of
-    // them. In the studio that is correct and deliberate: the rig springs to
-    // 1.12 on a tap and on a part landing, and a bitmap decoded for the
-    // resting size magnifies into mush. See ui/image.js.
-    //
-    // But the rig is drawn far more often as a 30-40pt PORTRAIT that never
-    // moves — a bust on every feed card, over every territory on the map,
-    // beside every leaderboard row. Those were each paying eight full-size
-    // decodes to draw a thumbnail, which is most of what made a screenful of
-    // runners expensive to build and to hold in memory.
-    //
-    // The default is the honest test of whether it is needed: `animateSwaps`
-    // is the studio's part-landing spring, and a `ref` is the only route to
-    // the imperative `play()` nod. A rig with neither cannot change its own
-    // scale, so there is nothing for a full decode to protect. A caller whose
-    // PARENT scales it (RunningScreen's live marker sits in a Pulse) can ask
-    // for it by hand.
+    // Since 2026-09-15 this changes nothing for the character art, which is
+    // all bundled: bundled art is always drawn from its full decode and scaled
+    // by the GPU (ui/image.js). The downscaled path this used to opt busts
+    // into never decoded any less — the whole PNG was decoded and cached
+    // either way — it REDREW every layer at view size on the main thread, on
+    // every mount, which is what a screenful of busts was really paying. The
+    // prop stays because it still means something for a remote image.
     crisp,
     // A second face (a face item id, e.g. 'sad') cross-faded over the worn
     // one by `altFaceMix`, a shared value from 0 (worn face) to 1 (this one).

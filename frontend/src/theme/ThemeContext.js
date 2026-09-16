@@ -9,9 +9,11 @@
 //   - useTheme() -> { colors, scheme, preference, setPreference }
 //   - useThemedStyles(factory) -> memoised StyleSheet from (colors, scheme)
 //
-// DEFAULT is 'dark' so nothing changes visually until a screen opts in by
-// reading useTheme().colors. Convert screens incrementally; flip the default
-// to 'system' (and surface <ThemeToggle/>) once the sweep is complete.
+// LIGHT BY DEFAULT. The paper palette is the app's face, so a runner who has
+// never opened the Appearance switch gets it whatever their phone is set to.
+// This used to follow the OS, which put everyone with a dark phone on the night
+// palette without their ever choosing it. System and Dark are one tap away in
+// Profile (ThemeToggle), and a saved choice always beats the default.
 
 import React, {
   createContext,
@@ -19,6 +21,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useColorScheme } from 'react-native';
@@ -30,40 +33,78 @@ import { type as baseType } from './tokens';
 
 const PREF_KEY = 'paser.theme.pref';
 const PALETTES = { light: lightColors, dark: darkColors };
+const PREFS = ['system', 'light', 'dark'];
 
-// Follow the OS by default; users override to light/dark in Profile. Main
-// surfaces are themed; a few secondary detail screens still render on the
-// static dark palette (readable, just dark) until they're converted too.
-const DEFAULT_PREF = 'system';
+// What a runner who has never touched the switch gets. See the header.
+export const DEFAULT_PREF = 'light';
+
+/**
+ * The scheme `preference` comes out as on a phone reporting `system`.
+ *
+ * The OS answer is null when it will not say (some Android builds, and the
+ * moments before Appearance has answered). That falls to LIGHT for the same
+ * reason the default does: an unknown answer should land on the app's own face,
+ * not on the palette nobody picked.
+ */
+export function resolveScheme(preference, system) {
+  if (preference === 'light' || preference === 'dark') return preference;
+  return system === 'dark' ? 'dark' : 'light';
+}
+
+// The saved preference, read before the provider exists. See below.
+let hydratedPref = null;
+
+/**
+ * Read the saved preference into memory ahead of the first render. App awaits
+ * this in its launch gate, beside `hydrateCache`, so the provider's FIRST frame
+ * is already in the runner's scheme.
+ *
+ * Without it the provider opens on the default and swaps when its own read
+ * lands: a flash of paper on every cold start for anybody who chose Dark,
+ * which with a light default is precisely the people who went looking for the
+ * switch.
+ */
+export async function hydrateThemePreference() {
+  try {
+    const saved = await AsyncStorage.getItem(PREF_KEY);
+    if (PREFS.includes(saved)) hydratedPref = saved;
+  } catch {
+    // An unreadable disk costs the first frame its scheme, nothing more.
+  }
+  return hydratedPref;
+}
 
 const ThemeContext = createContext({
-  colors: darkColors,
-  scheme: 'dark',
+  colors: lightColors,
+  scheme: 'light',
   preference: DEFAULT_PREF,
   setPreference: () => {},
 });
 
 export function ThemeProvider({ children }) {
   const system = useColorScheme(); // 'light' | 'dark' | null
-  const [preference, setPreferenceState] = useState(DEFAULT_PREF);
+  const [preference, setPreferenceState] = useState(() => hydratedPref || DEFAULT_PREF);
+  // Set by a tap on the switch, so a disk read that lands late cannot undo it.
+  const chosen = useRef(false);
 
+  // Still read here as well: the launch gate gives up on a slow disk rather
+  // than hold the splash, so the hydration above may not have landed yet.
   useEffect(() => {
     AsyncStorage.getItem(PREF_KEY)
       .then((saved) => {
-        if (saved === 'light' || saved === 'dark' || saved === 'system') {
-          setPreferenceState(saved);
-        }
+        if (!chosen.current && PREFS.includes(saved)) setPreferenceState(saved);
       })
       .catch(() => {});
   }, []);
 
   const setPreference = useCallback((next) => {
+    chosen.current = true;
+    hydratedPref = next;
     setPreferenceState(next);
     AsyncStorage.setItem(PREF_KEY, next).catch(() => {});
   }, []);
 
-  const scheme =
-    preference === 'system' ? (system === 'light' ? 'light' : 'dark') : preference;
+  const scheme = resolveScheme(preference, system);
 
   const value = useMemo(
     () => ({ colors: PALETTES[scheme], scheme, preference, setPreference }),

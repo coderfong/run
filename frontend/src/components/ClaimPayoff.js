@@ -441,8 +441,8 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
               <ShieldOff size={16} color={colors.textMuted} />
               <Text style={[type.caption, { color: colors.textMuted }]}>
                 {held.length === 1
-                  ? `DEFENDED · ${held[0].username} held their ground`
-                  : `DEFENDED · ${held.length} runners held their ground`}
+                  ? `${held[0].username} held their ground`
+                  : `${held.length} runners held their ground`}
               </Text>
             </View>
           )}

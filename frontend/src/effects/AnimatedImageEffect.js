@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
-import { Image } from 'expo-image';
+// Through ui/image, which keeps a bundled animation in the memory cache: bare
+// expo-image defaults to the DISK cache alone, so every replay decoded it again.
+import { Image } from '../ui/image';
 
 export default function AnimatedImageEffect({
   source,

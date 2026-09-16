@@ -57,6 +57,7 @@ import RivalDetailScreen from './src/screens/RivalDetailScreen';
 import CrossroadsScreen from './src/screens/CrossroadsScreen';
 import TerritoryScreen from './src/screens/TerritoryScreen';
 import RunnerProfileScreen from './src/screens/RunnerProfileScreen';
+import PlanAttackScreen from './src/screens/PlanAttackScreen';
 import RunShareCard from './src/components/share/RunShareCard';
 
 import { AuthProvider, useAuth } from './src/auth/AuthContext';
@@ -81,14 +82,14 @@ import ProProvider from './src/pro/ProProvider';
 import { hydrateProExposure } from './src/pro/exposure';
 import { hydrateCache } from './src/api/cache';
 import { warmUp } from './src/api/client';
-import { preloadCriticalImages, preloadStartupImages } from './src/config/screenAssets';
+import { preloadCriticalImages, preloadHomeFeedRunners, preloadStartupImages } from './src/config/screenAssets';
 import { addWatchCommandListener, publishToWatch } from './src/watch/watchLink';
 import { commandAllowed, PHASE as WATCH_PHASE } from './src/watch/watchState';
 // No static `colors` here on purpose — App used to build the nav theme and the
 // header chrome from it, which pinned both to the dark palette. Everything
 // theme-dependent now reads useTheme(); `darkColors` stays only for the record
 // modal, which is deliberately dark in either theme.
-import { darkColors, fonts, ThemeProvider, useTheme } from './src/theme';
+import { darkColors, fonts, hydrateThemePreference, ThemeProvider, useTheme } from './src/theme';
 import { FONT_FILES } from './src/theme/fontFiles';
 
 // A production navigator has neither the screen nor its deep-link mapping.
@@ -367,10 +368,12 @@ const YouTab = withBoundary(YouStack);
 // (api/cache.js).
 const Tab = createMaterialTopTabNavigator();
 
-// How long after launch the other three tabs get built. Long enough that Home
-// has drawn and its first requests are away; short enough that nobody has
-// finished reading the screen and reached for a tab.
+// How long after launch the other three tabs start being built. Long enough
+// that Home has drawn and its first requests are away; short enough that
+// nobody has finished reading the screen and reached for a tab.
 const TAB_PRELOAD_DELAY_MS = 1500;
+// The breather between building one of them and building the next.
+const TAB_PRELOAD_STEP_MS = 160;
 
 function MainTabs() {
   const { colors } = useTheme();
@@ -387,20 +390,33 @@ function MainTabs() {
   // opening the app builds all four tabs at once, racing the screen the
   // runner is actually looking at.
   //
-  // So it starts at zero and moves to three once the app is idle. Home mounts
+  // So it starts at zero and climbs to three once the app is idle. Home mounts
   // alone, draws, and settles; the other three are built behind it a beat
   // later — off the interaction path, not inside a gesture — and are ready
   // by the time anybody swipes or taps a tab. Changing a screen option
   // remounts nothing — the tabs that already exist stay exactly as they are.
+  //
+  // ONE TAB PER STEP. It used to jump from zero straight to three, which built
+  // Map (its GL context and all), Club and You in a SINGLE commit: the longest
+  // freeze in the app, a second and a half after launch, which is exactly when
+  // a runner first reaches for the screen. The distance now climbs one at a
+  // time and hands the thread back in between, so the same work is three
+  // shorter tasks with frames and touches between them instead of one long
+  // one. It counts out from the tab in front, so from Home that is Map, then
+  // Club, then You, the last a few hundred milliseconds after the first.
   const [preloadDistance, setPreloadDistance] = useState(0);
   useEffect(() => {
     let alive = true;
     let task = null;
-    const timer = setTimeout(() => {
+    let timer = null;
+    const step = (distance) => {
       task = InteractionManager.runAfterInteractions(() => {
-        if (alive) setPreloadDistance(3);
+        if (!alive) return;
+        setPreloadDistance(distance);
+        if (distance < 3) timer = setTimeout(() => step(distance + 1), TAB_PRELOAD_STEP_MS);
       });
-    }, TAB_PRELOAD_DELAY_MS);
+    };
+    timer = setTimeout(() => step(1), TAB_PRELOAD_DELAY_MS);
     return () => {
       alive = false;
       clearTimeout(timer);
@@ -501,6 +517,16 @@ function RunShareModal(props) {
   );
 }
 
+// Placing a run's land later, from Home or the run's own page. At the root and
+// boundaried like Record: it IS the claim screen, the heaviest thing in the app.
+function PlanAttackModal(props) {
+  return (
+    <ErrorBoundary>
+      <PlanAttackScreen {...props} />
+    </ErrorBoundary>
+  );
+}
+
 function RecordStack({ watchStartAt }) {
   return (
     <RecordStackNav.Navigator
@@ -573,6 +599,14 @@ function RootStack() {
         name="RunShare"
         component={RunShareModal}
         options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+      />
+      {/* A run's land, placed later (PlanAttackScreen). Full screen because it
+          is the claim map, and it fades the way the claim does after a run
+          rather than sliding up like a new task. */}
+      <RootStackNav.Screen
+        name="PlanAttack"
+        component={PlanAttackModal}
+        options={{ presentation: 'fullScreenModal', animation: 'fade' }}
       />
       {__DEV__ && (
         <RootStackNav.Screen
@@ -908,7 +942,9 @@ function App() {
     // launch path. It is deliberately NOT raced against `done` — a slow read
     // costs at most one extra free planner preview, never a delayed launch.
     hydrateProExposure();
-    hydrateCache().finally(() => {
+    // The saved theme rides the same gate, so the first frame is already in
+    // the scheme the runner picked rather than the default, then a swap.
+    Promise.all([hydrateCache(), hydrateThemePreference()]).finally(() => {
       clearTimeout(guard);
       done();
     });
@@ -929,7 +965,14 @@ function App() {
     // Hold the splash for the first frame's art only; the rest of the startup
     // family decodes behind the running app. Waiting on the full set put every
     // one of those decodes in front of the user before anything was drawn.
-    preloadCriticalImages().finally(() => {
+    //
+    // The first frame includes the runners on the feed rows Home paints from
+    // the cache, so this waits on that read as well — the rows are chosen from
+    // what it holds. Both halves decode in parallel and the guard caps the lot.
+    Promise.all([
+      preloadCriticalImages(),
+      hydrateCache().then(preloadHomeFeedRunners),
+    ]).finally(() => {
       clearTimeout(guard);
       finish();
       preloadStartupImages().catch(() => {});

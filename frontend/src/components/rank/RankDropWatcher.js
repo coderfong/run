@@ -20,7 +20,9 @@ import { onRankCheck, rankChange, readSeenRank, writeSeenRank } from '../../rank
 import { useAvatar } from '../../state/avatar';
 import RankDownCeremony from './RankDownCeremony';
 
-const QUIET_ROUTES = new Set(['Record', 'Result']);
+// PlanAttack is the same result screen, reopened later to place a run's land,
+// and it reports its own tier change the same way.
+const QUIET_ROUTES = new Set(['Record', 'Result', 'PlanAttack']);
 
 export default function RankDropWatcher({ navigationRef, ready }) {
   const { user } = useAuth();

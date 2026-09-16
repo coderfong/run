@@ -1,549 +1,260 @@
-// Three mystery swipes for every box; the server outcome stays hidden until opening.
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+// One continuous lootbox opening: charge, build, impact, reward.
+// The screen carries no explanatory copy. Motion teaches the input; after the
+// hit, the item and Collect button are the only things left to read.
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, {
-  Easing,
-  cancelAnimation,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
-import {
-  ChestBase,
-  ChestLid,
-  ChestLidInside,
-  Sparkle,
-  chestColors,
-  chestSize,
-} from './Chest';
-import { haptic, useReduceMotion } from '../../ui/motion';
-import { fonts, space } from '../../theme';
+import { ChestBase, ChestLid, ChestLidInside, ChestSilhouette, chestColors, chestSize } from './Chest';
+import { AmbientSparkles, Beam, ChargeCells, ChargeMotes, DriftMotes, Glow, LightFan, REVEAL_LIGHT, Ring, SeamGlow, SparkBurst, SwipeCue, Swoosh, TIER_LIGHT, TIER_SPARKS, Vignette } from './LootboxFx';
+import { openingPlan } from './openingPlan';
+import RewardArt, { RARITY_COLOR } from '../RewardArt';
+import { AnimationStack } from '../GameAnimation';
+import { Framed, OutlinedText, ToonButton } from '../ui';
+import { Confetti, haptic, useReduceMotion } from '../../ui/motion';
+import { fonts, space, toon } from '../../theme';
+import { INK } from '../../ui/frameRegistry';
 
-// How long a single tap's reveal takes end to end. The swoosh reads at 320ms
-// and the wash needs to finish inside the same beat or two quick taps overlap
-// each other's colours.
-const TAP_MS = 340;
 export const MYSTERY_SWIPES = 3;
-// The lid lift. Long enough to see the chest actually open, short enough that
-// it is not standing between the player and their reward.
-const OPEN_MS = 620;
-const OPEN_HOLD_MS = 520;
+const INPUT_LOCK_MS = 340;
 
-// Where the ambient sparkles sit, as fractions of the chest box. Fixed rather
-// than random so they do not re-scatter on every render, and hand placed so
-// none of them lands on the clasp.
-const AMBIENT = [
-  { x: -0.22, y: 0.06, size: 20, delay: 0 },
-  { x: 1.06, y: 0.22, size: 15, delay: 420 },
-  { x: -0.1, y: 0.62, size: 12, delay: 900 },
-  { x: 1.14, y: 0.68, size: 18, delay: 1300 },
-  { x: 0.18, y: -0.16, size: 14, delay: 700 },
-  { x: 0.82, y: -0.1, size: 11, delay: 1600 },
-];
-
-// The upgrade burst. Angles in degrees around the chest, distance in points.
-const BURST = [
-  { angle: -90, dist: 150, size: 26 }, { angle: -40, dist: 130, size: 18 },
-  { angle: -140, dist: 135, size: 20 }, { angle: 0, dist: 145, size: 22 },
-  { angle: 180, dist: 150, size: 16 }, { angle: 40, dist: 120, size: 15 },
-  { angle: 140, dist: 125, size: 19 }, { angle: 90, dist: 110, size: 14 },
-];
-
-// ---------------------------------------------------------------------------
-// Pieces
-// ---------------------------------------------------------------------------
-
-/** One ambient glint, breathing on its own clock. */
-function AmbientSparkle({ spot, box, reduced }) {
-  const life = useSharedValue(0);
-  useEffect(() => {
-    if (reduced) {
-      life.value = 0.7;
-      return undefined;
-    }
-    life.value = withDelay(
-      spot.delay,
-      withRepeat(withTiming(1, { duration: 2200, easing: Easing.inOut(Easing.quad) }), -1, true)
-    );
-    return () => cancelAnimation(life);
-  }, [life, reduced, spot.delay]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: 0.25 + life.value * 0.6,
-    transform: [{ scale: 0.7 + life.value * 0.5 }, { rotate: `${life.value * 45}deg` }],
-  }));
-
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[
-        styles.sparkle,
-        { left: box * spot.x, top: box * spot.y },
-        style,
-      ]}
-    >
-      <Sparkle size={spot.size} />
-    </Animated.View>
-  );
+function later(bucket, fn, ms) {
+  const id = setTimeout(fn, ms);
+  bucket.current.push(id);
 }
 
-/** One petal of the upgrade burst, thrown outward and fading as it goes. */
-function BurstSparkle({ spec, trigger, reduced }) {
-  const life = useSharedValue(0);
-  useEffect(() => {
-    if (!trigger || reduced) return undefined;
-    life.value = 0;
-    life.value = withTiming(1, { duration: 700, easing: Easing.out(Easing.cubic) });
-    return () => cancelAnimation(life);
-  }, [trigger, life, reduced]);
-
-  const rad = (spec.angle * Math.PI) / 180;
-  const style = useAnimatedStyle(() => ({
-    opacity: life.value === 0 ? 0 : 1 - life.value,
-    transform: [
-      { translateX: Math.cos(rad) * spec.dist * life.value },
-      { translateY: Math.sin(rad) * spec.dist * life.value },
-      { scale: 0.4 + life.value * 0.9 },
-      { rotate: `${life.value * 160}deg` },
-    ],
-  }));
-
-  return (
-    <Animated.View pointerEvents="none" style={[styles.burstItem, style]}>
-      <Sparkle size={spec.size} />
-    </Animated.View>
-  );
-}
-
-/**
- * The white arc that sweeps over the chest on every tap.
- *
- * It is the tap's receipt. Without it a tap that did not upgrade produced no
- * change on screen at all, which reads as a dropped input rather than as an
- * unlucky roll — the one thing this screen could not afford, since most taps
- * do not upgrade.
- */
-function Swoosh({ trigger, size }) {
-  const life = useSharedValue(0);
-  useEffect(() => {
-    if (!trigger) return undefined;
-    life.value = 0;
-    life.value = withTiming(1, { duration: TAP_MS, easing: Easing.out(Easing.quad) });
-    return () => cancelAnimation(life);
-  }, [trigger, life]);
-
-  const style = useAnimatedStyle(() => ({
-    opacity: life.value === 0 || life.value > 0.85 ? 0 : 0.9,
-    transform: [
-      { rotate: `${-30 + life.value * 60}deg` },
-      { scale: 0.8 + life.value * 0.5 },
-    ],
-  }));
-
-  return (
-    <Animated.View pointerEvents="none" style={[styles.swoosh, { width: size, height: size }, style]}>
-      <Svg width={size} height={size} viewBox="0 0 100 100">
-        <Path
-          d="M 14 62 Q 24 16 62 10 Q 44 22 34 44 Q 27 58 24 74 Z"
-          fill="#ffffff"
-        />
-      </Svg>
-    </Animated.View>
-  );
-}
-
-/** The chance pips. Spent, next, and still to come. */
-function Pips({ total, spent, tint }) {
-  if (!total) return null;
-  return (
-    <View style={styles.pips}>
-      {Array.from({ length: total }, (_, i) => {
-        const used = i < spent;
-        const active = i === spent;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.pip,
-              used && { backgroundColor: tint.deep },
-              active && styles.pipActive,
-              !used && !active && styles.pipWaiting,
-            ]}
-          >
-            {!used ? (
-              <Svg width={14} height={14} viewBox="0 0 24 24">
-                <Path
-                  d="M12 4 L20 13 L15.5 13 L15.5 20 L8.5 20 L8.5 13 L4 13 Z"
-                  fill={active ? tint.body : '#ffffff'}
-                />
-              </Svg>
-            ) : null}
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The screen
-// ---------------------------------------------------------------------------
-
-/**
- * @param {boolean}  visible
- * @param {object}   sequence  the server's roll: { rarity, final_rarity, chances, steps }
- * @param {Function} onOpened  called with the final rarity once the lid is off
- * @param {Function} onClose   dismissed without opening (the back arrow)
- */
-export default function LootboxGamble({ visible, sequence, onOpened, onClose }) {
+export default function LootboxGamble({ visible, sequence, reward, onCollect, onOpened, onClose }) {
   const reduced = useReduceMotion();
   const { width, height } = useWindowDimensions();
-
-  const base = sequence?.rarity || 'common';
-  const finalRarity = sequence?.final_rarity || base;
-
-  // Reduce Motion starts at the answer; everyone else starts at the floor and
-  // taps their way up.
+  const finalRarity = sequence?.final_rarity || sequence?.rarity || 'common';
+  const plan = useMemo(() => openingPlan(finalRarity), [finalRarity]);
   const [spent, setSpent] = useState(0);
-  const [rarity, setRarity] = useState('common');
-  const [opening, setOpening] = useState(false);
-  const [tapKey, setTapKey] = useState(0);
-  const [burstKey, setBurstKey] = useState(0);
+  const [act, setAct] = useState('charge');
+  const [lightTier, setLightTier] = useState('common');
+  const [swipeKey, setSwipeKey] = useState(0);
+  const [impactKey, setImpactKey] = useState(0);
   const busy = useRef(false);
-  const handoff = useRef(null);
-  const inputTimer = useRef(null);
   const spentRef = useRef(0);
+  const timers = useRef([]);
 
-  const chestW = Math.min(280, width * 0.62);
-  const chestMetrics = chestSize(chestW);
-  const chestH = chestMetrics.height;
+  const chestW = Math.min(286, width * 0.68);
+  const metrics = chestSize(chestW);
+  const stageH = Math.min(530, height * 0.61);
+  const seamY = stageH * 0.61;
 
-  const bob = useSharedValue(0);
-  const squash = useSharedValue(0);
+  const idle = useSharedValue(0);
+  const press = useSharedValue(0);
+  const stream = useSharedValue(0);
+  const charge = useSharedValue(0);
+  const calm = useSharedValue(0);
   const shake = useSharedValue(0);
-  const lid = useSharedValue(0);
-  const beam = useSharedValue(0);
-  const labelPop = useSharedValue(0);
+  const flash = useSharedValue(0);
+  const reveal = useSharedValue(0);
+  const rays = useSharedValue(0);
 
-  // Reset for each box. A second box opened in the same session must not
-  // inherit the first one's spent pips.
-  //
-  // KEYED ON THE BOX, AND ON NOTHING ELSE. This effect resets USER FACING
-  // state, so the one thing it must never depend on is an animation handle:
-  // under the reanimated jest mock those get a fresh identity every render, so
-  // listing them re-fires this on every render and silently undoes the tap
-  // that caused it — `spent` went back to nought and the chest could never be
-  // opened. They are stable refs in the real app and stale-proof either way
-  // (a shared value is read through `.value`), so leaving them out is correct
-  // in both environments rather than a test accommodation.
+  const clearTimers = useCallback(() => {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+  }, []);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!visible) return;
-    clearTimeout(handoff.current);
+    clearTimers();
+    if (!visible) return undefined;
     busy.current = false;
-    clearTimeout(inputTimer.current);
     spentRef.current = 0;
     setSpent(0);
-    setTapKey(0);
-    setBurstKey(0);
-    setRarity('common');
-    setOpening(false);
-    lid.value = 0;
-    beam.value = 0;
-    squash.value = 0;
+    setAct('charge');
+    setLightTier('common');
+    setSwipeKey(0);
+    setImpactKey(0);
+    press.value = 0;
+    charge.value = 0;
+    calm.value = 0;
     shake.value = 0;
-  }, [visible, sequence, reduced]);
-
-  // The resting breath. The chest is never completely still until it opens.
-  // Same rule: `bob` out of the deps, or the loop is cancelled and restarted
-  // on every render and the chest never actually breathes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!visible || reduced || opening) {
-      bob.value = 0;
-      return undefined;
-    }
-    bob.value = withRepeat(
-      withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.sin) }), -1, true
-    );
-    return () => cancelAnimation(bob);
-  }, [visible, reduced, opening]);
-
-  const finish = useCallback(() => {
-    onOpened?.(finalRarity);
-  }, [onOpened, finalRarity]);
-
-  // ---- the open --------------------------------------------------------
-  const openChest = useCallback(() => {
-    if (busy.current) return;
-    busy.current = true;
-    setOpening(true);
-    setRarity(finalRarity);
-    haptic.success();
-
-    if (reduced) {
-      finish();
-      return;
-    }
-    beam.value = withTiming(1, { duration: OPEN_MS });
-    lid.value = withTiming(1, { duration: OPEN_MS, easing: Easing.out(Easing.back(1.4)) });
-    setBurstKey((k) => k + 1);
-    // The hold is the point: the lid comes off, the light gets out, and THEN
-    // the reward arrives. Handing it over on the same frame the lid moves
-    // wastes the only build up this screen has.
-    //
-    // A timer rather than a third animation callback, because the hand off has
-    // to happen once whether or not the lid's spring is still settling — and a
-    // callback on an animation that gets cancelled (the modal dismissed
-    // mid-open) would never fire at all. Cleared on unmount below.
-    handoff.current = setTimeout(finish, OPEN_MS + OPEN_HOLD_MS);
-  }, [reduced, beam, lid, finish, finalRarity]);
-
-  useEffect(() => () => {
-    clearTimeout(handoff.current);
-    clearTimeout(inputTimer.current);
+    flash.value = 0;
+    reveal.value = 0;
+    return clearTimers;
   }, [visible, sequence]);
 
-  const tap = useCallback(() => {
-    if (busy.current || spentRef.current >= MYSTERY_SWIPES) return;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!visible || reduced || act === 'reveal') {
+      cancelAnimation(idle);
+      cancelAnimation(stream);
+      idle.value = 0;
+      stream.value = 0;
+      return undefined;
+    }
+    idle.value = withRepeat(withTiming(1, { duration: 1700, easing: Easing.inOut(Easing.sin) }), -1, true);
+    stream.value = withRepeat(withTiming(1, { duration: 1200, easing: Easing.linear }), -1, false);
+    return () => { cancelAnimation(idle); cancelAnimation(stream); };
+  }, [visible, reduced, act]);
+
+  const beginOpening = useCallback(() => {
+    setAct('build');
+    busy.current = true;
+    haptic.medium();
+    charge.value = reduced ? 1 : withTiming(1, { duration: plan.flashAt, easing: Easing.in(Easing.quad) });
+    if (!reduced) shake.value = withRepeat(withSequence(withTiming(1, { duration: 55 }), withTiming(-1, { duration: 55 })), -1, true);
+
+    plan.steps.forEach((step) => later(timers, () => {
+      setLightTier(step.rarity);
+      haptic.light();
+    }, step.at));
+
+    if (plan.hitch) {
+      later(timers, () => {
+        calm.value = reduced ? 1 : withTiming(1, { duration: 180 });
+        cancelAnimation(shake);
+        shake.value = 0;
+      }, plan.hitch.at);
+      later(timers, () => {
+        calm.value = reduced ? 0 : withTiming(0, { duration: 90 });
+        if (!reduced) shake.value = withRepeat(withSequence(withTiming(1, { duration: 38 }), withTiming(-1, { duration: 38 })), -1, true);
+      }, plan.hitch.at + plan.hitch.ms);
+    }
+
+    later(timers, () => {
+      setAct('flash');
+      cancelAnimation(shake);
+      shake.value = 0;
+      flash.value = reduced ? 1 : withSequence(
+        withTiming(1, { duration: plan.flash.up }),
+        withTiming(1, { duration: plan.flash.hold }),
+        withTiming(0, { duration: plan.flash.down, easing: Easing.out(Easing.quad) })
+      );
+      haptic[plan.reveal.haptic]?.();
+    }, plan.flashAt);
+
+    later(timers, () => {
+      setAct('reveal');
+      setImpactKey((k) => k + 1);
+      reveal.value = reduced ? 1 : withSpring(1, { damping: 11, stiffness: 125 });
+      rays.value = reduced ? 0 : withRepeat(withTiming(1, { duration: plan.reveal.spinMs, easing: Easing.linear }), -1, false);
+    }, plan.swapAt);
+  }, [calm, charge, flash, plan, rays, reduced, reveal, shake]);
+
+  const spend = useCallback(() => {
+    if (busy.current || act !== 'charge' || spentRef.current >= MYSTERY_SWIPES) return;
     spentRef.current += 1;
     setSpent(spentRef.current);
-    setTapKey((k) => k + 1);
+    setSwipeKey((k) => k + 1);
     haptic.light();
-    if (spentRef.current === MYSTERY_SWIPES) {
-      openChest();
-      return;
+    if (!reduced) press.value = withSequence(withTiming(1, { duration: 100 }), withSpring(0, { damping: 9, stiffness: 220 }));
+    if (spentRef.current === MYSTERY_SWIPES) beginOpening();
+    else {
+      busy.current = true;
+      later(timers, () => { busy.current = false; }, INPUT_LOCK_MS);
     }
-    busy.current = true;
-    inputTimer.current = setTimeout(() => { busy.current = false; }, TAP_MS);
-    if (!reduced) {
-      squash.value = withSequence(
-        withTiming(1, { duration: 110 }),
-        withSpring(0, { damping: 9, stiffness: 200 })
-      );
-    }
-  }, [openChest, reduced, squash]);
+  }, [act, beginOpening, press, reduced]);
 
-  const gesture = PanResponder.create({
-    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 18 || Math.abs(g.dy) > 18,
-    onPanResponderRelease: (_, g) => {
-      if (Math.hypot(g.dx, g.dy) >= 55) tap();
-    },
-  });
+  const gesture = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 16 || Math.abs(g.dy) > 16,
+    onPanResponderRelease: (_, g) => { if (Math.hypot(g.dx, g.dy) >= 48) spend(); },
+  }), [spend]);
 
-  // ---- styles ----------------------------------------------------------
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shake.value * 7 }],
-  }));
+  const collect = () => {
+    haptic.success();
+    (onCollect || onOpened)?.(finalRarity, reward);
+  };
+
   const chestStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: -6 * bob.value + 10 * squash.value },
-      { scaleX: 1 + 0.1 * squash.value },
-      { scaleY: 1 - 0.12 * squash.value },
+      { translateX: shake.value * (3 + charge.value * 7) },
+      { translateY: -5 * idle.value + 10 * press.value },
+      { scaleX: 1 + press.value * 0.08 },
+      { scaleY: 1 - press.value * 0.1 },
     ],
   }));
-  // Both lid drawings pivot around the seam at the bottom of their box. The
-  // front collapses first; the hollow then rises from the same line. Keeping
-  // this in 2D avoids React Native's fractional transformOrigin parsing bug.
-  const closedLidStyle = useAnimatedStyle(() => ({
-    opacity: lid.value < 0.55 ? 1 : 0,
-    transform: [
-      { translateY: chestMetrics.lidH / 2 },
-      { scaleY: Math.max(0.02, 1 - lid.value * 2) },
-      { translateY: -chestMetrics.lidH / 2 },
-    ],
+  const chargeGlowStyle = useAnimatedStyle(() => ({
+    opacity: 0.18 + charge.value * 0.82 - calm.value * 0.65,
+    transform: [{ scale: 0.7 + charge.value * 0.55 - calm.value * 0.12 }],
   }));
-  const openLidStyle = useAnimatedStyle(() => ({
-    opacity: lid.value > 0.38 ? 1 : 0,
-    transform: [
-      { translateY: chestMetrics.insideH / 2 },
-      { scaleY: Math.max(0.02, (lid.value - 0.35) / 0.65) },
-      { translateY: -chestMetrics.insideH / 2 },
-    ],
-  }));
-  const beamStyle = useAnimatedStyle(() => ({
-    opacity: Math.min(1, beam.value * 1.6),
-    transform: [{ scaleY: 0.3 + beam.value * 0.7 }, { scaleX: 0.6 + beam.value * 0.4 }],
-  }));
-  const labelStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 + 0.22 * labelPop.value }],
-  }));
+  const fanStyle = useAnimatedStyle(() => ({ opacity: charge.value * (1 - calm.value), transform: [{ scaleY: 0.25 + charge.value * 0.75 }] }));
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flash.value }));
+  const itemStyle = useAnimatedStyle(() => ({ opacity: reveal.value, transform: [{ translateY: 54 * (1 - reveal.value) }, { scale: 0.55 + reveal.value * 0.45 }] }));
+  const rayStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${rays.value * 360}deg` }] }));
 
   if (!visible || !sequence) return null;
-
-  const tint = chestColors(rarity);
-  const remaining = Math.max(0, MYSTERY_SWIPES - spent);
-  const shown = opening ? finalRarity : 'mystery';
-  const caption = opening ? '' : `Swipe to unlock · ${remaining} left`;
+  const revealed = act === 'reveal';
+  const light = revealed ? REVEAL_LIGHT[plan.tier] : TIER_LIGHT[lightTier];
+  const rewardSize = Math.min(190, width * 0.44, height * 0.24);
 
   return (
-    <Modal visible transparent={false} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={[styles.page, { backgroundColor: tint.page }]}>
-        <Pressable
-          {...gesture.panHandlers}
-          style={styles.tapArea}
-          onPress={tap}
-          disabled={opening}
-          accessibilityRole="button"
-          accessibilityLabel={`${shown} chest. ${remaining} swipes remaining. Swipe or tap to unlock.`}
-        >
-          <Animated.View style={[styles.stage, shakeStyle]}>
-            <Animated.Text style={[styles.rarity, labelStyle]}>
-              {String(shown).toUpperCase()}
-            </Animated.Text>
+    <Modal visible transparent={false} animationType="fade" onRequestClose={act === 'charge' ? onClose : undefined} statusBarTranslucent>
+      <View style={[styles.page, { backgroundColor: chestColors(revealed ? plan.tier : 'mystery').page }]}>
+        <DriftMotes clock={stream} width={width} height={height} />
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}><Vignette width={width} height={height} id="loot-vignette" /></View>
+        {revealed && plan.reveal.confetti ? <Confetti key={impactKey} count={plan.reveal.confetti} /> : null}
+        {revealed ? (
+          <Animated.View pointerEvents="none" style={[styles.rays, { width: width * 1.35, height: width * 1.35 }, rayStyle]}>
+            <LightFan width={width * 1.35} height={width * 1.35} color={light} id="loot-rays" />
+          </Animated.View>
+        ) : null}
 
-            <View style={[styles.chestBox, { width: chestW, height: chestH }]}>
-              {AMBIENT.map((spot, i) => (
-                <AmbientSparkle key={i} spot={spot} box={chestW} reduced={reduced} />
-              ))}
+        <Pressable {...gesture.panHandlers} style={styles.input} onPress={spend} disabled={act !== 'charge'} accessibilityRole="button" accessibilityLabel={revealed ? `${plan.tier} reward, ${reward?.label || 'collectible'}` : `Mystery chest. ${MYSTERY_SWIPES - spent} charges remaining. Swipe or tap.`}>
+          <View style={[styles.stage, { height: stageH }]}>
+            {!revealed ? <Text style={styles.mystery}>MYSTERY</Text> : null}
+            <Animated.View pointerEvents="none" style={[styles.chargeGlow, chargeGlowStyle]}><Glow size={chestW * 1.85} color={light} id="loot-charge" /></Animated.View>
+            <Animated.View pointerEvents="none" style={[styles.fan, { bottom: stageH - seamY, width: chestW * 1.55, height: stageH * 0.52 }, fanStyle]}><LightFan width={chestW * 1.55} height={stageH * 0.52} color={light} id="loot-fan" /></Animated.View>
+            <View style={[styles.seam, { top: seamY - 18, width: chestW * 1.05 }]} pointerEvents="none"><SeamGlow width={chestW * 1.05} height={36} color={light} id="loot-seam" /></View>
+            <View style={[styles.chargeMotes, { top: seamY }]} pointerEvents="none"><ChargeMotes stream={stream} charge={charge} calm={calm} color={light} radius={chestW * 0.65} /></View>
 
-              {/* The light getting out, drawn behind the chest so the lid
-                  passes in front of it as it lifts. */}
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.beam, { width: chestW * 0.7, backgroundColor: '#fffdf0' }, beamStyle]}
-              />
+            <Animated.View style={[styles.chest, { top: seamY - metrics.lidH, width: chestW, height: metrics.height }, chestStyle]}>
+              <AmbientSparkles box={chestW} live={act === 'charge' && !reduced} />
+              {revealed ? (
+                <><View style={[styles.piece, { top: metrics.lidH - metrics.insideH }]}><ChestLidInside width={chestW} rarity={plan.tier} /></View><View style={[styles.piece, { top: metrics.lidH }]}><ChestBase width={chestW} rarity={plan.tier} open /></View></>
+              ) : (
+                <><View style={[styles.piece, { top: metrics.lidH }]}><ChestBase width={chestW} rarity="mystery" /></View><View style={styles.piece}><ChestLid width={chestW} rarity="mystery" /></View>{act === 'flash' ? <View style={styles.piece}><ChestSilhouette width={chestW} /></View> : null}</>
+              )}
+              {act === 'charge' && !reduced ? <Swoosh trigger={swipeKey} size={chestW * 1.08} /> : null}
+            </Animated.View>
 
-              <Animated.View style={chestStyle}>
-                {/* The shadow travels with the chest, so the bob reads as
-                    hovering rather than as the whole picture sliding. */}
-                <View style={[styles.shadow, { backgroundColor: tint.shade, width: chestW * 0.72, top: chestH * 0.93 }]} />
-                <View style={{ width: chestW, height: chestH }}>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.chestPiece,
-                      { top: chestMetrics.lidH - chestMetrics.insideH },
-                      openLidStyle,
-                    ]}
-                  >
-                    <ChestLidInside width={chestW} rarity={rarity} />
-                  </Animated.View>
-                  <View style={[styles.chestPiece, { top: chestMetrics.lidH }]}>
-                    <ChestBase width={chestW} rarity={rarity} open={opening} />
-                  </View>
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[styles.chestPiece, { top: 0 }, closedLidStyle]}
-                  >
-                    <ChestLid width={chestW} rarity={rarity} />
-                  </Animated.View>
-                </View>
-
-              </Animated.View>
-
-              <View style={styles.burst} pointerEvents="none">
-                {BURST.map((spec, i) => (
-                  <BurstSparkle key={i} spec={spec} trigger={burstKey} reduced={reduced} />
-                ))}
-              </View>
-
-              {!reduced ? <Swoosh trigger={tapKey} size={chestW * 1.05} /> : null}
-            </View>
-
-            {!opening ? (
+            {revealed ? (
               <>
-                <Pips total={MYSTERY_SWIPES} spent={spent} tint={tint} />
-                <Text style={styles.caption}>{caption}</Text>
-                <Text style={styles.note}>What’s inside? Tap also works.</Text>
+                <View pointerEvents="none" style={[styles.beam, { top: 30, width: chestW * 0.9, height: seamY - 10 }]}><Beam width={chestW * 0.9} height={seamY - 10} color={light} id="loot-beam" /></View>
+                <View pointerEvents="none" style={[styles.impact, { top: seamY }]}>{Array.from({ length: plan.reveal.rings }, (_, i) => <Ring key={i} trigger={impactKey} color={light} size={chestW * 0.48} delay={i * 90} to={2.4 + i * 0.35} />)}<SparkBurst trigger={impactKey} count={plan.reveal.sparks} reach={chestW * 0.72} colors={TIER_SPARKS[plan.tier]} /></View>
+                <AnimationStack names={plan.reveal.bursts} size={Math.min(width, 330)} trigger={impactKey} style={[styles.bursts, { top: seamY - 165 }]} />
+                <Animated.View style={[styles.reward, { top: Math.max(34, seamY - rewardSize - 58) }, itemStyle]}><Framed frame="card" fill="#FFF8E8" tint={toon.ink} weight={INK.base} inset={10} style={styles.rewardFrame} boil={!reduced}><RewardArt reward={reward} size={rewardSize} accent={RARITY_COLOR[plan.tier]} animated /></Framed></Animated.View>
               </>
             ) : null}
-          </Animated.View>
+          </View>
+          {act === 'charge' ? <View style={styles.controls}><ChargeCells total={MYSTERY_SWIPES} spent={spent} live={!busy.current} reduced={reduced} /><SwipeCue live={!busy.current} /></View> : null}
         </Pressable>
 
-        {onClose && !opening ? (
-          <Pressable
-            style={[styles.back, { top: Math.max(44, height * 0.06) }]}
-            onPress={onClose}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          >
-            <Svg width={22} height={22} viewBox="0 0 24 24">
-              <Path d="M15 5 L8 12 L15 19" stroke="#ffffff" strokeWidth={2.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
-          </Pressable>
-        ) : null}
+        {revealed ? <View style={styles.revealCopy}><OutlinedText style={styles.rarity} outline={toon.ink} width={3}>{plan.tier.toUpperCase()}</OutlinedText><Text style={styles.itemName} numberOfLines={1} adjustsFontSizeToFit>{reward?.label || 'New collectible'}</Text><ToonButton title="COLLECT" variant={plan.tier === 'legendary' ? 'gold' : 'primary'} onPress={collect} containerStyle={styles.collect} /></View> : null}
+        {onClose && act === 'charge' ? <Pressable style={styles.close} onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close"><Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M15 5 L8 12 L15 19" stroke="#FFFFFF" strokeWidth={2.8} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable> : null}
+        <Animated.View pointerEvents="none" style={[styles.whiteout, flashStyle]} />
       </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
-  tapArea: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  stage: { alignItems: 'center', justifyContent: 'center' },
-
-  rarity: {
-    fontFamily: fonts.display,
-    fontSize: 26,
-    letterSpacing: 3,
-    color: '#ffffff',
-    marginBottom: space.xl,
-  },
-
-  chestBox: { alignItems: 'center', justifyContent: 'center' },
-  chestPiece: { position: 'absolute', left: 0 },
-  shadow: {
-    position: 'absolute',
-    alignSelf: 'center',
-    height: 16,
-    borderRadius: 8,
-    opacity: 0.45,
-  },
-  beam: {
-    position: 'absolute',
-    top: '4%',
-    height: '96%',
-    borderRadius: 40,
-    opacity: 0,
-  },
-
-  sparkle: { position: 'absolute' },
-  burst: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  burstItem: { position: 'absolute' },
-  swoosh: { position: 'absolute' },
-
-  pips: { flexDirection: 'row', gap: space.lg, marginTop: space.huge },
-  pip: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.28)',
-  },
-  pipActive: { backgroundColor: '#ffffff' },
-  pipWaiting: { backgroundColor: 'rgba(255,255,255,0.28)' },
-
-  caption: {
-    fontFamily: fonts.display,
-    fontSize: 20,
-    color: '#ffffff',
-    marginTop: space.xl,
-    letterSpacing: 0.4,
-  },
-  note: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: space.sm,
-  },
-
-  back: {
-    position: 'absolute',
-    left: space.gutter,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
+  page: { flex: 1, overflow: 'hidden' },
+  input: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  stage: { width: '100%', alignItems: 'center' },
+  mystery: { position: 'absolute', top: 8, color: '#FFFFFF', fontFamily: fonts.display, fontSize: 27, letterSpacing: 5 },
+  chargeGlow: { position: 'absolute', alignSelf: 'center', top: '16%' },
+  fan: { position: 'absolute', alignSelf: 'center' },
+  seam: { position: 'absolute', alignSelf: 'center' },
+  chargeMotes: { position: 'absolute', alignSelf: 'center' },
+  chest: { position: 'absolute', alignSelf: 'center' },
+  piece: { position: 'absolute', left: 0 },
+  beam: { position: 'absolute', alignSelf: 'center' },
+  impact: { position: 'absolute', alignSelf: 'center', alignItems: 'center', justifyContent: 'center' },
+  bursts: { position: 'absolute', alignSelf: 'center' },
+  rays: { position: 'absolute', alignSelf: 'center', top: '-7%' },
+  reward: { position: 'absolute', alignSelf: 'center' },
+  rewardFrame: { transform: [{ rotate: '-1.5deg' }] },
+  controls: { alignItems: 'center', gap: space.lg, marginTop: space.md },
+  revealCopy: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: 28, alignItems: 'center' },
+  rarity: { color: '#FFFFFF', fontFamily: fonts.display, fontSize: 32, letterSpacing: 3 },
+  itemName: { color: '#FFFFFF', fontFamily: fonts.bold, fontSize: 20, marginTop: 2, maxWidth: '86%' },
+  collect: { width: '100%', maxWidth: 360, marginTop: space.lg },
+  close: { position: 'absolute', left: space.gutter, top: 52, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.42)' },
+  whiteout: { ...StyleSheet.absoluteFillObject, backgroundColor: '#FFFFFF', opacity: 0 },
 });

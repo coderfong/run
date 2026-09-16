@@ -25,7 +25,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
@@ -53,9 +52,6 @@ export default function RunnerProfileScreen({ navigation, route }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
-  // The leaves stop crossing when this page is not the one you are looking at
-  // — same rule the You tab's own scene follows.
-  const focused = useIsFocused();
   // The roadside scene behind the portrait: daytime kerb in light, the lamp-lit
   // street in dark. It sizes itself to the window rather than to this header,
   // so the header only needs the height to reserve room for it.
@@ -257,7 +253,7 @@ export default function RunnerProfileScreen({ navigation, route }) {
               it — this page is that page for somebody else, and it read as a
               different app entirely without it. `bleed` fills any box taller
               than the art with road rather than cropping into the trees. */}
-          <SceneBackdrop variant="profile" minHeight={heroH} bleed ambient="leaves" playing={focused} />
+          <SceneBackdrop variant="profile" minHeight={heroH} bleed ambient="leaves" />
           {/* Border comes from RANK (territorial standing), not level — same
               rule as your own profile. The bust fills the frame's opening, on
               an opaque disc: at anything less the scene shows through the gap. */}
@@ -320,10 +316,10 @@ export default function RunnerProfileScreen({ navigation, route }) {
             <Card style={{ marginBottom: space.sm }}>
               <Row between>
                 <View>
-                  <Text style={type.bodyBold}>{km(r.distance_m)} km · {mins(r.duration_s)}</Text>
+                  <Text style={type.bodyBold}>{km(r.distance_m)} km in {mins(r.duration_s)}</Text>
                   <Text style={type.caption}>
                     {shortDate(r.created_at)}
-                    {r.closed_loop ? ` · ${km2(r.area_m2)} km² claimed` : ''}
+                    {r.closed_loop ? `, ${km2(r.area_m2)} km² claimed` : ''}
                   </Text>
                 </View>
                 {r.closed_loop ? <AppIcon name="claim" size={20} /> : null}

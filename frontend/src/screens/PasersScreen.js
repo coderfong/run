@@ -34,6 +34,7 @@ import {
   Skeleton,
   EmptyState,
   Input,
+  Sheet,
   ToonHeader,
   ToonRow,
   ToonRowGroup,
@@ -42,10 +43,10 @@ import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
 import { PressableScale, Reveal, staggerDelay } from '../ui/motion';
 import AppIcon from '../components/AppIcon';
-import { art } from '../config/onboardingArt';
 import { useAuth } from '../auth/AuthContext';
 import { toast } from '../ui/toast';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
+import { Image } from '../ui/image';
 
 const MIN_QUERY = 2;
 
@@ -104,8 +105,9 @@ function RunnerRow({ runner, onOpen, onAdd, onRespond, onRemove, busy }) {
 // shares the same invite text; the deep-link rows fall back to a toast when
 // the app isn't installed. (No copy-link row: that needs expo-clipboard,
 // which isn't a dependency yet.)
-function InviteRows({ username }) {
+function ShareCodeSheet({ visible, onClose, username }) {
   const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const message = `Add me on PASER. My username is @${username}. Run, claim ground, keep it.`;
 
   // iOS only answers canOpenURL for schemes declared in
@@ -121,23 +123,19 @@ function InviteRows({ username }) {
   };
 
   return (
-    <ToonRowGroup style={{ marginTop: space.md }}>
-      <ToonRow
-        icon={<AppIcon name="share" size={24} />}
-        label="Share your username"
-        onPress={() => Share.share({ message }).catch(() => {})}
-      />
-      <ToonRow
-        icon={<MessageCircle size={20} color="#25D366" />}
-        label="WhatsApp"
-        onPress={() => openOr(`whatsapp://send?text=${encodeURIComponent(message)}`, 'WhatsApp')}
-      />
-      <ToonRow
-        icon={<AppIcon name="comment" size={24} />}
-        label="Messages"
-        onPress={() => openOr(`sms:?&body=${encodeURIComponent(message)}`, 'Messages')}
-      />
-    </ToonRowGroup>
+    <Sheet visible={visible} onClose={onClose} closeLabel="Close sharing">
+      <View style={styles.shareHeading}>
+        <AppIcon name="invite" size={42} />
+        <Text style={[styles.shareTitle, { color: colors.text }]}>SHARE YOUR PASER CODE</Text>
+        <Text style={[styles.code, { color: colors.text }]}>@{username}</Text>
+        <Text style={[styles.shareHint, { color: colors.textMuted }]}>Friends can search this username to add you as a Paser.</Text>
+      </View>
+      <ToonRowGroup style={{ marginTop: space.md, marginBottom: space.md }}>
+        <ToonRow icon={<AppIcon name="share" size={24} />} label="Share your code" onPress={() => Share.share({ message }).catch(() => {})} />
+        <ToonRow icon={<MessageCircle size={20} color="#25D366" />} label="WhatsApp" onPress={() => openOr(`whatsapp://send?text=${encodeURIComponent(message)}`, 'WhatsApp')} />
+        <ToonRow icon={<AppIcon name="comment" size={24} />} label="Messages" onPress={() => openOr(`sms:?&body=${encodeURIComponent(message)}`, 'Messages')} />
+      </ToonRowGroup>
+    </Sheet>
   );
 }
 
@@ -160,6 +158,7 @@ export default function PasersScreen({ navigation }) {
   const [pulling, setPulling] = useState(false);
   // Lifted out of the field and onto the box around it — see the search row.
   const [focused, setFocused] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Portraits warm up behind rows that are already on screen.
   useEffect(() => {
@@ -252,10 +251,7 @@ export default function PasersScreen({ navigation }) {
           adding someone who isn't on PASER yet is the common case, so it gets
           a tap here too. */}
       <TouchableOpacity
-        onPress={() => Share.share({
-          message: `Add me on PASER. My username is @${user?.username || 'me'}. `
-            + 'Run, claim ground, keep it.',
-        }).catch(() => {})}
+        onPress={() => setShareOpen(true)}
         accessibilityRole="button"
         accessibilityLabel="Invite a friend to PASER"
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -263,26 +259,16 @@ export default function PasersScreen({ navigation }) {
         <AppIcon name="invite" size={24} />
       </TouchableOpacity>
     </View>
-  ), [q, searching, focused, colors, type, styles, user?.username]);
+  ), [q, searching, focused, colors, type, styles]);
 
   const header = (
     <ToonHeader
-      panel
-      eyebrow="DON'T RUN ALONE"
-      title="ADD PASERS"
-      // Home's hero-card format, same as Rivals and Season standings: two
-      // runners high-fiving mid-stride, cut out on the right of a flat green
-      // panel with black copy on the left.
-      art={art('panelPasers')}
-      // Home-card type: uppercase `type.display` over a small `type.labelSm`
-      // eyebrow. The panel supplies the ink colour, so no override here.
+      onArt
+      eyebrow="YOUR RUNNING CIRCLE"
+      title="PASERS"
       titleStyle={type.display}
       eyebrowStyle={type.labelSm}
-      // Same line-under-the-title as Rivals and Season standings. The panel
-      // text column is sized to its copy now, so a header with only a title
-      // leaves the cut-out stranded halfway across a flat panel.
-      subtitle="Find runners by username, then hold the city together."
-      solid={PANEL_GREEN}
+      subtitle="Find friends, accept requests, and grow your crew."
       top={insets.top}
       // These screens are reachable straight from another tab, where there
       // may be nothing beneath them to pop back to — fall through to the
@@ -292,24 +278,43 @@ export default function PasersScreen({ navigation }) {
       }
     >
       {search}
+      <PressableScale
+        onPress={() => setShareOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Share your Paser code"
+        style={styles.shareCodeButton}
+      >
+        <AppIcon name="share" size={22} />
+        <View style={{ flex: 1 }}>
+          <Text style={[type.bodyBold, { color: colors.text }]}>Share your code</Text>
+          <Text style={[type.caption, { color: colors.textMuted }]}>@{user?.username || 'you'}</Text>
+        </View>
+        <Text style={[type.labelSm, { color: colors.text }]}>OPEN</Text>
+      </PressableScale>
     </ToonHeader>
   );
 
   if (loading) {
     return (
-      <Screen gutter={false} edges={[]}>
+      <View style={styles.page}>
+        <Image source={PASERS_PARK} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
+        <Screen gutter={false} edges={[]} style={styles.transparent}>
         {header}
         <View style={{ paddingHorizontal: space.gutter }}>
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} width="100%" height={72} style={{ borderRadius: radius.card, marginTop: space.sm }} />
           ))}
         </View>
-      </Screen>
+        </Screen>
+        <ShareCodeSheet visible={shareOpen} onClose={() => setShareOpen(false)} username={user?.username || 'you'} />
+      </View>
     );
   }
 
   return (
-    <Screen gutter={false} edges={[]}>
+    <View style={styles.page}>
+      <Image source={PASERS_PARK} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
+      <Screen gutter={false} edges={[]} style={styles.transparent}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: space.xxl }}
         keyboardShouldPersistTaps="handled"
@@ -370,26 +375,23 @@ export default function PasersScreen({ navigation }) {
               ))
             )}
 
-            <SectionHeader
-              title="Find pasers from other apps"
-              style={{ marginTop: space.xl, marginBottom: space.xs }}
-            />
-            <InviteRows username={user?.username || 'you'} />
           </>
         )}
         </View>
       </ScrollView>
-    </Screen>
+      </Screen>
+      <ShareCodeSheet visible={shareOpen} onClose={() => setShareOpen(false)} username={user?.username || 'you'} />
+    </View>
   );
 }
 
-// The green baked into header-pasers.png, lightened until it clears 4.5:1
-// against the panel's ink copy — the same floor the season boards use. It stays
-// a property of the artwork rather than a brand token, so it moves when the art
-// does.
-const PANEL_GREEN = '#1DB58C';
+// The supplied park is the page itself; cards and controls stand on its open
+// platforms rather than placing another hero illustration over the top.
+const PASERS_PARK = require('../../assets/art/pasers-park.png');
 
 const makeStyles = (colors, scheme) => StyleSheet.create({
+  page: { flex: 1, backgroundColor: '#62BAF4' },
+  transparent: { backgroundColor: 'transparent' },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -401,4 +403,14 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
     marginTop: space.md,
     ...toonSurface(colors, scheme).outline,
   },
+  shareCodeButton: {
+    flexDirection: 'row', alignItems: 'center', gap: space.sm,
+    backgroundColor: colors.card, borderRadius: toonRadius.card,
+    paddingHorizontal: space.lg, paddingVertical: 12, marginTop: space.sm,
+    ...toonSurface(colors, scheme).outline,
+  },
+  shareHeading: { alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.sm },
+  shareTitle: { fontSize: 20, fontWeight: '900', marginTop: space.sm, textAlign: 'center' },
+  code: { fontSize: 28, fontWeight: '900', marginTop: space.sm },
+  shareHint: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: space.xs },
 });

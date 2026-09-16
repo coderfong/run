@@ -14,6 +14,7 @@ import WatchConnectivity
 /// phase it was meant to cause arrives (or four seconds pass), so a double tap
 /// cannot pause and resume in one go.
 final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
+    static let shared = PhoneLink()
     @Published private(set) var state = RunState()
     /// When `state` arrived, on this watch's clock. The run clock counts on
     /// from here between updates.
@@ -45,6 +46,19 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
             self?.pending = nil
         }
         transmit(["cmd": command.rawValue, "at": Date().timeIntervalSince1970 * 1000])
+    }
+
+    /// Delivers a standalone watch run to the phone even when PASER is not
+    /// open. The phone uses this durable payload to raise the attack prompt.
+    func reportFinished(distanceKM: String, time: String, pace: String) {
+        guard let session = session, session.activationState == .activated else { return }
+        session.transferUserInfo([
+            "event": "watchRunFinished",
+            "distance": distanceKM,
+            "time": time,
+            "pace": pace,
+            "finishedAt": Date().timeIntervalSince1970,
+        ])
     }
 
     private func transmit(_ message: [String: Any]) {
