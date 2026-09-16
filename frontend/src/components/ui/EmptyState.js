@@ -18,7 +18,32 @@ import { Reveal } from '../../ui/motion';
 import Framed from './Framed';
 import HardShadow from './HardShadow';
 
-export default function EmptyState({ icon, art, title, body, actionLabel, onAction, accent, dark = false, style }) {
+// HOW BIG A BARE MASCOT IS, and why it is not simply the 176 the block was.
+//
+// The mascot files are 640x640 with the drawing floating in the middle of
+// them: the figure in empty-runs.png measures 273x329 of that canvas, so 57%
+// of the width and 49% of the height is transparent margin. `contain` fits the
+// CANVAS, not the drawing, so sizing the Image alone mostly buys air — at 176
+// the figure came out 76pt tall, visibly smaller than the 176pt block it had
+// just replaced even though the numbers matched.
+//
+// So the box is set to what makes the DRAWING the right size (300 gives a
+// 154pt figure, about the footprint the block occupied) and the dead margin is
+// pulled back out of the layout with negative margins — the same bleed the
+// Home hero uses on its own art. 300 * (1 - 0.514) / 2 is 73pt of transparent
+// margin per side, so -56 leaves a little real air and reclaims the rest.
+const BARE_ART = 300;
+const BARE_BLEED = 56;
+
+/**
+ * `bare` drops the mascot's block and frame and stands the drawing straight on
+ * the page. OPT IN, and deliberately so: the block is load bearing everywhere
+ * else (see the art branch below), so this is a per screen decision about
+ * whether the page underneath can carry black line art on its own. Home can —
+ * it is painted, and the app opens in light mode — and the box was competing
+ * with the drawn hero card a few hundred points above it.
+ */
+export default function EmptyState({ icon, art, title, body, actionLabel, onAction, accent, dark = false, bare = false, style }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
   const muted = dark ? 'rgba(255,255,255,0.66)' : colors.textMuted;
@@ -39,7 +64,20 @@ export default function EmptyState({ icon, art, title, body, actionLabel, onActi
   const artFill = nbAccentFor(title || 'empty');
   return (
     <Reveal duration={380} style={[{ alignItems: 'center', justifyContent: 'center', padding: space.xl }, style]}>
-      {art ? (
+      {art && bare ? (
+        // Just the drawing, at the size the DRAWING should be rather than the
+        // size the file is. See BARE_ART.
+        <Image
+          source={art}
+          style={{
+            width: BARE_ART,
+            height: BARE_ART,
+            marginTop: -BARE_BLEED,
+            marginBottom: space.lg - BARE_BLEED,
+          }}
+          resizeMode="contain"
+        />
+      ) : art ? (
         // The mascot stands in a DRAWN box. The white squircle underneath is
         // load bearing and stays — the illustrations are black outlined on
         // transparent and vanish on the dark background without it — but a

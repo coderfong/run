@@ -61,7 +61,14 @@ function countdown() {
 // A hero card: a SOLID flat brand-color panel (no photo, no dark scrim). The
 // illustration sits on the right and melts into the panel via a same-color
 // horizontal fade — so text lives on clean color, never fighting an image.
-function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, onPress, onPressIn }) {
+// The art box is sized to what the DRAWING needs, not to half the card. At
+// height 190 the runner (430x640) comes out 128pt wide, so the old 52% box
+// held 34pt of empty air on a 375pt phone — air the text column was short of,
+// which is what drove the headline into `adjustsFontSizeToFit` in the first
+// place. 44% is 137pt there and 130pt on a 360, both of which still show the
+// drawing whole. The PRO card overrides it: its art is a 4:3 scene, not a
+// figure, and it is width-limited rather than height-limited.
+function HeroCard({ width, bg, art, artWidth = '44%', eyebrow, title, sub, cta, onPress, onPressIn }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   return (
@@ -91,12 +98,20 @@ function HeroCard({ width, bg, art, artWidth = '52%', eyebrow, title, sub, cta, 
         <View style={styles.heroText}>
           <View>
             <Text style={[type.labelSm, styles.heroEyebrow]}>{eyebrow}</Text>
-            {/* one line always — "STANDINGS" is wider than the text column at 30pt */}
+            {/* ONE SIZE ON EVERY CARD. `adjustsFontSizeToFit` picks a size per
+                Text, so the carousel used to run 30pt, 18pt and 30pt across its
+                three headlines and the type jumped as you swiped — and the
+                middle one was clamped at the 0.6 floor while still overflowing
+                its column, so it was a different size AND clipped. The titles
+                are short enough now that 26pt fits the narrowest column the
+                card ever has (see heroTitle); the shrink stays as a floor for
+                phones under 360pt, where it costs a few points rather than a
+                third of the headline. */}
             <Text
               style={[type.display, styles.heroTitle]}
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.6}
+              minimumFontScale={0.85}
             >
               {title}
             </Text>
@@ -163,7 +178,15 @@ function HeroCarousel({ navigation }) {
           width={cardW}
           bg={brand.teal}
           art={require('../../assets/art/card-solo.png')}
-          eyebrow="START A RUN TODAY"
+          /* The eyebrow gives the REASON, the title is the hook, the button is
+             the verb. It used to read "START A RUN TODAY" over a button that
+             said "Start a run", so the card said the same sentence twice in two
+             cases. Same rule on the two cards below it: the season card was
+             "LEADERBOARDS" over "View leaderboards", and the PRO card was
+             "PASER PRO" over "GO PRO".
+             At labelSm's 12pt with 0.6 tracking this measures 161.8pt against a
+             178pt column on a 375pt phone, so it holds one line. */
+          eyebrow="THERE'S LAND TO CLAIM"
           title="LET'S RUN"
           cta="Start a run"
           onPressIn={() => preloadScreenImages('Record')}
@@ -174,9 +197,9 @@ function HeroCarousel({ navigation }) {
           bg={brand.pink}
           art={require('../../assets/art/season-banner.png')}
           eyebrow={`${SEASON_CITY} SEASON ${SEASON_NO}`}
-          title="LEADERBOARDS"
+          title="THE BOARD"
           sub={countdown()}
-          cta="View leaderboards"
+          cta="See the standings"
           onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season')}
         />
@@ -186,7 +209,7 @@ function HeroCarousel({ navigation }) {
             bg={GOLD}
             art={require('../../assets/art/card-pro.png')}
             artWidth="66%"
-            eyebrow="PASER PRO"
+            eyebrow="UPGRADE"
             title="GO PRO"
             sub="Strategy, insights and exclusive styles"
             cta="See the plans"
@@ -525,13 +548,16 @@ function FeedList({ navigation, header }) {
       ListHeaderComponent={header}
       ListEmptyComponent={
         <View style={{ paddingHorizontal: space.gutter }}>
+          {/* No block behind the mascot, and no button under the copy. The
+              button was a second "Start run" on a page whose hero card already
+              carries one a few hundred points up, which is the same sentence
+              twice — and an empty feed is not the place to ask twice. What is
+              left states the situation and says who fills it. */}
           <EmptyState
+            bare
             art={require('../../assets/art/empty-runs.png')}
             title="Your feed is quiet"
             body="Your runs and your pasers' runs appear here."
-            actionLabel="Start run"
-            onAction={() => navigation.navigate('Record')}
-            accent={accent}
           />
         </View>
       }
@@ -800,7 +826,15 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // illustration is as large as possible.
   heroImg: { height: 190, marginVertical: -space.md, marginRight: -space.md },
   heroEyebrow: { color: '#141414', opacity: 0.75 },
-  heroTitle: { color: '#141414', marginTop: 2 },
+  // 26/34 rather than the token's 30/40. With the art box at 44% the text
+  // column comes out 178pt on a 375pt phone and 170pt on a 360 (the art's own
+  // negative margin hands back the card padding it bleeds over), and the widest
+  // headline the carousel carries — "THE BOARD" — measures 152pt of Poppins
+  // Black at 26 with the display token's 0.3 tracking. So every card draws its
+  // title at the size it was asked for and the three of them match, which is
+  // the whole reason the titles are short. lineHeight stays at the token's
+  // 1.3x: Poppins Black clips at tighter leading.
+  heroTitle: { color: '#141414', fontSize: 26, lineHeight: 34, marginTop: 2 },
   heroSub: { color: '#141414', opacity: 0.72, marginTop: 4 },
   heroBtn: {
     alignSelf: 'flex-start',

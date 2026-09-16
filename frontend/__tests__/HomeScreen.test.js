@@ -96,7 +96,7 @@ import { NavigationContext } from '@react-navigation/native';
 import HomeScreen from '../src/screens/HomeScreen';
 import { HOME_AUTO_PROMPT_DELAY_MS } from '../src/config/proExposure';
 import FeedCard from '../src/components/FeedCard';
-import SideRail from '../src/components/SideRail';
+import SideRail, { captionFor } from '../src/components/SideRail';
 import HomeBackdrop from '../src/components/home/HomeBackdrop';
 import EnergyMeter from '../src/components/EnergyMeter';
 import ReactionEffect from '../src/effects/ReactionEffect';
@@ -688,6 +688,52 @@ describe('the Home street', () => {
     }
 
     act(() => tree.unmount());
+  });
+
+  // FIVE BUTTONS, ONE SIZE.
+  //
+  // The captions used to size themselves with `adjustsFontSizeToFit`, which
+  // asks each Text on its own whether it fits. "Crossroads" is 63.5pt of Inter
+  // SemiBold at 11pt and its slot is 67pt on a 375pt phone, so that one word
+  // wound down to 8.8pt while the four beside it stayed at 11 — a row of
+  // shortcuts wearing two sizes and sitting on two baselines. The row measures
+  // itself once now (captionFor) and hands every tile the same answer.
+  //
+  // Asserted on the RENDERED text rather than on the helper alone, because the
+  // failure this guards against is a later change re-adding the per-label
+  // shrink, which a unit test of the maths would not see.
+  it('draws all five shortcut words at one size', async () => {
+    const tree = mount();
+    await act(async () => {});
+
+    const labels = ['Missions', 'Rewards', 'Shop', 'Rivals', 'Crossroads'];
+    const captions = tree.root
+      .findByType(SideRail)
+      .findAllByType(Text)
+      .filter((node) => labels.includes([].concat(node.props.children || []).join('')));
+    expect(captions).toHaveLength(labels.length);
+
+    const sizes = new Set(captions.map((node) => StyleSheet.flatten(node.props.style).fontSize));
+    expect(sizes.size).toBe(1);
+    // And none of them may go back to deciding for itself.
+    for (const node of captions) expect(node.props.adjustsFontSizeToFit).toBeFalsy();
+
+    act(() => tree.unmount());
+  });
+
+  // The size that row is given has to actually FIT, or the words truncate to
+  // "Crossroad…", which names nothing. 5.59pt of glyph per point of size plus
+  // 0.2 of tracking on ten letters is "Crossroads"; the slot is the row split
+  // five ways. Checked across the phone widths the app ships to, including the
+  // 320pt floor where the clamp holds rather than the formula.
+  it('picks a shortcut size that clears the slot on every phone', () => {
+    const crossroadsAt = (size) => 5.59 * size + 0.2 * 10;
+    for (const width of [320, 360, 375, 390, 393, 414, 430]) {
+      const size = captionFor(width);
+      expect(size).toBeGreaterThanOrEqual(9);
+      expect(size).toBeLessThanOrEqual(11);
+      expect(crossroadsAt(size)).toBeLessThan((width - 40) / 5);
+    }
   });
 });
 

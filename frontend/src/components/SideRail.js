@@ -39,7 +39,7 @@
 
 import { Lock } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Image } from '../ui/image';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -55,11 +55,35 @@ import AppIcon from './AppIcon';
 
 const GOLD = ['#FFD98A', '#F0A93C', '#A8631A'];
 
+// ONE CAPTION SIZE FOR THE WHOLE ROW, measured off the slot rather than left to
+// each label to settle for itself.
+//
+// The five slots divide the row evenly, so a slot is (screen - two gutters) / 5.
+// "Crossroads" is the longest label the rail carries, and Inter SemiBold draws
+// it at 5.59pt per point of size, plus the caption's 0.2 of tracking on each of
+// its ten letters. Solving that against the slot, less 10pt so two labels can
+// never end up touching, gives the largest size at which all five fit — and all
+// five take it, which is the point: the row reads as one set of buttons instead
+// of four at 11pt with a smaller one on the end.
+//
+// Clamped at labelSm's own 11 and at 9, below which a nav label stops being
+// readable. The floor only starts to bite under ~351pt, and even at 9pt
+// "Crossroads" is 52.3pt wide, so it still clears its slot on a 320pt phone.
+const CROSSROADS_PER_PT = 5.59;
+const CROSSROADS_TRACKING = 0.2 * 10;
+const CAPTION_GUTTER = 10;
+
+export function captionFor(screenWidth) {
+  const slot = (screenWidth - space.gutter * 2) / 5;
+  const fits = (slot - CAPTION_GUTTER - CROSSROADS_TRACKING) / CROSSROADS_PER_PT;
+  return Math.max(9, Math.min(11, Math.round(fits * 2) / 2));
+}
+
 // `size` is only ever passed for the inline row, and only because the row
 // grew to five: five 64pt tiles do not fit across a 320pt phone. Sized by the
 // caller rather than by a media query here, so the rail stays the one place
 // that knows how many tiles it has.
-function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size, locked = false }) {
+function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size, captionSize, locked = false }) {
   const src = art(artKey);
   const { colors } = useTheme();
   const type = useThemedType();
@@ -118,15 +142,16 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
         </View>
         {/* Already in the pressable's accessibility label, so it is not read
             twice; this is the sighted half of the same name.
-            It shrinks rather than truncating: "Crossroads" is the longest word
-            on the row, and a wound-up text size would otherwise clip it to an
-            ellipsis, which names nothing. */}
+            THE SIZE COMES FROM THE ROW, not from this Text. It used to shrink
+            itself with `adjustsFontSizeToFit`, which sizes each label on its
+            own: "Crossroads" measures 63.5pt at 11pt and its slot is 67pt on a
+            375pt phone, so that one word dropped to 8.8pt while the four beside
+            it stayed at 11 — five buttons in a row wearing two different sizes,
+            sitting on two different baselines. See `captionFor`. */}
         {inline && label ? (
           <Text
-            style={[type.labelSm, styles.caption, { color: colors.text }]}
+            style={[type.labelSm, styles.caption, { color: colors.text, fontSize: captionSize }]}
             numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
           >
             {label}
           </Text>
@@ -176,6 +201,9 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
 
   // Five across, so the inline tiles come down a few points.
   const size = inline ? 58 : undefined;
+  // Measured here, once, and handed to all five — see captionFor.
+  const { width } = useWindowDimensions();
+  const captionSize = inline ? captionFor(width) : undefined;
 
   return (
     <View style={[inline ? styles.inlineRail : styles.rail, style]} pointerEvents="box-none">
@@ -195,6 +223,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         onPress={() => navigation.navigate('Missions')}
         inline={inline}
         size={size}
+        captionSize={captionSize}
       />
       <RailTile
         icon="award"
@@ -204,6 +233,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         onPress={() => navigation.navigate('Progression')}
         inline={inline}
         size={size}
+        captionSize={captionSize}
       />
       <RailTile
         icon="energy"
@@ -213,6 +243,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         onPress={onOpenShop}
         inline={inline}
         size={size}
+        captionSize={captionSize}
       />
       <RailTile
         icon="steal"
@@ -223,6 +254,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         onPress={() => navigation.navigate('Rivals')}
         inline={inline}
         size={size}
+        captionSize={captionSize}
       />
       {/* Crossed paths. The badge is a REAL state — encounters this runner has
           not looked at yet — never decoration, same rule as the pass tile.
@@ -240,6 +272,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         onPress={() => navigation.navigate('Crossroads')}
         inline={inline}
         size={size}
+        captionSize={captionSize}
       />
     </View>
   );
@@ -277,6 +310,8 @@ const styles = StyleSheet.create({
   // The tab bar's label, to the point: labelSm at 11pt, sentence case rather
   // than the token's uppercase, and the page's own text colour rather than
   // `textMuted` — these name buttons, they are not a caption on a picture.
+  // The 11 is the ceiling and the fallback; the size the row actually draws at
+  // comes from `captionFor` and is passed in per render.
   caption: {
     fontSize: 11,
     letterSpacing: 0.2,
