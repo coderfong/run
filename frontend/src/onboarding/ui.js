@@ -293,11 +293,16 @@ export function StepHeadline({ title, sub, color = '#FFFFFF', style }) {
       <OutlinedText style={[toonType.headline, { color }]} outline={toon.ink} width={2.5}>
         {title}
       </OutlinedText>
+      {/* Solid white, not a translucent one. Every step draws over a lit
+          outdoor scene, and a sub-line at 85% opacity was landing on bright
+          sky in half the scenes — the ink outline held the shape but the fill
+          washed out. The outline is what carries this text on a light
+          background, so the fill may as well be opaque. */}
       {sub ? (
         <OutlinedText
-          style={[toonType.sub, { color: 'rgba(255,255,255,0.85)', marginTop: 4 }]}
+          style={[toonType.sub, { color: '#FFFFFF', marginTop: 4 }]}
           outline={toon.ink}
-          width={2}
+          width={2.5}
         >
           {sub}
         </OutlinedText>

@@ -65,11 +65,15 @@ export default function BirthdayStep({ value, onChange, onContinue, onSkip, bott
           </Text>
         </View>
 
-        <Text style={[toonType.body, styles.note]}>
-          {tooYoung
-            ? `You need to be ${MIN_AGE} or older to use PASER.`
-            : 'Optional. Only used to check your age. Never shown to other runners.'}
-        </Text>
+        {/* Only speaks when there is something to say. "Skip for now" below
+            already tells the runner the step is optional, and the reason a
+            birthday is asked for at all belongs in the privacy policy, not
+            under every wheel. */}
+        {tooYoung ? (
+          <Text style={[toonType.body, styles.note]}>
+            {`You need to be ${MIN_AGE} or older to use PASER.`}
+          </Text>
+        ) : null}
 
         {/* Continue sits with the step, under the date it confirms. The wheel
             stays docked below because it is the INPUT — a spinner you have to

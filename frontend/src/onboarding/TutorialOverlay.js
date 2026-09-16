@@ -41,15 +41,10 @@ const CARDS = [
     sub: 'The streets you run become land you own.',
     cta: 'Next',
   },
-  {
-    key: 'claim',
-    artKey: 'claim',
-    icon: Flag,
-    aspect: 1,
-    title: () => 'Every run earns you ground',
-    sub: 'Finish, then place your claim. Longer runs claim more.',
-    cta: 'Next',
-  },
+  // The claim card that used to sit here has moved to the FRONT of onboarding
+  // (onboarding/steps/IntroStep.js): what the game is has to be said before
+  // the flow asks for a name, not after. What is left here is the detail that
+  // only makes sense once the runner is looking at the real home screen.
   {
     key: 'energy',
     artKey: 'energy',
@@ -68,13 +63,18 @@ const CARDS = [
     sub: 'Others can take your land. Run there again or get help from your club.',
     cta: 'Next',
   },
+  // SAFETY IS ABOUT SAFETY. This card used to end with "Runs are checked for
+  // fair play", which made a road-safety warning and an anti-cheat notice
+  // share one panel, and testers could not say what the card was about.
+  // Fair play is a rule about the game, it belongs where a claim is judged
+  // (the result screen), not next to a warning about traffic.
   {
     key: 'safety',
     artKey: 'safety',
     icon: ShieldCheck,
     aspect: 1,
     title: () => "Territory can wait. Traffic can't.",
-    sub: 'Watch the road. Runs are checked for fair play.',
+    sub: 'Stay alert and stop at crossings. Never chase a zone into traffic.',
     cta: 'Next',
   },
   {

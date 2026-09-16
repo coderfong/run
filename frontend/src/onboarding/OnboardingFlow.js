@@ -1,6 +1,21 @@
 // The PASER first-run flow.
 //
-//   name → birthday → gender → face → hair → top → bottom → hat → PASER PRO → ready
+//   what PASER is (×3) → name → birthday → look → face → hair → top → bottom
+//   → hat → ready
+//
+// THE GAME COMES FIRST. The three intro cards (steps/IntroStep.js) answer what
+// do I do, what happens when I do it, and why keep doing it, before the flow
+// asks for a single thing. Everything after them is setup.
+//
+// PASER PRO IS NOT IN THIS FLOW ANY MORE. It used to sit between the character
+// steps and Ready, where it was pitching planning, insights and rare styles to
+// somebody with no runs, no territory, no rivals and no history — every one of
+// which is meaningless on day zero. The subscription is pitched next to the
+// feature it unlocks instead, by the rate-limited exposure system that already
+// exists for exactly this (src/pro/exposure.js, config/proContexts.js), once
+// the runner has enough runs for MIN_RUNS_BEFORE_AUTO to let it speak.
+// steps/ProStep.js is kept and still works — re-add `{ key: 'pro', kind:
+// 'pro', optional: true }` below to put it back.
 //
 // One night stage runs behind every step so the runner you are building is
 // always on screen; the chrome (back · progress · skip) is shared. The last
@@ -19,16 +34,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import { shouldCollectName } from '../auth/onboardingIdentity';
 import { ITEMS } from '../config/cosmetics';
-import { useProVisible } from '../pro/storeAvailable';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useReduceMotion } from '../ui/motion';
 import { FIRST_RUN_HAIR, StageBackdrop, StepChrome } from './ui';
+import IntroStep, { INTRO_CARDS } from './steps/IntroStep';
 import NameStep from './steps/NameStep';
 import BirthdayStep from './steps/BirthdayStep';
-import GenderStep from './steps/GenderStep';
+import LookStep from './steps/LookStep';
 import CharacterStep from './steps/CharacterStep';
-import ProStep from './steps/ProStep';
 import ReadyStep from './steps/ReadyStep';
 
 // Slot steps, in the order the runner builds themselves. Copy carries the
@@ -99,16 +113,14 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
     const [y, m, d] = profile.birthday.split('-').map(Number);
     return { y, m, d };
   });
-  const [gender, setGender] = useState(profile.gender || '');
+  // Which starting look was tapped. Local to the flow and never persisted —
+  // the seed it applies lands on the avatar itself, which IS the saved thing.
+  const [look, setLook] = useState('');
   const [finishing, setFinishing] = useState(false);
   // The wheel always has a date under it, so "what is showing" cannot answer
   // "did they tell us". This does. Nothing is written unless it is true, which
   // is what keeps the birthday OPTIONAL rather than merely pre-filled.
   const [gaveBirthday, setGaveBirthday] = useState(!!profile.birthday);
-
-  // Whether there is a subscription to mention at all. Same answer as every
-  // other PRO surface in the app — see src/pro/storeAvailable.js.
-  const canShowPro = useProVisible();
 
   const steps = useMemo(() => {
     // A slot with nothing in it but "None" has no choice to offer, and a step
@@ -120,22 +132,30 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
       .map((s) => ({ ...s, kind: 'character' }));
     if (mode === 'character') return [...character, { key: 'ready', kind: 'ready' }];
     return [
+      // What the game is, before anything is asked for. Skippable as a group
+      // via the chrome, like every other non-essential step here.
+      ...INTRO_CARDS.map((c, i) => ({
+        key: c.key,
+        kind: 'intro',
+        card: c,
+        introLast: i === INTRO_CARDS.length - 1,
+        optional: true,
+      })),
       ...(shouldCollectName(mode, onboardingIdentity)
         ? [{ key: 'name', kind: 'name' }]
         : []),
-      // Birthday and gender are both SKIPPABLE. Neither is needed to run, claim
+      // Birthday and look are both SKIPPABLE. Neither is needed to run, claim
       // ground or hold an account: the birthday only raises the privacy floor
-      // on a young account (backend app/privacy.py, is_minor), and the gender
+      // on a young account (backend app/privacy.py, is_minor), and the look
       // only seeds an opening hairstyle you change on the very next step. App
       // Review reads either one as required personal information the moment a
       // runner cannot get past the step without answering it.
       { key: 'birthday', kind: 'birthday', optional: true },
-      { key: 'gender', kind: 'gender', optional: true },
+      { key: 'look', kind: 'look', optional: true },
       ...character,
-      ...(canShowPro ? [{ key: 'pro', kind: 'pro', optional: true }] : []),
       { key: 'ready', kind: 'ready' },
     ];
-  }, [mode, canShowPro, onboardingIdentity]);
+  }, [mode, onboardingIdentity]);
 
   const current = steps[step];
   const last = step === steps.length - 1;
@@ -150,7 +170,6 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
           firstName: name.firstName.trim(),
           lastName: name.lastName.trim(),
           birthday: gaveBirthday ? iso(birthday) : null,
-          gender,
         });
         await completeIntro();
       }
@@ -162,7 +181,7 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
     }
   }, [
     finishing, saveAvatar, saveProfile, completeIntro,
-    name, birthday, gaveBirthday, gender, mode, onDone,
+    name, birthday, gaveBirthday, mode, onDone,
   ]);
 
   const next = useCallback(() => {
@@ -176,7 +195,7 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
   // deliberately declined to give.
   const skip = useCallback(() => {
     if (current?.kind === 'birthday') setGaveBirthday(false);
-    if (current?.kind === 'gender') setGender('');
+    if (current?.kind === 'look') setLook('');
     next();
   }, [current, next]);
 
@@ -184,7 +203,11 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
 
   const bottomInset = insets.bottom;
   let body = null;
-  if (current.kind === 'name') {
+  if (current.kind === 'intro') {
+    body = (
+      <IntroStep card={current.card} isLast={current.introLast} onContinue={next} />
+    );
+  } else if (current.kind === 'name') {
     body = (
       <NameStep
         value={name}
@@ -202,9 +225,9 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
         bottomInset={bottomInset}
       />
     );
-  } else if (current.kind === 'gender') {
+  } else if (current.kind === 'look') {
     body = (
-      <GenderStep value={gender} onChange={setGender} onContinue={next} onSkip={skip} />
+      <LookStep value={look} onChange={setLook} onContinue={next} onSkip={skip} />
     );
   } else if (current.kind === 'character') {
     body = (
@@ -217,8 +240,6 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
         bottomInset={bottomInset}
       />
     );
-  } else if (current.kind === 'pro') {
-    body = <ProStep onContinue={next} />;
   } else {
     body = (
       <ReadyStep name={name.firstName.trim()} onContinue={finish} />

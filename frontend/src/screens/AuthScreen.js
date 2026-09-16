@@ -40,29 +40,32 @@ const SUPPORT_URL = 'https://www.gameablestudios.com/support';
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
 
+// The rules are NOT printed under the fields any more — a form that explains
+// every input before you have typed in it reads as a manual. They are said
+// once, here, and only when an answer actually breaks one.
 function usernameError(raw) {
   const u = raw.trim().toLowerCase();
   if (!u) return 'Enter a username.';
-  if (u.length < 3) return 'At least 3 characters.';
-  if (u.length > 32) return 'At most 32 characters.';
-  if (!USERNAME_RE.test(u)) return 'Letters, numbers and underscore only.';
+  if (!USERNAME_RE.test(u)) return 'Use 3 to 32 letters, numbers or _';
   return null;
 }
 
 function passwordError(pw, isSignup) {
   if (!pw) return 'Enter a password.';
-  if (pw.length < 8) return 'At least 8 characters.';
   if (pw.length > 128) return 'At most 128 characters.';
-  if (isSignup && (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)))
-    return 'Needs at least one letter and one digit.';
+  if (isSignup && (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)))
+    return 'Password needs 8+ characters with a number';
+  if (!isSignup && pw.length < 8) return 'At least 8 characters.';
   return null;
 }
 
-// Optional, so blank is valid. Anything typed has to look like an address:
-// this is the only chance to catch a typo before the day it is needed.
+// REQUIRED at signup. It is the whole of account recovery: without a confirmed
+// address an account that loses its password cannot be got back, and an
+// optional field with a paragraph under it explaining why you should really
+// fill it in is a required field that is embarrassed about itself.
 function emailError(raw) {
   const e = (raw || '').trim();
-  if (!e) return null;
+  if (!e) return 'Enter an email.';
   if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) return 'That email does not look right.';
   return null;
 }
@@ -186,13 +189,11 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen scroll contentStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: space.huge }}>
         <Reveal>
-          <Text style={[type.display, { marginBottom: space.sm, textAlign: 'center', color: colors.text }]}>
+          {/* Heading only. What territory is gets explained in onboarding,
+              where there is a picture of it; a subtitle here was narrating a
+              screen the runner had already understood by reading its title. */}
+          <Text style={[type.display, { marginBottom: space.xl, textAlign: 'center', color: colors.text }]}>
             {isSignup ? 'Create account' : 'Welcome back'}
-          </Text>
-          <Text style={[type.body, { color: colors.textMuted, marginBottom: space.xl, textAlign: 'center' }]}>
-            {isSignup
-              ? 'Pick a username. Your runs will claim land under it.'
-              : 'Sign in to keep claiming.'}
           </Text>
         </Reveal>
 
@@ -215,14 +216,13 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
             accessibilityLabel="Username"
           />
           {uErr ? <Text style={s.fieldError}>{uErr}</Text> : null}
-          {isSignup && !uErr ? <Text style={s.fieldHint}>3 to 32 characters: letters, numbers, underscore.</Text> : null}
         </Reveal>
 
         <Reveal delay={170}>
           <Text style={s.label}>Password</Text>
           <Input
             style={[s.input, pErr && s.inputError]}
-            placeholder={isSignup ? 'At least 8 characters, letter + digit' : 'Your password'}
+            placeholder="Your password"
             placeholderTextColor={colors.textDim}
             secureTextEntry
             autoCapitalize="none"
@@ -249,9 +249,8 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
           ) : null}
         </Reveal>
 
-        {/* Optional at signup and skippable, but it is the whole of account
-            recovery: an account with no confirmed address cannot be got back
-            if the password goes. Said plainly rather than buried in a hint. */}
+        {/* REQUIRED at signup — see emailError. Why it is required belongs in
+            the privacy policy and the recovery screen, not under the field. */}
         {isSignup ? (
           <Reveal delay={210}>
             <Text style={s.label}>Email</Text>
@@ -265,16 +264,9 @@ function AuthForm({ onBack, onForgot, initialMode = 'signin' }) {
               value={email}
               onChangeText={(v) => { setEmail(v); setApiError(null); }}
               maxLength={254}
-              accessibilityLabel="Email, optional, used to reset your password"
+              accessibilityLabel="Email"
             />
-            {eErr ? (
-              <Text style={s.fieldError}>{eErr}</Text>
-            ) : (
-              <Text style={s.fieldHint}>
-                Optional. It is the only way to reset your password later, and nobody else on PASER
-                can see it.
-              </Text>
-            )}
+            {eErr ? <Text style={s.fieldError}>{eErr}</Text> : null}
           </Reveal>
         ) : null}
 
@@ -428,7 +420,6 @@ const formStyles = (colors, scheme) =>
     // invalid — only the colour of the edge changes.
     inputError: nbField(scheme, { on: colors.card, error: colors.danger }),
     fieldError: { ...type.caption, color: colors.danger, marginTop: 6 },
-    fieldHint: { ...type.caption, color: colors.textDim, marginTop: 6 },
     apiErrorBox: { backgroundColor: colors.dangerSoft, borderRadius: radius.sm, padding: space.md, marginTop: space.lg },
     apiErrorText: { ...type.bodySm, color: colors.danger },
     switch: { marginTop: space.lg, alignItems: 'center' },

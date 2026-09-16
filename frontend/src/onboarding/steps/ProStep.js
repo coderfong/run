@@ -43,13 +43,13 @@ import { art } from '../../config/onboardingArt';
 import { ComicPanel } from '../ui';
 import { toon, toonType } from '../toon';
 
-// Three things, all of them depth. Kept short because the art is the pitch on
-// this step and because none of it means anything to somebody who has not run
-// yet — see the header.
+// Three things, all of them depth. NAMED, not gestured at: "Advanced insights"
+// could mean anything, and a perk list nobody can picture is what makes a
+// paywall read as an advert. Each line says the thing PRO actually does.
 const PERKS = [
-  'Plan territory runs',
-  'Advanced insights',
-  'Exclusive customisation',
+  'Plan routes before you run them',
+  'See what every run did to your land',
+  'Wear the PRO-only kit',
 ];
 
 export default function ProStep({ onContinue }) {
@@ -75,10 +75,6 @@ export default function ProStep({ onContinue }) {
         <OutlinedText style={[toonType.hero, styles.wordmark]} outline={toon.ink} width={3}>
           PASER PRO
         </OutlinedText>
-        <Text style={[toonType.body, styles.kicker]}>
-          Take PASER further, whenever you want to.
-        </Text>
-
         <ComicPanel
           source={art('proHero')}
           // The art's own edge value, so the panel never flashes a colour the
@@ -104,9 +100,10 @@ export default function ProStep({ onContinue }) {
           ))}
         </View>
 
-        {/* The line that makes the skip a real choice rather than a dare. */}
+        {/* The line that makes the skip a real choice rather than a dare.
+            Small and short: said once, not argued. */}
         <Text style={[toonType.body, styles.reassure]}>
-          Running, claiming and the board are free, and stay free.
+          Running and claiming stay free.
         </Text>
 
         {/* Both actions sit under the perks they answer, not pinned to the
@@ -120,7 +117,7 @@ export default function ProStep({ onContinue }) {
             />
           ) : null}
           <ToonGhostButton
-            title={isPro ? 'Continue' : 'Continue with PASER'}
+            title={isPro ? 'Continue' : 'Continue free'}
             onPress={onContinue}
           />
         </View>
