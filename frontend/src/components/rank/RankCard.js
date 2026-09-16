@@ -31,9 +31,10 @@
 //
 // The crop also tightens as the CARD grows, because the column is as tall as
 // the card and `cover` scales to the height. It has room for the card to reach
-// about 180pt before the figure's own edges start being trimmed, which the
-// copy cannot do at one line of title and one of progress — but a second line
-// of either is the thing to check if the figure ever looks clipped.
+// about 180pt before the figure's own edges start being trimmed. The progress
+// line wraps to two on a 375pt screen — it is a sentence now, not a fragment —
+// and the card still lands well inside that, but a THIRD line, or a second
+// line of title, is the thing to check if the figure ever looks clipped.
 //
 // THE RAIL FILLS THE DIVISION, NOT THE TIER. A bar measuring the whole tier
 // band barely moves for a fortnight in the upper tiers, and a progress bar
@@ -60,15 +61,29 @@ import { NB, fonts, nbInk, space, useTheme, useThemedType, withAlpha } from '../
 const ART_W = 100;
 const PLAQUE_W = 124;
 
-/** The one line under the rail. Exported so screens can say the same thing. */
+/**
+ * The one line under the rail. Exported so screens can say the same thing.
+ *
+ * IT ADDRESSES THE RUNNER. "9 rank points to the next tier" is a caption on a
+ * chart: true, and about the bar rather than about them. "You are 9 rank
+ * points away" is the same number aimed at the person reading it, which is the
+ * difference between reporting a gap and asking them to close it. It is the
+ * only line on the card that names something they can still do, so it is the
+ * one line worth spending a pronoun on.
+ *
+ * The unit is singular at one, because the sentence form makes "1 rank points"
+ * read as a bug in a way the old fragment just about got away with.
+ */
 export function rankProgressCopy(standing) {
   if (!standing) return '';
   if (standing.isTop) return 'Top of the ladder';
-  const points = Number(standing.toNext || 0).toLocaleString();
+  const toGo = Number(standing.toNext || 0);
+  const points = toGo.toLocaleString();
+  const unit = toGo === 1 ? 'rank point' : 'rank points';
   const next = standing.division < DIVISIONS
     ? `${standing.label} ${numeral(standing.division + 1)}`
     : 'the next tier';
-  return `${points} rank points to ${next}`;
+  return `You are ${points} ${unit} away from ${next}`;
 }
 
 /**

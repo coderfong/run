@@ -90,6 +90,12 @@ export default function Segmented({ options, value, onChange, style, labelSuffix
                 backgroundColor: active && !selection ? colors.primary : 'transparent',
               }}
               onPress={() => onChange(opt.key)}
+              // A 13pt label in 10pt of padding is a ~40pt target, under the
+              // 44pt minimum. Slop rather than padding, so the control gets a
+              // full-height target without any of the pages it sits on moving.
+              // Vertical only: horizontal slop on neighbouring segments would
+              // overlap and steal each other's taps.
+              hitSlop={{ top: 6, bottom: 6 }}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               accessibilityLabel={labelSuffix ? `${opt.label} ${labelSuffix}` : opt.label}

@@ -27,7 +27,9 @@ import { FADING_HOURS, plotFocus } from '../../territory/landStatus';
 // Soonest to fade first, so these are the ones that need a run soonest.
 const PREVIEW = 3;
 
-export default function YourLandCard({ navigation, accent }) {
+// `nested` — see PrivacySettings. The card now lives inside the folded
+// Statistics section on You, whose head is already a drawn label box.
+export default function YourLandCard({ navigation, accent, nested = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const { data, loading } = useQuery('me:territory', api.myTerritory, { fallback: null });
@@ -35,9 +37,10 @@ export default function YourLandCard({ navigation, accent }) {
   const heading = (
     <SectionHeader
       title="Your land"
+      framed={!nested}
       action={data ? 'See all' : undefined}
       onAction={() => navigation.navigate('Territory')}
-      style={styles.heading}
+      style={nested ? styles.headingNested : styles.heading}
     />
   );
 
@@ -94,6 +97,7 @@ export default function YourLandCard({ navigation, accent }) {
 
 const styles = StyleSheet.create({
   heading: { marginTop: space.xl, marginBottom: space.md },
+  headingNested: { marginTop: space.md, marginBottom: space.md },
   empty: {
     alignItems: 'center',
     gap: 2,

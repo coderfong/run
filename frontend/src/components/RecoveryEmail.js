@@ -26,11 +26,23 @@ import { Card, Row, Button, Input, SectionHeader, Skeleton } from './ui';
 import { toast } from '../ui/toast';
 import { Arrival, useArrival } from '../ui/motion';
 
+function Heading({ nested }) {
+  return (
+    <SectionHeader
+      title="Account recovery"
+      framed={!nested}
+      style={{ marginTop: nested ? space.md : space.xl, marginBottom: space.md }}
+    />
+  );
+}
+
 function looksLikeEmail(raw) {
   return /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test((raw || '').trim());
 }
 
-export default function RecoveryEmail() {
+// `nested` — see PrivacySettings. Heading only: unframed and tighter when it
+// is one block inside the folded Account section.
+export default function RecoveryEmail({ nested = false }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
   const { refreshUser } = useAuth();
@@ -47,7 +59,7 @@ export default function RecoveryEmail() {
   if (!data) {
     return (
       <>
-        <SectionHeader title="Account recovery" style={{ marginTop: space.xl, marginBottom: space.md }} />
+        <Heading nested={nested} />
         <Skeleton width="100%" height={120} style={{ borderRadius: radius.card }} />
       </>
     );
@@ -111,7 +123,7 @@ export default function RecoveryEmail() {
       {/* Outside the fade on purpose: the header is drawn over the placeholder
           too, and ramping up a title that never left reads as a blink. Only
           the card underneath it arrives. */}
-      <SectionHeader title="Account recovery" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <Heading nested={nested} />
       <Arrival active={arriving}>
       <Card>
         {!data.mail_available ? (

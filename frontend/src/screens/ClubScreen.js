@@ -2,7 +2,7 @@
 // the club hub (header, weekly goal, members, role-gated management).
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, RefreshControl, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from '../ui/image';
 import { ArrowRight, Camera, Users } from 'lucide-react-native';
@@ -15,7 +15,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
 import { nbField, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { art } from '../config/onboardingArt';
-import { Screen, Card, Framed, Row, Button, Input, PageTexture, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
+import { Screen, Card, Framed, Row, Button, Input, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import RankCard from '../components/rank/RankCard';
 import { standingFrom } from '../config/rankLadder';
@@ -30,6 +30,18 @@ const km = (m) => (m / 1000).toFixed(1);
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
 
 const CLUB_INTRO_KEY = 'tr.clubIntro.v1';
+
+// Every hub tab lays out on the same page padding, so the switcher does not
+// move under your thumb when you switch with it. The hub used to be a raw
+// ScrollView, which skipped Screen's top safe-area inset entirely and parked
+// the switcher under the status bar and the Dynamic Island, where roughly half
+// of it could not be tapped at all.
+//
+// NO paddingTop HERE. Screen flattens [inset, contentStyle] in that order, so
+// a paddingTop on this side wins over the safe-area inset and puts the page
+// back under the status bar — the exact bug it looks like it is fixing. The
+// gap above the switcher is a margin on the switcher instead.
+const HUB_PAGE = { paddingBottom: space.xxl };
 
 function ClubIntroOverlay({ step, onNext, accent }) {
   const styles = useThemedStyles(makeStyles);
@@ -76,23 +88,87 @@ function ClubIntroOverlay({ step, onNext, accent }) {
 // Clanless directory
 // ---------------------------------------------------------------------------
 
-function Directory({ navigation }) {
+// The searchable list of every club. Shared by the clubless directory and by
+// the member hub's "All clubs" tab, so there is ONE club browser in the app
+// rather than two that drift apart — joining a club used to take the directory
+// away with it, leaving no way back to the other clubs.
+function ClubSearch({ navigation, emptyBody = 'Be the first. Create a club and claim land together.' }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
-  const { refresh } = useClan();
   const [q, setQ] = useState('');
-  const [code, setCode] = useState('');
 
-  // The directory's default listing (empty search) is cached, so the clubless
-  // Club tab has clubs in it the moment you open it. Typed searches go through
-  // the same cache keyed by term, so backspacing through a query re-shows each
-  // result set instead of re-querying it.
+  // The default listing (empty search) is cached, so the browser has clubs in
+  // it the moment you open it. Typed searches go through the same cache keyed
+  // by term, so backspacing through a query re-shows each result set instead
+  // of re-querying it.
   const { data: results, loading: searching } = useQuery(
     `clans:search:${q.trim()}`,
     () => api.searchClans(q.trim()),
     { fallback: [] }
   );
+
+  return (
+    <>
+      <Input
+        style={styles.input}
+        value={q}
+        onChangeText={setQ}
+        placeholder="Search by name or tag"
+        placeholderTextColor={colors.textDim}
+        autoCapitalize="none"
+      />
+
+      <View style={{ marginTop: space.md }}>
+        {searching ? (
+          <Skeleton width="100%" height={64} style={{ borderRadius: 16 }} />
+        ) : results.length === 0 ? (
+          <EmptyState
+            art={require('../../assets/art/empty-club.png')}
+            title={q.trim() ? 'No matches' : 'No clubs yet'}
+            body={q.trim() ? 'Try another name or tag.' : emptyBody}
+            style={{ paddingTop: space.lg }}
+          />
+        ) : (
+          results.map((c) => (
+            // Dealt a drawn box off the club's own id, so a directory of them
+            // is a stack of hand-drawn cards rather than one card repeated —
+            // the same rule the feed's frames follow.
+            <Card
+              key={c.id}
+              frame={frameVariant('box', `club:${c.id}`)}
+              framePose={framePose(`club:${c.id}`)}
+              frameTint={c.color.stroke}
+              onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })}
+              style={{ marginBottom: space.sm }}
+            >
+              <Row between>
+                <Row gap={12}>
+                  <ClubAvatar photoUrl={c.photo_url} badgeIcon={c.badge_icon} color={c.color} />
+                  <View>
+                    <Text style={type.bodyBold}>[{c.tag}] {c.name}</Text>
+                    <Text style={type.caption}>
+                      {c.member_count} members{c.league ? `, ${LEAGUE_LABEL[c.league]} league` : ''}
+                      {c.privacy !== 'open' ? ', invite only' : ''}
+                    </Text>
+                  </View>
+                </Row>
+                <Text style={[type.statSm, { color: c.color.stroke }]}>{(c.season_area_m2 / 1e6).toFixed(1)}</Text>
+              </Row>
+            </Card>
+          ))
+        )}
+      </View>
+    </>
+  );
+}
+
+function Directory({ navigation }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const styles = useThemedStyles(makeStyles);
+  const { refresh } = useClan();
+  const [code, setCode] = useState('');
 
   const joinCode = async () => {
     if (!code.trim()) return;
@@ -134,55 +210,7 @@ function Directory({ navigation }) {
       </View>
 
       <SectionHeader title="Find a club" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <Input
-        style={styles.input}
-        value={q}
-        onChangeText={setQ}
-        placeholder="Search by name or tag"
-        placeholderTextColor={colors.textDim}
-        autoCapitalize="none"
-      />
-
-      <View style={{ marginTop: space.md }}>
-        {searching ? (
-          <Skeleton width="100%" height={64} style={{ borderRadius: 16 }} />
-        ) : results.length === 0 ? (
-          <EmptyState
-            art={require('../../assets/art/empty-club.png')}
-            title="No clubs yet"
-            body="Be the first. Create a club and claim land together."
-            style={{ paddingTop: space.lg }}
-          />
-        ) : (
-          results.map((c) => (
-            // Dealt a drawn box off the club's own id, so a directory of them
-            // is a stack of hand-drawn cards rather than one card repeated —
-            // the same rule the feed's frames follow.
-            <Card
-              key={c.id}
-              frame={frameVariant('box', `club:${c.id}`)}
-              framePose={framePose(`club:${c.id}`)}
-              frameTint={c.color.stroke}
-              onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })}
-              style={{ marginBottom: space.sm }}
-            >
-              <Row between>
-                <Row gap={12}>
-                  <ClubAvatar photoUrl={c.photo_url} badgeIcon={c.badge_icon} color={c.color} />
-                  <View>
-                    <Text style={type.bodyBold}>[{c.tag}] {c.name}</Text>
-                    <Text style={type.caption}>
-                      {c.member_count} members{c.league ? `, ${LEAGUE_LABEL[c.league]} league` : ''}
-                      {c.privacy !== 'open' ? ', invite only' : ''}
-                    </Text>
-                  </View>
-                </Row>
-                <Text style={[type.statSm, { color: c.color.stroke }]}>{(c.season_area_m2 / 1e6).toFixed(1)}</Text>
-              </Row>
-            </Card>
-          ))
-        )}
-      </View>
+      <ClubSearch navigation={navigation} />
     </Screen>
   );
 }
@@ -340,15 +368,31 @@ function MemberHub({ clanId, navigation }) {
       options={[
         { key: 'view', label: 'Club view' },
         { key: 'rankings', label: 'Club rank' },
+        { key: 'browse', label: 'All clubs' },
       ]}
       value={clubView}
       onChange={setClubView}
+      style={{ marginTop: space.sm }}
     />
   );
 
+  if (clubView === 'browse') {
+    return (
+      <Screen scroll contentStyle={HUB_PAGE}>
+        {tabs}
+        {/* The segment already says "All clubs", so this is the one thing the
+            list does not say for itself. */}
+        <Text style={[type.body, { color: colors.textMuted, marginTop: space.lg, marginBottom: space.md }]}>
+          Tap a club to look inside.
+        </Text>
+        <ClubSearch navigation={navigation} emptyBody="Nothing to browse yet." />
+      </Screen>
+    );
+  }
+
   if (clubView === 'rankings') {
     return (
-      <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
+      <Screen scroll contentStyle={HUB_PAGE}>
         {tabs}
         <Card style={styles.rankHero}>
           <Row gap={space.md}>
@@ -401,9 +445,9 @@ function MemberHub({ clanId, navigation }) {
   // a hundred lines of JSX and re-indenting all of it to gain one parent would
   // bury the change.
   const hub = (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
+    <Screen
+      scroll
+      contentStyle={HUB_PAGE}
       refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={accent} />}
     >
       {tabs}
@@ -570,17 +614,17 @@ function MemberHub({ clanId, navigation }) {
       </Card>
 
       <Button title="Leave club" variant="secondary" onPress={leave} style={{ marginTop: space.xl }} />
-    </ScrollView>
+    </Screen>
   );
 
   // Fades up only when the hub follows the placeholder blocks above. Coming
   // back to a club that is already in cache, this is a plain view and the fade
   // is skipped entirely — see useArrival.
-  // The page colour and its dot grid sit on the wrapper, under the scroll, so
-  // the grid holds still while the hub scrolls over it (see PageTexture).
+  // The page colour and its dot grid come from Screen, which keeps them on the
+  // wrapper under the scroll, so the grid holds still while the hub scrolls
+  // over it (see PageTexture).
   return (
     <Arrival active={arriving} style={{ flex: 1, backgroundColor: colors.bg }}>
-      <PageTexture />
       {hub}
     </Arrival>
   );

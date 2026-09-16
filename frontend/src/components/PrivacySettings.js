@@ -36,6 +36,16 @@ const DELAY_OPTIONS = [
 // Snap an arbitrary server value onto the nearest offered option, so a value
 // set on another device (or by a future default) still shows as selected
 // rather than leaving every segment looking off.
+function Heading({ nested }) {
+  return (
+    <SectionHeader
+      title={nested ? 'Your routes' : 'Privacy'}
+      framed={!nested}
+      style={{ marginTop: nested ? space.md : space.xl, marginBottom: space.md }}
+    />
+  );
+}
+
 function nearest(options, value) {
   let best = options[0].key;
   for (const o of options) {
@@ -44,7 +54,12 @@ function nearest(options, value) {
   return best;
 }
 
-export default function PrivacySettings() {
+// `nested` says this block is inside a folded section of the You page rather
+// than standing on its own. It changes the HEADING only: no drawn label box
+// (the section's head is already one, and two stacked read as a box in a box),
+// a tighter gap above, and the honest title for what this actually controls —
+// "Privacy" is the name of the section it now sits in.
+export default function PrivacySettings({ nested = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const { data, setData, refresh } = useQuery('me:privacy', api.privacy);
@@ -54,7 +69,7 @@ export default function PrivacySettings() {
   if (!data) {
     return (
       <>
-        <SectionHeader title="Privacy" style={{ marginTop: space.xl, marginBottom: space.md }} />
+        <Heading nested={nested} />
         <Skeleton width="100%" height={140} style={{ borderRadius: radius.card }} />
       </>
     );
@@ -129,7 +144,7 @@ export default function PrivacySettings() {
       {/* The header is drawn over the placeholder too, so it stays OUTSIDE the
           fade — taking a title that never left and ramping it up from nothing
           reads as a blink, not as an entrance. Only the controls arrive. */}
-      <SectionHeader title="Privacy" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <Heading nested={nested} />
 
       <Arrival active={arriving}>
       {/* Age floors are enforced server-side; saying so is better than letting

@@ -1,5 +1,20 @@
-// You — profile + your stats. Header, stat wall, recent runs, and settings.
-// Trophy shelf (PRs + badges) and tap-through run detail arrive in Phase 6.
+// You — who your runner is, and everything you can change about the app.
+//
+// TWO HALVES, and the split is the whole layout. The top is the runner: the
+// scene, the portrait, the name, the rank rail, the two things you do with a
+// runner, and the six numbers that say how the game is going. All of it open,
+// all of it the reason anybody taps You.
+//
+// The bottom is FOLDED. Notifications, Statistics, App customisation, Privacy,
+// Account — five headings, one open at a time (see components/ui/Accordion).
+// This page carried all of that as one continuous column and it was most of
+// the page by height: the stat wall was followed by a land card, a streak
+// calendar, a trophy shelf, eight runs and then every preference in the app,
+// so the profile read as a settings screen with a picture on top.
+//
+// A closed section does not render its children at all, which is also why the
+// fold is worth having beyond the tidiness: each settings block runs its own
+// query and its own switches.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
@@ -29,7 +44,7 @@ import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motio
 import { brand, nbField, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { levelBandColor } from '../config/progression';
 import { COPY as PASERBY_COPY } from '../config/paserby';
-import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
+import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText, AccordionSection } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
 import RankRail from '../components/rank/RankRail';
 import YourLandCard from '../components/territory/YourLandCard';
@@ -195,6 +210,14 @@ export default function ProfileScreen({ navigation }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteDraft, setDeleteDraft] = useState('');
   const [deleting, setDeleting] = useState(false);
+  // Which folded section is showing, or null for none — ONE at a time, which
+  // is what keeps the bottom of the page five lines long however much is
+  // inside them. Plain state, not a stored preference: the You tab stays
+  // mounted for the life of the app, so a section left open is still open
+  // when you come back to it, and nobody has ever wanted a settings section
+  // to reopen itself after a cold start.
+  const [section, setSection] = useState(null);
+  const toggleSection = (key) => setSection((open) => (open === key ? null : key));
   const { isPro, canShowPro, isLoading: proLoading, openPaywall } = useProEntitlement();
 
   useEffect(() => {
@@ -414,11 +437,6 @@ export default function ProfileScreen({ navigation }) {
         )}
       </Reveal>
 
-      {/* Your land: what is happening to the ground the wall above counts.
-          The plots about to fade, what held, what was lost; the full list is
-          one tap away. Hides itself if the endpoint is not there. */}
-      <YourLandCard navigation={navigation} accent={accent} />
-
       {/* PASER PRO — shown only to non holders, and it is a POSTER: the crew,
           the wordmark, one line. Everything about what PRO actually gives you
           is a tap away on the paywall; a card on You that listed it was three
@@ -511,295 +529,354 @@ export default function ProfileScreen({ navigation }) {
         </Reveal>
       ) : null}
 
-      {/* running streak calendar */}
-      <Reveal delay={150}>
-      <SectionHeader
-        title="Running streak"
-        action={(stats?.current_streak_days || 0) >= 2 ? `${stats.current_streak_days} day streak 🔥` : undefined}
-        style={{ marginTop: space.xl, marginBottom: space.md }}
-      />
-      <Card>
-        <StreakCalendar runDays={runDays || []} accent={accent} />
-      </Card>
-      </Reveal>
-
-      {/* trophies. The medal rides BESIDE the heading — as its own centred
-          block it was 88pt of mostly-empty air between the title and the
-          shelf, which read as a gap in the page rather than as a flourish.
-          It replays whenever the count of earned trophies changes. */}
-      <Reveal delay={180}>
-      <SectionHeader
-        title="Trophies"
-        accessory={
-          earnedTrophies ? (
-            <GameAnimation name="medal" size={TROPHY_MEDAL} trigger={earnedTrophies} />
-          ) : null
-        }
-        style={{ marginTop: space.xl, marginBottom: space.md }}
-      />
-      <View style={styles.trophyRow}>
-        {TROPHIES.map(({ key, label, icon, earned }) => {
-          const got = stats ? earned(stats) : false;
-          return (
-            <Card
-              key={key}
-              padded={false}
-              style={styles.trophy}
-              fill={got ? '#FFF2C6' : colors.card}
-            >
-              <AppIcon name={icon} size={30} opacity={got ? 1 : 0.6} />
-              <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? '#292015' : colors.textMuted }]}>
-                {label}
-              </Text>
-            </Card>
-          );
-        })}
-      </View>
-      </Reveal>
-
-      {/* recent runs */}
-      <SectionHeader framed frameTint={accent} title="Recent runs" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <Card padded={false}>
-        {!runs ? (
-          <View style={{ padding: space.lg }}>
-            <Skeleton width="100%" height={16} />
-          </View>
-        ) : runs.length === 0 ? (
-          <Text style={[type.caption, { padding: space.lg }]}>No runs yet.</Text>
-        ) : (
-          <Arrival active={runsArriving}>
-          {runs.slice(0, 8).map((r, i) => (
-            <TouchableOpacity
-              key={r.run_id}
-              style={[styles.runRow, i > 0 && styles.runDivider]}
-              onPress={() => navigation.navigate('RunDetail', { runId: r.run_id })}
-              accessibilityRole="button"
-              accessibilityLabel="Open run detail"
-            >
-              <View style={{ flex: 1 }}>
-                <Text style={type.bodyBold}>{shortDate(r.created_at)}</Text>
-                <Text style={type.caption}>
-                  {km(r.distance_m)} km, {r.closed_loop ? `${km2(r.area_m2)} km² claimed` : 'not claimed'}
-                </Text>
-              </View>
-              {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
-            </TouchableOpacity>
-          ))}
-          </Arrival>
-        )}
-      </Card>
-
-      {/* settings */}
-      <SectionHeader framed frameTint={accent} title="Settings" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <Card>
-        <Text style={type.labelSm}>Username</Text>
-        {editing ? (
-          <>
-            <Input
-              value={draft}
-              onChangeText={setDraft}
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={32}
-              style={styles.input}
-              placeholderTextColor={colors.textDim}
-            />
-            <View style={styles.btnRow}>
-              <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => { setEditing(false); setDraft(user?.username || ''); }} />
-              <Button title="Save" size="sm" full={false} loading={busy} onPress={saveUsername} accent={accent} />
-            </View>
-          </>
-        ) : (
-          <View style={styles.settingRow}>
-            <Text style={type.bodyBold}>{user?.username}</Text>
-            <Button title="Change" variant="secondary" size="sm" full={false} onPress={() => setEditing(true)} />
-          </View>
-        )}
-      </Card>
-
-      {/* Player colour — trail, own-land outline and colourable game chrome. */}
-      <Card style={{ marginTop: space.md }}>
-        <Text style={type.labelSm}>Runner colour</Text>
-        <Text style={[type.caption, { marginTop: 2 }]}>
-          Colours your trail, map outline and this page's frames. Club follows your club colour.
-        </Text>
-        <View style={styles.swatchRow}>
-          {TRAIL_GLOW_COLORS.map(({ key, label, value, pro }) => {
-            const swatch = value || accent;
-            const selected = trailGlow === key;
-            // Locked only when PRO is actually sellable and this account is not
-            // on it. A build with the store off shows the whole palette; a
-            // subscriber wears any of it. A free runner who chose a PRO colour
-            // before it was gated keeps it — this only blocks NEW selections.
-            const locked = pro && canShowPro && !isPro;
-            return (
-              <PressableScale
-                key={key}
-                onPress={() => {
-                  haptic.light();
-                  if (locked) { openPaywall('cosmetics'); return; }
-                  setTrailGlow(key);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  locked ? `Trail glow ${label}, PASER PRO, tap to unlock` : `Trail glow ${label}`
-                }
-                accessibilityState={{ selected }}
-                style={styles.swatchItem}
-              >
-                <View
-                  style={[
-                    styles.swatch,
-                    { backgroundColor: swatch, shadowColor: swatch },
-                    selected && styles.swatchSelected,
-                  ]}
-                >
-                  {locked ? (
-                    <View style={styles.swatchLock}>
-                      <Lock size={13} color={GOLD} strokeWidth={2.5} />
-                    </View>
-                  ) : null}
+      {/* EVERYTHING ELSE ON YOU IS FOLDED AWAY.
+          The rest of this page used to be one column: the land card, the
+          streak, the trophies, the run history, and then eight blocks of
+          settings, all open, all at once. Reaching the bottom of your own
+          profile meant scrolling past every preference in the app, and the
+          numbers you came for were buried somewhere in the middle of it.
+          Five headings, one open at a time, is the same page with the
+          scrolling taken out. */}
+      <View style={styles.sections}>
+        <AccordionSection
+          title="Notifications"
+          subtitle="What may alert you outside PASER"
+          open={section === 'notifications'}
+          onToggle={() => toggleSection('notifications')}
+        >
+            {/* The section's own heading already says Notifications, so this block
+                opens straight onto the sentence that explains the difference between
+                the inbox and a push. */}
+            <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
+              Every event stays in your in-app inbox. Choose which ones may alert you outside PASER.
+            </Text>
+            <Card padded={false}>
+              {NOTIF_ROWS.map(([key, label], i) => (
+                <View key={key} style={[styles.toggleRow, i > 0 && styles.runDivider]}>
+                  <Text style={type.body}>{label}</Text>
+                  <Switch
+                    value={prefs ? !!prefs[key] : true}
+                    onValueChange={() => prefs && togglePref(key)}
+                    trackColor={{ true: accent }}
+                    disabled={!prefs}
+                  />
                 </View>
-                <Text
-                  style={[
-                    type.caption,
-                    { color: locked ? GOLD : selected ? colors.text : colors.textDim },
-                  ]}
-                >
-                  {label}
-                </Text>
-              </PressableScale>
-            );
-          })}
-        </View>
-      </Card>
+              ))}
+            </Card>
+        </AccordionSection>
 
-      {/* crossed paths — the PASERBY switch. It lives in Settings as well as
-          on the Crossroads screen itself: somebody looking for the way out
-          looks here first. Turning it off stops new encounters being made AND
-          deletes the trace samples the matcher would have used. */}
-      <SectionHeader framed frameTint={accent} title="Crossed paths" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <Card>
-        <View style={styles.toggleRowInner}>
-          <View style={{ flex: 1, paddingRight: space.md }}>
-            <Text style={type.body}>{PASERBY_COPY.setting}</Text>
-            <Text style={type.caption}>{PASERBY_COPY.settingHint}</Text>
-          </View>
-          <Switch
-            value={paserby ? paserby.enabled !== false : true}
-            onValueChange={togglePaserby}
-            trackColor={{ true: accent }}
-            disabled={!paserby}
-          />
-        </View>
-        {paserby?.total ? (
-          <Button
-            title={`Crossroads (${paserby.total})`}
-            variant="secondary"
-            size="sm"
-            full={false}
-            onPress={() => navigation.navigate('Crossroads')}
-            style={{ marginTop: space.md, alignSelf: 'flex-start' }}
-          />
-        ) : null}
-        {/* Dev only (see the gate inside): seeds real crossings against
-            throwaway bots and opens the plaza, so Crossroads can be looked at
-            without crossing anyone's path. Hidden in release for every account
-            the server has not named. */}
-        <DevCrossroadsSeed onOpen={() => navigation.navigate('Crossroads')} />
-      </Card>
+        <AccordionSection
+          title="Statistics"
+          subtitle="Your land, streak, trophies and run history"
+          open={section === 'statistics'}
+          onToggle={() => toggleSection('statistics')}
+        >
+            {/* Your land: what is happening to the ground the stat wall counts.
+                The plots about to fade, what held, what was lost; the full list is
+                one tap away. Hides itself if the endpoint is not there. */}
+            <YourLandCard navigation={navigation} accent={accent} nested />
 
-      {/* the way back in if the password goes. Sits above privacy rather than
-          down by Sign out because an account with no recovery email is a
-          problem to fix, not a preference to browse. */}
-      <RecoveryEmail />
-
-      {/* route privacy — what other people see of your runs */}
-      <PrivacySettings />
-
-      {/* apple health — renders nothing where there is no health store */}
-      <HealthSyncSettings />
-
-      {/* appearance */}
-      <SectionHeader title="Appearance" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <Card>
-        <Text style={type.labelSm}>Theme</Text>
-        <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
-          Follow your device, or force light or dark.
-        </Text>
-        <ThemeToggle />
-      </Card>
-
-      {/* notifications */}
-      <SectionHeader title="Push notifications" style={{ marginTop: space.xl, marginBottom: space.sm }} />
-      <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
-        Every event stays in your in-app inbox. Choose which ones may alert you outside PASER.
-      </Text>
-      <Card padded={false}>
-        {NOTIF_ROWS.map(([key, label], i) => (
-          <View key={key} style={[styles.toggleRow, i > 0 && styles.runDivider]}>
-            <Text style={type.body}>{label}</Text>
-            <Switch
-              value={prefs ? !!prefs[key] : true}
-              onValueChange={() => prefs && togglePref(key)}
-              trackColor={{ true: accent }}
-              disabled={!prefs}
+            {/* running streak calendar */}
+            <Reveal delay={150}>
+            <SectionHeader
+              title="Running streak"
+              action={(stats?.current_streak_days || 0) >= 2 ? `${stats.current_streak_days} day streak 🔥` : undefined}
+              framed={false}
+              style={{ marginTop: space.md, marginBottom: space.md }}
             />
-          </View>
-        ))}
-      </Card>
+            <Card>
+              <StreakCalendar runDays={runDays || []} accent={accent} />
+            </Card>
+            </Reveal>
 
-      <Button title="Sign out" variant="secondary" onPress={signOut} style={{ marginTop: space.xl }} />
+            {/* trophies. The medal rides BESIDE the heading — as its own centred
+                block it was 88pt of mostly-empty air between the title and the
+                shelf, which read as a gap in the page rather than as a flourish.
+                It replays whenever the count of earned trophies changes. */}
+            <Reveal delay={180}>
+            <SectionHeader
+              title="Trophies"
+              accessory={
+                earnedTrophies ? (
+                  <GameAnimation name="medal" size={TROPHY_MEDAL} trigger={earnedTrophies} />
+                ) : null
+              }
+              framed={false}
+              style={{ marginTop: space.md, marginBottom: space.md }}
+            />
+            <View style={styles.trophyRow}>
+              {TROPHIES.map(({ key, label, icon, earned }) => {
+                const got = stats ? earned(stats) : false;
+                return (
+                  <Card
+                    key={key}
+                    padded={false}
+                    style={styles.trophy}
+                    fill={got ? '#FFF2C6' : colors.card}
+                  >
+                    <AppIcon name={icon} size={30} opacity={got ? 1 : 0.6} />
+                    <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? '#292015' : colors.textMuted }]}>
+                      {label}
+                    </Text>
+                  </Card>
+                );
+              })}
+            </View>
+            </Reveal>
 
-      {!confirmingDelete ? (
-        <Button
-          title="Delete account"
-          variant="destructive"
-          onPress={() => { setConfirmingDelete(true); setDeleteDraft(''); }}
-          // No `backgroundColor` here. The soft red used to be painted on the
-          // button's own root as a way of toning the destructive red down, and
-          // with a hand-drawn frame on top that rectangle showed all round the
-          // wobble — a pale red box with a darker red box inside it, which is
-          // what "two shades of red" was. The frame's paper is the fill now,
-          // and it is the only one.
-          style={{ marginTop: space.md }}
-        />
-      ) : (
-        <Card style={{ marginTop: space.md }} accent={colors.danger}>
-          <Text style={[type.heading, { color: colors.danger, marginBottom: space.sm }]}>Delete this account?</Text>
-          <Text style={[type.bodySm, { color: colors.textMuted, lineHeight: 19 }]}>
-            This permanently removes your runs and territories. It cannot be undone. Type{' '}
-            <Text style={[type.bodySmBold]}>{user?.username}</Text> to confirm.
-          </Text>
-          <Input
-            value={deleteDraft}
-            onChangeText={setDeleteDraft}
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder={user?.username}
-            placeholderTextColor={colors.textDim}
-            style={styles.input}
-            accessibilityLabel="Type your username to confirm deletion"
-          />
-          <View style={styles.btnRow}>
-            <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => setConfirmingDelete(false)} />
-            <Button title="Delete forever" variant="destructive" size="sm" full={false} disabled={!deleteMatches} loading={deleting} onPress={doDelete} />
-          </View>
-        </Card>
-      )}
+            {/* recent runs */}
+            <SectionHeader framed={false} title="Recent runs" style={{ marginTop: space.md, marginBottom: space.md }} />
+            <Card padded={false}>
+              {!runs ? (
+                <View style={{ padding: space.lg }}>
+                  <Skeleton width="100%" height={16} />
+                </View>
+              ) : runs.length === 0 ? (
+                <Text style={[type.caption, { padding: space.lg }]}>No runs yet.</Text>
+              ) : (
+                <Arrival active={runsArriving}>
+                {runs.slice(0, 8).map((r, i) => (
+                  <TouchableOpacity
+                    key={r.run_id}
+                    style={[styles.runRow, i > 0 && styles.runDivider]}
+                    onPress={() => navigation.navigate('RunDetail', { runId: r.run_id })}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open run detail"
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={type.bodyBold}>{shortDate(r.created_at)}</Text>
+                      <Text style={type.caption}>
+                        {km(r.distance_m)} km, {r.closed_loop ? `${km2(r.area_m2)} km² claimed` : 'not claimed'}
+                      </Text>
+                    </View>
+                    {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
+                  </TouchableOpacity>
+                ))}
+                </Arrival>
+              )}
+            </Card>
+        </AccordionSection>
 
-      <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Privacy policy">
-        <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Privacy Policy</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(SUPPORT_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Support">
-        <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Support</Text>
-      </TouchableOpacity>
-      <Text style={styles.legal}>Pixel effects by Will Tice</Text>
-      <Text style={[styles.legal, { marginTop: space.xs }]}>Additional VFX by Pixel VFX Studio, RiaKare and Luis Zuno</Text>
-      {/* The first run plays against a CraftPix landscape. Their free licence
-          allows commercial use and asks for a credit where one is practical;
-          this is where every other pack in the app is credited, so it costs a
-          line and removes a content rights question at review. */}
+        <AccordionSection
+          title="App customisation"
+          subtitle="Theme and runner colour"
+          open={section === 'customisation'}
+          onToggle={() => toggleSection('customisation')}
+        >
+            {/* appearance */}
+            <SectionHeader title="Appearance" framed={false} style={{ marginTop: space.md, marginBottom: space.md }} />
+            <Card>
+              <Text style={type.labelSm}>Theme</Text>
+              <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
+                Follow your device, or force light or dark.
+              </Text>
+              <ThemeToggle />
+            </Card>
+
+            {/* Player colour — trail, own-land outline and colourable game chrome. */}
+            <Card style={{ marginTop: space.md }}>
+              <Text style={type.labelSm}>Runner colour</Text>
+              <Text style={[type.caption, { marginTop: 2 }]}>
+                Colours your trail, map outline and this page's frames. Club follows your club colour.
+              </Text>
+              <View style={styles.swatchRow}>
+                {TRAIL_GLOW_COLORS.map(({ key, label, value, pro }) => {
+                  const swatch = value || accent;
+                  const selected = trailGlow === key;
+                  // Locked only when PRO is actually sellable and this account is not
+                  // on it. A build with the store off shows the whole palette; a
+                  // subscriber wears any of it. A free runner who chose a PRO colour
+                  // before it was gated keeps it — this only blocks NEW selections.
+                  const locked = pro && canShowPro && !isPro;
+                  return (
+                    <PressableScale
+                      key={key}
+                      onPress={() => {
+                        haptic.light();
+                        if (locked) { openPaywall('cosmetics'); return; }
+                        setTrailGlow(key);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        locked ? `Trail glow ${label}, PASER PRO, tap to unlock` : `Trail glow ${label}`
+                      }
+                      accessibilityState={{ selected }}
+                      style={styles.swatchItem}
+                    >
+                      <View
+                        style={[
+                          styles.swatch,
+                          { backgroundColor: swatch, shadowColor: swatch },
+                          selected && styles.swatchSelected,
+                        ]}
+                      >
+                        {locked ? (
+                          <View style={styles.swatchLock}>
+                            <Lock size={13} color={GOLD} strokeWidth={2.5} />
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text
+                        style={[
+                          type.caption,
+                          { color: locked ? GOLD : selected ? colors.text : colors.textDim },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </PressableScale>
+                  );
+                })}
+              </View>
+            </Card>
+        </AccordionSection>
+
+        <AccordionSection
+          title="Privacy"
+          subtitle="Routes, crossed paths and Apple Health"
+          open={section === 'privacy'}
+          onToggle={() => toggleSection('privacy')}
+        >
+            {/* route privacy — what other people see of your runs */}
+            <PrivacySettings nested />
+
+            {/* crossed paths — the PASERBY switch. It lives in Settings as well as
+                on the Crossroads screen itself: somebody looking for the way out
+                looks here first. Turning it off stops new encounters being made AND
+                deletes the trace samples the matcher would have used. */}
+            <SectionHeader framed={false} title="Crossed paths" style={{ marginTop: space.md, marginBottom: space.md }} />
+            <Card>
+              <View style={styles.toggleRowInner}>
+                <View style={{ flex: 1, paddingRight: space.md }}>
+                  <Text style={type.body}>{PASERBY_COPY.setting}</Text>
+                  <Text style={type.caption}>{PASERBY_COPY.settingHint}</Text>
+                </View>
+                <Switch
+                  value={paserby ? paserby.enabled !== false : true}
+                  onValueChange={togglePaserby}
+                  trackColor={{ true: accent }}
+                  disabled={!paserby}
+                />
+              </View>
+              {paserby?.total ? (
+                <Button
+                  title={`Crossroads (${paserby.total})`}
+                  variant="secondary"
+                  size="sm"
+                  full={false}
+                  onPress={() => navigation.navigate('Crossroads')}
+                  style={{ marginTop: space.md, alignSelf: 'flex-start' }}
+                />
+              ) : null}
+              {/* Dev only (see the gate inside): seeds real crossings against
+                  throwaway bots and opens the plaza, so Crossroads can be looked at
+                  without crossing anyone's path. Hidden in release for every account
+                  the server has not named. */}
+              <DevCrossroadsSeed onOpen={() => navigation.navigate('Crossroads')} />
+            </Card>
+
+            {/* apple health — renders nothing where there is no health store */}
+            <HealthSyncSettings nested />
+        </AccordionSection>
+
+        <AccordionSection
+          title="Account"
+          subtitle="Username, recovery, sign out"
+          open={section === 'account'}
+          onToggle={() => toggleSection('account')}
+          last
+        >
+            {/* Your name. No heading over it: the section this is inside is called
+                Account and the card's own label says Username, so a third word for
+                the same thing was only ever there because the page had no sections
+                to put it in. */}
+            <Card>
+              <Text style={type.labelSm}>Username</Text>
+              {editing ? (
+                <>
+                  <Input
+                    value={draft}
+                    onChangeText={setDraft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={32}
+                    style={styles.input}
+                    placeholderTextColor={colors.textDim}
+                  />
+                  <View style={styles.btnRow}>
+                    <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => { setEditing(false); setDraft(user?.username || ''); }} />
+                    <Button title="Save" size="sm" full={false} loading={busy} onPress={saveUsername} accent={accent} />
+                  </View>
+                </>
+              ) : (
+                <View style={styles.settingRow}>
+                  <Text style={type.bodyBold}>{user?.username}</Text>
+                  <Button title="Change" variant="secondary" size="sm" full={false} onPress={() => setEditing(true)} />
+                </View>
+              )}
+            </Card>
+
+            {/* the way back in if the password goes. Sits above privacy rather than
+                down by Sign out because an account with no recovery email is a
+                problem to fix, not a preference to browse. */}
+            <RecoveryEmail nested />
+
+            <Button title="Sign out" variant="secondary" onPress={signOut} style={{ marginTop: space.xl }} />
+
+            {!confirmingDelete ? (
+              <Button
+                title="Delete account"
+                variant="destructive"
+                onPress={() => { setConfirmingDelete(true); setDeleteDraft(''); }}
+                // No `backgroundColor` here. The soft red used to be painted on the
+                // button's own root as a way of toning the destructive red down, and
+                // with a hand-drawn frame on top that rectangle showed all round the
+                // wobble — a pale red box with a darker red box inside it, which is
+                // what "two shades of red" was. The frame's paper is the fill now,
+                // and it is the only one.
+                style={{ marginTop: space.md }}
+              />
+            ) : (
+              <Card style={{ marginTop: space.md }} accent={colors.danger}>
+                <Text style={[type.heading, { color: colors.danger, marginBottom: space.sm }]}>Delete this account?</Text>
+                <Text style={[type.bodySm, { color: colors.textMuted, lineHeight: 19 }]}>
+                  This permanently removes your runs and territories. It cannot be undone. Type{' '}
+                  <Text style={[type.bodySmBold]}>{user?.username}</Text> to confirm.
+                </Text>
+                <Input
+                  value={deleteDraft}
+                  onChangeText={setDeleteDraft}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder={user?.username}
+                  placeholderTextColor={colors.textDim}
+                  style={styles.input}
+                  accessibilityLabel="Type your username to confirm deletion"
+                />
+                <View style={styles.btnRow}>
+                  <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => setConfirmingDelete(false)} />
+                  <Button title="Delete forever" variant="destructive" size="sm" full={false} disabled={!deleteMatches} loading={deleting} onPress={doDelete} />
+                </View>
+              </Card>
+            )}
+
+            <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Privacy policy">
+              <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Privacy Policy</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(SUPPORT_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Support">
+              <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Support</Text>
+            </TouchableOpacity>
+            <Text style={styles.legal}>Pixel effects by Will Tice</Text>
+            <Text style={[styles.legal, { marginTop: space.xs }]}>Additional VFX by Pixel VFX Studio, RiaKare and Luis Zuno</Text>
+            {/* The first run plays against a CraftPix landscape. Their free licence
+                allows commercial use and asks for a credit where one is practical;
+                this is where every other pack in the app is credited, so it costs a
+                line and removes a content rights question at review. */}
+            <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
+        </AccordionSection>
+
+      </View>
+
       {/* Every PRO state, previewable from a desk. Invisible to real accounts
           — see the gate in DevProPanel. */}
       <DevProPanel style={{ marginTop: space.lg }} />
@@ -807,7 +884,6 @@ export default function ProfileScreen({ navigation }) {
           Invisible to real accounts, the same gate as DevProPanel. */}
       <DevCelebrationsPanel style={{ marginTop: space.md }} />
 
-      <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
       <Text style={[styles.legal, { marginTop: space.xs }]}>PASER v{Constants.expoConfig?.version || '2.0.0'}</Text>
     </Screen>
   );
@@ -906,6 +982,11 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     marginVertical: -space.md,
     marginRight: -space.md,
   },
+
+  // The folded half of the page. The gap above the first heading is the join
+  // between who you are, which is drawn, and what you can change, which is a
+  // list — so it takes a section's worth of air rather than a card's.
+  sections: { marginTop: space.xl },
 
   trophyRow: { flexDirection: 'row', gap: space.sm },
   trophy: { flex: 1, paddingVertical: space.md, alignItems: 'center' },

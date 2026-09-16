@@ -1,6 +1,13 @@
 // Public clan profile — reached by tapping a clan in the directory or the
 // season leaderboard. Shows stats, the leader, the full roster, and a single
 // join / request action. Joining is NOT automatic on tap (that lives here).
+//
+// The join action is in the HEADER, not after the roster. It used to sit at the
+// bottom of the page, below eleven members, and the first thing the eye found
+// up top was the privacy chip: an outline Pill reading "Open", which is a drawn
+// hollow box with a verb in it and therefore indistinguishable from an outline
+// Button. So the one thing that looked tappable was not, and the one thing that
+// was, was off screen.
 
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -101,10 +108,44 @@ export default function ClubDetailScreen({ route, navigation }) {
         {clan.description ? (
           <Text style={[type.caption, { textAlign: 'center', marginTop: 2 }]}>{clan.description}</Text>
         ) : null}
-        <Row gap={8} style={{ marginTop: space.sm }}>
-          {clan.league ? <Pill label={LEAGUE_LABEL[clan.league]} color={accent} /> : null}
-          <Pill label={isOpen ? 'Open' : 'Invite only'} color={colors.textMuted} variant="outline" />
-        </Row>
+        {clan.league ? (
+          <Row gap={8} style={{ marginTop: space.sm }}>
+            <Pill label={LEAGUE_LABEL[clan.league]} color={accent} />
+          </Row>
+        ) : null}
+
+        {/* Who may join, said in a sentence. This was an outline Pill reading
+            "Open": a hollow drawn box with a verb in it, sitting a finger's
+            width under the club name. That is the same shape as an outline
+            Button and it was the only thing on the first screenful that looked
+            pressable, so people pressed it and nothing happened, because the
+            real join control was four scrolls down under the roster. The state
+            says what it means now, and the action it was mistaken for sits
+            directly beneath it. */}
+        <Text style={[type.caption, { marginTop: space.sm }]}>
+          {isOpen ? 'Anyone can join' : 'Joining needs approval'}
+        </Text>
+
+        {/* The join action, in the header where the eye already is. */}
+        <View style={styles.action}>
+          {isMember ? (
+            <Row gap={8} style={{ justifyContent: 'center' }}>
+              <Shield size={16} color={accent} />
+              <Text style={[type.bodyBold, { color: accent }]}>You're in this club</Text>
+            </Row>
+          ) : inAnotherClan ? (
+            <Text style={[type.caption, { textAlign: 'center' }]}>
+              Leave your current club before joining another.
+            </Text>
+          ) : (
+            <Button
+              title={isOpen ? 'Join club' : 'Request to join'}
+              variant="gradient"
+              loading={busy}
+              onPress={join}
+            />
+          )}
+        </View>
       </Card>
 
       {/* stats */}
@@ -177,27 +218,6 @@ export default function ClubDetailScreen({ route, navigation }) {
           </Reveal>
         ))}
       </Card>
-
-      {/* join action */}
-      <View style={{ marginTop: space.xl }}>
-        {isMember ? (
-          <Row gap={8} style={{ justifyContent: 'center' }}>
-            <Shield size={16} color={accent} />
-            <Text style={[type.bodyBold, { color: accent }]}>You're in this club</Text>
-          </Row>
-        ) : inAnotherClan ? (
-          <Text style={[type.caption, { textAlign: 'center' }]}>
-            Leave your current club before joining another.
-          </Text>
-        ) : (
-          <Button
-            title={isOpen ? 'Join club' : 'Request to join'}
-            variant="gradient"
-            loading={busy}
-            onPress={join}
-          />
-        )}
-      </View>
     </ScrollView>
   );
 
@@ -213,6 +233,10 @@ export default function ClubDetailScreen({ route, navigation }) {
 
 const makeStyles = (colors) => StyleSheet.create({
   header: { alignItems: 'center' },
+  // Full width inside a centred card: a join button that hugged its label
+  // would be one more small box in a stack of small boxes, which is the
+  // reading problem this screen just had.
+  action: { alignSelf: 'stretch', marginTop: space.md },
   xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden', marginTop: space.sm },
   xpFill: { height: '100%', borderRadius: 4 },
   leaderAvatar: {

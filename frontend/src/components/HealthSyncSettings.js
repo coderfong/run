@@ -22,7 +22,11 @@ import {
   setHealthEnabled,
 } from '../health';
 
-export default function HealthSyncSettings() {
+// `nested` — see PrivacySettings. This one keeps its own heading either way
+// rather than letting the caller draw one: the whole component renders nothing
+// on a device with no health store, and a heading printed outside it would be
+// a lone "Apple Health" with nothing under it on every Android phone.
+export default function HealthSyncSettings({ nested = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const supported = healthSyncSupported();
@@ -69,7 +73,11 @@ export default function HealthSyncSettings() {
 
   return (
     <>
-      <SectionHeader title="Apple Health" style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <SectionHeader
+        title="Apple Health"
+        framed={!nested}
+        style={{ marginTop: nested ? space.md : space.xl, marginBottom: space.md }}
+      />
       <Card>
         <View style={styles.row}>
           <View style={styles.label}>

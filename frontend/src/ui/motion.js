@@ -826,6 +826,41 @@ export function Pop({ trigger = 0, from = 0.72, delay = 0, children, style, ...r
   );
 }
 
+// ---------------------------------------------------------------------------
+// Turn — a spring rotation between two angles, driven by a boolean.
+//
+// Written for the disclosure chevron on a folded-away section, which is the
+// only thing on such a row that says which way it is about to go. Swapping one
+// arrow glyph for another states the new position without ever showing the
+// move, and it is the move that tells you the section came from the tap you
+// just made rather than from somewhere further up the page.
+//
+// A spring for the same reason Pop uses one: the small overshoot reads as a
+// flick of the wrist. A timing curve at this size reads as a slow wipe.
+//
+// Under Reduce Motion it snaps to the destination angle. The chevron is still
+// correct, it just does not travel.
+// ---------------------------------------------------------------------------
+
+export function Turn({ on = false, from = 0, to = 180, children, style, ...rest }) {
+  const reduced = useReduceMotion();
+  const deg = useSharedValue(on ? to : from);
+
+  useEffect(() => {
+    const next = on ? to : from;
+    deg.value = reduced
+      ? next
+      : withSpring(next, { damping: 15, stiffness: 190, mass: 0.6 });
+  }, [deg, from, on, reduced, to]);
+
+  const animated = useAnimatedStyle(() => ({ transform: [{ rotate: `${deg.value}deg` }] }));
+  return (
+    <Animated.View style={[style, animated]} {...rest}>
+      {children}
+    </Animated.View>
+  );
+}
+
 export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
   const reduced = useReduceMotion();
   // A loading screen left behind another tab is still loading, and still has

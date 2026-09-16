@@ -11,7 +11,10 @@ export { default as Row } from './Row';
 export { default as StatValue } from './StatValue';
 export { default as Pill } from './Pill';
 export { default as Button } from './Button';
-export { default as SectionHeader } from './SectionHeader';
+export { default as SectionHeader, SectionLabel } from './SectionHeader';
+// A section that starts folded away, with SectionHeader's own drawn label as
+// its tappable head. The You page is built out of these.
+export { default as AccordionSection } from './Accordion';
 export { default as EmptyState } from './EmptyState';
 export { default as Skeleton } from './Skeleton';
 export { default as Sheet } from './Sheet';

@@ -23,6 +23,13 @@
 // separate only so the fourteen call sites do not all have to change; if one
 // ever needs to be quiet again it should say `outline`.
 //
+// `outline` IS A BUTTON'S SHAPE. A hollow drawn box with a word in it is what
+// an outline Button looks like, only bigger, so an outline chip on a page whose
+// real action is off screen gets pressed. The club profile's privacy chip read
+// "Open" and was tapped as a join button until it became a sentence. If a chip
+// has to be quiet, prefer plain caption text; reach for `outline` only where a
+// row of filled chips sits beside it to say what a chip is.
+//
 // A pill with NO colour deals itself one from the deck. That is the other half
 // of the change: most metadata chips (a level, a member count, a paser total)
 // used to pass `colors.textMuted` and came out grey, which is exactly the chip

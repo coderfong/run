@@ -12,9 +12,15 @@
  * had been deleted.
  *
  * A render test cannot see layout, so it cannot catch that directly. What it
- * CAN do is pin the two things that made it possible: that every section is
- * actually mounted (so a real absence is caught), and that the rail states a
- * fixed height (so the layout that buried them cannot come back).
+ * CAN do is pin the two things that made it possible: that everything below
+ * the portrait is REACHABLE (so a real absence is caught), and that the rail
+ * states a fixed height (so the layout that buried them cannot come back).
+ *
+ * Reachable, not mounted: half this page is folded away now and a closed
+ * section renders no children at all, deliberately (components/ui/Accordion).
+ * So the first test pins what you land on, and the second opens each section
+ * and pins what is inside it. A block that stops being rendered by ANY section
+ * still fails here, which is the guarantee the all-at-once assertion gave.
  *
  * It also mounts the screen against payloads that are the wrong shape, which
  * is the other way this page vanishes: an exception in render is caught by the
@@ -102,6 +108,16 @@ function mount() {
   return tree;
 }
 
+// Open (or close) a folded section by its heading. The head is one pressable
+// carrying the section's title as its label — see AccordionSection.
+function press(tree, label) {
+  const node = tree.root.findAll(
+    (n) => n.props?.accessibilityLabel === label && typeof n.props?.onPress === 'function'
+  )[0];
+  if (!node) throw new Error('no pressable section called ' + label);
+  act(() => node.props.onPress());
+}
+
 function texts(tree) {
   return tree.root
     .findAllByType(Text)
@@ -161,7 +177,7 @@ describe('ProfileScreen', () => {
     }));
   });
 
-  test('every section of the page is on it', async () => {
+  test('what you land on is the runner, with the rest folded away', async () => {
     const tree = mount();
     await act(async () => {});
     const t = texts(tree).join('|');
@@ -174,19 +190,66 @@ describe('ProfileScreen', () => {
     for (const label of ['Area held', 'Distance', 'Runs', 'Biggest claim', 'Streak', 'Zones']) {
       expect(t).toContain(label);
     }
-    // What is happening to that land, right under the wall that counts it.
-    expect(t).toContain('Your land');
-    expect(t).toContain('Fades in 5h');
-    // Everything under it, in page order.
     expect(t).toContain('PASER PRO');
+
+    // Five headings, and nothing under any of them yet.
+    for (const heading of ['Notifications', 'Statistics', 'App customisation', 'Privacy', 'Account']) {
+      expect(t).toContain(heading);
+    }
+    for (const buried of ['Running streak', 'Recent runs', 'Appearance', 'Runner colour', 'Sign out']) {
+      expect(t).not.toContain(buried);
+    }
+
+    act(() => tree.unmount());
+  });
+
+  test('each section holds what its heading says, one at a time', async () => {
+    const tree = mount();
+    await act(async () => {});
+
+    const open = async (heading) => {
+      press(tree, heading);
+      await act(async () => {});
+      return texts(tree).join('|');
+    };
+
+    let t = await open('Notifications');
+    expect(t).toContain('Land under attack');
+    expect(t).toContain('Kudos received');
+
+    t = await open('Statistics');
+    // Opening one closes the last: that is what keeps the folded page short.
+    expect(t).not.toContain('Land under attack');
+    // The card, not the section's own subtitle, which also says "Your land":
+    // "See all" and the countdown only exist once the card really rendered.
+    expect(t).toContain('See all');
+    expect(t).toContain('Fades in 5h');
     expect(t).toContain('Running streak');
     expect(t).toContain('Trophies');
     expect(t).toContain('Recent runs');
-    expect(t).toContain('Settings');
-    expect(t).toContain('Runner colour');
-    expect(t).toContain('Privacy');
+
+    t = await open('App customisation');
     expect(t).toContain('Appearance');
+    expect(t).toContain('Runner colour');
+
+    t = await open('Privacy');
+    // Nested, the route controls are titled for what they actually are.
+    // "Privacy" is the name of the section they now sit inside.
+    expect(t).toContain('Your routes');
+    expect(t).toContain('Crossed paths');
+
+    t = await open('Account');
+    expect(t).toContain('Username');
     expect(t).toContain('Sign out');
+    expect(t).toContain('Delete account');
+    // App Review looks for both of these, so they have to stay reachable.
+    expect(t).toContain('Privacy Policy');
+    expect(t).toContain('Support');
+
+    // A second tap on the open one folds it back up.
+    press(tree, 'Account');
+    await act(async () => {});
+    expect(texts(tree).join('|')).not.toContain('Sign out');
 
     act(() => tree.unmount());
   });
@@ -226,7 +289,9 @@ describe('ProfileScreen', () => {
     mockRuns = { detail: 'nope' };
     const tree = mount();
     await act(async () => {});
-    expect(texts(tree).join('|')).toContain('Settings');
+    press(tree, 'Statistics');
+    await act(async () => {});
+    expect(texts(tree).join('|')).toContain('Recent runs');
     act(() => tree.unmount());
   });
 
@@ -236,9 +301,15 @@ describe('ProfileScreen', () => {
     api.myTerritory.mockImplementation(() => Promise.reject(new Error('Request failed (404)')));
     const tree = mount();
     await act(async () => {});
+    press(tree, 'Statistics');
+    await act(async () => {});
     const t = texts(tree).join('|');
-    expect(t).not.toContain('Your land');
-    expect(t).toContain('Settings');
+    // Its heading and its "See all" go with it. The section's subtitle still
+    // names it, which is why that is not what this asserts on.
+    expect(t).not.toContain('See all');
+    expect(t).not.toContain('Fades in');
+    expect(t).toContain('Running streak');
+    expect(t).toContain('Recent runs');
     act(() => tree.unmount());
   });
 

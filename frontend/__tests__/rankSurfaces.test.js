@@ -163,9 +163,14 @@ describe('the compact card', () => {
   });
 
   test('names the next DIVISION while one is left, then the next tier', () => {
-    expect(rankProgressCopy(GOLD)).toBe('80 rank points to Gold III');
+    expect(rankProgressCopy(GOLD)).toBe('You are 80 rank points away from Gold III');
     const nearlyPlatinum = standingFrom({ key: 'gold', points: 1490, floor: 1350, next_points: 1500 });
-    expect(rankProgressCopy(nearlyPlatinum)).toBe('10 rank points to the next tier');
+    expect(rankProgressCopy(nearlyPlatinum)).toBe('You are 10 rank points away from the next tier');
+  });
+
+  test('the last point left is a rank point, not rank points', () => {
+    const one = standingFrom({ key: 'gold', points: 1499, floor: 1350, next_points: 1500 });
+    expect(rankProgressCopy(one)).toBe('You are 1 rank point away from the next tier');
   });
 
   test('the top of the ladder has nothing left to ask for', () => {
