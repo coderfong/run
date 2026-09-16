@@ -7,7 +7,9 @@
 // cached response honest: a list opened from cache three hours after it was
 // fetched says how long each plot has NOW, not how long it had then.
 //
-// House copy rules apply: no dashes anywhere, `·` between facts and for an
+// House copy rules apply: no dashes anywhere, and no `·` between facts (a
+// comma joins them, and the second fact drops its capital). The mid dot is
+// kept only for an
 // unknown value.
 
 import { serverTime, timeAgo } from '../utils/time';
@@ -42,7 +44,7 @@ export function isFading(plot, { now = Date.now(), fadingHours = FADING_HOURS } 
 
 /**
  * How long a plot has, the way a runner would say it:
- * "Fading now" · "Fades in 40m" · "Fades in 20h" · "40h left" · "4d left".
+ * "Fading now", "Fades in 40m", "Fades in 20h", "40h left", "4d left".
  *
  * Inside the fading window it names the deadline; outside it, the time in
  * hand. It FLOORS: "Fades in 1h" with 1h59m to go is a promise kept, and
@@ -87,7 +89,10 @@ export function plotDetail(plot) {
   ]
     .filter(Boolean)
     .slice(0, 2)
-    .join(' · ');
+    // One sentence rather than a list: a comma joins the two facts, and the
+    // second one drops its capital.
+    .map((fact, i) => (i ? fact.charAt(0).toLowerCase() + fact.slice(1) : fact))
+    .join(', ');
 }
 
 /** The three numbers across the top of the card and the page. */

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PanResponder, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import Svg, { Polyline } from 'react-native-svg';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { ChevronDown, ChevronLeft, ChevronRight, Lock, MoreHorizontal, Users, X } from 'lucide-react-native';
@@ -23,7 +23,7 @@ import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
 import { useAccent } from '../hooks/useAccent';
 import { useClan } from '../state/clan';
-import { Bar, Pop, ScreenIn, useReduceMotion } from '../ui/motion';
+import { Bar, Pop, ScreenIn, useOnScreen, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { ringCentroid } from '../components/territoryBoard';
@@ -226,17 +226,21 @@ const PULSE_MS = 1100;
 // be shown and wrong for a thing that is simply always on the board. It
 // breathes across a narrow band now, and the step is handed to Mapbox's own
 // opacity transition so the layer glides between the two instead of blinking.
-function HeatOutline({ featureCollection, reduce, focused }) {
+function HeatOutline({ featureCollection, reduce }) {
   const [pulse, setPulse] = useState(PULSE_HIGH);
+  // Breathes only while the map is the tab in front. Read HERE rather than by
+  // the screen: reading it up there re-rendered the whole board, Mapbox layers
+  // and all, every time any tab was entered or left.
+  const onScreen = useOnScreen(!reduce);
 
   useEffect(() => {
-    if (reduce || !focused) return undefined;
+    if (reduce || !onScreen) return undefined;
     const id = setInterval(
       () => setPulse((p) => (p > (PULSE_LOW + PULSE_HIGH) / 2 ? PULSE_LOW : PULSE_HIGH)),
       PULSE_MS
     );
     return () => clearInterval(id);
-  }, [reduce, focused]);
+  }, [reduce, onScreen]);
 
   return (
     <ContestedOutline
@@ -260,10 +264,6 @@ export default function GlobalMapScreen({ route, navigation }) {
   const { profile, loading: profileLoading, completeRankGuide } = useProfile();
   const accent = useAccent();
   const reduce = useReduceMotion();
-  // The board's entrance is keyed to arriving on the tab, not to mounting:
-  // this screen mounts at launch behind Home (App.js preloads every tab), so
-  // a mount-time reveal would have finished long before anyone looked at it.
-  const focused = useIsFocused();
   const mapRef = useRef(null);
   const viewportCacheRef = useRef(null);
   const [portraitBounds, setPortraitBounds] = useState(null);
@@ -364,9 +364,11 @@ export default function GlobalMapScreen({ route, navigation }) {
   // way CrossroadsScreen opens its own intro: gated on the profile flag
   // having loaded, so a not-yet-hydrated `false` never flashes the sheet at
   // someone who has already read it.
-  useEffect(() => {
-    if (focused && !profileLoading && !profile.rankGuideSeen) setRankInfoOpen(true);
-  }, [focused, profileLoading, profile.rankGuideSeen]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!profileLoading && !profile.rankGuideSeen) setRankInfoOpen(true);
+    }, [profileLoading, profile.rankGuideSeen])
+  );
 
   // --- Territory Planner -------------------------------------------------
   const { isPro, openPaywall, plannerPreviewsLeft, spendPlannerPreview } = useProEntitlement();
@@ -930,7 +932,10 @@ export default function GlobalMapScreen({ route, navigation }) {
           under the tab transition instead of being there already. ScreenIn's
           guard, armed on focus, shows the screen anyway if either is slow —
           a stalled fetch can never leave the map blank. */}
-      <ScreenIn ready={focused && mapLoaded && loaded} armed={focused} style={styles.fill}>
+      {/* The focus read lives INSIDE ScreenIn (`whenOnScreen`). This screen
+          used to call useIsFocused itself, which re-rendered the whole board
+          every time any tab was entered or left. */}
+      <ScreenIn ready={mapLoaded && loaded} whenOnScreen style={styles.fill}>
         <GameMap
           ref={mapRef}
           onIdle={onIdle}
@@ -955,7 +960,7 @@ export default function GlobalMapScreen({ route, navigation }) {
             overview={board.overview}
           />
           {board.showTerritoryDetail ? (
-            <HeatOutline featureCollection={contestedFC} reduce={reduce} focused={focused} />
+            <HeatOutline featureCollection={contestedFC} reduce={reduce} />
           ) : null}
           {/* The intelligence overlay, drawn ON TOP of the unchanged board.
               Every claim stays exactly as visible as it was — a layer adds a
@@ -1333,11 +1338,11 @@ export default function GlobalMapScreen({ route, navigation }) {
             {selected.user_id === user.id ? ' (you)' : ''}
           </Text>
           <Text style={[type.caption, { marginTop: 2 }]}>
-            {(selected.area_m2 / 1e6).toFixed(selected.area_m2 >= 1e5 ? 2 : 3)} km² ·{' '}
-            strength ×{(selected.strength || 1).toFixed(1)} ·{' '}
-            {selected.defenders > 1 ? `${selected.defenders} defenders · ` : ''}
+            {(selected.area_m2 / 1e6).toFixed(selected.area_m2 >= 1e5 ? 2 : 3)} km²,{' '}
+            strength ×{(selected.strength || 1).toFixed(1)},{' '}
+            {selected.defenders > 1 ? `${selected.defenders} defenders, ` : ''}
             held since {shortDate(selected.created_at)}
-            {selected.contested ? ' · contested' : ''}
+            {selected.contested ? ', contested' : ''}
           </Text>
           <View style={styles.cardActions}>
             <Button
@@ -1403,7 +1408,7 @@ export default function GlobalMapScreen({ route, navigation }) {
               <View style={[styles.legendDot, { backgroundColor: color.stroke }]} />
               <Text style={[type.bodyBold, { flex: 1 }]}>{key}</Text>
               <Text style={type.captionMedium}>
-                {(area / 1e6).toFixed(2)} km² · {count}
+                {(area / 1e6).toFixed(2)} km² in {count} {count === 1 ? 'plot' : 'plots'}
               </Text>
             </TouchableOpacity>
           ))

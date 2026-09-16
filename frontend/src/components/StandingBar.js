@@ -92,7 +92,7 @@ export default function StandingBar({ category = 'land', opts = {}, style }) {
       </Text>
       <Text style={[type.caption, { color: colors.textMuted }]}>
         {ranked
-          ? `of ${data.field_size.toLocaleString()} · ${amount(category, data.value)}`
+          ? `of ${data.field_size.toLocaleString()} with ${amount(category, data.value)}`
           : `${data.field_size.toLocaleString()} runners on this board`}
       </Text>
     </View>

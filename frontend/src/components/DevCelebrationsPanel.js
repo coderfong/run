@@ -129,12 +129,12 @@ export default function DevCelebrationsPanel({ style }) {
 
   return (
     <View style={[styles.panel, { borderColor: ACCENT, backgroundColor: colors.card }, style]}>
-      <Text style={[type.captionMedium, { color: ACCENT }]}>DEV · CELEBRATIONS</Text>
+      <Text style={[type.captionMedium, { color: ACCENT }]}>DEV: CELEBRATIONS</Text>
       <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.sm }]}>
         Plays the real screens with made up numbers. Nothing is saved.
       </Text>
 
-      <Text style={[type.caption, { color: colors.textDim }]}>{`Rank · ${label}`}</Text>
+      <Text style={[type.caption, { color: colors.textDim }]}>{`Rank: ${label}`}</Text>
       <View style={styles.row}>
         {RANK_TIERS.map((t, i) => (
           <Btn key={t.key} label={t.label} on={tier === i} onPress={() => setTier(i)} {...btn} />

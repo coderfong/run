@@ -303,4 +303,50 @@ describe('ResultScreen', () => {
     ).toBeGreaterThan(0);
     act(() => tree.unmount());
   });
+
+  // The escape from planning. Leaving must not spend the land: the recap
+  // offers the claim straight back, and Home offers it later.
+  it('lets the runner leave the claim, and come back to it from the recap', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ResultScreen navigation={navigation} route={{ params: { result, path } }} />
+      );
+    });
+    act(() => {
+      tree.root.findByProps({ accessibilityLabel: 'Plan your attack later' }).props.onPress();
+    });
+    // On the recap now, with the way on AND the way back.
+    expect(
+      tree.root.findAllByProps({ accessibilityLabel: 'Continue to sharing' }).length
+    ).toBeGreaterThan(0);
+    act(() => {
+      tree.root.findByProps({ accessibilityLabel: 'Plan your attack now' }).props.onPress();
+    });
+    expect(
+      tree.root.findAllByProps({ accessibilityLabel: 'Plan your attack later' }).length
+    ).toBeGreaterThan(0);
+    act(() => tree.unmount());
+  });
+
+  // Reopened from Home (PlanAttackScreen) there is no recap waiting behind the
+  // map, so putting it off again simply closes the screen.
+  it('closes a claim reopened later when it is put off again', () => {
+    const nav = {
+      navigate: jest.fn(),
+      goBack: jest.fn(),
+      getParent: () => ({ goBack: jest.fn() }),
+    };
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ResultScreen navigation={nav} route={{ params: { result, path, deferred: true } }} />
+      );
+    });
+    act(() => {
+      tree.root.findByProps({ accessibilityLabel: 'Plan your attack later' }).props.onPress();
+    });
+    expect(nav.goBack).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
 });

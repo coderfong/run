@@ -50,6 +50,7 @@ export default function BirthdayStep({ value, onChange, onContinue, onSkip, bott
   return (
     <View style={styles.fill}>
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={styles.body}
         showsVerticalScrollIndicator={false}
       >
@@ -65,10 +66,6 @@ export default function BirthdayStep({ value, onChange, onContinue, onSkip, bott
           </Text>
         </View>
 
-        {/* Only speaks when there is something to say. "Skip for now" below
-            already tells the runner the step is optional, and the reason a
-            birthday is asked for at all belongs in the privacy policy, not
-            under every wheel. */}
         {tooYoung ? (
           <Text style={[toonType.body, styles.note]}>
             {`You need to be ${MIN_AGE} or older to use PASER.`}
@@ -109,6 +106,10 @@ export default function BirthdayStep({ value, onChange, onContinue, onSkip, bott
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  // Constrain the content to the space left above the docked wheel. Without
+  // this, shorter screens let the ScrollView measure at its full content
+  // height and the translucent footer paints over Continue.
+  scroll: { flex: 1, minHeight: 0 },
   // flexGrow + centred content: the step sits in the middle of whatever room
   // it has, and scrolls instead of clipping when it doesn't have enough. The
   // Continue button lives INSIDE this column now, which is exactly the height

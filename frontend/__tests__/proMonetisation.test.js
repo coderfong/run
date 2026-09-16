@@ -116,7 +116,7 @@ describe('paywall copy promises depth, never power', () => {
   });
 
   it('uses no dashes in runner facing copy', () => {
-    // House rule: `·` is the separator and the empty-value placeholder.
+    // House rule: no dashes, and `·` only ever as the empty-value placeholder.
     for (const ctx of all) {
       for (const text of [ctx.title, ctx.subtitle, ctx.cta].filter(Boolean)) {
         expect([text, /[—–]|(\s-\s)/.test(text)]).toEqual([text, false]);

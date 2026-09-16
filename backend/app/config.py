@@ -140,6 +140,14 @@ class Settings(BaseSettings):
     claim_route_attachment_buffer_m: float = 100.0
     claim_min_route_attachment: float = 0.60
 
+    # ---- claiming later ---------------------------------------------------
+    # A finished run's land does not have to be placed on the result screen:
+    # the runner can leave and plan the attack from Home instead, for this
+    # many hours after the run ends. Past that the land lapses. A run earns
+    # ONE move, and a stockpile of unplaced runs would let a runner fight from
+    # the sofa, answering every attack without going out. 0 = no limit.
+    claim_defer_hours: float = 24.0
+
     # ---- anti-cheat (validate_run) -------------------------------------
     # Flagged runs are shadow-flagged: the submitter sees normal success,
     # but their territories are hidden from everyone else. Never surface
@@ -362,8 +370,23 @@ class Settings(BaseSettings):
     # long run writing thousands of rows.
     paserby_trace_interval_s: float = 25.0
     paserby_trace_max_points: int = 300
-    # A single run can only surface so many strangers, whatever it ran through.
-    paserby_max_encounters_per_run: int = 12
+    # Candidate discovery is deliberately wider than the product result. The
+    # spatial index narrows first; only this bounded set receives detailed
+    # trace analysis. Selection then enforces the two invisible product caps.
+    paserby_candidate_pool_size: int = 200
+    paserby_max_encounters_per_run: int = 3
+    paserby_max_per_cluster: int = 2
+    # Samples are 25s apart by default. Six nearby intervals is therefore
+    # sustained company, not a brief crossing.
+    paserby_corun_radius_m: float = 50.0
+    paserby_corun_min_duration_s: int = 150
+    paserby_trace_alignment_s: int = 40
+    paserby_same_direction_degrees: float = 35.0
+    paserby_same_direction_min_duration_s: int = 90
+    paserby_separation_m: float = 90.0
+    paserby_cluster_window_s: int = 180
+    paserby_cluster_radius_m: float = 160.0
+    paserby_frequent_threshold: int = 5
     # The reveal shows this many characters; the rest are "+N more".
     paserby_reveal_cast: int = 3
     # A high five is a wave, not a payout: small XP, hard daily ceiling, and no

@@ -94,7 +94,7 @@ export default function TerritoryPlanner({
     <Card style={styles.panel}>
       <Sheet visible={helpOpen} onClose={() => setHelpOpen(false)}>
         <Text style={type.heading}>Plan your run</Text>
-        <Text style={[type.body, { marginVertical: space.md }]}>Tap the map to make a route, or use Draw to trace one. Tap Preview to see its length and whose land it crosses. This is a plan � run it to earn land.</Text>
+        <Text style={[type.body, { marginVertical: space.md }]}>Tap the map to make a route, or use Draw to trace one. Tap Preview to see its length and whose land it crosses. This is a plan � run it to earn land.</Text>
         <ToonButton title="Got it" onPress={() => setHelpOpen(false)} />
       </Sheet>
       <View style={styles.headRow}>
@@ -111,7 +111,7 @@ export default function TerritoryPlanner({
                 ? (drawMode ? 'Draw your route on the map' : 'Tap the map to start your route')
                 : points.length === 1
                   ? (drawMode ? 'Keep drawing, or tap to place points' : 'Tap again to draw the next leg')
-                  : `${points.length} points · ${km(analysis?.distanceM ?? 0)}`}
+                  : `${points.length} points, ${km(analysis?.distanceM ?? 0)}`}
           </Text>
         </View>
         {/* The mode switch. A filled block when draw mode is on rather than a
@@ -199,7 +199,7 @@ export default function TerritoryPlanner({
                 <View key={c.id} style={[styles.crossRow, { borderBottomColor: colors.border }]}>
                   <Text style={[type.caption, { flex: 1, color: colors.textMuted }]} numberOfLines={1}>
                     {c.mine ? 'Your land' : c.username || 'Another runner'}
-                    {c.clanTag ? ` · ${c.clanTag}` : ''}
+                    {c.clanTag ? ` (${c.clanTag})` : ''}
                   </Text>
                   <Text style={[type.bodySmBold]}>{km2(c.areaM2)}</Text>
                 </View>

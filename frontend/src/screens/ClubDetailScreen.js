@@ -12,7 +12,7 @@ import { invalidate } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { useClan } from '../state/clan';
 import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
+import { Screen, Card, Row, Button, PageTexture, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import RankCard from '../components/rank/RankCard';
 import { standingFrom } from '../config/rankLadder';
@@ -91,7 +91,7 @@ export default function ClubDetailScreen({ route, navigation }) {
 
   const page = (
     <ScrollView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+      style={{ flex: 1 }}
       contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
     >
       {/* header */}
@@ -155,7 +155,7 @@ export default function ClubDetailScreen({ route, navigation }) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{leader.username}</Text>
-                <Text style={type.caption}>{km(leader.week_distance_m)} km · {leader.week_claims} claims this week</Text>
+                <Text style={type.caption}>{km(leader.week_distance_m)} km and {leader.week_claims} claims this week</Text>
               </View>
             </Row>
           </Card>
@@ -163,7 +163,7 @@ export default function ClubDetailScreen({ route, navigation }) {
       )}
 
       {/* roster */}
-      <SectionHeader title={`Members · ${clan.member_count}`} style={{ marginTop: space.xl, marginBottom: space.md }} />
+      <SectionHeader title={`Members (${clan.member_count})`} style={{ marginTop: space.xl, marginBottom: space.md }} />
       <Card padded={false}>
         {clan.members.map((m, i) => (
           <Reveal key={m.user_id} delay={staggerDelay(i)}>
@@ -201,8 +201,11 @@ export default function ClubDetailScreen({ route, navigation }) {
     </ScrollView>
   );
 
+  // Page colour and dot grid on the wrapper, under the scroll, as ClubScreen's
+  // hub does: the grid holds still while the page scrolls over it.
   return (
-    <Arrival active={arriving} style={{ flex: 1 }}>
+    <Arrival active={arriving} style={{ flex: 1, backgroundColor: colors.bg }}>
+      <PageTexture />
       {page}
     </Arrival>
   );

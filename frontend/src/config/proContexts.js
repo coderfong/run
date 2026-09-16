@@ -22,7 +22,7 @@
 //     as nothing, which is a blank row nobody notices in review.
 //   * `source` must be a member of SOURCES in src/analytics.js, or the funnel
 //     silently forks in two.
-//   * No dashes in runner-facing copy (house rule). `·` is the separator.
+//   * No dashes in runner-facing copy, and no `·` between words either.
 
 import { PRO_PERKS } from './pro';
 
@@ -35,7 +35,7 @@ export const DEFAULT_CONTEXT = {
   title: 'PASER PRO',
   subtitle: 'Planning, stats and styles. Running and claiming stay free.',
   perks: PRO_PERKS,
-  cta: null, // null → the sheet's standard "Subscribe · price per period"
+  cta: null, // null → the sheet's standard "Subscribe for <price> per <period>"
 };
 
 // Each entry overrides only what it needs. Everything absent falls back to

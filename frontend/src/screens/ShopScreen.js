@@ -54,7 +54,7 @@ import RewardReveal from '../components/RewardReveal';
 import { BackButton, Card, Framed, PANEL_INK, Row, Screen, Skeleton, Button } from '../components/ui';
 import CharacterRig, { BODY_RATIO, HEADROOM, PartThumb } from '../components/character/CharacterRig';
 import { getItem, SLOTS } from '../config/cosmetics';
-import { RARITY_COLOR } from '../components/RewardArt';
+import { RARITY_COLOR, RARITY_LABEL } from '../components/RewardArt';
 import AppIcon from '../components/AppIcon';
 import GameAnimation, { AnimationStack } from '../components/GameAnimation';
 import BuyEnergySheet from '../components/BuyEnergySheet';
@@ -114,7 +114,7 @@ function useCountdown(expiresAt) {
   }, [expiresAt]);
   const ready = clock.expiresAt === expiresAt;
   const left = ready ? clock.left : null;
-  if (left == null) return { left, text: '·' };
+  if (left == null) return { left, text: null };
   const h = Math.floor(left / 3600000);
   const m = Math.floor((left % 3600000) / 60000);
   const s = Math.floor((left % 60000) / 1000);
@@ -158,7 +158,7 @@ const RefreshBar = memo(function RefreshBar({ expiresAt, onExpire }) {
     >
       <AppIcon name="timer" size={16} />
       <Text style={[type.captionMedium, { color: colors.textMuted, paddingHorizontal: space.xs }]}>
-        Fresh stock in {expiresAt ? text : '·'}
+        {expiresAt && text ? `Fresh stock in ${text}` : 'Fresh stock soon'}
       </Text>
     </Framed>
   );
@@ -333,7 +333,7 @@ const SelectedProductPanel = memo(function SelectedProductPanel({
                   label. */}
               <View style={[styles.rarityDot, { backgroundColor: tint }]} />
               <Text style={[type.caption, { color: colors.textMuted }]}>
-                {item.rarity} · {SLOT_LABEL[item.slot] || item.slot}
+                {`${RARITY_LABEL[item.rarity] || item.rarity} ${(SLOT_LABEL[item.slot] || item.slot).toLowerCase()}`}
               </Text>
             </Row>
             <Row gap={4} style={{ alignItems: 'center' }}>

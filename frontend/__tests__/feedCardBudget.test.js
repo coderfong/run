@@ -105,7 +105,7 @@ function mountCard(item) {
   act(() => {
     tree = renderer.create(
       <NavigationContext.Provider value={navigation}>
-        <FeedCard item={item} navigation={navigation} autoPlaySteal={false} screenFocused />
+        <FeedCard item={item} navigation={navigation} autoPlaySteal={false} />
       </NavigationContext.Provider>
     );
   });
@@ -122,7 +122,7 @@ describe('a steal on a feed card', () => {
     act(() => tree.unmount());
   });
 
-  it('decodes nothing at full resolution while it sits settled', () => {
+  it('asks no layer for a crisp draw while it sits settled', () => {
     const tree = mountCard(steal(4));
     expect(fullSize(tree)).toBe(0);
     act(() => tree.unmount());

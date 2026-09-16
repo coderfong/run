@@ -291,6 +291,15 @@ export const api = {
       timeoutMs: COLD_START_TIMEOUT_MS,
       body: JSON.stringify({ run_id: runId, t, rotation_deg: rotationDeg }),
     }),
+  // Land the runner chose to plan later. The claim screen can be left without
+  // placing a run's land; it waits for a while (`claim_defer_hours` on the
+  // server), and this lists what is still waiting, newest first.
+  pendingClaims: () => request('/me/pending-claims'),
+  // Everything the claim screen needs to reopen for one of those runs: the
+  // result /end-run gave (replayed, nothing paid twice), the stored route and
+  // its splits. Refused with 410 once the land has lapsed.
+  claimResume: (runId) =>
+    request(`/runs/${runId}/claim-resume`, { timeoutMs: COLD_START_TIMEOUT_MS }),
   // Allowlisted development scenarios. The server applies the same account
   // gate as the run simulator and returns 404 for every ordinary account.
   devSeedRivalForRun: (runId) =>

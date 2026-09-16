@@ -3,8 +3,10 @@
 // brief visual pop for excessive startup time and memory use.
 
 import { InteractionManager } from 'react-native';
+import { getCached } from '../api/cache';
 import { ICONS } from '../components/AppIcon';
 import { preloadImages } from '../utils/imagePreload';
+import { runnerAssetSources } from '../utils/runnerAssetPreload';
 import { art } from './onboardingArt';
 import { RANK_ART_SOURCES } from './rankArt';
 import { SEASON_CATEGORY_ART, SEASON_SCOPE_ART } from './seasonArt';
@@ -15,13 +17,22 @@ const artKeys = (...keys) => keys.map((key) => art(key));
 const TAB_ICONS = ['tab-home', 'tab-map', 'tab-record', 'tab-club', 'tab-you']
   .map((key) => ICONS[key]);
 
-// The only art the FIRST frame can possibly show: the loading mascot, the tab
-// bar, and the signed-out hero. This is the set launch is allowed to wait on —
-// the wider startup family below warms behind the app once it is on screen.
+// The art the FIRST frame can show: the loading mascot, the tab bar, the
+// signed-out hero — and Home as it is first drawn: the painted street it stands
+// on, the two hero cards in view, the rail tiles and the header's two icons.
+// This is the set launch is allowed to wait on (App.js holds the SPLASH for it,
+// under a guard); the wider startup family below warms behind the app once it
+// is on screen. Home used to be left out of it, so its painting, hero art and
+// tiles landed one at a time over a screen that was already showing.
 export const CRITICAL_IMAGE_ASSETS = present([
   ...TAB_ICONS,
+  ICONS.bell,
+  ICONS.energy,
   require('../../assets/art/loading.png'),
   require('../../assets/art/auth-hero.png'),
+  require('../../assets/art/card-solo.png'),
+  require('../../assets/art/season-banner.png'),
+  artKeys('homeStreet', 'railMissions', 'railPass', 'railShop', 'railRivals', 'railCrossroads'),
 ]);
 
 export const STARTUP_IMAGE_ASSETS = present([
@@ -128,7 +139,7 @@ const SCREEN_IMAGE_ASSETS = {
   // Pasers draws one cut-out on a flat `panel` header. The full-bleed
   // headerPasers square it used to show is no longer rendered, so warming it
   // would be a decode for nothing.
-  Pasers: present([artKeys('panelPasers')]),
+  Pasers: present([require('../../assets/art/pasers-park.png')]),
   // Rivals is a painted park now, and its header is transparent chrome over
   // it rather than a panel with a cut-out — so what has to be warm on arrival
   // is the park itself. It is the page's ground: decoding it after the cards
@@ -180,6 +191,22 @@ export function preloadCriticalImages() {
 
 export function preloadStartupImages() {
   return preloadImages(STARTUP_IMAGE_ASSETS);
+}
+
+// How many feed rows Home draws before anything scrolls (its FlatList's
+// initialNumToRender).
+const HOME_FIRST_ROWS = 4;
+
+// The runners on the feed rows Home will paint from the cache, warmed before
+// the splash lifts. The cache has to be hydrated first, which is why launch
+// asks for this after that read rather than beside it (App.js). A signed-out
+// launch finds nothing cached and warms nothing.
+export function preloadHomeFeedRunners() {
+  const rows = (getCached('feed')?.items || []).slice(0, HOME_FIRST_ROWS);
+  if (!rows.length) return Promise.resolve([]);
+  // The victims on a steal card wear their own runners, and those portraits
+  // are on that first screen too.
+  return preloadImages(runnerAssetSources([...rows, ...rows.map((row) => row.victims || [])]));
 }
 
 export function preloadScreenImages(names) {

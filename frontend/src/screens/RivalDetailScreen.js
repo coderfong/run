@@ -178,7 +178,7 @@ export default function RivalDetailScreen({ route, navigation }) {
                   and saying they do would be a confident lie. */}
               {analytics.battleground_beats >= 3 && analytics.battleground_lat != null ? (
                 <ToonButton
-                  title={`See the ground you fight over · ${analytics.battleground_beats} beats`}
+                  title={`See the ground you fight over (${analytics.battleground_beats} beats)`}
                   variant="neutral"
                   size="sm"
                   onPress={() =>
@@ -235,7 +235,7 @@ export default function RivalDetailScreen({ route, navigation }) {
             <View style={[styles.beat, { borderBottomColor: colors.border }]}>
               <Text style={[type.bodySmBold, { flex: 1 }]}>{beatLabel(e, rival.username)}</Text>
               <Text style={[type.caption, { color: colors.textMuted }]}>
-                {`${fmtArea(e.area_m2)} · ${ago(e.at)}`}
+                {`${fmtArea(e.area_m2)}, ${ago(e.at)}`}
               </Text>
             </View>
           </Reveal>

@@ -13,8 +13,10 @@
 // reaction is actually LEFT, which is the only time the motion means anything.
 
 import React from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+// expo-image, like the rest of the app's art (see ui/image.js).
+import { Image } from '../ui/image';
 import { getEffect } from './effectRegistry';
 import { getReactionEffect, REACTION_STILL_FRAME_INDEX } from './reactionRegistry';
 

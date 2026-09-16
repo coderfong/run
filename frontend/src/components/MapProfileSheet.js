@@ -54,7 +54,7 @@ export default function MapProfileSheet({ userId, onClose, navigation }) {
               {p.username || 'Runner'}
             </Text>
             <Text style={[type.bodyBold, { color: accent, marginTop: 2 }]}>
-              {p.clan_tag ? `[${p.clan_tag}] · ` : ''}Level {p.level}
+              {p.clan_tag ? `[${p.clan_tag}] ` : ''}Level {p.level}
             </Text>
           </View>
 

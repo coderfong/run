@@ -91,13 +91,14 @@ def reveal_for_run(
         raise HTTPException(404, "run not found")
     paserby.ensure_processed(db, run_id)
 
+    cap = max(1, min(3, int(settings.paserby_max_encounters_per_run)))
     cards = paserby.encounters_for(
-        db, user.id, limit=DEFAULT_LIMIT, run_id=run_id, unseen_only=True
+        db, user.id, limit=cap, run_id=run_id, unseen_only=True
     )
-    cast = max(1, int(settings.paserby_reveal_cast))
+    cast = min(cap, max(1, int(settings.paserby_reveal_cast)))
     return schemas.PaserbyRevealOut(
         encounters=[_out(c) for c in cards[:cast]],
-        new_count=len(cards),
+        new_count=min(cap, len(cards)),
         more_at_crossroads=max(0, len(cards) - cast),
     )
 

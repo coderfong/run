@@ -79,9 +79,9 @@ export default function DevProPanel({ style }) {
 
   return (
     <View style={[styles.panel, { borderColor: GOLD, backgroundColor: colors.card }, style]}>
-      <Text style={[type.captionMedium, { color: GOLD }]}>DEV · PASER PRO</Text>
+      <Text style={[type.captionMedium, { color: GOLD }]}>DEV: PASER PRO</Text>
       <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.sm }]}>
-        {`store ${canSell ? (IAP_ENABLED ? 'on' : 'dev') : 'OFF'} · entitled ${isPro ? 'yes' : 'no'} · runs ${runCount ?? '·'} · session prompts ${snap.autoThisSession}`}
+        {`store ${canSell ? (IAP_ENABLED ? 'on' : 'dev') : 'OFF'}, entitled ${isPro ? 'yes' : 'no'}, runs ${runCount ?? 'unknown'}, session prompts ${snap.autoThisSession}`}
       </Text>
 
       {/* THE SWITCH THAT MAKES THE REST OF THIS PANEL USEFUL.
@@ -99,7 +99,7 @@ export default function DevProPanel({ style }) {
       {__DEV__ ? (
         <>
           <Text style={[type.caption, { color: colors.textDim }]}>
-            {`Store · release switch ${IAP_ENABLED ? 'ON' : 'off'}`}
+            {`Store release switch ${IAP_ENABLED ? 'ON' : 'off'}`}
           </Text>
           <View style={styles.row}>
             <Btn
@@ -128,7 +128,7 @@ export default function DevProPanel({ style }) {
       </View>
 
       <Text style={[type.caption, { color: colors.textDim, marginTop: space.sm }]}>
-        {`Planner previews · ${plannerPreviewsLeft === Infinity ? 'unlimited' : plannerPreviewsLeft} left`}
+        {`Planner previews: ${plannerPreviewsLeft === Infinity ? 'unlimited' : plannerPreviewsLeft} left`}
       </Text>
       <View style={styles.row}>
         {[3, 1, 0].map((n) => (
@@ -178,7 +178,7 @@ export default function DevProPanel({ style }) {
         ) : (
           events.map((e, i) => (
             <Text key={`${e.at}-${i}`} style={[type.caption, { color: colors.textMuted }]} numberOfLines={1}>
-              {`${e.name} · ${e.props.source || '·'}${e.props.feature ? ` · ${e.props.feature}` : ''}`}
+              {`${e.name}, ${e.props.source || 'no source'}${e.props.feature ? `, ${e.props.feature}` : ''}`}
             </Text>
           ))
         )}

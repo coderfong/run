@@ -239,7 +239,7 @@ export default function SeasonScreen({ navigation, route }) {
 
   const art = ART_BY_KEY[bannerKey] || CATEGORY_BY_KEY[DEFAULTS.category].art;
   const changed = (category !== DEFAULTS.category ? 1 : 0) + (mode !== DEFAULTS.mode ? 1 : 0);
-  const summary = `${CATEGORY_BY_KEY[category].label} · ${SCOPE_BY_KEY[mode].label}`;
+  const summary = `${SCOPE_BY_KEY[mode].label} by ${CATEGORY_BY_KEY[category].description}`;
 
   const header = (
     <ToonHeader
@@ -323,7 +323,7 @@ export default function SeasonScreen({ navigation, route }) {
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold} numberOfLines={1}>[{item.tag}] {item.name}</Text>
                 <Text style={type.caption}>
-                  {item.member_count} members{item.league ? ` · ${LEAGUE_LABEL[item.league]}` : ''}
+                  {item.member_count} members{item.league ? `, ${LEAGUE_LABEL[item.league]} league` : ''}
                 </Text>
               </View>
             </Row>
@@ -367,7 +367,7 @@ export default function SeasonScreen({ navigation, route }) {
               type={type}
             />
             <View style={{ flex: 1 }}>
-              <Text style={type.bodyBold} numberOfLines={1}>{item.username}{isMe ? ' · you' : ''}</Text>
+              <Text style={type.bodyBold} numberOfLines={1}>{item.username}{isMe ? ' (you)' : ''}</Text>
               <Text style={type.caption}>
                 {category === 'land'
                   ? `${item.territory_count} territories`

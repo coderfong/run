@@ -28,6 +28,7 @@ final class WorkoutManager: NSObject, ObservableObject {
     private var pausedDuration: TimeInterval = 0
     private var clock: Timer?
     private var countdownTimer: Timer?
+    private let maximumRunningSpeed: CLLocationSpeed = 8.5
 
     override init() {
         super.init()
@@ -165,7 +166,11 @@ final class WorkoutManager: NSObject, ObservableObject {
         }
     }
     private func stopClock() { clock?.invalidate(); clock = nil }
-    private func showSummary() { phase = .summary; WKInterfaceDevice.current().play(.success) }
+    private func showSummary() {
+        phase = .summary
+        PhoneLink.shared.reportFinished(distanceKM: distanceText, time: elapsedText, pace: pace)
+        WKInterfaceDevice.current().play(.success)
+    }
     private func fail(_ message: String) { stopClock(); errorMessage = message; phase = .error; WKInterfaceDevice.current().play(.failure) }
 }
 
@@ -174,16 +179,29 @@ extension WorkoutManager: CLLocationManagerDelegate {
         guard let newest = locations.last else { return }
         gpsReady = newest.horizontalAccuracy > 0 && newest.horizontalAccuracy <= 35
         guard phase == .running else { return }
-        let valid = locations.filter { $0.horizontalAccuracy > 0 && $0.horizontalAccuracy <= 35 && abs($0.timestamp.timeIntervalSinceNow) < 15 }
-        guard !valid.isEmpty else { return }
-        routeBuilder?.insertRouteData(valid) { _, _ in }
-        for location in valid {
+        let accurate = locations.filter {
+            $0.horizontalAccuracy > 0 && $0.horizontalAccuracy <= 25 &&
+            abs($0.timestamp.timeIntervalSinceNow) < 10
+        }
+        var accepted: [CLLocation] = []
+        for location in accurate {
             if let previous = lastLocation {
                 let delta = location.distance(from: previous)
-                if delta >= 1 && delta <= 100 { distance += delta }
+                let seconds = location.timestamp.timeIntervalSince(previous.timestamp)
+                guard seconds > 0 else { continue }
+                let measuredSpeed = delta / seconds
+                let reportedSpeed = location.speed
+                let runningSpeed = reportedSpeed >= 0 ? max(measuredSpeed, reportedSpeed) : measuredSpeed
+
+                // Reject GPS teleports and motorised travel. Keep lastLocation
+                // unchanged so one bad bus sample cannot drag the route away.
+                guard runningSpeed <= maximumRunningSpeed, delta <= 60 else { continue }
+                if delta >= 1 { distance += delta }
             }
             lastLocation = location
+            accepted.append(location)
         }
+        if !accepted.isEmpty { routeBuilder?.insertRouteData(accepted) { _, _ in } }
     }
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) { gpsReady = false }
 }

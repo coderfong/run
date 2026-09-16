@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from .. import (
     content_moderation,
+    economy,
     elo,
     images,
     models,
@@ -56,7 +57,9 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
                    -- area above: `t.polygon` is the merged holding, so a
                    -- reinforcing run would be illustrated with a map of
                    -- everything its owner holds nearby.
-                   r.claim_result -> 'claim_rings'
+                   r.claim_result -> 'claim_rings',
+                   -- Whether the owner can still place this run's land.
+                   r.claimed_at, r.claim_area_m2, r.tier
             FROM runs r
             JOIN users u ON u.id = r.user_id
             LEFT JOIN territories t ON t.run_id = r.id
@@ -120,6 +123,20 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
     ).scalar()
     summary, mine = reaction_rules.summarise(db, [run_id], user.id)
 
+    # The owner's own run can still have land waiting to be placed, and its
+    # page is one of the ways back into the claim screen. Same rule as the
+    # Home list (/me/pending-claims): finished, unclaimed, earned ground,
+    # claimable, has a route, and still inside the window.
+    claim_pending = bool(
+        r[1] == user.id
+        and r[5] is not None
+        and r[18] is None
+        and r[9]
+        and float(r[19] or 0) > 0
+        and economy.claim_allowed(r[20] or economy.CLAIMABLE)
+        and economy.claim_window_open(r[5])
+    )
+
     return schemas.RunDetail(
         run_id=r[0], user_id=r[1], username=r[2], is_you=(r[1] == user.id),
         distance_m=float(r[3] or 0), duration_s=float(r[4] or 0), created_at=r[5],
@@ -132,6 +149,8 @@ def run_detail(run_id: str, user: models.User = Depends(current_user), db: Sessi
         reactions=[schemas.RunReaction(**x) for x in summary.get(run_id, [])],
         my_reaction=mine.get(run_id),
         caption=r[14], media=post_media.photo_urls(r[0], r[16], list(r[15] or [])),
+        claim_pending=claim_pending,
+        claim_expires_at=economy.claim_deadline(r[5]) if claim_pending else None,
     )
 
 
@@ -515,7 +534,7 @@ def weekly_recap(background: BackgroundTasks, db: Session = Depends(get_db)):
     for uid, dist, claims in rows:
         background.add_task(
             notify, [uid], "recap", "Last week on PASER",
-            f"{(dist or 0) / 1000:.1f} km · {int(claims or 0)} claims. Keep the streak alive.",
+            f"{(dist or 0) / 1000:.1f} km and {int(claims or 0)} claims. Keep the streak alive.",
             {"kind": "weekly_recap", "screen": "home"},
         )
     return {"ok": True, "users": len(rows)}

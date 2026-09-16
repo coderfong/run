@@ -26,6 +26,7 @@ import Chest from './lootbox/Chest';
 import PortraitBorder from './PortraitBorder';
 import { PartThumb } from './character/CharacterRig';
 import { getItem } from '../config/cosmetics';
+import INK_BOUNDS from '../config/itemInkBounds.json';
 
 // Rarity → the ring/tint a tile uses. Also what the lootbox art is keyed on.
 export const RARITY_COLOR = {
@@ -35,26 +36,60 @@ export const RARITY_COLOR = {
   legendary: '#F5C451',
 };
 
+// ...and the word for it. A colour is not a label: the reveal says "EPIC".
+export const RARITY_LABEL = {
+  common: 'Common',
+  rare: 'Rare',
+  epic: 'Epic',
+  legendary: 'Legendary',
+};
+
 // "headwear:crown" → { slot, id }
 function parseItemKey(key) {
   const [slot, id] = String(key || '').split(':');
   return slot && id ? { slot, id } : null;
 }
 
-// Cosmetic sources share a square canvas, but the painted area differs by
-// slot (glasses and shoes occupy much less of it than hair or a jacket). These
-// restrained optical corrections make the *visible object* read at one size
-// without changing the tile or clipping the more expansive rewards.
-const COSMETIC_PREVIEW_SCALE = {
-  face: 1,
-  hair: 1.04,
-  headwear: 1.08,
-  glasses: 1.28,
-  top: 1.1,
-  bottom: 1.16,
-  footwear: 1.22,
-  accessory: 1.08,
-};
+// ---------------------------------------------------------------------------
+// FITTING THE DRAWING, NOT THE CANVAS
+//
+// This used to zoom每 slot by a fixed amount (footwear 1.22, glasses 1.28...)
+// inside a frame with `overflow: hidden`, and the two halves of that fought
+// each other: the art is not drawn to one margin. Some cuts fill their canvas
+// edge to edge (o45t is 99% by 100% of it), so any zoom above 1 took the
+// sleeves off. Others sit in a corner (o36t's jacket is in the lower left 60%),
+// so they arrived small AND off centre. A pair of shoes is a wide strip in a
+// tall box, which is a third shape again.
+//
+// scripts/measure-item-bounds.js measures every drawing once and writes
+// itemInkBounds.json. Here that box is scaled to fill the tile and shifted so
+// its middle is the tile's middle. Nothing is clipped, because by construction
+// the drawing lands inside the tile.
+// ---------------------------------------------------------------------------
+
+// How much of the tile the drawing fills along its longer side.
+const INK_FILL = 0.84;
+// The ceiling on that zoom. A few cuts are a small drawing on a big canvas,
+// and the sources are only a few hundred pixels wide: past about two and a
+// half times, a reveal card starts showing the pixels.
+const MAX_ZOOM = 2.5;
+
+/**
+ * Where to put a cosmetic so its drawing fills the tile.
+ *
+ * Returns `{ zoom, cx, cy }`: draw PartThumb at `size * zoom`, then offset it
+ * so the drawing's centre (cx, cy, as fractions of that bigger box) sits on the
+ * tile's centre. Null for an item that was never measured, which means "draw
+ * the canvas as it is" — the safe fallback, never a crop.
+ */
+export function inkFit(slot, id) {
+  const bounds = INK_BOUNDS[`${slot}:${id}`];
+  if (!bounds) return null;
+  const [x0, y0, x1, y1] = bounds;
+  const span = Math.max(x1 - x0, y1 - y0);
+  if (!(span > 0)) return null;
+  return { zoom: Math.min(MAX_ZOOM, INK_FILL / span), cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+}
 
 export default function RewardArt({ reward, size = 56, equipped, accent = '#ec4899', animated = false }) {
   const { colors } = useTheme();
@@ -65,11 +100,26 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
     const ref = parseItemKey(key);
     const item = ref && getItem(ref.slot, ref.id);
     if (item) {
-      const previewScale = COSMETIC_PREVIEW_SCALE[ref.slot] || 1;
+      const fit = inkFit(ref.slot, item.id);
+      if (!fit) {
+        return (
+          <View style={[styles.cosmeticFrame, { width: size, height: size }]}>
+            <PartThumb slot={ref.slot} item={item} size={size} crisp />
+          </View>
+        );
+      }
+      const drawn = size * fit.zoom;
       return (
         <View style={[styles.cosmeticFrame, { width: size, height: size }]}>
-          <View style={{ transform: [{ scale: previewScale }] }}>
-            <PartThumb slot={ref.slot} item={item} size={size} />
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: size / 2 - fit.cx * drawn,
+              top: size / 2 - fit.cy * drawn,
+            }}
+          >
+            <PartThumb slot={ref.slot} item={item} size={drawn} crisp />
           </View>
         </View>
       );
@@ -114,7 +164,9 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
 }
 
 const styles = StyleSheet.create({
-  cosmeticFrame: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  // No `overflow: hidden` here any more. The fit above keeps the drawing
+  // inside the tile, and clipping is what used to cut the wide pieces off.
+  cosmeticFrame: { alignItems: 'center', justifyContent: 'center' },
   borderCore: { position: 'absolute' },
   energyText: { position: 'absolute', bottom: -2, fontSize: 12 },
 });

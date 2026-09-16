@@ -33,7 +33,9 @@ card. A high five pays a token amount of XP, once per encounter, under a daily
 ceiling — and nothing else: no coins, no energy, no territory, no rank.
 """
 
+import logging
 import math
+from bisect import bisect_left
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
@@ -42,6 +44,8 @@ from . import economy, privacy
 from .config import settings
 from .database import SessionLocal
 from .notifications import notify
+
+log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -316,17 +320,33 @@ WITH mine AS (
     SELECT at, geog FROM run_traces WHERE run_id = :run
 ),
 hits AS (
-    SELECT DISTINCT t.run_id, t.user_id
+    SELECT DISTINCT ON (t.user_id)
+           t.run_id, t.user_id, m.at AS crossed_at,
+           ST_X(m.geog::geometry) AS crossed_lon,
+           ST_Y(m.geog::geometry) AS crossed_lat,
+           ST_Distance(t.geog, m.geog) AS closest_m
     FROM run_traces t
     JOIN mine m
       ON t.at BETWEEN m.at - make_interval(secs => :win) AND m.at + make_interval(secs => :win)
      AND ST_DWithin(t.geog, m.geog, :radius)
     WHERE t.user_id <> :me
       AND t.at >= now() - make_interval(hours => :lookback)
+    ORDER BY t.user_id, ST_Distance(t.geog, m.geog), ABS(EXTRACT(EPOCH FROM (t.at - m.at))), t.run_id
 )
-SELECT h.run_id::text, h.user_id::text
+SELECT h.run_id::text, h.user_id::text, h.crossed_at,
+       h.crossed_lon, h.crossed_lat,
+       COALESCE(pp.encounter_count, 0) AS previous_count,
+       EXISTS (
+         SELECT 1 FROM paser_links pl
+         WHERE pl.status = 'accepted'
+           AND ((pl.requester_id = CAST(:me AS uuid) AND pl.addressee_id = h.user_id)
+             OR (pl.addressee_id = CAST(:me AS uuid) AND pl.requester_id = h.user_id))
+       ) AS accepted_paser
 FROM hits h
 JOIN runs r ON r.id = h.run_id
+LEFT JOIN paserby_pairs pp
+  ON pp.lower_user_id = LEAST(CAST(:me AS uuid), h.user_id)
+ AND pp.higher_user_id = GREATEST(CAST(:me AS uuid), h.user_id)
 WHERE r.ended_at IS NOT NULL
   AND r.verified
   AND COALESCE(r.visibility, 'public') = 'public'
@@ -345,9 +365,126 @@ WHERE r.ended_at IS NOT NULL
           AND p.higher_user_id = GREATEST(CAST(:me AS uuid), h.user_id)
           AND p.last_encounter_at > now() - make_interval(hours => :cooldown)
       )
-ORDER BY h.run_id
+  AND (SELECT COUNT(*) FROM paserby_encounters e
+       WHERE e.run_a_id = h.run_id OR e.run_b_id = h.run_id) < :max_per_run
+ORDER BY previous_count, accepted_paser, h.closest_m, h.user_id
 LIMIT :cap
 """
+
+_TRACE_SQL = """
+SELECT run_id::text, at, ST_X(geog::geometry), ST_Y(geog::geometry)
+FROM run_traces
+WHERE run_id = ANY(CAST(:runs AS uuid[]))
+ORDER BY run_id, at
+"""
+
+
+def _bearing(a, b):
+    """Approximate bearing in degrees; sufficient for short run segments."""
+    lon1, lat1 = map(math.radians, a)
+    lon2, lat2 = map(math.radians, b)
+    x = math.sin(lon2 - lon1) * math.cos(lat2)
+    y = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(lon2 - lon1)
+    return (math.degrees(math.atan2(x, y)) + 360) % 360
+
+
+def _angle_delta(a, b):
+    return abs((a - b + 180) % 360 - 180)
+
+
+def _nearest(trace, at, tolerance_s):
+    stamps = [p[0] for p in trace]
+    i = bisect_left(stamps, at)
+    choices = trace[max(0, i - 1):i + 1]
+    if not choices:
+        return None
+    point = min(choices, key=lambda p: abs((p[0] - at).total_seconds()))
+    return point if abs((point[0] - at).total_seconds()) <= tolerance_s else None
+
+
+def analyse_crossing(mine, theirs, crossed_at):
+    """Return co-run evidence and a quality score from two bounded traces.
+
+    Nearby samples must align in time. This prevents the same popular path,
+    run minutes apart, from looking like company and avoids any pairwise scan
+    outside the already index-narrowed candidate set.
+    """
+    aligned = []
+    for p in mine:
+        q = _nearest(theirs, p[0], settings.paserby_trace_alignment_s)
+        if q:
+            aligned.append((p[0], _metres((p[1], p[2]), (q[1], q[2]))))
+    close = [p for p in aligned if p[1] <= settings.paserby_corun_radius_m]
+    # Longest continuous nearby spell, not simply first-to-last: two brief
+    # crossings on a loop must not be mistaken for minutes spent together.
+    close_span = 0.0
+    spell_start = previous = None
+    max_gap = max(settings.paserby_trace_interval_s * 2.5, settings.paserby_trace_alignment_s)
+    for at, _ in close:
+        if previous is None or (at - previous).total_seconds() > max_gap:
+            spell_start = at
+        close_span = max(close_span, (at - spell_start).total_seconds())
+        previous = at
+
+    def heading(trace):
+        before = [p for p in trace if p[0] <= crossed_at]
+        after = [p for p in trace if p[0] >= crossed_at]
+        return _bearing(before[-1][1:], after[0][1:]) if before and after and before[-1] != after[0] else None
+
+    ha, hb = heading(mine), heading(theirs)
+    delta = _angle_delta(ha, hb) if ha is not None and hb is not None else 90.0
+    sustained = close_span >= settings.paserby_corun_min_duration_s
+    same_direction = (
+        close_span >= settings.paserby_same_direction_min_duration_s
+        and delta <= settings.paserby_same_direction_degrees
+    )
+    later = [d for at, d in aligned if at > crossed_at]
+    separated = bool(later and max(later) >= settings.paserby_separation_m)
+    quality = min(delta, 180.0) + (35 if separated else 0) - min(close_span, 180) / 6
+    nearest = min(aligned, key=lambda p: p[1]) if aligned else None
+    return {"valid": bool(nearest and nearest[1] <= settings.paserby_radius_m),
+            "crossed_at": nearest[0] if nearest else crossed_at,
+            "corun": sustained or same_direction, "quality": quality, "separated": separated,
+            "close_duration_s": close_span, "heading_delta": delta}
+
+
+def cluster_candidates(candidates):
+    """Group one physical crowd encounter without exposing that fact outward."""
+    clusters = []
+    for candidate in sorted(candidates, key=lambda c: (c["crossed_at"], c["user_id"])):
+        match = next((group for group in clusters if
+            abs((candidate["crossed_at"] - group[0]["crossed_at"]).total_seconds()) <= settings.paserby_cluster_window_s
+            and _metres(candidate["point"], group[0]["point"]) <= settings.paserby_cluster_radius_m), None)
+        if match is None:
+            clusters.append([candidate])
+        else:
+            match.append(candidate)
+    return clusters
+
+
+def select_discoveries(candidates):
+    """Deterministic discovery-first selection with invisible global/group caps."""
+    eligible = [c for c in candidates if c.get("valid", True) and not c.get("corun")]
+    # Frequent faces remain in history but only fill empty space after genuine
+    # discoveries; accepted Pasers receive the same lower-priority treatment.
+    def key(c):
+        frequent = c["previous_count"] >= settings.paserby_frequent_threshold
+        return (frequent, c.get("accepted_paser", False), c["previous_count"], -c["quality"], c["user_id"])
+    ranked = sorted(eligible, key=key)
+    cluster_of = {}
+    for i, group in enumerate(cluster_candidates(ranked)):
+        for c in group:
+            cluster_of[c["user_id"]] = i
+    selected, counts = [], {}
+    for candidate in ranked:
+        cluster = cluster_of[candidate["user_id"]]
+        if counts.get(cluster, 0) >= settings.paserby_max_per_cluster:
+            continue
+        selected.append(candidate)
+        counts[cluster] = counts.get(cluster, 0) + 1
+        if len(selected) >= settings.paserby_max_encounters_per_run:
+            break
+    return selected, len(cluster_of and set(cluster_of.values()))
 
 
 def process_run(db, run_id) -> int:
@@ -386,18 +523,58 @@ def process_run(db, run_id) -> int:
             "lookback": settings.paserby_lookback_hours,
             "cooldown": settings.paserby_pair_cooldown_hours,
             "default_enabled": bool(settings.paserby_default_enabled),
-            "cap": settings.paserby_max_encounters_per_run,
+            "cap": settings.paserby_candidate_pool_size,
+            "max_per_run": settings.paserby_max_encounters_per_run,
         },
     ).fetchall()
 
-    # One encounter per PERSON, not per run of theirs we happened to touch.
-    first_run_of = {}
-    for other_run_id, other_user_id in rows:
-        first_run_of.setdefault(other_user_id, other_run_id)
+    # Detailed analysis happens only after the indexed spatial/time probe has
+    # reduced the world to a bounded candidate pool. One bulk query avoids an
+    # N+1 trace fetch even in a race or large club crossing.
+    traces = {}
+    run_ids = [str(run_id)] + [row[0] for row in rows]
+    if rows:
+        for trace_run, at, lon, lat in db.execute(text(_TRACE_SQL), {"runs": run_ids}).fetchall():
+            traces.setdefault(trace_run, []).append((at, float(lon), float(lat)))
+
+    candidates = []
+    for other_run_id, other_user_id, crossed_at, lon, lat, previous_count, accepted_paser in rows:
+        evidence = analyse_crossing(
+            traces.get(str(run_id), []), traces.get(other_run_id, []), crossed_at
+        )
+        actual_crossed_at = evidence.pop("crossed_at")
+        candidates.append({
+            "run_id": other_run_id, "user_id": other_user_id,
+            "crossed_at": actual_crossed_at, "point": (float(lon), float(lat)),
+            "previous_count": int(previous_count or 0),
+            "accepted_paser": bool(accepted_paser), **evidence,
+        })
+    selected, cluster_count = select_discoveries(candidates)
+    log.info(
+        "paserby selection raw=%d eligible=%d clusters=%d selected=%d corun_suppressed=%d",
+        len(rows), sum(not c["corun"] for c in candidates), cluster_count, len(selected),
+        sum(c["corun"] for c in candidates),
+    )
+
+    # Lock every involved run in stable order. An encounter belongs to BOTH
+    # runs; this prevents two simultaneous finishers from pushing either run
+    # over the hard product cap.
+    lock_ids = sorted({str(run_id), *(c["run_id"] for c in selected)})
+    if lock_ids:
+        db.execute(text("SELECT id FROM runs WHERE id = ANY(CAST(:runs AS uuid[])) ORDER BY id FOR UPDATE"), {"runs": lock_ids}).fetchall()
 
     today = local_today()
     created = 0
-    for other_user_id, other_run_id in first_run_of.items():
+    for candidate in selected:
+        other_user_id, other_run_id = candidate["user_id"], candidate["run_id"]
+        counts = db.execute(text("""
+            SELECT r.id::text, COUNT(e.id)
+            FROM runs r LEFT JOIN paserby_encounters e ON e.run_a_id=r.id OR e.run_b_id=r.id
+            WHERE r.id IN (CAST(:mine AS uuid), CAST(:other AS uuid))
+            GROUP BY r.id
+        """), {"mine": str(run_id), "other": other_run_id}).fetchall()
+        if any(int(n) >= settings.paserby_max_encounters_per_run for _, n in counts):
+            continue
         a, b = sorted([me, other_user_id])
         run_a, run_b = (str(run_id), other_run_id) if a == me else (other_run_id, str(run_id))
         made = db.execute(

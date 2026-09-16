@@ -18,7 +18,7 @@ export default function BeatRow({ beat, onPress, divider = false }) {
   const tone =
     beat.kind === 'lost' ? colors.danger : beat.kind === 'held' ? colors.ok : colors.textDim;
   const title = beatTitle(beat);
-  const meta = `${fmtArea(beat.area_m2)} · ${timeAgo(beat.at)}`;
+  const meta = `${fmtArea(beat.area_m2)}, ${timeAgo(beat.at)}`;
   return (
     <PressableScale
       onPress={onPress}

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Image } from 'expo-image';
 
 import { animationSpec } from '../config/gameAnimations';
+import { Image } from '../ui/image';
 import { useReduceMotion } from '../ui/motion';
 
 /**
@@ -19,6 +19,11 @@ import { useReduceMotion } from '../ui/motion';
  * knows whether its animation is an effect or an object. A reward tile passes
  * `still` under Reduce Motion (the chest still has to be a chest); a confetti
  * burst passes nothing and correctly disappears.
+ *
+ * Through ui/image like the rest of the art, which keeps a bundled animation in
+ * the memory cache. It used to ask expo-image for `memory-disk` itself, which
+ * sent every replay after a cold start through the disk cache's single serial
+ * decode queue.
  */
 export default function GameAnimation({
   name,
@@ -56,7 +61,6 @@ export default function GameAnimation({
       style={[{ width: size, aspectRatio: spec.aspect }, style]}
       contentFit="contain"
       autoplay={!hold}
-      cachePolicy="memory-disk"
       accessible={!!accessibilityLabel}
       accessibilityLabel={accessibilityLabel}
     />

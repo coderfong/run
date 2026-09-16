@@ -42,7 +42,7 @@
 // components/pass/PassBackdrop.js.
 //
 // ONE PAINTING, TWO THEMES. There is no night park, and a midday sky behind a
-// dark page reads as a bug, so dark mode lays the page's own near-black over
+// dark page reads as a bug, so dark mode lays the page's own night colour over
 // the whole thing — the same dusk treatment, and the same reasoning, as
 // components/pass/PassBackdrop.js. The header that sits on this is told about
 // the wash so its copy can flip with it; see ToonHeader's `onArt`.
@@ -55,15 +55,16 @@ import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Image } from '../../ui/image';
 import { art, RIVALS_PARK } from '../../config/onboardingArt';
-import { useTheme } from '../../theme';
+import { darkColors, useTheme, withAlpha } from '../../theme';
 
 const SRC = art('rivalsPark');
 
 // Dark mode's dusk wash: the page's own base surface (theme/dark.js) at the
 // strength that leaves the treeline and the dogs readable and the sky no
 // longer daylight. Exported because the header on top has to know whether it
-// is drawing on a bright sky or a dark one.
-export const RIVALS_NIGHT = 'rgba(11,13,16,0.72)';
+// is drawing on a bright sky or a dark one. Derived from the palette rather
+// than typed out, so it follows the night colour (see HomeBackdrop's).
+export const RIVALS_NIGHT = withAlpha(darkColors.bg, 0.72);
 
 // The most of the window the two bands may take between them, so a short one
 // (a small phone with the text size wound up, or a window we don't ship today)

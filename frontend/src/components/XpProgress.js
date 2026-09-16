@@ -102,7 +102,8 @@ export default function XpProgress({
   gained = 0,
   accent = '#7CF0D0',
   delay = 420,
-  // Fired once per level the bar rolls THROUGH, with the level just reached.
+  // Fired once per level the bar rolls THROUGH, with the level just reached
+  // and the level it rolled out of.
   // The bar is the only thing that knows when that happens — the totals it is
   // handed say where the runner ended up, not which boundaries were crossed on
   // the way — and the celebration is far too big a thing for this row to own,
@@ -144,10 +145,11 @@ export default function XpProgress({
       // reason the bar is being watched. Ordinary XP does not buzz.
       haptic.success();
       // `steps[i]` is the level the bar has just ARRIVED in, which is the one
-      // that was reached. Read off the steps rather than off `stepIndex`,
-      // which has not been committed yet at this point in the callback.
+      // that was reached, and `steps[i - 1]` the one it rolled out of. Read
+      // off the steps rather than off `stepIndex`, which has not been
+      // committed yet at this point in the callback.
       const reached = steps[i]?.level;
-      if (reached != null) onLevelUp?.(reached);
+      if (reached != null) onLevelUp?.(reached, steps[i - 1]?.level);
     }
   };
 
@@ -220,7 +222,7 @@ export default function XpProgress({
               weight={INK.thin}
               inset={3}
             >
-              <Text style={[styles.levelChipText, { color: D.textDim }]}>LEVEL ·</Text>
+              <Text style={[styles.levelChipText, { color: D.textDim }]}>LEVEL</Text>
             </Framed>
           </View>
         )}

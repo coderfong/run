@@ -107,10 +107,10 @@ function EffectCard({ effect, background, loop, speed, replayToken, favorite, un
           <Pressable onPress={onFavorite} hitSlop={8}><Text style={{ fontSize: 20 }}>{favorite ? '★' : '☆'}</Text></Pressable>
         </View>
         <Text style={[type.caption, { color: colors.textMuted }]}>
-          {effect.type} · {effect.frameWidth ? `${effect.frameWidth}×${effect.frameHeight}` : 'vector'}
-          {effect.frameCount ? ` · ${effect.frameCount}f` : ''}{effect.fps ? ` · ${effect.fps} FPS` : ''}
+          {effect.type}, {effect.frameWidth ? `${effect.frameWidth}×${effect.frameHeight}` : 'vector'}
+          {effect.frameCount ? `, ${effect.frameCount}f` : ''}{effect.fps ? `, ${effect.fps} FPS` : ''}
         </Text>
-        <Text numberOfLines={2} style={[type.caption, { color: colors.textMuted }]}>{(effect.tags || []).join(' · ')}</Text>
+        <Text numberOfLines={2} style={[type.caption, { color: colors.textMuted }]}>{(effect.tags || []).join(', ')}</Text>
         <Pressable onPress={onUnusable} style={styles.markButton}>
           <Text style={[type.caption, { color: unusable ? colors.danger : colors.textMuted }]}>
             {unusable ? 'Marked unusable' : 'Mark unusable'}

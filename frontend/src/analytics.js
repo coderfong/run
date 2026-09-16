@@ -46,6 +46,8 @@ export const EVENTS = {
   // The planner's free allowance being spent. The single most useful number
   // for tuning FREE_PLANNER_PREVIEWS.
   PLANNER_FREE_USE: 'territory_planner_free_use',
+  PASERBY_REVEAL_VIEWED: 'paserby_reveal_viewed',
+  PASERBY_HIGH_FIVE: 'paserby_highfive',
 };
 
 // Every `source` a PRO event may carry. A source that is not on this list is

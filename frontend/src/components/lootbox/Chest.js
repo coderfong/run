@@ -3,16 +3,27 @@
 // WHY IT IS VECTOR AND NOT ART. Four rarities times a shut and an open pose is
 // eight bitmaps, and this app is already over the OTA asset ceiling — every
 // new PNG is another reason a JS-only change needs a full native build. It is
-// also the wrong tool: the whole point of the gamble is that the box CHANGES
+// also the wrong tool: the whole point of the opening is that the box CHANGES
 // RARITY WHILE YOU WATCH, and a crossfade between two bitmaps is a dissolve,
-// not a recolour. Here the rarity is a fill, so it can be animated between
-// values and the gold furniture stays exactly where it was.
+// not a recolour. Here the rarity is a fill, so it can be swapped under a
+// flash frame and the gold furniture stays exactly where it was.
 //
 // THE GOLD IS CONSTANT, THE PANELS ARE THE RARITY. Both halves of the
 // reference use the same yellow banding on a coloured body, which is what
 // makes the upgrade legible: the object is obviously the same object, and only
 // the material changed. Recolouring the whole chest would read as a different
 // chest arriving.
+//
+// THE FINISH IS FURNITURE TOO. A shine down the dome, the rim's shadow falling
+// across each panel, a highlight on each strap, studs on the band and a
+// keyhole in the clasp. None of it takes the rarity, all of it is the same at
+// every tier, and together it is what stops the chest reading as a flat icon
+// at the size the opening screen draws it.
+//
+// THE MYSTERY PALETTE. Before a box has said what it is, LootboxGamble draws
+// it in `mystery`: night blue panels on the night blue stage, so the gold is
+// the brightest thing on screen and every colour the light climbs to reads as
+// a change of colour rather than a change of shade.
 //
 // THE LID IS TWO FLAT DRAWINGS, AND NOTHING HERE IS 3D. It used to be one lid
 // hinged with `rotateX` under a `perspective`, pivoted by a transformOrigin
@@ -33,21 +44,26 @@
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import Svg, { Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 
 // The rarity palette. `body` is the panel inside the gold, `shade` is the same
 // panel where the lid shadows the base, and `page` is the full bleed
-// background the gamble screen floods behind everything.
+// background the opening screen floods behind everything.
 //
 // Taken off the reference rather than from the app's own rarity tints: those
 // are chosen to sit as small chips inside a dark card, and the same values
 // blown up to a whole screen are muddy. These are the saturated flats the
 // reference uses at full size.
+//
+// `mystery` is not a rarity a box can be granted at — it is the box before it
+// has told you anything, and it is deliberately the darkest of them, so every
+// step the light climbs out of it is a step up in brightness as well as hue.
 export const CHEST_COLORS = {
   common: { page: '#8FA6BC', body: '#5E7F9E', shade: '#4A6883', deep: '#3A5268', ink: '#22323F' },
   rare: { page: '#3FC5EE', body: '#1B9FD6', shade: '#1385BA', deep: '#0E6A96', ink: '#07425E' },
   epic: { page: '#A45FEF', body: '#7E38D2', shade: '#6A2BB6', deep: '#54219B', ink: '#2E0A55' },
   legendary: { page: '#FFB020', body: '#F08A00', shade: '#D07400', deep: '#A85B00', ink: '#5E3300' },
+  mystery: { page: '#1E1A4A', body: '#4E5198', shade: '#40428A', deep: '#2E2E68', ink: '#18173D' },
 };
 
 // The furniture. One yellow for every rarity, deliberately.
@@ -55,6 +71,10 @@ const GOLD = '#FFC93C';
 const GOLD_DARK = '#E8A61E';
 const GOLD_LIGHT = '#FFE07A';
 const CLASP_FACE = '#FFF6DC';
+// The keyhole. A deep brown rather than black, so it reads as a hole punched
+// in gold rather than as a sticker on it.
+const KEYHOLE = '#7A4E0E';
+const SHINE = '#FFFFFF';
 
 export function chestColors(rarity) {
   return CHEST_COLORS[rarity] || CHEST_COLORS.common;
@@ -122,12 +142,33 @@ function Lid({ width, rarity }) {
         d={`M 26 ${LID_H} L 26 48 Q 26 26 48 26 L 172 26 Q 194 26 194 48 L 194 ${LID_H} Z`}
         fill={c.body}
       />
+      {/* The rim's shadow falling across the top of the panel. It follows the
+          panel's own rounded edge, which is what makes the gold read as
+          standing proud of it rather than printed on it. */}
+      <Path
+        d="M 26 48 Q 26 26 48 26 L 172 26 Q 194 26 194 48 L 194 56 Q 194 35 172 35 L 48 35 Q 26 35 26 56 Z"
+        fill={c.shade}
+      />
+      {/* A glint on the panel: it is lacquer, not felt. */}
+      <Rect x="40" y="44" width="9" height="20" rx="4.5" fill={SHINE} opacity={0.22} />
       {/* The vertical strap over the crown of the lid. */}
       <Path d={`M 96 12 L 124 12 L 124 ${LID_H} L 96 ${LID_H} Z`} fill={GOLD} />
       <Path d={`M 96 12 L 124 12 L 124 22 L 96 22 Z`} fill={GOLD_LIGHT} />
+      <Rect x="99" y="22" width="5" height={LID_H - 44} fill={GOLD_LIGHT} opacity={0.85} />
       {/* The band along the seam, which is what the clasp hangs off. */}
       <Rect x="10" y={LID_H - 22} width="200" height="22" fill={GOLD} />
       <Rect x="10" y={LID_H - 22} width="200" height="6" fill={GOLD_LIGHT} />
+      <Circle cx="34" cy={LID_H - 9} r="5" fill={GOLD_LIGHT} stroke={GOLD_DARK} strokeWidth="2" />
+      <Circle cx="186" cy={LID_H - 9} r="5" fill={GOLD_LIGHT} stroke={GOLD_DARK} strokeWidth="2" />
+      {/* The shine, along the top left of the dome, where the light is. */}
+      <Path
+        d="M 18 62 L 18 44 Q 18 18 44 18 L 72 18"
+        stroke={SHINE}
+        strokeWidth="5"
+        strokeLinecap="round"
+        fill="none"
+        opacity={0.55}
+      />
     </Svg>
   );
 }
@@ -208,7 +249,11 @@ export function ChestBase({ width, rarity, open }) {
       {/* The panel, or the open mouth once the lid has come off. An open chest
           showing its own front panel would look shut with the top removed. */}
       <Rect x="26" y="6" width="168" height={BASE_H - 24} fill={c.shade} />
+      {/* The seam band's shadow across the top of it. */}
+      <Rect x="26" y="6" width="168" height="8" fill={c.deep} />
+      <Rect x="40" y="22" width="9" height="20" rx="4.5" fill={SHINE} opacity={0.16} />
       <Rect x="96" y="6" width="28" height={BASE_H - 24} fill={GOLD} />
+      <Rect x="99" y="6" width="5" height={BASE_H - 24} fill={GOLD_LIGHT} opacity={0.85} />
       {open ? <Rect x="26" y="0" width="168" height="10" rx="5" fill="#FFF6DC" /> : null}
       {/* Feet. */}
       <Rect x="30" y={BASE_H - 14} width="42" height="14" fill={GOLD_DARK} />
@@ -218,13 +263,37 @@ export function ChestBase({ width, rarity, open }) {
   );
 }
 
-/** The clasp: gold plate, pale shield face. Rides the lid's seam. */
+/** The clasp: gold plate, pale shield face, keyhole. Rides the lid's seam. */
 function Clasp({ width }) {
   const size = width * 0.2;
   return (
     <Svg width={size} height={size} viewBox="0 0 44 44">
       <Path d="M 6 4 L 38 4 Q 44 4 44 10 L 44 30 Q 44 40 22 44 Q 0 40 0 30 L 0 10 Q 0 4 6 4 Z" fill={GOLD} />
       <Path d="M 11 10 L 33 10 Q 36 10 36 14 L 36 27 Q 36 34 22 37 Q 8 34 8 27 L 8 14 Q 8 10 11 10 Z" fill={CLASP_FACE} />
+      <Circle cx="22" cy="19" r="4.2" fill={KEYHOLE} />
+      <Path d="M 19.6 21 L 24.4 21 L 25.8 30 L 18.2 30 Z" fill={KEYHOLE} />
+    </Svg>
+  );
+}
+
+/**
+ * The shut chest as ONE flat shape, for the moments it has to go white.
+ *
+ * A climb step flashes the chest out and brings it back in the next colour,
+ * and a silhouette laid over it and faded is what makes that read as a flash
+ * OF THE CHEST rather than as a white rectangle over one. Same box as the shut
+ * chest; the clasp sits inside the body, so it needs no shape of its own.
+ */
+export function ChestSilhouette({ width, color = '#FFFFFF' }) {
+  const { height } = chestSize(width);
+  const H = LID_H + BASE_H;
+  return (
+    <Svg width={width} height={height} viewBox={`0 0 ${W} ${H}`}>
+      <Path
+        d={`M 10 ${H - 12} L 10 44 Q 10 10 44 10 L 176 10 Q 210 10 210 44 L 210 ${H - 12}
+            Q 210 ${H} 198 ${H} L 22 ${H} Q 10 ${H} 10 ${H - 12} Z`}
+        fill={color}
+      />
     </Svg>
   );
 }
@@ -233,8 +302,8 @@ function Clasp({ width }) {
  * The whole chest, standing still: shut, or open with its lid thrown back.
  *
  * `width` sizes everything; the drawing's own proportions do the rest. The
- * gamble does not use this: it stacks the pieces above itself so it can swing
- * the lid between them. Icons and rows use this.
+ * opening screen does not use this: it stacks the pieces above itself so it
+ * can swing the lid between them. Icons and rows use this.
  */
 export default function Chest({ width = 240, rarity = 'common', open = false, style }) {
   const { lidH, insideH, height } = chestSize(width);

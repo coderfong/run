@@ -214,6 +214,7 @@ describe('the screen', () => {
       steps: [{ upgraded: false, rarity: 'rare' }, { upgraded: true, rarity: 'epic' },
               { upgraded: false, rarity: 'epic' }],
     });
+    const unlock = jest.spyOn(api, 'addUnlock').mockResolvedValue({ ok: true });
 
     let tree;
     await act(async () => {
@@ -226,10 +227,13 @@ describe('the screen', () => {
     expect(bonus).toHaveBeenCalled();
     // The box is the reward, so it opens rather than being announced.
     expect(open).toHaveBeenCalled();
+    // The item is safely owned before the reveal begins.
+    expect(unlock).toHaveBeenCalled();
     // The gamble keeps the outcome hidden until the third swipe, so the
     // granted rarity must NOT be on screen yet.
     expect(texts(tree)).toContain('MYSTERY');
-    expect(texts(tree)).toContain('Swipe to unlock · 3 left');
+    expect(pressable(tree, '3 charges remaining')).toBeTruthy();
+    expect(texts(tree)).not.toContain('What’s inside');
     expect(texts(tree)).not.toContain('RARE');
   });
 

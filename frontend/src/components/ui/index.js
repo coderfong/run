@@ -3,6 +3,9 @@
 //            EmptyState, Skeleton, Sheet } from '../components/ui';
 
 export { default as Screen } from './Screen';
+// The night page's dot grid. Screen draws it already; pages that paint their
+// own `colors.bg` drop it in as their first child.
+export { default as PageTexture } from './PageTexture';
 export { default as Card } from './Card';
 export { default as Row } from './Row';
 export { default as StatValue } from './StatValue';

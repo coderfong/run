@@ -307,10 +307,10 @@ function RunnerSheet({ encounter, busy, onClose, onHighFive, onOpen, onHide }) {
           </Row>
           <Text style={type.caption} numberOfLines={1}>
             {`Level ${encounter.level || 0}`}
-            {encounter.clan_name ? ` · ${encounter.clan_name}` : ''}
+            {encounter.clan_name ? `, ${encounter.clan_name}` : ''}
           </Text>
           <Text style={[type.caption, { color: rung || colors.textMuted, marginTop: 1 }]}>
-            {`${familiarityLabel(encounter)} · ${encounterSubtitle(encounter)}`}
+            {`${familiarityLabel(encounter)}, ${encounterSubtitle(encounter).toLowerCase()}`}
           </Text>
         </View>
       </Row>
@@ -597,7 +597,7 @@ export default function CrossroadsScreen({ navigation }) {
       haptic.success();
       rigFor(e.id).current?.play('celebrate');
       setTimeout(() => meRig.current?.play('celebrate'), 220);
-      toast.success(out.xp_gained > 0 ? `High five sent · +${out.xp_gained} XP` : 'High five sent');
+      toast.success(out.xp_gained > 0 ? `High five sent, +${out.xp_gained} XP` : 'High five sent');
     } catch (err) {
       toast.error(err.message || 'Could not send that high five');
     } finally {
@@ -755,7 +755,7 @@ export default function CrossroadsScreen({ navigation }) {
         eyebrow={
           encounters.length
             ? `${encounters.length} ${encounters.length === 1 ? 'runner' : 'runners'}` +
-              (pages.length > 1 ? ` · ${pages.length} plazas` : '')
+              (pages.length > 1 ? ` in ${pages.length} plazas` : '')
             : 'nobody yet'
         }
         title="CROSSROADS"

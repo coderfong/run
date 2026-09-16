@@ -1,6 +1,6 @@
 /**
  * The main tabs are a swipeable pager whose other three tabs are built once the
- * app is idle, and no tab is ever frozen or detached.
+ * app is idle, one at a time, and no tab is ever frozen or detached.
  *
  * This has been "fixed" the wrong way twice, both times as a side effect of a
  * change about something else, and both times nothing failed:
@@ -13,6 +13,11 @@
  *             suspended content with display: none, and Fabric does not mount
  *             a display: none subtree, so every tab switch tore down one
  *             screen's native views and built another's. The swipe went too.
+ *
+ * Changed ON PURPOSE on 2026-09-15: the idle preload used to jump from zero to
+ * three, which built Map, Club and You in a single commit, the longest freeze
+ * in the app. It now climbs one tab per step (see App.js). Still after launch,
+ * still every tab, still never inside a gesture.
  *
  * App.js is too big to mount here, so this reads the navigator's source. It is
  * a tripwire, not a spec: if the tabs change on purpose, change this with them
@@ -40,10 +45,14 @@ describe('the main tab navigator', () => {
     expect(mainTabs).toMatch(/tabBarPosition="bottom"/);
   });
 
-  it('builds the other tabs once the app is idle, not at launch and not on first visit', () => {
+  it('builds the other tabs once the app is idle, one per step, not at launch and not on first visit', () => {
     expect(mainTabs).toMatch(/useState\(0\)/);
     expect(mainTabs).toMatch(/InteractionManager\.runAfterInteractions/);
-    expect(mainTabs).toMatch(/setPreloadDistance\(3\)/);
+    // Climbs 1, 2, 3. Never a single commit that builds three tabs at once.
+    expect(mainTabs).toMatch(/step\(1\)/);
+    expect(mainTabs).toMatch(/setPreloadDistance\(distance\)/);
+    expect(mainTabs).toMatch(/distance < 3/);
+    expect(mainTabs).not.toMatch(/setPreloadDistance\(3\)/);
     expect(mainTabs).toMatch(/lazyPreloadDistance: preloadDistance/);
   });
 

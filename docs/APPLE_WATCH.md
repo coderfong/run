@@ -101,7 +101,8 @@ phone initiated runs, but the primary watch UI does not depend on reachability.
 
 1. **Create the watch app's signing credentials once, interactively.** The
    watch target is a new bundle id, `com.pacerrun.app.watchkitapp`, which needs
-   its own App ID and provisioning profile. The usual
+   its own App ID, HealthKit on that App ID, and a provisioning profile that
+   includes `com.apple.developer.healthkit`. The usual
    `eas build --non-interactive` stops on missing credentials, so run this once
    and sign in to Apple when it asks:
 
@@ -111,6 +112,19 @@ phone initiated runs, but the primary watch UI does not depend on reachability.
    ```
 
    After that, the non-interactive command works again.
+
+   **Whenever the watch target's entitlements change, remake its profile by
+   hand.** A profile only carries the capabilities its App ID had when it was
+   generated, and non-interactive builds skip checking stored profiles with
+   Apple (the log says so), so they keep reusing the old one. That is what
+   failed builds 72 to 76 on 2026-09-14: the watch gained HealthKit, and its
+   2026-09-11 profile had none. The fix: enable the capability on the
+   `com.pacerrun.app.watchkitapp` App ID, run
+   `npx eas-cli credentials --platform ios`, choose production, then
+   Build Credentials, then Provisioning Profile: Delete one from your project,
+   then PaserWatch, and finish with the interactive build above, which makes a
+   fresh profile. Never drop the entitlement to get past the error instead: the
+   watch's workout session and the phone's Health sync both need it.
 2. **App Store Connect needs Apple Watch screenshots.** Once a build with a
    watch app is attached to the version, the version page gets an Apple Watch
    section, and submission is blocked until it has at least one screenshot.

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -7,7 +7,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 
-const AnimatedImage = Animated.createAnimatedComponent(Image);
+import { Image } from '../ui/image';
 
 export function spriteFrameCoordinates(frameIndex, columns, frameCount) {
   'worklet';
@@ -103,7 +103,7 @@ export default function SpriteAnimation({
     return undefined;
   }, [playing, controller, baseFrame, finished, frame, startedAt]);
 
-  const imageStyle = useAnimatedStyle(() => {
+  const sheetStyle = useAnimatedStyle(() => {
     const position = spriteFrameCoordinates(frame.value, safeColumns, safeCount);
     return {
       transform: [
@@ -123,29 +123,42 @@ export default function SpriteAnimation({
         style,
       ]}
     >
-      <AnimatedImage
-        source={source}
-        resizeMode="stretch"
-        fadeDuration={0}
-        onError={onError}
+      {/* THE SHEET MOVES; THE PICTURE ON IT DOES NOT. The frame clock
+          translates this wrapper on the UI thread, and the image inside it is
+          a plain one that never restyles.
+
+          It used to be React Native's own Image, made animatable. That hands a
+          bundled file to UIKit undecoded, and UIKit decodes it on the MAIN
+          thread the first time it is drawn: for a sheet of up to 34 MB at 3x,
+          a visible stall at the start of a claim's effects. Nothing could
+          decode one ahead of time either, because RN's prefetch fills a cache
+          that refuses anything over 2 MB. Through ui/image the decode happens
+          off the main thread into a cache that keeps it, and ResultScreen warms
+          a style's sheets while the run replay is still flying, so a sheet is
+          on screen from its first frame. */}
+      <Animated.View
         style={[
-          {
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            width: sheetWidth * drawScale,
-            height: sheetHeight * drawScale,
-          },
-          pixelated ? styles.pixelated : null,
-          imageStyle,
+          styles.sheet,
+          { width: sheetWidth * drawScale, height: sheetHeight * drawScale },
+          sheetStyle,
         ]}
-      />
+      >
+        <Image
+          source={source}
+          resizeMode="stretch"
+          fadeDuration={0}
+          onError={onError}
+          style={[styles.fill, pixelated ? styles.pixelated : null]}
+        />
+      </Animated.View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   viewport: { overflow: 'hidden' },
+  sheet: { position: 'absolute', left: 0, top: 0 },
+  fill: { width: '100%', height: '100%' },
   // Android respects resizeMode/nearest-neighbour source pixels here; web
   // additionally reads this style key. Native ignores unknown web-only keys.
   pixelated: { imageRendering: 'pixelated' },

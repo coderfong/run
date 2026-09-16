@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 import WatchConnectivity
 
 /// The iPhone end of the link to the PASER watch app (targets/watch).
@@ -39,6 +40,7 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
     if session.activationState == .notActivated {
       session.activate()
     }
+    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
   }
 
   func status() -> [String: Bool] {
@@ -133,6 +135,22 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
 
   func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
     forward(message)
+  }
+
+  func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+    guard userInfo["event"] as? String == "watchRunFinished" else { return }
+    let distance = userInfo["distance"] as? String ?? "0.00"
+    let content = UNMutableNotificationContent()
+    content.title = "Run saved · \(distance) km"
+    content.body = "Your route is ready. Open PASER to plan your attack."
+    content.sound = .default
+    content.userInfo = ["category": "watch_run_saved", "screen": "record"]
+    let request = UNNotificationRequest(
+      identifier: "watch-run-\(UUID().uuidString)",
+      content: content,
+      trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+    )
+    UNUserNotificationCenter.current().add(request)
   }
 
   private func forward(_ message: [String: Any]) {

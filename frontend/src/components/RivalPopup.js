@@ -137,10 +137,10 @@ export function RivalPopupHost({ onOpen }) {
               NEW RIVALRY
             </OutlinedText>
             <Text style={[toonType.sub, { fontSize: 15, color: colors.text, textAlign: 'left' }]}>
-              You took {fmtArea(total)}
+              You took {fmtArea(total)} {line}
             </Text>
             <Text style={[type.caption, { textAlign: 'left' }]} numberOfLines={1}>
-              {line} · tap to see the rivalry
+              Tap to see the rivalry
             </Text>
           </View>
 

@@ -65,8 +65,8 @@ const IDENTITY_MIN = PORTRAIT + 10 + 118;
 
 // What a stat shows when there is nothing to show. A dash is the usual glyph
 // for this and the usual glyph is exactly the problem — the app has no dashes
-// in its copy, so the empty slot gets the same mid-dot the app already uses as
-// its separator.
+// in its copy, so the empty slot gets a mid dot, which is the one job that
+// glyph still has: it never sits between words.
 const NO_VALUE = '·';
 
 // The photo half of the paired map+photo row. Measures its own width rather
@@ -177,7 +177,7 @@ function FramedStat({ item, index, label, value, unit, valueColor }) {
   );
 }
 
-export default function FeedCard({ item, navigation, autoPlaySteal = false, screenFocused = true, onScreen = true }) {
+export default function FeedCard({ item, navigation, autoPlaySteal = false, onScreen = true }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
@@ -220,9 +220,14 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
   // card at first paint rather than a fetch later.
   const { reactions, mine, burst, react } = useRunReactions(item.id, item);
 
+  // Leaving the screen closes an open picker. Listened for only while one is
+  // open, off the navigator's own blur event: the feed used to pass focus down
+  // as a prop, which re-rendered every card on every tab switch for a popover
+  // that is almost never up.
   useEffect(() => {
-    if (!screenFocused) setPickerAt(null);
-  }, [screenFocused]);
+    if (!pickerOpen || !navigation?.addListener) return undefined;
+    return navigation.addListener('blur', () => setPickerAt(null));
+  }, [pickerOpen, navigation]);
 
   // The picker opens UPWARD, out of the card, so it never lands on the route or
   // the caption the way a drop-down did. That puts it outside every ancestor's
@@ -352,7 +357,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
                 whichever hue the run was dealt, in either scheme. */}
             <Text style={[type.bodyBold, { color: onCard }]} numberOfLines={1}>
               {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}
-              {item.is_you ? ' · you' : ''}
+              {item.is_you ? ' (you)' : ''}
             </Text>
             {/* WHAT HAPPENED AND WHEN, in its own drawn frame. One line, like
                 the name above it — left to wrap it would go to two on the
@@ -375,7 +380,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, scre
                 style={[type.captionMedium, { color: NB.ink }]}
                 numberOfLines={1}
               >
-                {item.closed_loop ? 'took ground' : 'ran a path'} · {timeAgo(item.created_at)}
+                {item.closed_loop ? 'took ground' : 'ran a path'} {timeAgo(item.created_at)}
               </Text>
             </Framed>
           </View>

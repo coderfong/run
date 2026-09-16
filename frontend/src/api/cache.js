@@ -93,8 +93,17 @@ async function flush() {
 }
 
 // Read the saved blob into memory. Call once, before the first screen renders —
-// after that every `getCached` is a synchronous map lookup.
-export async function hydrateCache() {
+// after that every `getCached` is a synchronous map lookup. Callers share the
+// one read: launch waits on it twice now (the cache gate, and the first
+// screen's art, which is chosen from what the cache holds — see App.js), and a
+// second call would fetch and parse the whole blob again.
+let hydration = null;
+export function hydrateCache() {
+  if (!hydration) hydration = readSavedCache();
+  return hydration;
+}
+
+async function readSavedCache() {
   if (hydrated) return;
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -300,6 +309,10 @@ const AFTER_RUN = [
   // Every board's "you are 84th of 1,203" line. A run that moved somebody up
   // and then showed them their old position is worse than showing nothing.
   'standing:',
+  // A run that finished with its land unplaced is waiting to be claimed, and
+  // Home's "plan your attack" card reads this list. A claim takes one off it
+  // (AFTER_CLAIM spreads this whole list).
+  'me:pending-claims',
 ];
 const AFTER_CLAIM = [
   ...AFTER_RUN,

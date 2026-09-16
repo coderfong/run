@@ -295,7 +295,7 @@ export default function BuyProSheet({
             ? 'Coming soon'
             : busy
               ? 'Activating…'
-              : `${pitch.cta || 'Subscribe'} · ${priceFor(selected)} per ${selected.period}`
+              : `${pitch.cta || 'Subscribe'} for ${priceFor(selected)} per ${selected.period}`
         }
         onPress={subscribe}
         disabled={!canSell || busy || restoring}

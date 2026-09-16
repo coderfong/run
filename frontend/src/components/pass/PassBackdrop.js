@@ -40,7 +40,7 @@
 //
 // ONE PAINTING, TWO THEMES. There is no night version of the plaza and a
 // daylight sky behind a dark page reads as a bug, so dark mode puts the page's
-// own near-black over the whole thing at 72%: the same plaza at dusk, with the
+// own night colour over the whole thing at 72%: the same plaza at dusk, with the
 // hoardings and the skyline still legible under it. Painting a second scene is
 // the better answer if the page ever earns it.
 //
@@ -52,7 +52,7 @@ import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Image } from '../../ui/image';
 import { art, PASS_BACKDROP_GROUND } from '../../config/onboardingArt';
-import { useTheme } from '../../theme';
+import { darkColors, useTheme, withAlpha } from '../../theme';
 
 const SRC = art('passBackdrop');
 const META = SRC ? Image.resolveAssetSource(SRC) : null;
@@ -83,7 +83,9 @@ export const PASS_HEADER_ESTIMATE = 197;
 
 // Dark mode's dusk wash: the page's own base surface (theme/dark.js) at the
 // strength that leaves the skyline readable and the sky no longer daylight.
-const NIGHT = 'rgba(11,13,16,0.72)';
+// Derived from the palette rather than typed out, so it follows the night
+// colour (see HomeBackdrop's HOME_NIGHT).
+const NIGHT = withAlpha(darkColors.bg, 0.72);
 
 /**
  * Drop it as the FIRST child of the page, with the page itself transparent —

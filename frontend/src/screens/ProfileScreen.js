@@ -4,7 +4,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Constants from 'expo-constants';
-import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ChevronRight, Lock } from 'lucide-react-native';
@@ -111,10 +110,6 @@ export default function ProfileScreen({ navigation }) {
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
   const { equipped } = useAvatar();
   const { trailGlow, setTrailGlow } = useSettings();
-  // The drift in the header stops when the tab is not the one you are on.
-  // This is a tab screen, so without it the leaves keep crossing for the whole
-  // session behind Home, the map and the shop.
-  const focused = useIsFocused();
   // The rank rail scrolls sideways inside a tab pager that also swipes
   // sideways; while a finger is on the rail, the You tab stops swiping.
   const lockTabSwipe = useTabSwipeLock(navigation);
@@ -280,14 +275,16 @@ export default function ProfileScreen({ navigation }) {
           of it instead of floating over the road. */}
       <Reveal style={[styles.header, { minHeight: headerH, paddingTop: skyTop + space.lg }]}>
         {/* Wind through the scene. A no-op when the leaf art is not in the
-            build, so this line is safe whatever the asset selection says. */}
+            build, so this line is safe whatever the asset selection says. It
+            stops itself when You is not the tab in front; this page used to
+            read focus to tell it, which re-rendered the whole page on every
+            tab switch. */}
         <SceneBackdrop
           variant="profile"
           minHeight={headerH}
           skyAbove={skyTop}
           bleed
           ambient="leaves"
-          playing={focused}
         />
         <PressableScale
           onPress={() => navigation.navigate('AvatarStudio')}
@@ -582,7 +579,7 @@ export default function ProfileScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={type.bodyBold}>{shortDate(r.created_at)}</Text>
                 <Text style={type.caption}>
-                  {km(r.distance_m)} km · {r.closed_loop ? `${km2(r.area_m2)} km² claimed` : 'not claimed'}
+                  {km(r.distance_m)} km, {r.closed_loop ? `${km2(r.area_m2)} km² claimed` : 'not claimed'}
                 </Text>
               </View>
               {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
@@ -697,7 +694,7 @@ export default function ProfileScreen({ navigation }) {
         </View>
         {paserby?.total ? (
           <Button
-            title={`Crossroads · ${paserby.total}`}
+            title={`Crossroads (${paserby.total})`}
             variant="secondary"
             size="sm"
             full={false}

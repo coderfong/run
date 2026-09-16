@@ -19,7 +19,13 @@ export * from './nb';
 export * from './toon';
 export { haptic } from './haptics';
 export { colors as lightColors } from './light';
-export { ThemeProvider, useTheme, useThemedStyles, useThemedType } from './ThemeContext';
+export {
+  ThemeProvider,
+  hydrateThemePreference,
+  useTheme,
+  useThemedStyles,
+  useThemedType,
+} from './ThemeContext';
 
 import { darkColors } from './dark';
 import { fonts, radius, space, shadow, type, runTuning, withAlpha } from './tokens';

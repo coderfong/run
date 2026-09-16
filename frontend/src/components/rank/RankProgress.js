@@ -119,7 +119,7 @@ export default function RankProgress({
       </View>
 
       <Text style={[styles.caption, falling && styles.captionFalling]} numberOfLines={1}>
-        {falling ? `Ground lost · ${caption}` : caption}
+        {falling ? `Ground lost, ${caption.charAt(0).toLowerCase()}${caption.slice(1)}` : caption}
       </Text>
     </View>
   );
