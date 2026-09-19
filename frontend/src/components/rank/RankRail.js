@@ -159,7 +159,7 @@ export default function RankRail({ standing, floors = [], onPress, onGrab, style
     // Only show the current tier's divisions, not the full ladder
     const currentTier = RANK_TIERS[standing.tier];
     // Create 3 division nodes for the current tier
-    return NUMERALS.map((numeral, i) => ({
+    return DIVISIONS.map((numeral, i) => ({
       key: `${currentTier.key}-${numeral}`,
       label: numeral,
       color: currentTier.color,

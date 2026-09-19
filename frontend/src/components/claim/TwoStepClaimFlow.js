@@ -342,28 +342,6 @@ function RotationStep({ deg, accent, onChange, onCommit, onInteractionChange, di
 
 const HANDLE = 32;
 
-// Import type and other theme utilities that were missing
-const type = {
-  caption: { fontSize: 11, fontWeight: '500' },
-  bodySm: { fontSize: 13, fontWeight: '400' },
-  bodySmBold: { fontSize: 13, fontWeight: '600' },
-  headlineSm: { fontSize: 16, fontWeight: '600' },
-  statSm: { fontSize: 14, fontWeight: '600' },
-};
-
-const radius = {
-  md: 8,
-  pill: 20,
-};
-
-const NB = {
-  strokeThin: 1,
-};
-
-function nbInk(scheme, card) {
-  return scheme === 'dark' ? '#ffffff' : '#000000';
-}
-
 // ---------------------------------------------------------------------------
 // MAIN COMPONENT
 // ---------------------------------------------------------------------------

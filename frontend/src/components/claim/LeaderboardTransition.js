@@ -313,6 +313,7 @@ export default function LeaderboardTransition({
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const T = timingFor(reducedMotion);
+  const c = colors;
 
   const wipe = useSharedValue(0);
   const dashX = useSharedValue(-160);
@@ -540,7 +541,7 @@ function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
     <View style={styles.boardWrapper}>
       {/* Top fade gradient */}
       <View style={styles.fadeTop} pointerEvents="none">
-        <View style={[styles.fadeGradient, { backgroundColor: colors.bg }]} />
+        <View style={[styles.fadeGradient, { backgroundColor: c.bg }]} />
       </View>
 
       <Animated.ScrollView
@@ -578,7 +579,7 @@ function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
 
       {/* Bottom fade gradient */}
       <View style={styles.fadeBottom} pointerEvents="none">
-        <View style={[styles.fadeGradient, { backgroundColor: colors.bg }]} />
+        <View style={[styles.fadeGradient, { backgroundColor: c.bg }]} />
       </View>
     </View>
   );

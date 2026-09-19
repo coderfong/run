@@ -267,6 +267,7 @@ const FeedRow = React.memo(
         navigation={navigation}
         autoPlaySteal={autoPlaySteal}
         onScreen={onScreen}
+        index={index}
       />
     );
     if (!animate) return card;

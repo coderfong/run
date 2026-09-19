@@ -183,7 +183,7 @@ function FramedStat({ item, index, label, value, unit, valueColor }) {
   );
 }
 
-export default function FeedCard({ item, navigation, autoPlaySteal = false, onScreen = true }) {
+export default function FeedCard({ item, navigation, autoPlaySteal = false, onScreen = true, index = 0 }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
@@ -637,6 +637,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
         />
       </View>
     </Card>
+    </Reveal>
     {/* The picker. `transparent` and un-animated, so what you see is the strip
         arriving on its own 160ms rise and nothing else — a modal that dims or
         slides would read as a screen, not as a thing that popped up under your
