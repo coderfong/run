@@ -95,16 +95,7 @@ export const OUTFIT_TOPS = [
   { id: 'k14t', label: 'Grey crop puffer', family: 'Crop puffer', colorway: 'Grey', img: require('../../assets/character/outfit/ofT114.png'), layout: { w: 1.0, top: 0.305 }, rarity: 'common', unlock: free },
   { id: 'k15t', label: 'Slate pocket hoodie', family: 'Pocket hoodie', colorway: 'Slate', img: require('../../assets/character/outfit/ofT115.png'), layout: { w: 1.05, top: 0.2696, dx: 0.0067 }, rarity: 'common', unlock: free },
   // --- PASER running cosmetics (2026-09-17) ---
-  { id: 'eastcoastsunrisesinglet', label: 'East Coast Sunrise Singlet', family: 'Running vest', colorway: 'Sunrise', img: require('../../assets/character/_src/outfit/ofT112.png'), layout: { w: 0.61, top: 0.3328, dx: -0.0017 }, rarity: 'rare', unlock: free },
-  { id: 'marinanighttee', label: 'Marina Night Reflective Tee', family: 'Reflective tee', colorway: 'Marina night', img: require('../../assets/character/_src/outfit/ofT113.png'), layout: { w: 1.0, top: 0.3172 }, rarity: 'epic', unlock: free },
-  { id: 'parkconnectortee', label: 'Park Connector Tech Tee', family: 'Tech tee', colorway: 'Park connector', img: require('../../assets/character/_src/outfit/ofT114.png'), layout: { w: 1.0, top: 0.3172 }, rarity: 'rare', unlock: free },
-  { id: 'kallangtracksinglet', label: 'Kallang Track Singlet', family: 'Track singlet', colorway: 'Kallang', img: require('../../assets/character/_src/outfit/ofT115.png'), layout: { w: 0.61, top: 0.3328, dx: -0.0017 }, rarity: 'rare', unlock: free },
-  { id: 'monsoonshell', label: 'Monsoon Running Shell', family: 'Running shell', colorway: 'Monsoon', img: require('../../assets/character/_src/outfit/ofT116.png'), layout: { w: 1.05, top: 0.298 }, rarity: 'rare', unlock: free },
-  { id: 'humiditymeshtee', label: 'Humidity Mesh Tee', family: 'Mesh tee', colorway: 'Humidity', img: require('../../assets/character/_src/outfit/ofT117.png'), layout: { w: 1.0, top: 0.3172 }, rarity: 'common', unlock: free },
-  { id: 'clubtrainingtee', label: 'Club Training Tee', family: 'Training tee', colorway: 'Club', img: require('../../assets/character/_src/outfit/ofT118.png'), layout: { w: 1.0, top: 0.3172 }, rarity: 'common', unlock: free },
-  { id: 'clubracesinglet', label: 'Club Race Singlet', family: 'Race singlet', colorway: 'Club', img: require('../../assets/character/_src/outfit/ofT119.png'), layout: { w: 0.61, top: 0.3328, dx: -0.0017 }, rarity: 'rare', unlock: free },
-  { id: 'trailsleevelesstop', label: 'Trail Sleeveless Top', family: 'Sleeveless top', colorway: 'Trail', img: require('../../assets/character/_src/outfit/ofT120.png'), layout: { w: 1.0, top: 0.3172 }, rarity: 'common', unlock: free },
-  { id: 'nationaldaysinglet', label: 'National Day Race Singlet', family: 'Race singlet', colorway: 'National day', img: require('../../assets/character/_src/outfit/ofT121.png'), layout: { w: 0.61, top: 0.3328, dx: -0.0017 }, rarity: 'epic', unlock: free },
+  // Top items commented out - assets not yet available
 ];
 
 export const OUTFIT_BOTTOMS = [
@@ -163,14 +154,7 @@ export const OUTFIT_BOTTOMS = [
   { id: 'wb110', label: 'Charcoal race shorts', family: 'Race shorts', colorway: 'Charcoal', img: require('../../assets/character/outfit/ofB410.png'), layout: { w: 1.0667, top: 0.3982, dx: 0.0033 }, rarity: 'epic', unlock: passOnly },
   { id: 'wb111', label: 'Sage cropped joggers', family: 'Cropped joggers', colorway: 'Sage', img: require('../../assets/character/outfit/ofB411.png'), layout: { w: 1.3267, top: 0.297 }, rarity: 'common', unlock: free },
   // --- PASER running cosmetics (2026-09-17) ---
-  { id: 'splitraceshorts', label: 'Split Race Shorts', family: 'Running shorts', colorway: 'Split', img: require('../../assets/character/outfit/ofB401.png'), layout: { w: 1.11, top: 0.4072, dx: 0.005 }, rarity: 'rare', unlock: free },
-  { id: 'training5shorts', label: '5-inch Training Shorts', family: 'Training shorts', colorway: 'Black', img: require('../../assets/character/outfit/ofB402.png'), layout: { w: 1.11, top: 0.4072, dx: 0.005 }, rarity: 'common', unlock: free },
-  { id: 'twoinoneshorts', label: '2-in-1 Running Shorts', family: 'Running shorts', colorway: 'Black', img: require('../../assets/character/outfit/ofB403.png'), layout: { w: 1.11, top: 0.4072, dx: 0.005 }, rarity: 'common', unlock: free },
-  { id: 'performancehalftights', label: 'Performance Half Tights', family: 'Half tights', colorway: 'Black', img: require('../../assets/character/outfit/ofB404.png'), layout: { w: 1.2, top: 0.3733 }, rarity: 'common', unlock: free },
-  { id: 'fullrunningtights', label: 'Full Running Tights', family: 'Running tights', colorway: 'Black', img: require('../../assets/character/outfit/ofB405.png'), layout: { w: 1.2333, top: 0.4212, dx: -0.0033 }, rarity: 'common', unlock: free },
-  { id: 'trailrunningshorts', label: 'Trail Running Shorts', family: 'Trail shorts', colorway: 'Green', img: require('../../assets/character/outfit/ofB406.png'), layout: { w: 1.11, top: 0.4072, dx: 0.005 }, rarity: 'common', unlock: free },
-  { id: 'raceskort', label: 'Race Skort', family: 'Skort', colorway: 'Black', img: require('../../assets/character/outfit/ofB407.png'), layout: { w: 1.1633, top: 0.3823, dx: 0.0017 }, rarity: 'common', unlock: free },
-  { id: 'modestrunningpants', label: 'Lightweight Modest Running Pants', family: 'Running pants', colorway: 'Black', img: require('../../assets/character/outfit/ofB408.png'), layout: { w: 1.3267, top: 0.297 }, rarity: 'common', unlock: free },
+  // Bottom items commented out - assets conflict with existing items
 ];
 
 export const FOOTWEAR = [
@@ -237,14 +221,7 @@ export const FOOTWEAR = [
   { id: 'wf085', label: 'Burgundy strap heels', family: 'Strap heels', colorway: 'Burgundy', img: require('../../assets/character/footwear/shoe385.png'), footL: require('../../assets/character/footwear/shoe385L.png'), footR: require('../../assets/character/footwear/shoe385R.png'), footLBack: require('../../assets/character/footwear/shoe385L-back.png'), footRBack: require('../../assets/character/footwear/shoe385R-back.png'), feet: { l: { w: 0.5417, dx: -0.2906, top: 0.8605, rot: 0 }, r: { w: 0.4989, dx: 0.276, top: 0.8573, rot: 0 } }, layout: { w: 0.7, top: 0.8081 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },
   { id: 'wf086', label: 'Sky blue slides', family: 'Slides', colorway: 'Sky blue', img: require('../../assets/character/footwear/shoe386.png'), footL: require('../../assets/character/footwear/shoe386L.png'), footR: require('../../assets/character/footwear/shoe386R.png'), footLBack: require('../../assets/character/footwear/shoe386L-back.png'), footRBack: require('../../assets/character/footwear/shoe386R-back.png'), feet: { l: { w: 0.4268, dx: -0.2414, top: 0.9186, rot: 0 }, r: { w: 0.4499, dx: 0.2087, top: 0.9027, rot: 0 } }, layout: { w: 0.7, top: 0.8062 }, rarity: 'common', unlock: free },
   // --- PASER running cosmetics (2026-09-17) ---
-  { id: 'dailytrainer', label: 'Daily Trainer', family: 'Trainers', colorway: 'Daily', img: require('../../assets/character/_src/footwear/09_daily_trainer.png'), layout: { w: 0.8967, top: 0.8442, dx: 0.0017 }, rarity: 'common', unlock: free },
-  { id: 'maxcushiontrainer', label: 'Max Cushion Trainer', family: 'Trainers', colorway: 'Max cushion', img: require('../../assets/character/_src/footwear/10_max_cushion_trainer.png'), layout: { w: 0.8967, top: 0.8442, dx: 0.0017 }, rarity: 'common', unlock: free },
-  { id: 'temposhoe', label: 'Tempo Shoe', family: 'Running shoes', colorway: 'Tempo', img: require('../../assets/character/_src/footwear/11_tempo_shoe.png'), layout: { w: 0.7, top: 0.8094 }, rarity: 'rare', unlock: free },
-  { id: 'carbonracer', label: 'Carbon Race Shoe', family: 'Running shoes', colorway: 'Carbon', img: require('../../assets/character/_src/footwear/12_carbon_race_shoe.png'), layout: { w: 0.7, top: 0.8094 }, rarity: 'epic', unlock: free },
-  { id: 'trailgripshoe', label: 'Trail Grip Shoe', family: 'Trail shoes', colorway: 'Trail grip', img: require('../../assets/character/_src/footwear/13_trail_grip_shoe.png'), layout: { w: 0.7, top: 0.8114 }, rarity: 'rare', unlock: free },
-  { id: 'wetweatherrunner', label: 'Wet Weather Runner', family: 'Running shoes', colorway: 'Wet weather', img: require('../../assets/character/_src/footwear/14_wet_weather_runner.png'), layout: { w: 0.7, top: 0.8094 }, rarity: 'rare', unlock: free },
-  { id: 'reflectivenightrunner', label: 'Reflective Night Runner', family: 'Running shoes', colorway: 'Reflective night', img: require('../../assets/character/_src/footwear/15_reflective_night_runner.png'), layout: { w: 0.7, top: 0.8094 }, rarity: 'epic', unlock: free },
-  { id: 'recoveryslides', label: 'Recovery Slides', family: 'Slides', colorway: 'Recovery', img: require('../../assets/character/_src/footwear/16_recovery_slides.png'), layout: { w: 0.9071, top: 0.8411, dx: -0.0161 }, rarity: 'rare', unlock: free },
+  // Footwear items commented out - assets not yet available
 ];
 
 export const OUTFIT_SUITS = [
