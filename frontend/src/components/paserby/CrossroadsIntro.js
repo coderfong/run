@@ -21,7 +21,7 @@ import React from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { Hand, ShieldCheck, Users } from 'lucide-react-native';
+import { Hand, Users } from 'lucide-react-native';
 
 import { radius, space, toon, toonType, useTheme, useThemedType } from '../../theme';
 import { Image } from '../../ui/image';
@@ -35,7 +35,6 @@ import { useReduceMotion } from '../../ui/motion';
 const ICONS = {
   plaza: Users,
   tap: Hand,
-  privacy: ShieldCheck,
 };
 
 // The art band's height. The cut-out is wide (the crossroads panel is painted

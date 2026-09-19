@@ -397,6 +397,7 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   // The clan's own colour leads — it is the one most runners want, and the one
   // the rest of the app already uses for them — and a duplicate is dropped
   // rather than shown twice when the clan colour is also one of the presets.
+  // Show all accents but lock options after the first 2 for free users
   const swatches = useMemo(() => {
     const choices = [...(clanColor ? [{ key: 'clan', color: clanColor }] : []), ...ACCENTS];
     const distinct = choices.filter((item, index) => choices.findIndex((other) =>
@@ -629,17 +630,31 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
           >
             <View>
               <View style={styles.chipRow}>
-                {swatches.map((s) => {
+                {swatches.map((s, index) => {
                   const on = accent === s.color;
+                  // Lock all options after the first 2 (clan color + first accent)
+                  const isLocked = index >= 2;
                   return (
                     <PressableScale
                       key={s.key}
-                      onPress={() => setAccent(s.color)}
+                      onPress={() => {
+                        if (isLocked) {
+                          tapLockedCustomize('accent');
+                        } else {
+                          setAccent(s.color);
+                        }
+                      }}
                       accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                      accessibilityLabel={`${s.key} accent`}
+                      accessibilityState={{ selected: on, disabled: isLocked }}
+                      accessibilityLabel={`${s.key} accent${isLocked ? ', locked - upgrade to PRO' : ''}`}
                       style={[styles.swatch, { backgroundColor: s.color }, on && styles.swatchOn]}
-                    />
+                    >
+                      {isLocked && (
+                        <View style={styles.lockOverlay}>
+                          <Lock size={14} color="#FFFFFF" strokeWidth={2.5} />
+                        </View>
+                      )}
+                    </PressableScale>
                   );
                 })}
               </View>
@@ -802,6 +817,17 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // The selected swatch is ringed rather than recoloured — a colour control
   // that changes colour to show selection is unreadable.
   swatchOn: { borderWidth: 3, borderColor: '#FFFFFF' },
+  lockOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 17,
+  },
 
   previewShadow: {
     borderRadius: radius.lg,

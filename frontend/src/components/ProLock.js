@@ -116,13 +116,13 @@ export function ProFrosted({ children, style, blur = FROST_BLUR }) {
  * three decisions in theme/nb.js applied to the one control on the page that
  * is asking for money, so it reads as a button rather than as a warning.
  */
-function ProStrip({ type, tight }) {
+function ProStrip({ type, tight, customLabel }) {
   const ink = nbTextOn(GOLD);
   return (
     <View style={[styles.strip, tight && styles.stripTight, { backgroundColor: GOLD }]}>
       <Lock size={13} color={ink} strokeWidth={3} />
       <Text style={[type.labelSm, { color: ink, flex: 1 }]}>PASER PRO</Text>
-      <Text style={[type.labelSm, { color: ink, opacity: 0.7 }]}>Tap to unlock</Text>
+      <Text style={[type.labelSm, { color: ink, opacity: 0.7 }]}>{customLabel || 'Tap to unlock'}</Text>
     </View>
   );
 }
@@ -205,8 +205,9 @@ export function ProLockedSection({ context, feature, title, blurb, peek, childre
  *                           says exactly which stats sit behind the lock.
  * @param {string} [label]   fallback when there is nothing to frost: one line
  *                           naming what is missing.
+ * @param {string} [customLabel] custom text for the unlock button
  */
-export function ProInlineLock({ context, feature, label, preview, style }) {
+export function ProInlineLock({ context, feature, label, preview, style, customLabel }) {
   const { open, hidden } = useProTeaser(context, feature);
   const { colors } = useTheme();
   const type = useThemedType();
@@ -258,7 +259,7 @@ export function ProInlineLock({ context, feature, label, preview, style }) {
             {label}
           </Text>
         )}
-        <ProStrip type={type} tight />
+        <ProStrip type={type} tight customLabel={customLabel} />
       </Pressable>
     </HardShadow>
   );

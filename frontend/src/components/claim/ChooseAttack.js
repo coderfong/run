@@ -417,6 +417,23 @@ export default function ChooseAttack({
 
   return (
     <View>
+      {/* Move the breakdown (NEW/ENEMY/YOURS/GAIN) to the top */}
+      <Framed
+        frame={frameVariant('box', 'ground-score')}
+        tint={team.glow}
+        fill={D.cardAlt}
+        weight={INK.thin}
+        pose={framePose('ground-score')}
+        inset={false}
+        style={[styles.breakdownFrame, stale && styles.breakdownStale, styles.breakdownTop]}
+        contentStyle={styles.breakdown}
+      >
+        <GroundMetric label="NEW" value={landStr(p?.new_m2)} color={team.glow} dim={!p?.new_m2} />
+        <GroundMetric label="ENEMY" value={landStr(p?.enemy_m2)} color={D.danger} dim={!p?.enemy_m2} />
+        <GroundMetric label="YOURS" value={landStr(p?.mine_m2)} color={withAlpha(team.glow, 0.5)} dim={!p?.mine_m2} />
+        <GroundMetric label="GAIN" value={landStr(gained)} color={team.glow} dim={!gained} />
+      </Framed>
+
       <View style={styles.recGrid} testID="claim-recommendations">
         {recs.map((r) => {
           const active = !!r.cell &&
@@ -456,6 +473,7 @@ export default function ChooseAttack({
           );
         })}
       </View>
+
       {/* one tap to a good answer — nobody wants to study a map mid-cooldown */}
       <PositionRail
         t={pose.t}
@@ -476,26 +494,6 @@ export default function ChooseAttack({
         onInteractionChange={onInteractionChange}
         disabled={disabled}
       />
-
-      {/* What this position actually does to the map. Dimmed rather than
-          replaced while a fresher answer is in flight: the shape on the map is
-          already right and blanking the numbers every time the finger moves
-          reads as breakage, not as loading. */}
-      <Framed
-        frame={frameVariant('box', 'ground-score')}
-        tint={team.glow}
-        fill={D.cardAlt}
-        weight={INK.thin}
-        pose={framePose('ground-score')}
-        inset={false}
-        style={[styles.breakdownFrame, stale && styles.breakdownStale]}
-        contentStyle={styles.breakdown}
-      >
-        <GroundMetric label="NEW" value={landStr(p?.new_m2)} color={team.glow} dim={!p?.new_m2} />
-        <GroundMetric label="ENEMY" value={landStr(p?.enemy_m2)} color={D.danger} dim={!p?.enemy_m2} />
-        <GroundMetric label="YOURS" value={landStr(p?.mine_m2)} color={withAlpha(team.glow, 0.5)} dim={!p?.mine_m2} />
-        <GroundMetric label="GAIN" value={landStr(gained)} color={team.glow} dim={!gained} />
-      </Framed>
       </View>
 
       {/* What this move is. The price used to live here and on the button, then
@@ -539,7 +537,7 @@ export default function ChooseAttack({
           explainer on the global map) and used to be invisible until the
           border itself changed days later. */}
       {!!p?.action && (
-        <Text style={styles.costLine} numberOfLines={1}>
+        <Text style={[styles.costLine, styles.costLineMoved]} numberOfLines={1}>
           {`Costs ${p.energy_cost} energy`}
           {(p.enemy_m2 > 0 || p.defended_m2 > 0) ? ', ranked' : ''}
           {p.applied_discounts?.includes('first_claim_of_day')
@@ -577,6 +575,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   recPressable: { flex: 1, minWidth: 0 },
   recFill: { width: '100%' },
+  breakdownTop: { marginBottom: 7 },
   // A short card, not a square. The square (see git history) had room to spare
   // above and below the icon+label stack and read as oversized next to the
   // rail; a 1.5 ratio keeps the icon glanceable and the label at a normal size
@@ -678,6 +677,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   moveNote: { ...type.caption, color: colors.textMuted, flex: 1, minWidth: 0 },
 
   costLine: { ...type.caption, color: colors.textDim, marginTop: -3, marginBottom: 6 },
+  costLineMoved: { marginTop: 4, marginBottom: 2 },
 
   defendedNote: { ...type.caption, color: colors.textDim, marginBottom: 5 },
 

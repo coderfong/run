@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInUp, FadeInDown, LayoutAnimation, Platform, UIManager } from 'react-native-reanimated';
 import { Pencil } from 'lucide-react-native';
 import AppIcon from './AppIcon';
 import RouteThumb, { hasRouteData } from './RouteThumb';
@@ -27,7 +28,7 @@ import { NEUTRAL } from '../state/clan';
 import { useAvatar } from '../state/avatar';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
-import { PressableScale, haptic } from '../ui/motion';
+import { PressableScale, haptic, Reveal } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
 import { Card, OverflowMenu, Row } from './ui';
@@ -37,6 +38,11 @@ import ReactionBar, { POPOVER_HEIGHT, POPOVER_WIDTH, ReactionPopover, ReactionTr
 import { useRunReactions } from '../hooks/useRunReactions';
 import { timeAgo } from '../utils/time';
 import { RunPostEditorModal } from './RunPostEditor';
+
+// Enable layout animations for Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // The runner's portrait on a feed row. At 34 the bust inside the frame was a
 // thumbnail of a thumbnail — the whole point of the character is that you can
@@ -304,28 +310,29 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
 
   return (
     <>
-    <Card
-      onPress={() => {
-        setPickerAt(null);
-        navigation?.navigate('RunDetail', { runId: item.id });
-      }}
-      // Every run card gets a colour dealt off its own id, so the feed reads
-      // as a stack of coloured blocks rather than a column of identical white
-      // rectangles — which is the single biggest thing separating this from
-      // the reference boards. Dealt, not chosen: the same run is the same
-      // colour on every render and on every device, and nothing has to store
-      // a colour per row. See `nbAccentFor`.
-      //
-      // It is the card's FILL now, not just its drop — a wash of the dealt
-      // hue (see `cardFill`), not the flat saturated block it started as. The pieces that
-      // used to need a neutral ground for their own colour (the route map, a
-      // photo, the clan-coloured stats) each sit in their own drawn frame with
-      // its own paper now, so they no longer read directly against the fill and
-      // the clan-colour-wins rule holds where it still meets the chrome.
-      accent={accent}
-      fill={cardFill}
-      style={{ marginBottom: space.md }}
-    >
+    <Reveal from="down" delay={index * 30}>
+      <Card
+        onPress={() => {
+          setPickerAt(null);
+          navigation?.navigate('RunDetail', { runId: item.id });
+        }}
+        // Every run card gets a colour dealt off its own id, so the feed reads
+        // as a stack of coloured blocks rather than a column of identical white
+        // rectangles — which is the single biggest thing separating this from
+        // the reference boards. Dealt, not chosen: the same run is the same
+        // colour on every render and on every device, and nothing has to store
+        // a colour per row. See `nbAccentFor`.
+        //
+        // It is the card's FILL now, not just its drop — a wash of the dealt
+        // hue (see `cardFill`), not the flat saturated block it started as. The pieces that
+        // used to need a neutral ground for their own colour (the route map, a
+        // photo, the clan-coloured stats) each sit in their own drawn frame with
+        // its own paper now, so they no longer read directly against the fill and
+        // the clan-colour-wins rule holds where it still meets the chrome.
+        accent={accent}
+        fill={cardFill}
+        style={{ marginBottom: space.md }}
+      >
       <Row between testID="feed-card-header" style={styles.header}>
         {/* Grows into whatever the buttons leave, and never below IDENTITY_MIN
             — at which point the header wraps and the buttons take the next
@@ -538,33 +545,36 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
           boxes (see ClaimPayoff's people-you-took-land-from card) instead of
           a stray line of small grey text. */}
       {post.caption ? (
-        <Framed
-          frame={frameVariant('box', `caption:${item.id}`)}
-          tint={withAlpha(c.stroke, 0.55)}
-          fill={colors.card}
-          weight={INK.thin}
-          pose={framePose(`caption:${item.id}`)}
-          inset={false}
-          style={styles.captionFrame}
-          contentStyle={styles.captionInner}
-        >
-          <Text style={[type.labelSm, { color: c.stroke }]}>NOTE</Text>
-          <Text style={[type.bodyBold, styles.captionBody]}>{post.caption}</Text>
-        </Framed>
+        <Reveal from="up" delay={150}>
+          <Framed
+            frame={frameVariant('box', `caption:${item.id}`)}
+            tint={withAlpha(c.stroke, 0.55)}
+            fill={colors.card}
+            weight={INK.thin}
+            pose={framePose(`caption:${item.id}`)}
+            inset={false}
+            style={styles.captionFrame}
+            contentStyle={styles.captionInner}
+          >
+            <Text style={[type.bodyBold, styles.captionBody]}>{post.caption}</Text>
+          </Framed>
+        </Reveal>
       ) : null}
 
       {/* The chip summary only — the picker itself now lives on the trigger
           up in the header (see `reactionAnchor`), not here. It costs no row
           at all when there is nothing to show. */}
-      <ReactionBar
-        compact
-        reactions={reactions}
-        mine={mine}
-        color={c.stroke}
-        onReact={react}
-        burst={burst}
-        style={styles.reactionsRow}
-      />
+      <Reveal from="down" delay={200}>
+        <ReactionBar
+          compact
+          reactions={reactions}
+          mine={mine}
+          color={c.stroke}
+          onReact={react}
+          burst={burst}
+          style={styles.reactionsRow}
+        />
+      </Reveal>
 
       {/* The steal, on the card. It starts SETTLED — heads on the bar pulling
           a face, the amount stamped on — and detonates when tapped, because a
@@ -772,13 +782,13 @@ const makeStyles = (colors) =>
     },
     photoCount: {
       position: 'absolute',
-      right: 10,
-      bottom: 10,
-      minWidth: 34,
-      height: 30,
-      paddingHorizontal: 8,
-      borderRadius: 15,
-      backgroundColor: 'rgba(0,0,0,0.72)',
+      left: 8,
+      top: 8,
+      minWidth: 32,
+      height: 26,
+      paddingHorizontal: 6,
+      borderRadius: 13,
+      backgroundColor: 'rgba(0,0,0,0.75)',
       alignItems: 'center',
       justifyContent: 'center',
     },

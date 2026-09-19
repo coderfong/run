@@ -67,9 +67,6 @@ export const PLANS = [
 // notices in review.
 export const PRO_PERKS = [
   ['route', 'Territory route planner'],
-  ['layers', 'Territory map layers'],
-  ['steal', 'Rival history'],
   ['streak', 'Run and territory stats'],
-  ['trophy', 'Rank history and filters'],
   ['sparkles', 'Exclusive styles'],
 ];

@@ -60,10 +60,30 @@ const CHARACTER_STEPS = [
     sheetTitle: 'Choose your bottoms',
   },
   {
+    key: 'footwear',
+    slotKey: 'footwear',
+    title: 'Step into your shoes',
+    sheetTitle: 'Choose your footwear',
+  },
+  {
     key: 'headwear',
     slotKey: 'headwear',
     title: 'Top it off',
     sheetTitle: 'Choose your hat',
+    optional: true,
+  },
+  {
+    key: 'glasses',
+    slotKey: 'glasses',
+    title: 'Shades or specs?',
+    sheetTitle: 'Choose your eyewear',
+    optional: true,
+  },
+  {
+    key: 'accessory',
+    slotKey: 'accessory',
+    title: 'One finishing touch',
+    sheetTitle: 'Choose your accessory',
     optional: true,
   },
 ];

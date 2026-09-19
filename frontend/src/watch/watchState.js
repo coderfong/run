@@ -141,6 +141,7 @@ export function buildWatchState(input = {}, { seq = 0, nowMs = Date.now() } = {}
     notice: after && typeof after.notice === 'string' ? after.notice : '',
     summaryDistance: ended ? formatDistanceKm(after.distanceM) : '',
     summaryTime: ended && Number(after.elapsedMs) > 0 ? formatClock(after.elapsedMs) : '',
+    avatarData: typeof input.avatarData === 'string' ? input.avatarData : null,
   };
 }
 

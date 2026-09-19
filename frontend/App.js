@@ -49,6 +49,7 @@ import AvatarStudioScreen from './src/screens/AvatarStudioScreen';
 import ShopScreen from './src/screens/ShopScreen';
 import RankDropWatcher from './src/components/rank/RankDropWatcher';
 import ProgressionScreen from './src/screens/ProgressionScreen';
+import RankProgressionScreen from './src/screens/RankProgressionScreen';
 import MissionsScreen from './src/screens/MissionsScreen';
 import RankLadderScreen from './src/screens/RankLadderScreen';
 import PasersScreen from './src/screens/PasersScreen';
@@ -157,7 +158,7 @@ function useHeaderChrome() {
       // default. Forward navigation pushes the next page in; back follows the
       // same gesture in reverse. Accessibility Reduce Motion turns it into a
       // clean cut without making every other runner's navigation feel static.
-      animation: reduced ? 'none' : 'slide_from_right',
+      animation: reduced ? 'none' : 'default',
       gestureEnabled: true,
       fullScreenGestureEnabled: !reduced,
     }),
@@ -213,7 +214,7 @@ function HomeStack() {
       <HomeStackNav.Screen
         name="ClubDetail"
         component={ClubDetailScreen}
-        options={{ headerShown: true, title: 'Club' }}
+        options={{ headerShown: false }}
       />
       {/* The side rail's destinations, registered HERE as well as under You.
           They used to be opened with navigate('You', { screen: … }), which
@@ -226,6 +227,7 @@ function HomeStack() {
           panel headers (with a back button), like Season and Rivals — the
           native one would stack a second bar above them. */}
       <HomeStackNav.Screen name="Progression" component={ProgressionScreen} />
+      <HomeStackNav.Screen name="RankProgression" component={RankProgressionScreen} />
       <HomeStackNav.Screen name="Missions" component={MissionsScreen} />
       <HomeStackNav.Screen name="RankLadder" component={RankLadderScreen} />
       <HomeStackNav.Screen name="Rivals" component={RivalsScreen} />
@@ -284,7 +286,7 @@ function ClubStack() {
       <ClubStackNav.Screen
         name="ClubDetail"
         component={ClubDetailScreen}
-        options={{ headerShown: true, title: 'Club' }}
+        options={{ headerShown: false }}
       />
       <ClubStackNav.Screen
         name="ClubChat"

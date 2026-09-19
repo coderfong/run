@@ -45,11 +45,11 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
   // Green is reserved for success everywhere else in the app (see the note on
   // NB_DECK in theme/nb.js), which is exactly what a finished mission is.
   const fill = claimable
-    ? withAlpha(colors.ok, 0.18)
+    ? withAlpha('#22c55e', 0.25)
     : done
       ? withAlpha(colors.text, 0.04)
       : colors.card;
-  const edge = claimable ? colors.ok : nbInk(scheme, fill);
+  const edge = claimable ? '#22c55e' : nbInk(scheme, fill);
 
   const body = (
     <View style={[styles.wrap, { opacity: done ? 0.75 : 1 }]} onLayout={onLayout}>
@@ -81,9 +81,7 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
             <Text style={[styles.rewardText, { color: colors.text }]}>{mission.reward}</Text>
           </View>
           {claimable ? (
-            <View style={[styles.claimTab, { backgroundColor: colors.ok }]}>
-              <Text style={styles.claimText}>Claim</Text>
-            </View>
+            <View style={[styles.claimTab, { backgroundColor: '#22c55e' }]} />
           ) : null}
           {done ? (
             <View style={styles.tick}>
@@ -159,6 +157,5 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: radius.pill,
   },
-  claimText: { fontFamily: fonts.bold, fontSize: 11, color: '#08130c', letterSpacing: 0.3 },
   tick: { marginTop: space.xs },
 });

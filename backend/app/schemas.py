@@ -1410,6 +1410,7 @@ class ClanMemberOut(BaseModel):
     joined_at: UtcDatetime
     week_distance_m: float = 0.0
     week_claims: int = 0
+    area_m2: float = 0.0
 
 
 class WeekGoalOut(BaseModel):

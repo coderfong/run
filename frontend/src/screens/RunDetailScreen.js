@@ -219,7 +219,9 @@ export default function RunDetailScreen({ navigation, route }) {
           </View>
         </ProLockedSection> : null}
         <PressableScale accessibilityRole="button" accessibilityLabel="Open comments and run details" onPress={() => setDetailsOpen(true)} style={{ paddingTop: 10, alignItems: 'center' }}>
-          <Text style={type.bodySmBold}>Comments{d.is_you ? ' & territory details' : ''}  ↗</Text>
+          <View style={[styles.detailsButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[type.bodySmBold, { color: colors.text }]}>Comments{d.is_you ? ' & territory details' : ''}  ↗</Text>
+          </View>
         </PressableScale>
       </Screen>
       <Modal visible={detailsOpen} animationType="slide" onRequestClose={() => setDetailsOpen(false)}>
@@ -340,6 +342,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
 
   commentRow: { marginBottom: space.md },
+  detailsButton: {
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.sm,
+    borderWidth: 2,
+  },
   commentInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, marginTop: space.sm },
   // Thin for the same reason as the club chat composer: it is half of a docked
   // row, not a field standing on its own.

@@ -872,10 +872,12 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
   // rather than as loading.
   const { colors: themed } = useTheme();
   const opacity = useSharedValue(0.45);
+  const shimmer = useSharedValue(0);
 
   useEffect(() => {
     if (reduced || !onScreen) {
       opacity.value = 0.45;
+      shimmer.value = 0;
       return;
     }
     opacity.value = withRepeat(
@@ -883,9 +885,17 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
       -1,
       true
     );
-  }, [reduced, onScreen, opacity]);
+    shimmer.value = withRepeat(
+      withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true
+    );
+  }, [reduced, onScreen, opacity, shimmer]);
 
   const pulse = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const shimmerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: (shimmer.value - 0.5) * 200 }],
+  }));
 
   return (
     <Animated.View
@@ -895,10 +905,58 @@ export function Skeleton({ width = '100%', height = 16, style, dark = false }) {
           height,
           borderRadius: radius.sm,
           backgroundColor: dark ? 'rgba(255,255,255,0.08)' : themed.bgElevated,
+          overflow: 'hidden',
         },
         pulse,
         style,
       ]}
-    />
+    >
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 100,
+            backgroundColor: dark ? 'rgba(255,255,255,0.15)' : themed.border,
+            opacity: 0.3,
+          },
+          shimmerStyle,
+        ]}
+      />
+    </Animated.View>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Shake — error shake animation for form fields and invalid inputs
+// ---------------------------------------------------------------------------
+
+export function Shake({ trigger = 0, children, style }) {
+  const reduced = useReduceMotion();
+  const offset = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduced) return;
+    if (trigger > 0) {
+      offset.value = withSequence(
+        withTiming(-8, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(8, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(-6, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(6, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(-4, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(4, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(-2, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(2, { duration: 50, easing: Easing.out(Easing.quad) }),
+        withTiming(0, { duration: 50, easing: Easing.out(Easing.quad) })
+      );
+    }
+  }, [trigger, reduced, offset]);
+
+  const animated = useAnimatedStyle(() => ({
+    transform: [{ translateX: offset.value }],
+  }));
+
+  return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }

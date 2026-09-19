@@ -189,7 +189,7 @@ export default function RivalsScreen({ navigation }) {
         // rivals"), which put three lines of copy on the sky and ran the longest
         // of them across the left tree, where it could not be read. The score
         // is on every card's bar already; the count is on the Active tab.
-        subtitle="Head to head. Take more ground."
+        subtitle="Show them who is boss."
         top={insets.top}
         // These screens are reachable straight from another tab, where there
         // may be nothing beneath them to pop back to — fall through to the

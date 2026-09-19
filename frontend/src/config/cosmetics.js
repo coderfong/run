@@ -211,7 +211,7 @@ export const ITEMS = {
     { id: 'ballcap', label: 'Ball cap', img: require('../../assets/character/headwear/hat65.png'), layout: { w: 0.7129, top: -0.0705, dx: 0.0033 }, hidesBulky: true, rarity: 'common', unlock: runs(1, 'Finish your first run') },
     { id: 'knitbeanie', label: 'Knit beanie', img: require('../../assets/character/headwear/hat66.png'), layout: { w: 0.7091, top: -0.0423, dx: 0.0084 }, hideHair: true, rarity: 'common', unlock: free },
     { id: 'canvasbucket', label: 'Canvas bucket', img: require('../../assets/character/headwear/hat68.png'), layout: { w: 0.8569, top: -0.0365 }, hideHair: true, rarity: 'common', unlock: dist(10, 'Run 10 km total') },
-    { id: 'runvisor', label: 'Run visor', img: require('../../assets/character/headwear/hat69.png'), layout: { w: 0.6571, top: -0.0164 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
+    { id: 'runvisor', label: 'Run visor', img: require('../../assets/character/headwear/hat69.png'), layout: { w: 0.6571, top: -0.0164 }, rarity: 'common', unlock: free },
     { id: 'sportcap', label: 'Sport cap', img: require('../../assets/character/headwear/hat70.png'), layout: { w: 0.7545, top: -0.0234 }, hidesBulky: true, rarity: 'common', unlock: free },
     { id: 'headphones', label: 'Headphones', img: require('../../assets/character/headwear/hat72.png'), layout: { w: 0.8819, top: -0.0009 }, hidesBulky: true, rarity: 'rare', unlock: runs(8, 'Finish 8 runs') },
     { id: 'sitehelmet', label: 'Site helmet', img: require('../../assets/character/headwear/hat73.png'), layout: { w: 0.7366, top: -0.0485, dx: 0.0083 }, hidesBulky: true, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
@@ -275,6 +275,10 @@ export const ITEMS = {
     { id: 'pearltiara', label: 'Pearl tiara', img: require('../../assets/character/headwear/hat131.png'), layout: { w: 0.6609, top: -0.0241, dx: 0.003 }, rarity: 'rare', unlock: streak(3, 'Hold a 3 week streak') },
     { id: 'swimcap', label: 'Swim cap', img: require('../../assets/character/headwear/hat132.png'), layout: { w: 0.6684, top: -0.0076 }, hideHair: true, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
     { id: 'bigbow', label: 'Big bow', img: require('../../assets/character/headwear/hat133.png'), layout: { w: 0.6572, top: -0.0059 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    // --- PASER running cosmetics (2026-09-17) ---
+    { id: 'lightweightracecap', label: 'Lightweight Race Cap', img: require('../../assets/character/headwear/38_lightweight_race_cap.png'), layout: { w: 0.7129, top: -0.0705, dx: 0.0033 }, hidesBulky: true, rarity: 'common', unlock: free },
+    { id: 'reflectivenightcap', label: 'Reflective Night Cap', img: require('../../assets/character/headwear/39_reflective_night_cap.png'), layout: { w: 0.7129, top: -0.0705, dx: 0.0033 }, hidesBulky: true, rarity: 'epic', unlock: free },
+    { id: 'trailsuncap', label: 'Trail Sun Cap', img: require('../../assets/character/headwear/40_trail_sun_cap.png'), layout: { w: 0.7129, top: -0.0705, dx: 0.0033 }, hidesBulky: true, rarity: 'common', unlock: free },
   ],
   accessory: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
@@ -290,7 +294,7 @@ export const ITEMS = {
     { id: 'starnecklace', label: 'Star pendant', img: require('../../assets/character/accessory/acc15.png'), backImg: require('../../assets/character/accessory/acc15b.png'), z: 'front', layout: { w: 0.4867, top: 0.2648, dx: -0.01 }, rarity: 'rare', unlock: runs(12, 'Finish 12 runs') },
     { id: 'greenscarf', label: 'Knit scarf', img: require('../../assets/character/accessory/acc17.png'), backImg: require('../../assets/character/accessory/acc17b.png'), z: 'front', layout: { w: 0.55, top: 0.2764 }, rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
     { id: 'tealscarf', label: 'Winter scarf', img: require('../../assets/character/accessory/acc18.png'), backImg: require('../../assets/character/accessory/acc18b.png'), z: 'front', layout: { w: 0.55, top: 0.2814 }, rarity: 'common', unlock: dist(15, 'Run 15 km total') },
-    { id: 'gaiter', label: 'Neck gaiter', img: require('../../assets/character/accessory/acc20.png'), backImg: require('../../assets/character/accessory/acc20b.png'), z: 'front', layout: { w: 0.46, top: 0.2987 }, rarity: 'common', unlock: runs(2, 'Finish 2 runs') },
+    { id: 'gaiter', label: 'Neck gaiter', img: require('../../assets/character/accessory/acc20.png'), backImg: require('../../assets/character/accessory/acc20b.png'), z: 'front', layout: { w: 0.46, top: 0.2987 }, rarity: 'common', unlock: free },
     { id: 'katanas', label: 'Twin blades', img: require('../../assets/character/accessory/acc22.png'), z: 'back', layout: { w: 1.25, cy: 0.3998 }, rarity: 'epic', unlock: passOnly },
     // --- wave 3 (2026-07-31) ---
     { id: 'lacecollar', label: 'Lace collar', img: require('../../assets/character/accessory/acc23.png'), backImg: require('../../assets/character/accessory/acc23b.png'), z: 'front', layout: { w: 0.5, top: 0.2942, dx: 0.0167 }, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
@@ -320,12 +324,21 @@ export const ITEMS = {
     { id: 'boombox', label: 'Boombox', img: require('../../assets/character/accessory/acc50.png'), z: 'front', layout: { w: 0.78, top: 0.449, dx: 0.0067 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'royalrobe', label: 'Royal robe', img: require('../../assets/character/accessory/acc51.png'), z: 'back', layout: { w: 1.14, top: 0.3023, dx: -0.0017 }, rarity: 'legendary', unlock: level(50) },
     { id: 'lacebib', label: 'Lace bib', img: require('../../assets/character/accessory/acc52.png'), backImg: require('../../assets/character/accessory/acc52b.png'), z: 'front', layout: { w: 0.52, top: 0.3056 }, rarity: 'common', unlock: runs(4, 'Finish 4 runs') },
+    // --- PASER running cosmetics (2026-09-17) ---
+    { id: 'runningbelt', label: 'Technical Running Belt', img: require('../../assets/character/accessory/17_technical_running_belt.png'), z: 'front', layout: { w: 0.8, top: 0.3399 }, rarity: 'common', unlock: free },
+    { id: 'racebib', label: 'Race Bib', img: require('../../assets/character/accessory/18_race_bib.png'), z: 'front', layout: { w: 0.72, top: 0.3354, dx: 0.0067 }, rarity: 'common', unlock: free },
+    { id: 'gpswatch', label: 'GPS Running Watch', img: require('../../assets/character/accessory/19_gps_running_watch.png'), z: 'front', layout: { w: 0.78, top: 0.449, dx: 0.0067 }, rarity: 'common', unlock: free },
+    { id: 'runningearbuds', label: 'Wireless Running Earbuds', img: require('../../assets/character/accessory/20_wireless_running_earbuds.png'), z: 'front', layout: { w: 0.8, top: 0.3399 }, rarity: 'common', unlock: free },
+    { id: 'phonearmband', label: 'Phone Armband', img: require('../../assets/character/accessory/21_phone_armband.png'), z: 'front', layout: { w: 0.8, top: 0.3399 }, rarity: 'common', unlock: free },
+    { id: 'coolingtowel', label: 'Cooling Towel', img: require('../../assets/character/accessory/22_cooling_towel.png'), backImg: require('../../assets/character/accessory/22_cooling_towel.png'), z: 'front', layout: { w: 0.4667, top: 0.2879, dx: -0.0033 }, rarity: 'common', unlock: free },
+    { id: 'chestlight', label: 'LED Running Chest Light', img: require('../../assets/character/accessory/23_led_running_chest_light.png'), z: 'front', layout: { w: 0.78, top: 0.449, dx: 0.0067 }, rarity: 'rare', unlock: free },
+    { id: 'clubslingbag', label: 'Club Sling Bag', img: require('../../assets/character/accessory/24_club_sling_bag.png'), z: 'front', layout: { w: 0.62, top: 0.3326, dx: -0.0067 }, rarity: 'rare', unlock: free },
   ],
   glasses: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
-    { id: 'rounds', label: 'Rounds', img: require('../../assets/character/glasses/specs1.png'), layout: { w: 0.6144, cy: 0.1774, dx: -0.0017 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
+    { id: 'rounds', label: 'Rounds', img: require('../../assets/character/glasses/specs1.png'), layout: { w: 0.6144, cy: 0.1774, dx: -0.0017 }, rarity: 'common', unlock: free },
     { id: 'rects', label: 'Rectangle shades', img: require('../../assets/character/glasses/specs2.png'), layout: { w: 0.6011, cy: 0.1791, dx: -0.0017 }, rarity: 'rare', unlock: passOnly },
-    { id: 'wayfarer', label: 'Wayfarers', img: require('../../assets/character/glasses/specs4.png'), layout: { w: 0.5867, cy: 0.1783, dx: -0.0017 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'wayfarer', label: 'Wayfarers', img: require('../../assets/character/glasses/specs4.png'), layout: { w: 0.5867, cy: 0.1783, dx: -0.0017 }, rarity: 'common', unlock: free },
     { id: 'roundgold', label: 'Round golds', img: require('../../assets/character/glasses/specs9.png'), layout: { w: 0.5867, cy: 0.1785, dx: 0.0033 }, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
     { id: 'halfframe', label: 'Half frames', img: require('../../assets/character/glasses/specs8.png'), layout: { w: 0.62, cy: 0.1761, dx: -0.01 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'heart', label: 'Heart sunnies', img: require('../../assets/character/glasses/specs7.png'), layout: { w: 0.5833, cy: 0.1837, dx: -0.0067 }, rarity: 'rare', unlock: streak(2, 'Hold a 2 week streak') },
@@ -354,6 +367,10 @@ export const ITEMS = {
     { id: 'butterfly', label: 'Butterfly shades', img: require('../../assets/character/glasses/specs26.png'), layout: { w: 0.64, cy: 0.1678, dx: -0.0033 }, rarity: 'rare', unlock: runs(12, 'Finish 12 runs') },
     { id: 'tintgoggles', label: 'Tint goggles', img: require('../../assets/character/glasses/specs27.png'), layout: { w: 0.64, cy: 0.1731, dx: 0.0033 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'onimask', label: 'Oni mask', img: require('../../assets/character/glasses/specs28.png'), layout: { w: 0.87, cy: 0.1873, dx: 0.005 }, rarity: 'legendary', unlock: passOnly },
+    // --- PASER running cosmetics (2026-09-17) ---
+    { id: 'aerowrapshades', label: 'Aero Wrap Running Shades', img: require('../../assets/character/glasses/35_aero_wrap_running_shades.png'), layout: { w: 0.6011, cy: 0.1791, dx: -0.0017 }, rarity: 'epic', unlock: free },
+    { id: 'clearnightglasses', label: 'Clear Night Running Glasses', img: require('../../assets/character/glasses/36_clear_night_running_glasses.png'), layout: { w: 0.6144, cy: 0.1774, dx: -0.0017 }, rarity: 'common', unlock: free },
+    { id: 'photochromicshades', label: 'Photochromic Running Shades', img: require('../../assets/character/glasses/37_photochromic_running_shades.png'), layout: { w: 0.6011, cy: 0.1791, dx: -0.0017 }, rarity: 'rare', unlock: free },
   ],
   top: [
     { id: 'stripetee', label: 'Stripe tee', img: require('../../assets/character/outfit/top5.png'), layout: { top: 0.3121 }, rarity: 'common', unlock: free },
@@ -441,20 +458,28 @@ ITEMS.footwear = [
 export const FIRST_RUN_ITEMS = {
   face: ['smiley', 'chill', 'laugh'],
   hair: [
-    'none', 'buzz', 'twoblock', 'curtains', 'middlepart', 'swept',
-    'curls', 'pixie', 'bluntbob', 'fringebob', 'sleeklong', 'hijab',
+    'none', 'hijab', 'buzz', 'twoblock', 'curtains', 'middlepart',
+    'swept', 'curls', 'pixie', 'bluntbob',
   ],
   top: [
-    'stripetee', 'singlet', 'puffblouse', 'k2t', 'o12t', 'o1t',
-    'o10t', 'o2t', 'k5t',
+    'k1t', 'singlet', 'o56t', 'k2t', 'o36t', 'k3t',
+    'o12t', 'puffblouse',
   ],
   bottom: [
-    'wb001', 'wb002', 'wb014', 'wb024', 'wb018', 'wb052',
-    'wb092', 'wb009', 'wb013',
+    'wb012', 'wb002', 'wb018', 'wb072', 'wb083', 'wb106',
+    'wb111',
+  ],
+  footwear: [
+    'wf001', 'wf008', 'wf019', 'wf023', 'wf064', 'wf051',
   ],
   headwear: [
-    'none', 'cap', 'sportcap', 'dadcap', 'knitbeanie', 'cuffbeanie',
-    'beret', 'headscarf', 'pinkbow',
+    'none', 'cap', 'sportcap', 'runvisor', 'knitbeanie',
+  ],
+  glasses: [
+    'rounds', 'wayfarer',
+  ],
+  accessory: [
+    'gaiter',
   ],
 };
 
@@ -609,7 +634,7 @@ export function isProItem(item) {
 export const DEFAULT_EQUIPPED = {
   face: 'smiley',
   hair: 'curtains',
-  hairColor: 0,        // black
+  hairColor: 4,        // blonde
   headwear: 'none',
   headwearColor: 7,    // blue
   glasses: 'none',

@@ -426,7 +426,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     face: happy ? getItem('face', 'laugh') : getItem('face', equipped.face),
     hair: getItem('hair', equipped.hair),
     headwear: getItem('headwear', equipped.headwear || 'none'),
-    glasses: getItem('glasses', equipped.glasses),
+    glasses: getItem('glasses', equipped.glasses || 'none'),
     top: getItem('top', equipped.top),
     bottom: getItem('bottom', equipped.bottom),
     footwear: getItem('footwear', equipped.footwear || 'none'),

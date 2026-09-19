@@ -12,9 +12,9 @@ import { AmbientSparkles, Beam, ChargeCells, ChargeMotes, DriftMotes, Glow, Ligh
 import { openingPlan } from './openingPlan';
 import RewardArt, { RARITY_COLOR } from '../RewardArt';
 import { AnimationStack } from '../GameAnimation';
-import { Framed, OutlinedText, ToonButton } from '../ui';
+import { Framed, OutlinedText } from '../ui';
 import { Confetti, haptic, useReduceMotion } from '../../ui/motion';
-import { fonts, space, toon } from '../../theme';
+import { fonts, space, toon, useTheme, useThemedType } from '../../theme';
 import { INK } from '../../ui/frameRegistry';
 
 export const MYSTERY_SWIPES = 3;
@@ -28,6 +28,8 @@ function later(bucket, fn, ms) {
 export default function LootboxGamble({ visible, sequence, reward, onCollect, onOpened, onClose }) {
   const reduced = useReduceMotion();
   const { width, height } = useWindowDimensions();
+  const { colors } = useTheme();
+  const type = useThemedType();
   const finalRarity = sequence?.final_rarity || sequence?.rarity || 'common';
   const plan = useMemo(() => openingPlan(finalRarity), [finalRarity]);
   const [spent, setSpent] = useState(0);
@@ -134,6 +136,11 @@ export default function LootboxGamble({ visible, sequence, reward, onCollect, on
       setImpactKey((k) => k + 1);
       reveal.value = reduced ? 1 : withSpring(1, { damping: 11, stiffness: 125 });
       rays.value = reduced ? 0 : withRepeat(withTiming(1, { duration: plan.reveal.spinMs, easing: Easing.linear }), -1, false);
+      // Auto-collect immediately after reveal animation for smoother transition
+      later(timers, () => {
+        haptic.success();
+        (onCollect || onOpened)?.(finalRarity, reward);
+      }, 800);
     }, plan.swapAt);
   }, [calm, charge, flash, plan, rays, reduced, reveal, shake]);
 
@@ -155,11 +162,6 @@ export default function LootboxGamble({ visible, sequence, reward, onCollect, on
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 16 || Math.abs(g.dy) > 16,
     onPanResponderRelease: (_, g) => { if (Math.hypot(g.dx, g.dy) >= 48) spend(); },
   }), [spend]);
-
-  const collect = () => {
-    haptic.success();
-    (onCollect || onOpened)?.(finalRarity, reward);
-  };
 
   const chestStyle = useAnimatedStyle(() => ({
     transform: [
@@ -225,7 +227,7 @@ export default function LootboxGamble({ visible, sequence, reward, onCollect, on
           {act === 'charge' ? <View style={styles.controls}><ChargeCells total={MYSTERY_SWIPES} spent={spent} live={!busy.current} reduced={reduced} /><SwipeCue live={!busy.current} /></View> : null}
         </Pressable>
 
-        {revealed ? <View style={styles.revealCopy}><OutlinedText style={styles.rarity} outline={toon.ink} width={3}>{plan.tier.toUpperCase()}</OutlinedText><Text style={styles.itemName} numberOfLines={1} adjustsFontSizeToFit>{reward?.label || 'New collectible'}</Text><ToonButton title="COLLECT" variant={plan.tier === 'legendary' ? 'gold' : 'primary'} onPress={collect} containerStyle={styles.collect} /></View> : null}
+        {revealed ? <View style={styles.revealCopy}><OutlinedText style={[styles.rarity, { color: colors.text }]} outline={toon.ink} width={3}>{plan.tier.toUpperCase()}</OutlinedText><Text style={[styles.itemName, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit>{reward?.label || 'New collectible'}</Text></View> : null}
         {onClose && act === 'charge' ? <Pressable style={styles.close} onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Close"><Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M15 5 L8 12 L15 19" stroke="#FFFFFF" strokeWidth={2.8} fill="none" strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable> : null}
         <Animated.View pointerEvents="none" style={[styles.whiteout, flashStyle]} />
       </View>
@@ -251,10 +253,9 @@ const styles = StyleSheet.create({
   reward: { position: 'absolute', alignSelf: 'center' },
   rewardFrame: { transform: [{ rotate: '-1.5deg' }] },
   controls: { alignItems: 'center', gap: space.lg, marginTop: space.md },
-  revealCopy: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: 28, alignItems: 'center' },
-  rarity: { color: '#FFFFFF', fontFamily: fonts.display, fontSize: 32, letterSpacing: 3 },
-  itemName: { color: '#FFFFFF', fontFamily: fonts.bold, fontSize: 20, marginTop: 2, maxWidth: '86%' },
-  collect: { width: '100%', maxWidth: 360, marginTop: space.lg },
+  revealCopy: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: 80, alignItems: 'center' },
+  rarity: { fontFamily: fonts.display, fontSize: 32, letterSpacing: 3 },
+  itemName: { fontFamily: fonts.bold, fontSize: 20, marginTop: 2, maxWidth: '86%' },
   close: { position: 'absolute', left: space.gutter, top: 52, width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.14)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.42)' },
   whiteout: { ...StyleSheet.absoluteFillObject, backgroundColor: '#FFFFFF', opacity: 0 },
 });

@@ -25,6 +25,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
     private var pendingTimer: Timer?
     private var hasState = false
+    private var lastAvatarData: String?
 
     override init() {
         super.init()
@@ -85,6 +86,15 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         state = next
         receivedAt = Date()
         if next.phase != previous.phase { clearPending() }
+        
+        // Handle avatar synchronization
+        if let avatarData = next.avatarData, avatarData != lastAvatarData {
+            lastAvatarData = avatarData
+            if let data = Data(base64Encoded: avatarData) {
+                WatchAvatarStore.shared.updateAvatar(from: data)
+            }
+        }
+        
         // The first state after launch is catching up, not news: no buzz for
         // a run that started before the app was opened.
         if hasState { Haptics.play(from: previous, to: next) }

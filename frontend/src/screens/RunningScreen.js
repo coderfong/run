@@ -58,6 +58,11 @@ const ACTIVE_RUN_KEY = 'tr.activeRun';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Helper function for border color (local version since theme import may not be available)
+function getNbInk() {
+  return '#ffffff'; // Always use white for dark theme
+}
+
 // Night-run surface tokens.
 const D = {
   bg: darkColors.bg,
@@ -109,6 +114,12 @@ function formatDuration(ms) {
   const s = total % 60;
   const pad = (n) => String(n).padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function paceStr(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 // The elapsed clock, and nothing else.
@@ -294,6 +305,10 @@ export default function RunningScreen({ navigation, route }) {
   const { equipped, rankKey } = useAvatar();
   const { trailGlowColor } = useSettings();
   const accent = trailGlowColor || color.stroke;
+  
+  // Check if opened from watch notification
+  const fromWatch = route.params?.source === 'watch' || route.params?.category === 'watch_run_saved';
+  
   // Whether Start on the watch may begin a run here: not while Result sits on
   // top of this screen (see watchPhase below).
   const isFocused = useIsFocused();
@@ -423,6 +438,9 @@ export default function RunningScreen({ navigation, route }) {
   const finishingRef = useRef(false);
   const savingRef = useRef(false);
   const [startCountdown, setStartCountdown] = useState(null);
+  // Camera tracking state - allows user to pan and recenter
+  const [userPanned, setUserPanned] = useState(false);
+  const lastCameraUpdateRef = useRef(0);
 
   // Small event queue: a kilometre and claim qualification can land on the
   // same GPS fix, and neither payoff should erase the other.
@@ -560,7 +578,15 @@ export default function RunningScreen({ navigation, route }) {
               type: 'Feature',
               id: `${t.id}-${ri}`,
               geometry: { type: 'Polygon', coordinates: [coords] },
-              properties: { fillColor: fill, strokeColor: fill, fillOpacity: (mine ? 0.45 : 0.3) * (0.35 + 0.65 * (t.freshness ?? 1)) },
+              properties: { 
+                fillColor: fill, 
+                strokeColor: fill, 
+                // LEVEL 3: My territory - subtle cyan fill, 8-12% opacity
+                // LEVEL 4: Enemy territory - 4-6% fill, reduced border opacity
+                fillOpacity: mine 
+                  ? 0.10 * (0.35 + 0.65 * (t.freshness ?? 1))  // My territory: much quieter
+                  : 0.05 * (0.35 + 0.65 * (t.freshness ?? 1)), // Enemy territory: very faint
+              },
             });
           });
           // owner portrait at the territory centre (own uses fresh local avatar)
@@ -569,10 +595,9 @@ export default function RunningScreen({ navigation, route }) {
           if (av && at) portraits.push({ id: t.id, at, avatar: av, mine, ring: fill, area: t.area_m2 || 0 });
         });
         setBoard({ type: 'FeatureCollection', features: feats });
-        // The run screen is held open for much longer than the board. Keep a
-        // small set of the largest nearby owners so character rigs do not turn
-        // a one-hour workout into a sustained rendering benchmark.
-        setBoardPortraits(portraits.sort((a, b) => b.area - a.area).slice(0, 12));
+        // During active run, show far fewer portraits to reduce visual noise
+        // Only show the 3 largest territories instead of 12
+        setBoardPortraits(portraits.sort((a, b) => b.area - a.area).slice(0, 3));
         rivalTerritoriesRef.current = rivalTerritories;
       })
       .catch(() => {});
@@ -950,7 +975,30 @@ export default function RunningScreen({ navigation, route }) {
     // Crash snapshot every N accepted points.
     if (newPath.length % T.persistEveryNPoints === 0) persistActiveRun(newPath);
 
-    mapRef.current?.flyTo({ latitude: nextPoint.latitude, longitude: nextPoint.longitude }, undefined, 300);
+    // Camera tracking: position player at 55-65% down screen instead of perfect center
+    // This gives more visible map ahead of the runner
+    if (!userPanned && Date.now() - lastCameraUpdateRef.current > 200) {
+      // Calculate heading for camera offset
+      let heading = 0;
+      if (path.length >= 2) {
+        const prev = path[path.length - 2];
+        const dx = nextPoint.longitude - prev.longitude;
+        const dy = nextPoint.latitude - prev.latitude;
+        heading = Math.atan2(dy, dx) * (180 / Math.PI);
+      }
+      
+      // Offset camera slightly in direction of heading, or just down if heading unreliable
+      const offsetMeters = 50; // Approximate offset for better forward visibility
+      const earthRadius = 6371000;
+      const offsetLat = (offsetMeters / earthRadius) * (180 / Math.PI);
+      const offsetLon = offsetLat / Math.cos(nextPoint.latitude * Math.PI / 180);
+      
+      const cameraLat = nextPoint.latitude - offsetLat * 0.3; // Slightly behind player
+      const cameraLon = nextPoint.longitude;
+      
+      mapRef.current?.flyTo({ latitude: cameraLat, longitude: cameraLon }, undefined, 300);
+      lastCameraUpdateRef.current = Date.now();
+    }
 
     // Adaptive sampling decision.
     const speedMps = reportedSpeed != null ? reportedSpeed : res.speedMps;
@@ -1409,63 +1457,162 @@ export default function RunningScreen({ navigation, route }) {
           night-run surface by design (see `D` above) and its HUD is painted
           dark whatever the rest of the app is wearing, so a light map style
           here would put dark chrome on a white board. */}
-      <GameMap ref={mapRef} theme="dark" style={styles.map} initialZoom={16}>
-        {/* others' claimed land around you — the turf you're running through */}
-        {board && <TerritoryLayer id="run-board" featureCollection={board} dark />}
+      <GameMap 
+        ref={mapRef} 
+        theme="dark" 
+        style={styles.map} 
+        initialZoom={16}
+        onViewportChange={() => {
+          if (isRunning && !userPanned) {
+            setUserPanned(true);
+          }
+        }}
+      >
+        {/* LEVEL 6: BASE MAP - rendered by Mapbox dark style */}
+        
+        {/* LEVEL 5: ALL OTHER TERRITORY - very faint during active run */}
+        {board && <TerritoryLayer id="run-board" featureCollection={board} dark overview={true} />}
 
-        {/* owner portrait in the middle of each nearby territory */}
-        {boardPortraits.map((m) => (
-          <UserMarker key={m.id} point={m.at}>
-            <CharacterBust equipped={m.avatar} size={m.mine ? 34 : 30} ring={m.mine ? accent : m.ring} bg={D.bust} />
-          </UserMarker>
-        ))}
-
-        {/* the signature: the route glows in the colour picked in Settings
-            (defaults to the club colour) — no start↔runner preview line */}
+        {/* LEVEL 4: RELEVANT ENEMY TERRITORY - slightly more prominent if runner is nearby */}
+        {/* LEVEL 3: MY CURRENT / NEARBY PASER TERRITORY - subtle cyan fill */}
+        
+        {/* No territory portraits during active run - reduces visual noise */}
+        
+        {/* LEVEL 2: MY ACTIVE ROUTE - dual-stroke for visibility */}
         {path.length > 1 && (
-          <Trail id="route" points={path} color={accent} width={5} glow />
+          <>
+            {/* Outer casing - near-black, ~8-10px */}
+            <Trail 
+              id="route-casing" 
+              points={path} 
+              color="#0a0a0a" 
+              width={10} 
+            />
+            {/* Inner route - bright PASER accent, ~4-6px */}
+            <Trail 
+              id="route-core" 
+              points={path} 
+              color={accent} 
+              width={5} 
+              glow 
+              glowColor={accent}
+            />
+            {/* Recent route highlight - trailing segment for motion feedback */}
+            {path.length > 10 && (
+              <Trail 
+                id="route-recent" 
+                points={path.slice(-10)} 
+                color={accent} 
+                width={6} 
+                glow 
+                glowColor={accent}
+              />
+            )}
+          </>
         )}
 
-        {path.length > 0 && <MapPoint id="start" point={path[0]} color={accent} />}
+        {/* START POINT - small outlined marker */}
+        {path.length > 0 && (
+          <UserMarker point={path[0]}>
+            <View style={styles.startMarker}>
+              <View style={[styles.startDot, { backgroundColor: accent }]} />
+            </View>
+          </UserMarker>
+        )}
 
-        {/* The runner is their character portrait, not a dot. Keep it static:
-            this surface can stay open for hours, so a permanently looping
-            Lottie plus scale animation is needless battery and thermal work. */}
+        {/* LEVEL 1: MY CURRENT POSITION - most prominent, actual PASER character */}
         {currentLocation && (
           <UserMarker point={currentLocation}>
-            <View style={styles.liveMarker}>
-              <CharacterBust equipped={equipped} size={40} ring="#ffffff" bg={D.bust} crisp />
+            <View style={styles.playerMarkerContainer}>
+              {/* Outer glow ring */}
+              <View style={[styles.playerMarkerGlow, { borderColor: accent }]} />
+              {/* Inner white stroke */}
+              <View style={[styles.playerMarkerStroke, { borderColor: '#ffffff' }]} />
+              {/* PASER character portrait */}
+              <CharacterBust 
+                equipped={equipped} 
+                size={44} 
+                ring="#ffffff" 
+                bg={D.bust} 
+                crisp 
+              />
+              {/* Heading indicator if available */}
+              {path.length >= 2 && (
+                <View style={[
+                  styles.headingIndicator,
+                  { 
+                    borderTopColor: accent,
+                    transform: [{ 
+                      rotate: `${Math.atan2(
+                        currentLocation.latitude - path[path.length - 2].latitude,
+                        currentLocation.longitude - path[path.length - 2].longitude
+                      ) * (180 / Math.PI)}deg` 
+                    }] 
+                  }
+                ]}>
+                  <View style={styles.headingArrow} />
+                </View>
+              )}
             </View>
           </UserMarker>
         )}
       </GameMap>
 
-      {/* slim glass status bar: GPS quality, elapsed time, tracking state */}
-      <View style={styles.topBar}>
-        <View style={styles.topItem}>
-          <View style={[styles.gpsDot, { backgroundColor: gpsColor(accuracyM) }]} />
-          <Text style={styles.topText}>
-            {accuracyM == null ? 'GPS' : `±${Math.round(accuracyM)}m`}
+      {/* Compact overlay - minimal information during active run */}
+      <View style={styles.compactOverlay}>
+        <View style={styles.compactStat}>
+          <Text style={styles.compactLabel}>DISTANCE</Text>
+          <Text style={styles.compactValue}>
+            {(distance / 1000).toFixed(2)} KM
           </Text>
         </View>
-        <RunClock
-          startedAtRef={startedAtRef}
-          running={isRunning}
-          paused={paused}
-          style={[styles.topTime, isRunning && { color: D.text }]}
-        />
-        <View style={styles.topItem}>
-          <View
-            style={[
-              styles.gpsDot,
-              { backgroundColor: isRunning ? D.muted : D.dim },
-            ]}
+        <View style={styles.compactDivider} />
+        <View style={styles.compactStat}>
+          <Text style={styles.compactLabel}>TIME</Text>
+          <RunClock
+            startedAtRef={startedAtRef}
+            running={isRunning}
+            paused={paused}
+            style={styles.compactValue}
           />
-          <Text style={styles.topText}>
-            {isRunning ? `${path.length} pts` : 'Ready'}
+        </View>
+        <View style={styles.compactDivider} />
+        <View style={styles.compactStat}>
+          <Text style={styles.compactLabel}>PACE</Text>
+          <Text style={styles.compactValue}>
+            {paceSPerKm ? paceStr(paceSPerKm) : '·'}
           </Text>
         </View>
       </View>
+
+      {/* Minimal GPS indicator */}
+      <View style={styles.gpsIndicator}>
+        <View style={[styles.gpsDot, { backgroundColor: gpsColor(accuracyM) }]} />
+        <Text style={styles.gpsText}>
+          {accuracyM == null ? 'GPS' : `±${Math.round(accuracyM)}m`}
+        </Text>
+      </View>
+
+      {/* Recenter button - appears after user manually pans */}
+      {userPanned && isRunning && (
+        <PressableScale
+          style={styles.recenterButton}
+          onPress={() => {
+            haptic.light();
+            setUserPanned(false);
+            if (currentLocation) {
+              mapRef.current?.flyTo({ 
+                latitude: currentLocation.latitude - 0.0003, 
+                longitude: currentLocation.longitude 
+              }, undefined, 500);
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Recenter on your position"
+        >
+          <AppIcon name="target" size={20} color={D.text} />
+        </PressableScale>
+      )}
 
       {/* The vehicle notice. It sits UNDER the status bar and OVER the map,
           never over the panel, so Pause, End run and the back control are all
@@ -1613,29 +1760,148 @@ function Metric({ label, value, accent }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: D.bg },
   map: { flex: 1 },
-  liveMarker: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center' },
-
-  topBar: {
+  
+  // LEVEL 1: Player marker - most prominent element
+  playerMarkerContainer: {
+    width: 54,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  playerMarkerGlow: {
     position: 'absolute',
-    top: space.md,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 3,
+    opacity: 0.6,
+  },
+  playerMarkerStroke: {
+    position: 'absolute',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    backgroundColor: D.card,
+  },
+  
+  // Start marker - small and subtle
+  startMarker: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+
+  // Heading indicator - small directional wedge
+  headingIndicator: {
+    position: 'absolute',
+    bottom: -6,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#00ffff',
+  },
+  headingArrow: {
+    position: 'absolute',
+    top: -8,
+    left: -2,
+    width: 4,
+    height: 4,
+    backgroundColor: '#ffffff',
+    borderRadius: 2,
+  },
+
+  // Recenter button
+  recenterButton: {
+    position: 'absolute',
+    bottom: space.xl + 140,
+    right: space.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: D.glassStrong,
+    borderWidth: 1,
+    borderColor: getNbInk(),
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  // Compact overlay styles
+  compactOverlay: {
+    position: 'absolute',
+    bottom: space.xl + 80, // Above the panel
     left: space.md,
     right: space.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: D.glass,
-    // Heavier cream stroke — this HUD is always dark, so the NB edge is the
-    // cream ink, not the hairline D.border it used to carry.
-    borderWidth: NB.strokeThin,
-    borderColor: nbInk('dark', D.card),
-    borderRadius: radius.pill,
+    backgroundColor: D.glassStrong,
+    borderWidth: 1,
+    borderColor: getNbInk(),
+    borderRadius: 8,
     paddingVertical: space.sm,
     paddingHorizontal: space.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
   },
-  topItem: { flexDirection: 'row', alignItems: 'center', gap: 6, width: 92 },
+  compactStat: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  compactLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: D.muted,
+    marginBottom: 2,
+  },
+  compactValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: D.text,
+  },
+  compactDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: D.border,
+    marginHorizontal: space.sm,
+  },
+  
+  // Minimal GPS indicator
+  gpsIndicator: {
+    position: 'absolute',
+    top: space.md,
+    right: space.md,
+    backgroundColor: D.glass,
+    borderWidth: 1,
+    borderColor: getNbInk(),
+    borderRadius: 20,
+    paddingVertical: space.xs,
+    paddingHorizontal: space.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  gpsText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: D.muted,
+  },
+  
+  liveMarker: { width: 62, height: 62, alignItems: 'center', justifyContent: 'center' },
+
+  // Removed old topBar styles - replaced with compact overlay
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
-  topText: { ...type.caption, color: D.muted },
-  topTime: { ...type.statSm, color: D.muted },
 
   // Docked under the status bar, wearing the same glass and ink as the rest of
   // the HUD so it reads as part of the screen rather than something thrown on

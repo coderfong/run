@@ -10,8 +10,8 @@
 // was, was off screen.
 
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Shield } from 'lucide-react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Shield, ArrowLeft } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
@@ -19,7 +19,7 @@ import { invalidate } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { useClan } from '../state/clan';
 import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { Screen, Card, Row, Button, PageTexture, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
+import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
 import RankCard from '../components/rank/RankCard';
 import { standingFrom } from '../config/rankLadder';
@@ -97,142 +97,148 @@ export default function ClubDetailScreen({ route, navigation }) {
   };
 
   const page = (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl }}
-    >
-      {/* header */}
-      <Card style={styles.header}>
-        <ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={64} />
-        <Text style={[type.title, { marginTop: space.sm }]}>[{clan.tag}] {clan.name}</Text>
-        {clan.description ? (
-          <Text style={[type.caption, { textAlign: 'center', marginTop: 2 }]}>{clan.description}</Text>
-        ) : null}
-        {clan.league ? (
-          <Row gap={8} style={{ marginTop: space.sm }}>
-            <Pill label={LEAGUE_LABEL[clan.league]} color={accent} />
-          </Row>
-        ) : null}
-
-        {/* Who may join, said in a sentence. This was an outline Pill reading
-            "Open": a hollow drawn box with a verb in it, sitting a finger's
-            width under the club name. That is the same shape as an outline
-            Button and it was the only thing on the first screenful that looked
-            pressable, so people pressed it and nothing happened, because the
-            real join control was four scrolls down under the roster. The state
-            says what it means now, and the action it was mistaken for sits
-            directly beneath it. */}
-        <Text style={[type.caption, { marginTop: space.sm }]}>
-          {isOpen ? 'Anyone can join' : 'Joining needs approval'}
-        </Text>
-
-        {/* The join action, in the header where the eye already is. */}
-        <View style={styles.action}>
-          {isMember ? (
-            <Row gap={8} style={{ justifyContent: 'center' }}>
-              <Shield size={16} color={accent} />
-              <Text style={[type.bodyBold, { color: accent }]}>You're in this club</Text>
+    <Screen>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: space.gutter, paddingBottom: space.xxl, paddingTop: space.md }}
+      >
+        {/* header */}
+        <Card style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <ArrowLeft size={20} color={colors.text} />
+          </TouchableOpacity>
+          <ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={64} />
+          <Text style={[type.title, { marginTop: space.sm }]}>[{clan.tag}] {clan.name}</Text>
+          {clan.league ? (
+            <Row gap={8} style={{ marginTop: space.sm }}>
+              <Pill label={LEAGUE_LABEL[clan.league]} color={accent} />
             </Row>
-          ) : inAnotherClan ? (
-            <Text style={[type.caption, { textAlign: 'center' }]}>
-              Leave your current club before joining another.
-            </Text>
-          ) : (
-            <Button
-              title={isOpen ? 'Join club' : 'Request to join'}
-              variant="gradient"
-              loading={busy}
-              onPress={join}
-            />
-          )}
-        </View>
-      </Card>
+          ) : null}
 
-      {/* stats */}
-      <Row between style={{ marginTop: space.lg }}>
-        <StatValue size="md" label="Land" value={km2(clan.season_area_m2)} unit="km²" color={accent} />
-        <StatValue size="md" label="Season" value={clan.season_rank ? `#${clan.season_rank}` : '·'} />
-        <StatValue size="md" label="Members" value={String(clan.member_count)} />
-      </Row>
-
-      {/* A club stands on the same ten tier ladder its members do. It has no
-          runner to put in the badge, so it wears its own crest instead. */}
-      <RankCard
-        title="Club rank"
-        standing={standingFrom({
-          key: clan.elo_key,
-          points: clan.elo_rating,
-          next_points: clan.elo_next_rating,
-          progress: clan.elo_progress,
-        })}
-        emblem={<ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={70} />}
-        style={{ marginTop: space.lg }}
-      />
-
-      {/* club XP progress — every member's runs, claims and steals feed this */}
-      <Card style={{ marginTop: space.md }}>
-        <Row between>
-          <Text style={type.bodyBold}>Club level {clubLevel}</Text>
-          <Text style={type.caption}>{clubXp.toLocaleString()} XP</Text>
-        </Row>
-        <Bar
-          pct={clubPct / 100}
-          trackStyle={styles.xpTrack}
-          fillStyle={[styles.xpFill, { backgroundColor: accent }]}
-        />
-        <Text style={[type.caption, { marginTop: 6 }]}>
-          {xpIntoLevel.toLocaleString()} / {xpForLevel.toLocaleString()} to level {clubLevel + 1}
-        </Text>
-      </Card>
-
-      {/* leader */}
-      {leader && (
-        <>
-          <SectionHeader title="Leader" style={{ marginTop: space.xl, marginBottom: space.md }} />
-          <Card>
-            <Row gap={12}>
-              <View style={[styles.leaderAvatar, { backgroundColor: clan.color.fill, borderColor: accent }]}>
-                <AppIcon name="crown" size={22} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={type.bodyBold}>{leader.username}</Text>
-                <Text style={type.caption}>{km(leader.week_distance_m)} km and {leader.week_claims} claims this week</Text>
-              </View>
-            </Row>
-          </Card>
-        </>
-      )}
-
-      {/* roster */}
-      <SectionHeader title={`Members (${clan.member_count})`} style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <Card padded={false}>
-        {clan.members.map((m, i) => (
-          <Reveal key={m.user_id} delay={staggerDelay(i)}>
-            <View style={[styles.memberRow, i > 0 && styles.divider]}>
-              <Row gap={8} style={{ flex: 1 }}>
-                <Text style={type.bodyBold}>{m.username}</Text>
-                {m.role !== 'member' ? <Pill label={m.role} color={accent} /> : null}
+          {/* The join action, in the header where the eye already is. */}
+          <View style={styles.action}>
+            {isMember ? (
+              <Row gap={8} style={{ justifyContent: 'center' }}>
+                <Shield size={16} color={accent} />
+                <Text style={[type.bodyBold, { color: accent }]}>You're in this club</Text>
               </Row>
-              <Text style={type.caption}>{km(m.week_distance_m)} km</Text>
-            </View>
-          </Reveal>
-        ))}
-      </Card>
-    </ScrollView>
+            ) : inAnotherClan ? (
+              <Text style={[type.caption, { textAlign: 'center' }]}>
+                Leave your current club before joining another.
+              </Text>
+            ) : (
+              <Button
+                title={isOpen ? 'Join club' : 'Request to join'}
+                variant="gradient"
+                loading={busy}
+                onPress={join}
+              />
+            )}
+          </View>
+        </Card>
+
+        {/* A club stands on the same ten tier ladder its members do. It has no
+            runner to put in the badge, so it wears its own crest instead. */}
+        <RankCard
+          title="Club rank"
+          standing={standingFrom({
+            key: clan.elo_key,
+            points: clan.elo_rating,
+            next_points: clan.elo_next_rating,
+            progress: clan.elo_progress,
+          })}
+          emblem={<ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={70} />}
+          style={{ marginTop: space.lg }}
+        />
+
+        {/* club XP progress — every member's runs, claims and steals feed this */}
+        <Card style={{ marginTop: space.md }}>
+          <Row between>
+            <Text style={type.bodyBold}>Club level {clubLevel}</Text>
+            <Text style={type.caption}>{clubXp.toLocaleString()} XP</Text>
+          </Row>
+          <Bar
+            pct={clubPct / 100}
+            trackStyle={styles.xpTrack}
+            fillStyle={[styles.xpFill, { backgroundColor: accent }]}
+          />
+          <Text style={[type.caption, { marginTop: 6 }]}>
+            {xpIntoLevel.toLocaleString()} / {xpForLevel.toLocaleString()} to level {clubLevel + 1}
+          </Text>
+        </Card>
+
+        {/* stats */}
+        <Row between style={{ marginTop: space.lg }}>
+          <StatValue size="md" label="Land" value={km2(clan.season_area_m2)} unit="km²" color={accent} />
+          <StatValue size="md" label="Season" value={clan.season_rank ? `#${clan.season_rank}` : '·'} />
+          <StatValue size="md" label="Members" value={String(clan.member_count)} />
+        </Row>
+
+        {/* leader */}
+        {leader && (
+          <>
+            <SectionHeader title="Leader" style={{ marginTop: space.xl, marginBottom: space.md }} />
+            <Card>
+              <Row gap={12}>
+                <View style={[styles.leaderAvatar, { backgroundColor: clan.color.fill, borderColor: accent }]}>
+                  <AppIcon name="crown" size={22} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={type.bodyBold}>{leader.username}</Text>
+                  <Text style={type.caption}>{km2(leader.area_m2)} km² and {leader.week_claims} claims this week</Text>
+                </View>
+              </Row>
+            </Card>
+          </>
+        )}
+
+        {/* roster */}
+        <SectionHeader title={`Members (${clan.member_count})`} style={{ marginTop: space.xl, marginBottom: space.md }} />
+        <Card padded={false}>
+          {clan.members.map((m, i) => (
+            <Reveal key={m.user_id} delay={staggerDelay(i)}>
+              <View style={[styles.memberRow, i > 0 && styles.divider]}>
+                <Row gap={8} style={{ flex: 1 }}>
+                  <Text style={type.bodyBold}>{m.username}</Text>
+                  {m.role !== 'member' ? <Pill label={m.role} color={accent} /> : null}
+                </Row>
+                <Text style={type.caption}>{km2(m.area_m2)} km²</Text>
+              </View>
+            </Reveal>
+          ))}
+        </Card>
+      </ScrollView>
+    </Screen>
   );
 
-  // Page colour and dot grid on the wrapper, under the scroll, as ClubScreen's
-  // hub does: the grid holds still while the page scrolls over it.
+  // Page colour on the wrapper
   return (
     <Arrival active={arriving} style={{ flex: 1, backgroundColor: colors.bg }}>
-      <PageTexture />
       {page}
     </Arrival>
   );
 }
 
 const makeStyles = (colors) => StyleSheet.create({
-  header: { alignItems: 'center' },
+  header: { alignItems: 'center', position: 'relative' },
+  backButton: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
   // Full width inside a centred card: a join button that hugged its label
   // would be one more small box in a stack of small boxes, which is the
   // reading problem this screen just had.

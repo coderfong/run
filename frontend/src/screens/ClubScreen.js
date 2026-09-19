@@ -190,9 +190,7 @@ function Directory({ navigation }) {
           <Image source={require('../../assets/art/club-crew.png')} style={styles.dirCrew} resizeMode="contain" />
         </View>
       </View>
-      <Text style={[type.body, { color: colors.textMuted, marginTop: 4, marginBottom: space.lg }]}>
-        Solo land is grey. Club land claims.
-      </Text>
+
 
       <Button title="Create a club" variant="gradient" icon={<AppIcon name="invite" size={20} />} onPress={() => navigation.navigate('ClubCreate')} />
 

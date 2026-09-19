@@ -2,12 +2,13 @@
 
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Camera, ChevronLeft, Images, Trash2 } from 'lucide-react-native';
+import { Camera, Images, Trash2 } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useClan } from '../state/clan';
 import { nbField, space, withAlpha, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Button, Framed, Input, Segmented } from '../components/ui';
+import BackButton from '../components/ui/BackButton';
 import ClanBadge from '../components/ClanBadge';
 import { Image } from '../ui/image';
 import { pickPhoto } from '../ui/photoPicker';
@@ -85,14 +86,7 @@ export default function ClubCreateScreen({ navigation }) {
   return (
     <Screen scroll contentStyle={{ paddingBottom: space.xxl }}>
       <View style={styles.pageHead}>
-        <PressableScale
-          onPress={() => navigation.goBack()}
-          style={styles.back}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <ChevronLeft size={24} color={colors.text} />
-        </PressableScale>
+        <BackButton onPress={() => navigation.goBack()} />
         <Text style={type.title}>Create your club</Text>
       </View>
       {/* The preview is the point of this screen — it is what the club will
@@ -203,7 +197,6 @@ export default function ClubCreateScreen({ navigation }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   pageHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm, marginBottom: space.md },
-  back: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   preview: { minHeight: 170, marginBottom: space.lg },
   previewInner: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl },
   previewBadge: {

@@ -34,6 +34,7 @@ const PAPER = '#FFFFFF';
 // aspect preserved.
 export const THUMB_W = 300;
 export const THUMB_H = 110;
+export const THUMB_H_LARGE = 180;
 
 export function makeProjection(layers, pad = 10, boxH = THUMB_H) {
   const all = layers.flat();
@@ -69,10 +70,11 @@ export const svgPoints = (points) => points
  *           same hand-drawn box.
  * `compact` square (THUMB_W x THUMB_W) beside a photo, panoramic
  *           (THUMB_W x THUMB_H) running the full width alone.
+ * `large`   larger panoramic (THUMB_W x THUMB_H_LARGE) for prominent display
  * `style`   layout for the OUTER box (margin, flex) — sizing itself is
  *           measured, not styled; see the note below.
  */
-export default function RouteThumb({ id, rings, path, color, compact = false, style }) {
+export default function RouteThumb({ id, rings, path, color, compact = false, large = false, style }) {
   const styles = useThemedStyles(makeStyles);
   // CSS `aspectRatio` used to size this box directly, and on at least some
   // devices it did not resolve against the parent's width the way a sibling
@@ -87,7 +89,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, st
   const filteredRings = (rings || []).filter((r) => r?.length >= 3);
   const line = (path?.length || 0) >= 2 ? path : null;
   if (!filteredRings.length && !line) return null;
-  const boxH = compact ? THUMB_W : THUMB_H;
+  const boxH = compact ? THUMB_W : (large ? THUMB_H_LARGE : THUMB_H);
   // The run's own colour whenever it can be seen on the paper, and a dark ink
   // when it cannot — a pale yellow trail glow (ResultScreen passes the team's)
   // is invisible on white the same way pink was invisible on pink.
@@ -115,7 +117,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, st
         // Before the outer box has measured itself, fall back to the
         // fixed-ratio style for one frame rather than collapsing to zero
         // height — `boxWidth` is set on the very next layout pass.
-        style={pixelHeight ? { height: pixelHeight } : (compact ? styles.thumbCompact : styles.thumb)}
+        style={pixelHeight ? { height: pixelHeight } : (compact ? styles.thumbCompact : (large ? styles.thumbLarge : styles.thumb))}
       >
         {/* height="100%", not the raw box pixels: the Svg fills whatever
             height the box above resolved to, edge to edge, no letterboxing. */}
@@ -156,6 +158,10 @@ const makeStyles = () => StyleSheet.create({
   },
   thumbCompact: {
     aspectRatio: 1,
+    justifyContent: 'center',
+  },
+  thumbLarge: {
+    aspectRatio: THUMB_W / THUMB_H_LARGE,
     justifyContent: 'center',
   },
 });

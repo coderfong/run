@@ -73,8 +73,12 @@ export function targetForNotification(data) {
     case 'season':
       return tab('Home', { screen: 'Season', initial: false });
     case 'home':
-      return tab('Home', { screen: 'HomeMain' });
+      return tab('Home', { screen: 'Home' });
     case 'record':
+      // Special handling for watch notifications - should go to Home, not Record
+      if (isWatchNotification(d)) {
+        return tab('Home', { screen: 'HomeMain' });
+      }
       return ['Record'];
     default:
       return inbox();
@@ -104,9 +108,16 @@ function screenFromCategory(category) {
       return 'home';
     case 'reminder':
       return 'record';
+    case 'watch_run_saved':
+      return 'record';
     default:
       return null;
   }
+}
+
+// Special handling for watch notifications to ensure proper routing
+export function isWatchNotification(data) {
+  return data?.source === 'watch' || data?.category === 'watch_run_saved';
 }
 
 /**

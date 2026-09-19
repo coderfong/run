@@ -15,7 +15,6 @@ import {
   Share,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -247,51 +246,19 @@ export default function PasersScreen({ navigation }) {
         accessibilityLabel="Search runners by username"
       />
       {searching ? <ActivityIndicator size="small" color={colors.textMuted} /> : null}
-      {/* Invite shortcut — the full share rows live further down the page, but
-          adding someone who isn't on PASER yet is the common case, so it gets
-          a tap here too. */}
-      <TouchableOpacity
-        onPress={() => setShareOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel="Invite a friend to PASER"
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      >
-        <AppIcon name="invite" size={24} />
-      </TouchableOpacity>
     </View>
   ), [q, searching, focused, colors, type, styles]);
 
   const header = (
-    <ToonHeader
-      onArt
-      eyebrow="YOUR RUNNING CIRCLE"
-      title="PASERS"
-      titleStyle={type.display}
-      eyebrowStyle={type.labelSm}
-      subtitle="Find friends, accept requests, and grow your crew."
-      top={insets.top}
-      // These screens are reachable straight from another tab, where there
-      // may be nothing beneath them to pop back to — fall through to the
-      // profile rather than leaving a back button that does nothing.
-      onBack={() =>
-        (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('YouMain'))
-      }
-    >
+    <View style={{ paddingTop: insets.top, paddingHorizontal: space.gutter }}>
       {search}
-      <PressableScale
+      <Button
+        title="Share your code"
+        size="sm"
         onPress={() => setShareOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel="Share your Paser code"
         style={styles.shareCodeButton}
-      >
-        <AppIcon name="share" size={22} />
-        <View style={{ flex: 1 }}>
-          <Text style={[type.bodyBold, { color: colors.text }]}>Share your code</Text>
-          <Text style={[type.caption, { color: colors.textMuted }]}>@{user?.username || 'you'}</Text>
-        </View>
-        <Text style={[type.labelSm, { color: colors.text }]}>OPEN</Text>
-      </PressableScale>
-    </ToonHeader>
+      />
+    </View>
   );
 
   if (loading) {
@@ -324,7 +291,23 @@ export default function PasersScreen({ navigation }) {
 
         <View style={{ paddingHorizontal: space.gutter }}>
         {searchMode ? (
-          results === null ? null : results.length === 0 ? (
+          results === null ? (
+            <View style={{ paddingTop: space.xl }}>
+              {searching ? (
+                <View style={{ alignItems: 'center' }}>
+                  <ActivityIndicator size="large" color={colors.textMuted} />
+                  <Text style={[type.caption, { color: colors.textMuted, marginTop: space.sm }]}>Searching...</Text>
+                </View>
+              ) : (
+                <EmptyState
+                  icon={<AppIcon name="invite" size={44} />}
+                  title="Start typing to search"
+                  body="Enter a username to find runners to add as pasers."
+                  style={{ paddingTop: space.xl }}
+                />
+              )}
+            </View>
+          ) : results.length === 0 ? (
             <EmptyState
               icon={<AppIcon name="invite" size={44} />}
               title="No runners found"
@@ -398,16 +381,13 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
     gap: space.sm,
     backgroundColor: colors.card,
     borderRadius: toonRadius.pill,
-    paddingHorizontal: space.lg,
-    paddingVertical: 14,
+    paddingHorizontal: space.md,
+    paddingVertical: 10,
     marginTop: space.md,
     ...toonSurface(colors, scheme).outline,
   },
   shareCodeButton: {
-    flexDirection: 'row', alignItems: 'center', gap: space.sm,
-    backgroundColor: colors.card, borderRadius: toonRadius.card,
-    paddingHorizontal: space.lg, paddingVertical: 12, marginTop: space.sm,
-    ...toonSurface(colors, scheme).outline,
+    marginTop: space.sm,
   },
   shareHeading: { alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.sm },
   shareTitle: { fontSize: 20, fontWeight: '900', marginTop: space.sm, textAlign: 'center' },

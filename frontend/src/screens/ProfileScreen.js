@@ -317,47 +317,46 @@ export default function ProfileScreen({ navigation }) {
           {/* Bust must FILL the border's hole (both 104) and sit on an opaque
               disc — at 96 with a translucent backdrop, the banner behind it
               showed through the 8px gap. Same pairing as ProgressionScreen. */}
-          {/* Border comes from RANK (territorial standing), not level. */}
-          <PortraitBorder borderKey={stats?.rank_key || 'wood'} size={104}>
-            <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
-          </PortraitBorder>
-        </PressableScale>
-        {/* The name sits ON the scene, not on the page background, so it takes
+          {/* The name sits ON the scene, not on the page background, so it takes
             the game treatment — white with an ink outline — instead of the
             palette's body colour. Themed text went dark-on-cream in light mode
             and got lost in the hedge the moment it wrapped past the art. */}
-        {/* Name and level on one line — the level in the clan accent so it
-            reads as the headline stat rather than a second row of chrome. */}
-        <Row
-          gap={space.sm}
-          style={styles.nameRow}
+        <OutlinedText 
+          style={[type.title, styles.nameTop, { color: '#fff' }]} 
+          outline={toon.ink} 
+          width={2.5}
           onLayout={(e) => {
             const { y, height } = e.nativeEvent.layout;
             setNameBottom(y + height);
           }}
         >
-          <OutlinedText style={[type.title, { color: '#fff' }]} outline={toon.ink} width={2.5}>
-            {user?.username}
-          </OutlinedText>
-          {/* The level badge IS the way to levels and rewards now. The XP bar
-              that used to carry that tap sat between the name and the rank
-              rail, which meant the header stacked two progress tracks on top
-              of each other before you reached anything you could do — so the
-              header keeps the ladder that is the game (rank) and the level
-              keeps its route out, on the badge that states it. */}
-          {stats && (
-            <PressableScale
-              style={[styles.levelBadge, { backgroundColor: levelBandColor(stats.level ?? 0) }]}
-              onPress={() => navigation.navigate('Progression')}
-              accessibilityRole="button"
-              accessibilityLabel={`Level ${stats.level ?? 0}. View levels and rewards`}
-            >
-              <OutlinedText style={[type.statSm, { color: '#fff' }]} outline={toon.ink} width={1.5}>
-                {String(stats.level ?? 0)}
-              </OutlinedText>
-            </PressableScale>
-          )}
-        </Row>
+          {user?.username}
+        </OutlinedText>
+
+        {/* Border comes from RANK (territorial standing), not level. */}
+        <PortraitBorder borderKey={stats?.rank_key || 'wood'} size={104}>
+          <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
+        </PortraitBorder>
+        </PressableScale>
+        
+        {/* The level badge IS the way to levels and rewards now. The XP bar
+            that used to carry that tap sat between the name and the rank
+            rail, which meant the header stacked two progress tracks on top
+            of each other before you reached anything you could do — so the
+            header keeps the ladder that is the game (rank) and the level
+            keeps its route out, on the badge that states it. */}
+        {stats && (
+          <PressableScale
+            style={[styles.levelBadge, styles.levelBottom, { backgroundColor: levelBandColor(stats.level ?? 0) }]}
+            onPress={() => navigation.navigate('Progression')}
+            accessibilityRole="button"
+            accessibilityLabel={`Level ${stats.level ?? 0}. View levels and rewards`}
+          >
+            <OutlinedText style={[type.statSm, { color: '#fff' }]} outline={toon.ink} width={1.5}>
+              {String(stats.level ?? 0)}
+            </OutlinedText>
+          </PressableScale>
+        )}
 
         {/* RANK, directly under the runner it belongs to and above the
             actions. It is the ladder the game is actually played on.
@@ -940,6 +939,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // used to be a card-coloured disc ringed in the CLAN accent, which told you
   // which club the runner was in — something the tag already says — and left
   // two players forty levels apart wearing the same chip.
+  nameTop: {
+    textAlign: 'center',
+    marginBottom: space.sm,
+  },
   levelBadge: {
     width: 42,
     height: 42,
@@ -948,6 +951,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderColor: toon.ink,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  levelBottom: {
+    alignSelf: 'center',
+    marginTop: space.sm,
   },
 
   // The PRO poster — Home's hero card geometry, deliberately: a fixed 190pt

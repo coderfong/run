@@ -196,7 +196,14 @@ const GridCell = React.memo(function GridCell({ item, slot, equipped, isUnlocked
           {/* Art only — no name or unlock caption. The lock icon still marks
               locked items, and tapping one toasts how to earn it, so the
               text is available on demand instead of under every tile. */}
-          <View style={{ opacity: unlocked ? 1 : 0.28 }}>
+          <View style={[styles.thumbContainer, { 
+            opacity: unlocked ? 1 : 0.28, 
+            backgroundColor: selected 
+              ? withAlpha(tint, 0.15) 
+              : slot.key === 'hair' 
+                ? '#F4F4F5' 
+                : colors.cardAlt 
+          }]}>
             {/* `equipped` replaces the old `contrastHair` patch: the tile
                 wears the colour the runner actually chose, so the grid
                 agrees with the character standing above it. */}
@@ -605,6 +612,14 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
   // Sizing only — the frame itself draws the box now (see GridCell).
   cell: { width: '100%', minHeight: 88 },
   cellContent: { alignItems: 'center', justifyContent: 'center', padding: space.xs },
+  thumbContainer: {
+    width: '100%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    padding: space.xs,
+  },
   lockWrap: { alignItems: 'center', marginTop: 2, gap: 1 },
 
   swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },

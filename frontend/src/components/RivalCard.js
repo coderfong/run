@@ -11,7 +11,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { brand, nbTextOn, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
-import { haptic, PressableScale } from '../ui/motion';
+import { haptic, PressableScale, Bar } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { Framed, ToonButton, ToonCard, ToonGhostButton } from './ui';
 import { CharacterBust } from './character/CharacterRig';
@@ -55,18 +55,21 @@ function headline(rival) {
 }
 
 // The split bar: your share of the head-to-head land vs theirs. Falls back to
-// 50/50 before either side has taken anything.
+// 50/50 before either side has taken anything. Animated on mount.
 function VersusBar({ mine, theirs }) {
   const total = (mine || 0) + (theirs || 0);
   const myShare = total > 0 ? mine / total : 0.5;
   return (
     <View style={styles.bar}>
-      <View style={{ flex: Math.max(0.06, myShare) }}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#22c55e' }]} />
-      </View>
-      <View style={{ flex: Math.max(0.06, 1 - myShare) }}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#ef4444' }]} />
-      </View>
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#ef4444' }]} />
+      <Bar
+        pct={myShare}
+        trackStyle={StyleSheet.absoluteFill}
+        fillStyle={{ backgroundColor: '#22c55e' }}
+        durationMs={800}
+        delay={200}
+        animateOnMount={true}
+      />
     </View>
   );
 }
@@ -133,27 +136,6 @@ export default function RivalCard({
     <ToonCard style={style} padded={false}>
       <Body style={styles.body} {...bodyProps}>
         <View style={styles.eyebrowRow}>
-          {/* A FILLED tag, not tinted outlined text. The word used to be bright
-              teal with a thin ink outline, which all but vanished on the card;
-              a solid state-coloured plate with bold ink-or-white text (whichever
-              reads on the fill) makes the rivalry unmistakable. */}
-          {(() => {
-            const tagFill = behind ? '#ef4444' : brand.teal;
-            return (
-              <Framed
-                frame={frameVariant('chip', behind ? 'rivalry:attack' : 'rivalry:on')}
-                fill={tagFill}
-                on={tagFill}
-                weight={INK.thin}
-                pose={framePose(behind ? 'rivalry:attack' : 'rivalry:on')}
-                inset={2}
-              >
-                <Text style={[toonType.label, styles.eyebrowBadgeText, { color: nbTextOn(tagFill) }]}>
-                  {behind ? '⚔ UNDER ATTACK' : '🔥 RIVALRY'}
-                </Text>
-              </Framed>
-            );
-          })()}
           {rival.clan_tag ? (
             <Text style={[type.caption, { color: rival.clan_color?.stroke || colors.textDim }]}>
               [{rival.clan_tag}]
@@ -189,7 +171,13 @@ export default function RivalCard({
 
       <View style={styles.actions}>
         {onViewLand ? (
-          <ToonGhostButton title="VIEW LAND" onPress={onViewLand} color={colors.textMuted} />
+          <ToonButton
+            title="VIEW LAND"
+            size="sm"
+            variant="secondary"
+            onPress={onViewLand}
+            style={{ flex: 1 }}
+          />
         ) : null}
         <ToonButton
           title={behind ? 'TAKE IT BACK' : 'EXPAND YOUR LEAD'}

@@ -257,7 +257,7 @@ export default function MissionsScreen({ navigation }) {
           <Text style={[styles.purseText, styles.purseEmpty]}>·</Text>
         ) : (
           // Counts like the Shop's purse, so a claim is watched landing.
-          <CountUpText value={coins} durationMs={620} style={styles.purseText} />
+          <CountUpText value={coins} durationMs={1200} style={styles.purseText} />
         )}
       </View>
     </HardShadow>

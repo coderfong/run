@@ -48,7 +48,7 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { RankPlaque } from './RankBadge';
-import { DIVISIONS, RANK_TIERS, ladderRungs, numeral, tierAt } from '../../config/rankLadder';
+import { DIVISIONS, RANK_TIERS, numeral, tierAt } from '../../config/rankLadder';
 import { PressableScale, useReduceMotion } from '../../ui/motion';
 import { NB, fonts, hardShadow, nbInk, space, useTheme, withAlpha } from '../../theme';
 
@@ -102,6 +102,7 @@ function fmt(n) {
 function Node({ rung, reached, current, division, colors, scheme }) {
   const size = current ? CUR : DOT;
   const ink = current ? nbInk(scheme, rung.color) : withAlpha(colors.text, reached ? 0.5 : 0.18);
+  const isCurrentDivision = current && division === rung.division;
   return (
     <View style={[styles.node, { width: NODE_W }]}>
       <View style={{ height: CUR, justifyContent: 'center' }}>
@@ -114,14 +115,14 @@ function Node({ rung, reached, current, division, colors, scheme }) {
               borderRadius: size / 2,
               backgroundColor: reached ? rung.color : colors.cardAlt,
               borderColor: ink,
-              borderWidth: current ? 3 : TRACK_STROKE,
+              borderWidth: isCurrentDivision ? 3 : TRACK_STROKE,
             },
-            // The hard drop is reserved for the tier you are standing on. On
+            // The hard drop is reserved for the division you are standing on. On
             // every node it would read as a row of buttons.
-            current && hardShadow(nbInk(scheme), NB.offsetSm - 1),
+            isCurrentDivision && hardShadow(nbInk(scheme), NB.offsetSm - 1),
           ]}
         >
-          {current ? (
+          {isCurrentDivision ? (
             <Text style={[styles.numeral, { color: rung.ink }]}>{numeral(division)}</Text>
           ) : null}
         </View>
@@ -154,14 +155,24 @@ export default function RankRail({ standing, floors = [], onPress, onGrab, style
   const grab = useCallback(() => onGrab?.(true), [onGrab]);
   const release = useCallback(() => onGrab?.(false), [onGrab]);
 
-  const rungs = useMemo(() => ladderRungs({ floors }), [floors]);
+  const rungs = useMemo(() => {
+    // Only show the current tier's divisions, not the full ladder
+    const currentTier = RANK_TIERS[standing.tier];
+    // Create 3 division nodes for the current tier
+    return NUMERALS.map((numeral, i) => ({
+      key: `${currentTier.key}-${numeral}`,
+      label: numeral,
+      color: currentTier.color,
+      ink: currentTier.ink,
+      tier: standing.tier,
+      division: i + 1,
+    }));
+  }, [standing.tier]);
 
-  // Where the marker sits along the whole rail, in points. Node centres are at
-  // `i * NODE_W + NODE_W / 2`; being part way through a tier moves you that
-  // fraction of the way toward the NEXT centre, which is one node width on.
-  const centre = standing.tier * NODE_W + NODE_W / 2;
+  // Where the marker sits along the division rail. Based on division progress.
+  const centre = (standing.division - 1) * NODE_W + NODE_W / 2;
   const filled = centre + (standing.isTop ? 0 : standing.progress * NODE_W);
-  const total = RANK_TIERS.length * NODE_W;
+  const total = DIVISIONS * NODE_W;
   // The track spans centre-to-centre, and the fill is drawn INSIDE its stroke.
   const trackW = total - NODE_W;
   const fillW = Math.max(0, Math.min(trackW - TRACK_STROKE * 2, filled - NODE_W / 2 - TRACK_STROKE));
@@ -176,10 +187,8 @@ export default function RankRail({ standing, floors = [], onPress, onGrab, style
   const toGo = standing.toNext ?? (target != null ? Math.max(0, target - standing.points) : null);
 
   const jumpToMe = useCallback(() => {
-    // Put the current tier a third of the way in, so what is AHEAD gets the
-    // remaining two thirds. Landing it dead centre wastes half the rail on
-    // tiers already behind you.
-    scroller.current?.scrollTo({ x: Math.max(0, filled - NODE_W * 1.2), animated: !reduced });
+    // Put the current division in the middle of the rail
+    scroller.current?.scrollTo({ x: Math.max(0, filled - NODE_W * 1.5), animated: !reduced });
   }, [filled, reduced]);
 
   useEffect(() => {
@@ -278,7 +287,7 @@ export default function RankRail({ standing, floors = [], onPress, onGrab, style
                   styles.tick,
                   {
                     top: TRACK_Y + TRACK_STROKE,
-                    left: centre + ((i + 1) * NODE_W) / DIVISIONS,
+                    left: (i + 1) * NODE_W,
                     backgroundColor: withAlpha(colors.text, 0.3),
                   },
                 ]}
@@ -291,7 +300,7 @@ export default function RankRail({ standing, floors = [], onPress, onGrab, style
               <Node
                 key={rung.key}
                 rung={rung}
-                reached={standing.tier >= rung.tier}
+                reached={standing.division >= rung.division}
                 current={standing.tier === rung.tier}
                 division={standing.division}
                 colors={colors}

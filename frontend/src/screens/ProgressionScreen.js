@@ -346,7 +346,10 @@ function PassHeader({ top, onBack, onInfo, level, eyebrow, pct }) {
         <BackButton onPress={onBack} fill="#ffffff" ink={PANEL_INK} size={36} />
       </View>
       <View style={styles.headerCopy}>
-        <Text style={[type.labelSm, { color: PANEL_INK }]}>{eyebrow}</Text>
+        <View style={styles.headerLineTop}>
+          <Text style={[type.labelSm, { color: PANEL_INK }]}>{eyebrow}</Text>
+          <Image source={art('railPass')} style={styles.headerScroll} resizeMode="contain" pointerEvents="none" />
+        </View>
         <Text numberOfLines={1} adjustsFontSizeToFit style={[type.display, { color: PANEL_INK, fontSize: 32, lineHeight: 40 }]}>{level == null ? 'Levels' : `Level ${level}`}</Text>
         <View style={styles.headerLine}>
           {pct == null ? null : (
@@ -389,7 +392,6 @@ function PassHeader({ top, onBack, onInfo, level, eyebrow, pct }) {
           ) : null}
         </View>
       </View>
-      <Image source={art('railPass')} style={styles.headerScroll} resizeMode="contain" pointerEvents="none" />
     </View>
   );
 }
@@ -911,10 +913,14 @@ const styles = StyleSheet.create({
   // at; any taller and the header grows again.
   passHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: brand.pink, paddingHorizontal: space.gutter, paddingBottom: 14, borderBottomWidth: 3, borderColor: PANEL_INK, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
   headerTools: { width: 42, alignItems: 'center' },
-  // The pass-scroll flourish belongs at the far edge of the panel; keeping it
-  // out of the back-button column also makes that control vertically stable.
-  headerScroll: { position: 'absolute', right: space.gutter + 2, top: 10, width: 40, height: 36 },
+  // The pass-scroll flourish now sits on the top row with the eyebrow text
+  headerScroll: { width: 40, height: 36 },
   headerCopy: { flex: 1, marginLeft: 22, paddingRight: 4 },
+  headerLineTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+  },
   headerLine: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -190,7 +190,7 @@ export default function RunPostEditor({
                 accessibilityRole="button"
                 accessibilityLabel={`Remove photo ${index + 1}`}
               >
-                <Trash2 size={15} color="#FFFFFF" strokeWidth={2.4} />
+                <Trash2 size={18} color="#FFFFFF" strokeWidth={2.5} />
               </PressableScale>
             </View>
           ))}
@@ -311,12 +311,14 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
   photo: { width: 116, height: 116, borderRadius: radius.md, backgroundColor: colors.cardAlt },
   removePhoto: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    top: 4,
+    right: 4,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },

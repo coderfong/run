@@ -158,7 +158,7 @@ const RefreshBar = memo(function RefreshBar({ expiresAt, onExpire }) {
     >
       <AppIcon name="timer" size={16} />
       <Text style={[type.captionMedium, { color: colors.textMuted, paddingHorizontal: space.xs }]}>
-        {expiresAt && text ? `Fresh stock in ${text}` : 'Fresh stock soon'}
+        {expiresAt && text ? `New items in ${text}` : 'New items soon'}
       </Text>
     </Framed>
   );

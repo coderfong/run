@@ -76,7 +76,7 @@ export function ToastHost() {
 
   const animated = useAnimatedStyle(() => ({
     opacity: progress.value,
-    transform: [{ translateY: (1 - progress.value) * -16 }],
+    transform: [{ translateY: (1 - progress.value) * -16 }, { scale: 0.9 + progress.value * 0.1 }],
   }));
 
   if (!current) return null;

@@ -304,13 +304,16 @@ function RunnerSheet({ encounter, busy, onClose, onHighFive, onOpen, onHide }) {
                 style={{ flexShrink: 0 }}
               />
             ) : null}
+            {/* Badge showing number of times met */}
+            {encounter.times_crossed > 1 ? (
+              <View style={[styles.timesBadge, { backgroundColor: rung || brand.teal }]}>
+                <Text style={[styles.timesBadgeText, { color: '#fff' }]}>{encounter.times_crossed}</Text>
+              </View>
+            ) : null}
           </Row>
           <Text style={type.caption} numberOfLines={1}>
             {`Level ${encounter.level || 0}`}
             {encounter.clan_name ? `, ${encounter.clan_name}` : ''}
-          </Text>
-          <Text style={[type.caption, { color: rung || colors.textMuted, marginTop: 1 }]}>
-            {`${familiarityLabel(encounter)}, ${encounterSubtitle(encounter).toLowerCase()}`}
           </Text>
         </View>
       </Row>
@@ -341,17 +344,17 @@ function RunnerSheet({ encounter, busy, onClose, onHighFive, onOpen, onHide }) {
           Remove is `hide`: one-sided, instant, and only about your own plaza.
           It confirms anyway, because the person is gone from the square the
           moment it is tapped and there is no undo on this screen. */}
-      <Row gap={space.sm} style={{ marginTop: space.sm }}>
+      <Row gap={space.sm} style={{ marginTop: space.sm, justifyContent: 'center' }}>
         <Button
           title="View runner"
           variant="secondary"
           onPress={() => onOpen(encounter)}
-          style={{ flex: 1 }}
+          style={{ flex: 1, maxWidth: 140 }}
         />
         <Button
           title="Remove"
           variant="destructive"
-          style={{ flex: 1 }}
+          style={{ flex: 1, maxWidth: 140 }}
           onPress={() =>
             confirm(
               `Remove ${encounter.username}?`,
@@ -834,6 +837,20 @@ const styles = StyleSheet.create({
   // mirror costs nothing and it is most of what stops twenty of them reading as
   // one repeated sticker.
   flipped: { transform: [{ scaleX: -1 }] },
+
+  timesBadge: {
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  timesBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
 
   emptyWrap: {
     position: 'absolute',

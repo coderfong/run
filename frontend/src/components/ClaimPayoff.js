@@ -36,8 +36,6 @@ import CharacterRig, { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import AppIcon from './AppIcon';
 import TerritoryStealBanner, { STEAL_HEADROOM } from './TerritoryStealBanner';
-import XpProgress from './XpProgress';
-import RankProgress from './rank/RankProgress';
 import { fmtArea } from './RivalCard';
 
 function headline(claim) {
@@ -105,8 +103,6 @@ const FIXED = {
   peopleHead: 24,
   peopleMore: 18,
   held: 20,
-  rank: 72,
-  xp: 82,
   cta: 60,
 };
 
@@ -150,9 +146,7 @@ function solve({ avail, pad, rows, extra, blocks }) {
   const gaps =
     (blocks.steal ? 1 : 0) +
     (rows > 0 ? 1 : 0) +
-    (blocks.held ? 1 : 0) +
-    (blocks.rank ? 1 : 0) +
-    (blocks.xp ? 1 : 0);
+    (blocks.held ? 1 : 0);
 
   let flex = FLEX.headline + FLEX.rig + FLEX.stageGap * 2 + FLEX.area + gaps * FLEX.gap;
   if (rows > 0) flex += FLEX.peoplePad + rows * FLEX.peopleRow;
@@ -163,8 +157,6 @@ function solve({ avail, pad, rows, extra, blocks }) {
   if (rows > 0) fixed += FIXED.peopleHead;
   if (extra > 0) fixed += FIXED.peopleMore;
   if (blocks.held) fixed += FIXED.held;
-  if (blocks.rank) fixed += FIXED.rank;
-  if (blocks.xp) fixed += FIXED.xp;
 
   // The algebra gets close; the floors and the rounding are what it cannot
   // see, so the last few points are walked off rather than assumed away.
@@ -180,7 +172,7 @@ function solve({ avail, pad, rows, extra, blocks }) {
  * How big everything is, and what survives.
  *
  * SHRINKING IS NOT THE FIRST ANSWER. A small phone carrying a brawl — six
- * runners hit, a defence that held, land reinforced, both ladders moved — has
+ * runners hit, a defence that held, land reinforced — has
  * more to say than it has room for, and squeezing all of it makes every part
  * worse. So the two footnotes go first, cheapest first: the line about a
  * defence that held, then the line about ground reinforced. Both are context
@@ -214,9 +206,7 @@ export function fittedHeight({ d, rows, extra, blocks }) {
   const gaps =
     (blocks.steal ? 1 : 0) +
     (rows > 0 ? 1 : 0) +
-    (blocks.held ? 1 : 0) +
-    (blocks.rank ? 1 : 0) +
-    (blocks.xp ? 1 : 0);
+    (blocks.held ? 1 : 0);
 
   let h = d.headline + d.stageGap * 2 + d.rig + Math.round(d.areaFont * 1.2) + d.areaPad * 2;
   h += gaps * d.gap;
@@ -225,8 +215,6 @@ export function fittedHeight({ d, rows, extra, blocks }) {
   if (rows > 0) h += FIXED.peopleHead + d.cardPad * 2 + rows * (d.face + d.rowGap);
   if (extra > 0) h += FIXED.peopleMore;
   if (blocks.held) h += FIXED.held;
-  if (blocks.rank) h += FIXED.rank;
-  if (blocks.xp) h += FIXED.xp;
   return h;
 }
 
@@ -234,7 +222,7 @@ export function fittedHeight({ d, rows, extra, blocks }) {
 // tested on every screen size without rendering one of them.
 export { density, faceCap };
 
-export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewLeaderboard }) {
+export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewLeaderboard, onViewRankProgression }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();
@@ -257,11 +245,6 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
   const area = gained(claim);
   const reinforced = claim?.reinforced_m2 || 0;
   const stolenArea = taken.reduce((sum, v) => sum + (v.area_m2 || 0), 0);
-  // Rated claims only. A neutral expansion leaves the ladder exactly where it
-  // was, and a bar that travels nowhere is worse than no bar — it says the
-  // claim was judged and found to be worth nothing.
-  const rated = claim?.solo_elo != null && (claim?.solo_elo_delta || 0) !== 0;
-  const xpGained = claim?.xp_gained || 0;
 
   const d = useMemo(
     () =>
@@ -275,8 +258,6 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
           reinforced: reinforced >= 1,
           steal: taken.length > 0,
           held: held.length > 0,
-          rank: rated,
-          xp: xpGained > 0,
         },
       }),
     [
@@ -288,8 +269,6 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
       reinforced,
       taken.length,
       held.length,
-      rated,
-      xpGained,
     ]
   );
 
@@ -446,29 +425,6 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
               </Text>
             </View>
           )}
-
-          {/* THE TWO LADDERS, AS MOVEMENT.
-              This was two lines of receipt — "+21 rank points · 2,471 total"
-              and a "+205 XP" over a bar that filled from empty. Neither said
-              the thing a claim is judged on, which is whether it moved you.
-              Rank goes first because it is the one that can FALL, and because
-              it is what the faces above were a fight over. */}
-          {rated && (
-            <RankProgress
-              points={claim.solo_elo}
-              delta={claim.solo_elo_delta}
-              style={{ marginTop: d.gap }}
-            />
-          )}
-
-          {xpGained > 0 && (
-            <XpProgress
-              xp={claim.xp}
-              gained={xpGained}
-              accent={brand.teal}
-              style={{ marginTop: d.gap }}
-            />
-          )}
         </View>
 
         {/* One way on, and it goes forward. A Done ghost button used to sit
@@ -478,10 +434,10 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
             skipped. The standings carry their own Done. */}
         <View style={[styles.actions, { paddingBottom: insets.bottom + space.md }]}>
           <ToonButton
-            title="See the leaderboard"
+            title="See rank progression"
             variant="teal"
             icon={<AppIcon name="trophy" size={22} />}
-            onPress={onViewLeaderboard}
+            onPress={onViewRankProgression || onViewLeaderboard}
           />
         </View>
       </View>

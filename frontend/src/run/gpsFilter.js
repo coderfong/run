@@ -32,14 +32,17 @@
 
 export const GPS_DEFAULTS = {
   // Fixes worse than this tell us nothing useful and never enter the trail.
-  maxAccuracyM: 35,
+  // Increased from 35m to 50m to accept more points and better match Apple Watch
+  maxAccuracyM: 50,
   // Platforms that report no accuracy at all are treated as this good.
   assumedAccuracyM: 20,
   // Floor on the step gate, so a perfect fix still needs real movement.
-  minStepM: 2.5,
+  // Reduced from 2.5m to 1.5m to capture smaller movements
+  minStepM: 1.5,
   // Step gate as a fraction of the fix's accuracy: a 10 m fix has to move
   // 5 m before we believe it.
-  noiseFactor: 0.5,
+  // Reduced from 0.5 to 0.3 to be less aggressive about filtering noise
+  noiseFactor: 0.3,
   // Nobody runs faster than this; a step implying more is a GPS glitch.
   maxSpeedMps: 8,
   // ...but a glitch that persists is not a glitch. After this many rejections
@@ -56,15 +59,18 @@ export const GPS_DEFAULTS = {
   // at the start of every stretch; a runner's own pace is the honest value.
   processNoiseMps: 3,
   // Pace is read over the last this-many ms of running...
-  paceWindowMs: 30000,
+  // Increased from 30s to 60s for more stable pace readings that match Apple Watch
+  paceWindowMs: 60000,
   // ...widening backwards until it spans at least this much ground, so the
   // reading degrades smoothly into the run average instead of flickering
   // between two different meanings.
-  paceMinDistanceM: 60,
+  // Reduced from 60m to 30m to allow pace to show earlier in the run
+  paceMinDistanceM: 30,
   // Time constant of the smoothing applied to the window reading. Expressed
   // as a time rather than a per-call weight so the number a caller sees does
   // not depend on how often they ask for it.
-  paceSmoothingTauMs: 5000,
+  // Increased from 5s to 8s for smoother pace transitions
+  paceSmoothingTauMs: 8000,
   // No accepted movement for this long means stopped, not slow.
   paceStallMs: 60000,
 };

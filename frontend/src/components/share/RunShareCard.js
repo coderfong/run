@@ -44,7 +44,6 @@ import LogoRunner, { MARK_FEET, MARK_FOOT } from '../character/LogoRunner';
 import TrailDecorations, { TRAIL_NONE } from './trailDecorations';
 import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 import { NB, brand, fonts, nbTextOn, type, withAlpha } from '../../theme';
-import OutlinedText from '../ui/OutlinedText';
 import HardShadow from '../ui/HardShadow';
 
 // The canvas colour Instagram paints BEHIND the sticker, until the runner picks
@@ -129,8 +128,9 @@ const ART_ASPECT = 1.6;
 // route read as a diagram rather than as the subject. Strava's route is the
 // heaviest mark on their card; this makes ours the same weight class as the
 // numbers it sits above.
-const ROUTE_W = 7;
-const ROUTE_UNDER_W = 15;
+// Reduced from 7/15 to 4/10 for clearer, less thick appearance
+const ROUTE_W = 4;
+const ROUTE_UNDER_W = 10;
 
 // The whole run is held between a pair of oversized square brackets, matching
 // the reference's editorial poster treatment. Each bracket is drawn twice:
@@ -347,25 +347,7 @@ const VALUE_FOR_ROWS = [0, 78, 66, 54, 42, 34, 29];
 // bug you only ever see on somebody else's phone.
 const LINE_RATIO = 1.4;
 
-// How thick the ink outline round every number is, as a share of the type's
-// own size. The stroke grows WITH the type: held at a fixed width it thinned
-// out as the digits got bigger, which is the opposite of what a heavier number
-// needs.
-//
-// It is a RATIO rather than a number of points because the card has to know
-// how far the outline bleeds past the glyphs BEFORE it picks a font size —
-// see valueSize. That bleed is why the numbers were arriving with their edges
-// shaved off: the size was chosen so the glyphs exactly filled the column, the
-// outline then hung eight copies past both ends of that, and `fit` shrank and
-// clipped the row trying to get them back inside.
-const OUTLINE_RATIO = 0.045;
-
-// A last few percent of slack in the width budget, on top of the outline.
-// `emWidth` below is an ESTIMATE of how wide a string sets, and when it
-// underestimates by even a couple of percent `adjustsFontSizeToFit` fires —
-// which on iOS, on a Text with an explicit lineHeight, is exactly what crops
-// the glyphs. The fit is kept as a backstop; this is what stops it firing in
-// normal use.
+// A last few percent of slack in the width budget.
 const FIT_SAFETY = 0.97;
 
 // How much of that width budget the art column has to treat as really taken.
@@ -458,34 +440,10 @@ const STATS_TO_MARK_U = 24;
 // are single rows now, so justify is all that is left.
 const ROW_JUSTIFY = { left: 'flex-start', center: 'center', right: 'flex-end' };
 
-// How hard the type has to fight whatever ends up behind it.
-//
-// There IS no background — the type may land on a pale sky or a white t-shirt,
-// where translucent labels simply vanish. So everything is fully opaque and
-// carries a tight shadow that reads as an outline rather than a glow.
-//
-// WHITE, always. There used to be a second tone here — ink type carrying a
-// white halo, offered as a Light/Dark switch on the sheet — and it was cut:
-// black type on a sticker with no background of its own is the one combination
-// that disappears, and nobody wanted it over their own story anyway.
-// NEO-BRUTALIST, and not only for the look: this style's two devices are the
-// exact answer to the problem above. A blurred halo protects type by fading
-// into whatever is behind it, which is a hedge — on a busy photo it turns to
-// mush. A hard black STROKE round the glyphs cannot be argued with, and a
-// solid block with a stroke round it is legible over literally anything. The
-// sticker was already solving "readable on anything" the soft way; this solves
-// it the loud way and gets the design for free.
-//
-// The numbers and the wordmark are drawn with `OutlinedText`, which stacks
-// eight offset copies to make a real outline. The small LABELS are not: an
-// eight-copy ring at 10pt closes up the counters, so they keep a shadow —
-// offset on both axes with zero blur, which is the hard-drop recipe applied to
-// type rather than to a box.
+// Text tone for clean text without outlines
 const TONE = {
   text: '#FFFFFF',
   unit: 'rgba(255,255,255,0.96)',
-  ink: NB.ink,
-  shadow: NB.ink,
 };
 
 // Poppins Black has the wide, rounded, sports-poster silhouette in the visual
@@ -496,15 +454,9 @@ const RUN_FONT = fonts.hero;
 // One number, drawn as big as its column allows.
 //
 // No label, no box, no rule under it — a figure, its unit raised at the
-// shoulder, and a hard ink outline so it survives whatever photo the runner
-// posts it over. The size is decided by the card (see valueSize) rather than
-// here, because all of them share one and the block has to be measured before
-// any of them can be drawn.
+// shoulder, with clean text without outlines for a modern look.
 function Stat({ value, unit, size, lineH, u, tone, align, color }) {
   const unitSize = size * UNIT_RATIO;
-  // The outline hangs this far past the glyphs on every side, and the row has
-  // to own that room rather than let it hang over the edge of the column.
-  const bleed = size * OUTLINE_RATIO;
   return (
     // STRETCHED and justified rather than aligned: the number needs a box it
     // can be too big for, or `fit` has nothing to measure against and a long
@@ -516,12 +468,7 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
         flexDirection: 'row',
         alignItems: 'flex-start',
         justifyContent: ROW_JUSTIFY[align],
-        // Room for the ink ring, INSIDE the row. Without it the leftmost and
-        // rightmost copies of the outline sat outside the stat column, where
-        // the card's own `overflow: hidden` (and Android's clipping of
-        // children generally) shaves them flat — which is what "the edges are
-        // cut off" was.
-        paddingHorizontal: bleed,
+        paddingHorizontal: 8 * u,
         overflow: 'visible',
       }}
     >
@@ -531,50 +478,28 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
           flexDirection: 'row',
           alignItems: 'flex-start',
           transform: [{ scaleX: TYPE_X_SCALE }],
-          // scaleX grows the box from its own centre by default, which bleeds
-          // half the added width OUTWARD past whichever edge the row is
-          // anchored to — on a left-aligned card that pushed digits straight
-          // into the bracket's ink, since the layout above only ever reserved
-          // room for growth on the far side (see typeUsed). Anchoring the
-          // scale to the same edge the row is justified from keeps all the
-          // extra width headed into the row's own box, matching the math that
-          // sized it.
           transformOrigin: align === 'right' ? 'right' : align === 'left' ? 'left' : 'center',
         }}
       >
-        {/* A real stroke, not a shadow. This is the number somebody screenshots
-            and it has to survive a white t-shirt behind it. */}
-        <OutlinedText
+        {/* Clean text without outlines */}
+        <Text
           style={[
             type.statHero,
             {
               fontFamily: RUN_FONT,
               fontSize: size,
               lineHeight: lineH,
-              // Tight, the way the reference sets its figures: a heavy
-              // grotesque at poster size leaves gaps between digits that only
-              // negative tracking closes.
               letterSpacing: -0.02 * size,
               color: color || tone.text,
             },
           ]}
-          outline={tone.ink}
-          // Proportional to the type (see OUTLINE_RATIO), and known to the
-          // layout above so the column can reserve the room it needs. Held at a
-          // fixed width it thinned out as the digits got bigger, which is the
-          // opposite of what a heavier number needs — the outline is the card's
-          // whole answer to landing on a white t-shirt.
-          width={bleed}
           align={align}
-          // The backstop. The block is already sized to its widest member, so
-          // this should almost never fire — but "almost never" is not "never"
-          // once somebody runs past ten hours.
-          fit
+          numberOfLines={1}
+          adjustsFontSizeToFit
           minimumFontScale={0.6}
-          containerStyle={{ flexShrink: 1 }}
         >
           {value}
-        </OutlinedText>
+        </Text>
         {!!unit && (
           <Text
             style={{
@@ -585,13 +510,7 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
               textTransform: 'uppercase',
               color: tone.unit,
               marginLeft: 2 * u,
-              // Raised to the cap height of the digits beside it rather than
-              // sat on their baseline. Measured off the LINE box, which is the
-              // only thing here that knows how tall the number actually is.
               marginTop: lineH * UNIT_RISE,
-              textShadowColor: tone.shadow,
-              textShadowOffset: { width: 1.2 * u, height: 1.2 * u },
-              textShadowRadius: 0,
             }}
           >
             {unit}
@@ -702,14 +621,9 @@ export default function RunShareCard({
   // the column it has to live in. See VALUE_FOR_ROWS: the base is how big the
   // type may be for this many rows, and the column is how big it may be given
   // what the run actually reads.
-  //
-  // The column has to hold the OUTLINE as well as the glyphs. Both scale with
-  // the type, so what fits is one division rather than a loop: the string sets
-  // `widestEm` ems wide and the ink ring adds OUTLINE_RATIO of an em at each
-  // end of it.
   const base = (VALUE_FOR_ROWS[stats.length] || VALUE_FOR_ROWS[VALUE_FOR_ROWS.length - 1]) * u;
   const widestEm = stats.reduce((m, s) => Math.max(m, statEm(s)), 1);
-  const emPerLine = widestEm + 2 * OUTLINE_RATIO;
+  const emPerLine = widestEm;
   const valueSize = Math.min(base, (typeW * FIT_SAFETY) / emPerLine);
   const lineH = valueSize * LINE_RATIO;
   const statsH = stats.length * lineH;
@@ -719,13 +633,6 @@ export default function RunShareCard({
   // before it runs out of width. The art gets the difference (see ART_COL), so
   // "beside the numbers" means beside them rather than somewhere off to the
   // right of them.
-  //
-  // `emPerLine` deliberately errs WIDE — an underestimate is what fires the
-  // fitter and crops the glyphs (see EM) — but the SPLIT does not need that
-  // same insurance, and paying for it twice is what walked the route across
-  // its own column and into the right bracket. TYPE_RESERVE hands the art back
-  // the slack the estimate was holding, and still leaves the numbers more room
-  // than they measure.
   const typeUsed = splitCols
     ? Math.min(inner - COL_GAP * u, valueSize * emPerLine * TYPE_X_SCALE * TYPE_RESERVE)
     : typeW;
@@ -808,11 +715,12 @@ export default function RunShareCard({
   // the width the figure was two thirds as wide as the whole art column and
   // stood over its own route rather than on it. With no route at all it is the
   // subject rather than a detail on one, so it gets the whole band.
+  // Increased size for better visibility
   const runnerSize = !hasArt
-    ? width * 0.42
+    ? width * 0.52
     : splitCols
-      ? Math.min(width * 0.21, artW * 0.66)
-      : width * 0.21;
+      ? Math.min(width * 0.28, artW * 0.8)
+      : width * 0.28;
   const runner = (() => {
     if (!showCharacter || !equipped) return null;
     // NOTHING TO STAND ON. The route is off (the sheet's Route chip does
@@ -896,8 +804,9 @@ export default function RunShareCard({
   const bracketLeft = 10 * u;
   const bracketRight = width - 10 * u;
   const bracketCap = BRACKET_CAP_U * u;
-  const leftBracket = `M ${bracketLeft + bracketCap} ${bracketTop} H ${bracketLeft} V ${bracketBottom} H ${bracketLeft + bracketCap}`;
-  const rightBracket = `M ${bracketRight - bracketCap} ${bracketTop} H ${bracketRight} V ${bracketBottom} H ${bracketRight - bracketCap}`;
+  // Brackets removed for cleaner look
+  const leftBracket = null;
+  const rightBracket = null;
 
   return (
     <View
@@ -913,9 +822,8 @@ export default function RunShareCard({
       }}
     >
 
-      {/* Editorial square brackets hold the complete run together: the
-          chunky white stats and the route read as one shareable statement. */}
-      <Svg
+      {/* Editorial square brackets removed for cleaner look */}
+      {/* <Svg
         testID="share-bracket-frame"
         accessibilityLabel="Square brackets around run stats and route"
         width={width}
@@ -945,7 +853,7 @@ export default function RunShareCard({
             strokeLinejoin="miter"
           />
         ))}
-      </Svg>
+      </Svg> */}
 
       {/* --- the route: a column beside the numbers, not the whole card ---
 

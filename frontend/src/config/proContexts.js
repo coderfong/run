@@ -32,8 +32,8 @@ import { PRO_PERKS } from './pro';
 export const DEFAULT_CONTEXT = {
   key: 'default',
   source: 'profile',
-  title: 'PASER PRO',
-  subtitle: 'Planning, stats and styles. Running and claiming stay free.',
+  title: 'Upgrade for more perks',
+  subtitle: '',
   perks: PRO_PERKS,
   cta: null, // null → the sheet's standard "Subscribe for <price> per <period>"
 };
@@ -49,8 +49,6 @@ export const PRO_CONTEXTS = {
     subtitle: 'Check the land before you run.',
     perks: [
       ['route', 'Unlimited route planning'],
-      ['layers', 'Land along the route'],
-      ['steal', 'Plots to take back'],
       ['streak', 'Run and territory stats'],
     ],
     cta: 'Unlock Territory Planner',
@@ -61,8 +59,6 @@ export const PRO_CONTEXTS = {
     title: 'View more map layers.',
     subtitle: 'See ageing, contested and expiring land.',
     perks: [
-      ['layers', 'Age, contests and strongholds'],
-      ['claim', 'Land expiring first'],
       ['route', 'Territory route planner'],
       ['streak', 'Run and territory stats'],
     ],
@@ -76,9 +72,7 @@ export const PRO_CONTEXTS = {
     subtitle: 'See land, rivals and recent form.',
     perks: [
       ['streak', 'Compare with the last 30 days'],
-      ['claim', 'Land expiring soon'],
-      ['trophy', 'Rank history and filters'],
-      ['steal', 'Rival history'],
+      ['route', 'Territory route planner'],
     ],
     cta: 'See the full analysis',
   },
@@ -90,8 +84,6 @@ export const PRO_CONTEXTS = {
     perks: [
       ['streak', 'Pace and distance trends'],
       ['route', 'Land per kilometre'],
-      ['claim', 'Territory efficiency'],
-      ['trophy', 'Rank history'],
     ],
     cta: 'See the full analysis',
   },
@@ -102,10 +94,8 @@ export const PRO_CONTEXTS = {
     title: 'Rival details.',
     subtitle: 'See history, form and contested land.',
     perks: [
-      ['steal', 'Full rival history'],
-      ['claim', 'Contested land'],
       ['streak', 'Recent form'],
-      ['trophy', 'Rank history and filters'],
+      ['route', 'Territory route planner'],
     ],
     cta: 'View full rivalry',
   },
@@ -115,10 +105,8 @@ export const PRO_CONTEXTS = {
     title: 'Rank history.',
     subtitle: 'See every board and filter.',
     perks: [
-      ['trophy', 'Weekly, monthly and all time boards'],
-      ['locate', 'Local and club filters'],
       ['streak', 'Rank over time'],
-      ['claim', 'Season land changes'],
+      ['route', 'Territory route planner'],
     ],
     cta: 'Unlock every board',
   },
@@ -130,8 +118,6 @@ export const PRO_CONTEXTS = {
     subtitle: 'Unlock the PRO collection.',
     perks: [
       ['sparkles', 'Exclusive trails and cards'],
-      ['customize', 'PRO wardrobe'],
-      ['crown', 'Rare gear'],
       ['route', 'Territory route planner'],
     ],
     cta: 'Unlock the PRO collection',
@@ -139,14 +125,9 @@ export const PRO_CONTEXTS = {
 
   share: {
     source: 'share',
-    title: 'More share cards.',
-    subtitle: 'Unlock PRO card styles.',
-    perks: [
-      ['share', 'Premium share card styles'],
-      ['sparkles', 'Exclusive trails and cards'],
-      ['customize', 'PRO wardrobe'],
-      ['streak', 'Run and territory stats'],
-    ],
+    title: 'Unlock everything',
+    subtitle: 'Get the full PASER PRO experience',
+    perks: PRO_PERKS,
     cta: 'Unlock premium cards',
   },
 
@@ -156,8 +137,6 @@ export const PRO_CONTEXTS = {
     subtitle: 'Get the PRO lane and every board filter.',
     perks: [
       ['sparkles', 'The PRO reward lane, all season'],
-      ['trophy', 'Rank history and filters'],
-      ['customize', 'PRO wardrobe'],
       ['streak', 'Run and territory stats'],
     ],
     cta: null,
@@ -169,8 +148,6 @@ export const PRO_CONTEXTS = {
     subtitle: 'Extra rewards up to level 50.',
     perks: [
       ['sparkles', 'The PRO reward lane, every level'],
-      ['crown', 'Rare gear'],
-      ['customize', 'PRO wardrobe'],
       ['route', 'Territory route planner'],
     ],
     cta: null,
@@ -181,20 +158,20 @@ export const PRO_CONTEXTS = {
 
   home: {
     source: 'home',
-    title: 'More stats. More styles.',
-    subtitle: 'Planning, stats and gear.',
+    title: 'Upgrade for more perks',
+    subtitle: '',
     perks: PRO_PERKS,
     cta: null,
   },
 
   onboarding: {
     source: 'onboarding',
-    title: 'PASER PRO',
-    subtitle: 'Optional planning, stats and styles.',
+    title: 'Upgrade for more perks',
+    subtitle: '',
     perks: [
       ['route', 'Plan territory runs'],
       ['streak', 'More stats'],
-      ['customize', 'Exclusive styles'],
+      ['sparkles', 'Exclusive styles'],
     ],
     cta: null,
   },

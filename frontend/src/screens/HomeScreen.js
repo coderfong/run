@@ -6,7 +6,15 @@ import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimens
 import { Image } from '../ui/image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, {
+  cancelAnimation,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
@@ -598,6 +606,28 @@ export default function HomeScreen({ navigation }) {
     fallback: { unread: 0, items: [] },
   });
   const unread = notifs?.unread || 0;
+  
+  // Animate the bell when there are unread notifications
+  const bellScale = useSharedValue(1);
+  const reduced = useReduceMotion();
+  
+  useEffect(() => {
+    if (unread > 0 && !reduced) {
+      // Pulse animation when there are unread notifications
+      bellScale.value = withRepeat(
+        withSpring(1.1, { damping: 12, stiffness: 200 }),
+        3, // Number of repetitions
+        true // Reverse
+      );
+    } else {
+      bellScale.value = withTiming(1);
+    }
+  }, [unread, reduced]);
+  
+  const bellAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: bellScale.value }],
+  }));
+  
   // Land from a run the runner chose to plan later. The claim screen can be
   // left without placing it, and this is how Home offers it back. The key is
   // dropped from the cache after every run and every claim, so it is fresh on
@@ -691,21 +721,23 @@ export default function HomeScreen({ navigation }) {
               HardShadow, not the iOS-only `hardShadow()` style spread: the
               drop has to render on Android too. */}
           <HardShadow offset={NB.offsetSm} radius={radius.sm} on={colors.bg}>
-            <PressableShift
-              offset={NB.offsetSm}
-              style={[styles.bell, { borderColor: headerInk }]}
-              onPress={() => {
-                // Clear the dot in the cache too, so coming back to Home doesn't
-                // briefly show a badge for notifications already read.
-                setNotifs((prev) => ({ ...(prev || {}), unread: 0 }));
-                navigation.navigate('Notifications');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Notifications"
-            >
-              <AppIcon name="bell" size={22} />
-              {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink, borderColor: headerInk }]} />}
-            </PressableShift>
+            <Animated.View style={bellAnimatedStyle}>
+              <PressableShift
+                offset={NB.offsetSm}
+                style={styles.bell}
+                onPress={() => {
+                  // Clear the dot in the cache too, so coming back to Home doesn't
+                  // briefly show a badge for notifications already read.
+                  setNotifs((prev) => ({ ...(prev || {}), unread: 0 }));
+                  navigation.navigate('Notifications');
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Notifications"
+              >
+                <AppIcon name="bell" size={28} />
+                {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
+              </PressableShift>
+            </Animated.View>
           </HardShadow>
         </View>
       </View>
@@ -793,18 +825,18 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // on narrow screens.
   headerEnergy: { flex: 1, minWidth: 0 },
   bell: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.card,
     borderRadius: radius.sm,
-    borderWidth: NB.strokeThin,
+    borderWidth: 0,
   },
   // Nudged inside the box's stroke rather than hanging over the old bare icon's
   // corner. Its ring is the header ink now, not the page colour: a dot ringed in
   // `bg` sitting on a card-coloured box punched a hole in the box.
-  bellDot: { position: 'absolute', top: 4, right: 4, width: 9, height: 9, borderRadius: 5, borderWidth: 1.5 },
+  bellDot: { position: 'absolute', top: 4, right: 4, width: 12, height: 12, borderRadius: 6, borderWidth: 0 },
 
   // The art is ~square, so with resizeMode="contain" its size is capped by the
   // card HEIGHT, not the art box's width — past ~65% width a wider box gains
@@ -821,7 +853,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     alignItems: 'stretch',
     padding: space.md,
   },
-  heroText: { flex: 1, justifyContent: 'space-between', paddingRight: space.sm },
+  heroText: { flex: 1, justifyContent: 'space-between', paddingRight: space.sm, alignItems: 'center', paddingTop: space.sm },
   // bleed to the card edges (negative margins cancel the card padding) so the
   // illustration is as large as possible.
   heroImg: { height: 190, marginVertical: -space.md, marginRight: -space.md },

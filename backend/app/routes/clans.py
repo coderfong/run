@@ -143,24 +143,36 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
             text(
                 """
                 SELECT cm.user_id::text, u.username, cm.role, cm.joined_at,
-                       COALESCE(cw.distance_m, 0), COALESCE(cw.claims, 0)
+                       COALESCE(cw.distance_m, 0), COALESCE(cw.claims, 0),
+                       COALESCE(member_area.area_m2, 0)
                 FROM clan_members cm
                 JOIN users u ON u.id = cm.user_id
                 LEFT JOIN clan_week_goals g ON g.clan_id = cm.clan_id AND g.week_start = :ws
                 LEFT JOIN clan_week_contrib cw ON cw.goal_id = g.id AND cw.user_id = cm.user_id
+                LEFT JOIN (
+                    SELECT t.user_id, COALESCE(SUM(t.area_m2), 0) AS area_m2
+                    FROM territories t
+                    WHERE t.clan_id = :cid
+                      AND t.verified
+                      AND now() < COALESCE(t.expires_at, t.created_at + make_interval(
+                          secs => GREATEST(t.strength, 0.1) * :life_per * 86400
+                      ))
+                    GROUP BY t.user_id
+                ) member_area ON member_area.user_id = cm.user_id
                 WHERE cm.clan_id = :cid
-                ORDER BY COALESCE(cw.distance_m, 0) DESC, cm.joined_at ASC
+                ORDER BY COALESCE(member_area.area_m2, 0) DESC, cm.joined_at ASC
                 """
             ),
-            {"cid": clan_id, "ws": ws},
+            {"cid": clan_id, "ws": ws, "life_per": settings.territory_life_days_per_strength},
         ).fetchall()
         role_rank = {"leader": 0, "officer": 1, "member": 2}
         members = [
             schemas.ClanMemberOut(
                 user_id=r[0], username=r[1], role=r[2], joined_at=r[3],
                 week_distance_m=float(r[4]), week_claims=int(r[5]),
+                area_m2=float(r[6]),
             )
-            for r in sorted(rows, key=lambda r: (role_rank.get(r[2], 3), -float(r[4])))
+            for r in sorted(rows, key=lambda r: (role_rank.get(r[2], 3), -float(r[6])))
         ]
         goal, ws = _ensure_week_goal(db, clan_id)
         mine = db.execute(

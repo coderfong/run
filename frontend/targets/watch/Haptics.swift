@@ -38,4 +38,24 @@ enum Haptics {
             return nil
         }
     }
+    
+    /// Haptic for UI interactions (button presses, etc.)
+    static func lightTap() {
+        WKInterfaceDevice.current().play(.click)
+    }
+    
+    /// Haptic for success states
+    static func success() {
+        WKInterfaceDevice.current().play(.success)
+    }
+    
+    /// Haptic for failure/error states
+    static func failure() {
+        WKInterfaceDevice.current().play(.failure)
+    }
+    
+    /// Haptic for notification
+    static func notification() {
+        WKInterfaceDevice.current().play(.notification)
+    }
 }

@@ -22,7 +22,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, { useSharedValue, withSpring, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -43,6 +43,7 @@ import useCaptureStage from '../effects/useCaptureStage';
 import { buildTerritoryAnchorModel, layoutDefenders, resolveRevealOrigin } from '../effects/anchors';
 import { CAPTURE_LAYER } from '../effects/layers';
 import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
+import TwoStepClaimFlow, { CLAIM_STEPS } from '../components/claim/TwoStepClaimFlow';
 import CutsceneBackdrop from '../components/claim/CutsceneBackdrop';
 import { CLAIM_PHASE, atOrAfter } from '../components/claim/phases';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
@@ -431,6 +432,25 @@ export default function ResultScreen({ navigation, route }) {
   // finished run, before `options` had arrived to short-circuit the `??`.
   const [energyStatus, setEnergyStatus] = useState(null);
   const [shopOpen, setShopOpen] = useState(false);
+  
+  // Track claim step and pose for map visualization
+  const [claimStep, setClaimStep] = useState(CLAIM_STEPS.PLACE);
+  const [claimPoseForMap, setClaimPoseForMap] = useState(pose);
+  
+  // Animation for placement handle on first appearance
+  const handleAnimOffset = useSharedValue(0);
+  const handleAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: handleAnimOffset.value }],
+  }));
+  
+  // Animate handle when step changes to PLACE
+  useEffect(() => {
+    if (claimStep === CLAIM_STEPS.PLACE) {
+      handleAnimOffset.value = withSpring(15, { damping: 15 }, () => {
+        handleAnimOffset.value = withSpring(0, { damping: 15 });
+      });
+    }
+  }, [claimStep]);
 
   // The claim lands on the map before it lands in a card: camera flight,
   // capture encounter, the polygon wiping outward from the middle of the
@@ -592,10 +612,23 @@ export default function ResultScreen({ navigation, route }) {
   const fitToNeighbourhood = useCallback(() => {
     if (fitted.current || seq.isRunning || path.length < 2) return;
     fitted.current = true;
+    
+    // Start with route bbox
     const lats = path.map((p) => p.latitude);
     const lons = path.map((p) => p.longitude);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    let minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    let minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    
+    // If claim preview exists, include it in the fit for better context
+    if (claimPoints && claimPoints.length >= 3) {
+      const claimLats = claimPoints.map((p) => p.latitude);
+      const claimLons = claimPoints.map((p) => p.longitude);
+      minLat = Math.min(minLat, ...claimLats);
+      maxLat = Math.max(maxLat, ...claimLats);
+      minLon = Math.min(minLon, ...claimLons);
+      maxLon = Math.max(maxLon, ...claimLons);
+    }
+    
     // Grow the box around its own centre. The floor matters more than the
     // factor: a lap of one block is a tiny bbox, and 2.2x of almost nothing is
     // still almost nothing, so short runs would open zoomed to the pavement.
@@ -609,7 +642,7 @@ export default function ResultScreen({ navigation, route }) {
       24,
       700
     );
-  }, [seq.isRunning, path]);
+  }, [seq.isRunning, path, claimPoints]);
 
   // The trail as far as the 3D replay has flown. `replayProgress` is 1 unless
   // a flyover is actually running, so this is the whole path at every other
@@ -879,25 +912,18 @@ export default function ResultScreen({ navigation, route }) {
   // the claim's XP and adding it again below would count it twice.
   const claimRef = useRef(claim);
   claimRef.current = claim;
-  const claimXpInTotal = useRef(0);
   useEffect(() => {
     let alive = true;
     fetchAndCache('me:progression', api.progression)
       .then((p) => {
         if (!alive || typeof p?.xp !== 'number') return;
-        claimXpInTotal.current = claimRef.current.xp_gained || 0;
         setXpTotal(p.xp);
       })
       .catch(() => {});
     return () => { alive = false; };
   }, []);
-  // The claim pays again, on top. Added locally rather than refetched, so the
-  // bar's second move stays in step with the payoff instead of trailing a
-  // round trip behind it.
-  const xpTotalNow =
-    xpTotal == null
-      ? null
-      : xpTotal + Math.max(0, (claim.xp_gained || 0) - claimXpInTotal.current);
+  // The claim does NOT pay again (XP moved to separate screen).
+  const xpTotalNow = xpTotal;
 
   // The rest of the run, beyond the three numbers this screen always had.
   const elevation = useMemo(() => elevationChangeM(path), [path]);
@@ -1123,7 +1149,7 @@ export default function ResultScreen({ navigation, route }) {
     if (!center || claiming || !canPlace) return;
     setClaiming(true);
     try {
-      haptic.light();
+      haptic.medium(); // Stronger haptic for claim submission
       // Only the POSE travels — where along the route the claim's centre sits
       // and which way it faces. The server regrows the same shape from the
       // stored route and moves it rigidly to that pose, so the ground claimed
@@ -1196,6 +1222,20 @@ export default function ResultScreen({ navigation, route }) {
       return;
     }
     rivalPopup.show({ victims: payoff?.victims, myAvatar: equipped });
+  };
+
+  const goToRankProgression = () => {
+    navigation.navigate('Tabs', {
+      screen: 'Home',
+      params: {
+        screen: 'RankProgression',
+        params: { 
+          claim: payoff,
+          runXpTotal: xpTotal,
+          runXpGained: xpGained,
+        },
+      },
+    });
   };
 
   const closeCrossed = ({ silent = false } = {}) => {
@@ -1321,12 +1361,15 @@ export default function ResultScreen({ navigation, route }) {
               locked={seq.mapLocked}
               onIdle={fitToNeighbourhood}
             >
-              {/* everyone's nearby land, painted underneath the run */}
-              {/* `dark` is the soft glow under each border — it reads as
-                  neon on the night style and as smudge on the day one. */}
-              <TerritoryLayer id="r-board" featureCollection={boardFC} dark={scheme === 'dark'} />
-              {/* the exact ground about to change hands — the reveal takes
-                  over from here */}
+              {/* BOTTOM: BASE MAP - rendered by Mapbox */}
+              
+              {/* LEVEL 5: ALL OTHER TERRITORIES - de-emphasized during claim planning */}
+              <TerritoryLayer id="r-board" featureCollection={boardFC} dark={scheme === 'dark'} overview={true} />
+              
+              {/* LEVEL 4: RELEVANT ENEMY TERRITORY */}
+              {/* LEVEL 3: MY EXISTING TERRITORY */}
+              
+              {/* LEVEL 2: CANDIDATE CLAIM FILL + OUTLINE */}
               {claimPoints && canPlace && (
                 <TerritoryFill
                   id="r-claim"
@@ -1337,22 +1380,56 @@ export default function ResultScreen({ navigation, route }) {
                   glow
                 />
               )}
-              {/* The route goes on last, so it reads INSIDE the territory it
-                  grew rather than under a translucent lid.
-
-                  During the 3D replay it UNROLLS: the trail is drawn only as
-                  far as the camera has flown, so the run is re-drawn as it is
-                  re-flown instead of the whole thing sitting there finished
-                  while a camera tours it. `replayProgress` is 1 at every other
-                  moment in the app's life, which is how this stays the plain
-                  full trail everywhere else. */}
+              
+              {/* LEVEL 1: ROUTE - dual-stroke for visibility */}
+              {/* Route casing - near-black */}
+              <Trail
+                id="r-trail-casing"
+                points={replayTrail}
+                color="#0a0a0a"
+                width={8}
+              />
+              {/* Route bright line */}
               <Trail
                 id="r-trail"
                 points={replayTrail}
                 color={trailGlowColor || team.stroke}
                 width={4}
                 glow
+                glowColor={trailGlowColor || team.stroke}
               />
+              
+              {/* Placement handle visualization for Step 1 */}
+              {claimStep === CLAIM_STEPS.PLACE && canPlace && replayTrail.length > 0 && (
+                <UserMarker 
+                  point={replayTrail[Math.floor((claimPoseForMap?.t || 0.5) * (replayTrail.length - 1))]}
+                >
+                  <Animated.View style={[styles.placementHandle, handleAnimatedStyle]}>
+                    <View style={[styles.handleOuter, { borderColor: team.glow }]} />
+                    <View style={[styles.handleInner, { backgroundColor: team.glow }]} />
+                    <Text style={styles.handleIcon}>↔</Text>
+                  </Animated.View>
+                </UserMarker>
+              )}
+              
+              {/* Rotation ring visualization for Step 2 */}
+              {claimStep === CLAIM_STEPS.ROTATE && center && (
+                <UserMarker point={center}>
+                  <View style={styles.rotationRing}>
+                    <View style={[styles.rotationCircle, { borderColor: team.glow }]} />
+                    <View style={[
+                      styles.rotationIndicator,
+                      { 
+                        borderColor: team.glow,
+                        transform: [{ rotate: `${claimPoseForMap?.deg || 0}deg` }]
+                      }
+                    ]}>
+                      <View style={styles.rotationArrow} />
+                    </View>
+                    <Text style={styles.rotationIcon}>↻</Text>
+                  </View>
+                </UserMarker>
+              )}
               {/* The permanent territory, switched on as the reveal lands.
                   DO NOT fade this in. It appears UNDER the reveal canvas,
                   which is drawing the same polygon at the same 0.42 fill, and
@@ -1646,7 +1723,7 @@ export default function ResultScreen({ navigation, route }) {
                 {!options && <ChooseAttackPending team={team} />}
 
                 {canChoose && (
-                  <ChooseAttack
+                  <TwoStepClaimFlow
                     options={options}
                     pose={pose}
                     onPose={onPose}
@@ -1655,6 +1732,10 @@ export default function ResultScreen({ navigation, route }) {
                     team={team}
                     onInteractionChange={setClaimControlActive}
                     disabled={claiming || seq.isRunning}
+                    onStepChange={(step, currentPose) => {
+                      setClaimStep(step);
+                      setClaimPoseForMap(currentPose);
+                    }}
                   />
                 )}
 
@@ -1691,6 +1772,11 @@ export default function ResultScreen({ navigation, route }) {
                     read as a purchase; the decision is about ground, and what
                     it costs is a fact about the account, not about the move. */}
                 <View style={styles.claimFooter}>
+                  <View style={styles.claimCost}>
+                    <Text style={type.caption}>
+                      {preview?.energy_cost ? `Costs ${preview.energy_cost} energy` : ''}
+                    </Text>
+                  </View>
                   {energyStatus && (
                     <EnergyMeter
                       compact
@@ -1731,6 +1817,7 @@ export default function ResultScreen({ navigation, route }) {
           myAvatar={equipped}
           onClose={endCelebration}
           onViewLeaderboard={seq.continueToLeaderboard}
+          onViewRankProgression={goToRankProgression}
         />
 
         {/* the standings, arriving behind a character-led wipe */}
@@ -1844,8 +1931,8 @@ export default function ResultScreen({ navigation, route }) {
       <HardShadow radius={nbRadius.sm} accent={team.glow} style={styles.cardShadow}>
       <View style={styles.card}>
         {hasRouteData({ rings, path: routeLonLat }) && (
-          <View style={styles.polyWrap}>
-            <RouteThumb id={result.run_id} rings={rings} path={routeLonLat} color={team.glow} />
+          <View style={styles.polyWrapLarge}>
+            <RouteThumb id={result.run_id} rings={rings} path={routeLonLat} color={team.glow} large />
           </View>
         )}
 
@@ -1872,39 +1959,9 @@ export default function ResultScreen({ navigation, route }) {
           <QuietStat label="Duration" value={formatDuration(result.duration_s)} />
           <QuietStat label="Calories" value={String(caloriesKcal)} unit="kcal" />
         </View>
-        {/* The DEEPER read of the run — best split, climbing, consistency.
-            The four headline numbers above (distance, pace, duration,
-            calories) stay free for everyone; this second row is PRO depth. It
-            is a richer view, not an advantage: knowing your elevation gain
-            wins you no ground, so it sits on the right side of the
-            depth-not-power line. Locked, it collapses to one PASER PRO strip
-            rather than four padlocks. */}
-        {advancedStatsLocked ? (
-          <ProInlineLock
-            context="run_insights"
-            feature="run_stats"
-            label="Best km, climbing and pace consistency"
-            // The row's OWN numbers, frosted. Same four values the unlocked
-            // branch below renders, off the same list — a lock that showed a
-            // different set of names from the thing it unlocks is the bug this
-            // shares a source to avoid.
-            preview={advancedStats}
-            style={{ marginTop: space.md }}
-          />
-        ) : (
-          <View style={[styles.quietRow, styles.quietRowTight]}>
-            {advancedStats.map((s) => (
-              <QuietStat key={s.label} label={s.label} value={s.value} unit={s.unit} />
-            ))}
-          </View>
-        )}
 
-        {/* The XP as a POSITION, not a receipt: the ladder bar runs from where
-            this runner stood before the run to where they stand now, and rolls
-            the level over if the run crossed one. */}
-        {totalXp > 0 && (
-          <XpProgress xp={xpTotalNow} gained={totalXp} accent={team.glow} onLevelUp={onLevelUp} />
-        )}
+        {/* XP progression moved to dedicated RankProgressionScreen */}
+        {/* Coins and other rewards can stay here */}
 
         {/* What the run paid, under the bar it just moved — coins used to sit
             above the whole card as a receipt with nothing to attach to. */}
@@ -2034,22 +2091,49 @@ export default function ResultScreen({ navigation, route }) {
         />
       </Reveal>
 
-      {/* splits — PRO depth, the same gate the run detail page uses so a run
-          reads the same on the day and a week later. A run with no splits to
-          show gets neither the table nor a lock. */}
-      {splits.length > 0 && (
+      {/* Combined PRO section for all advanced insights - splits and other stats */}
+      {(splits.length > 0 || advancedStats.length > 0) && (
         <Reveal delay={300}>
           <ProLockedSection
             context="run_insights"
-            feature="run_splits"
-            title="Splits"
-            blurb="Your per kilometre pace, fastest to slowest."
-            // The real table, with the times frosted out. Capped at four rows
-            // so a 20 km run does not hand the page a wall of blurred bars.
-            peek={<Splits splits={splits.slice(0, 4)} accent={team.glow} bare frosted />}
+            feature="run_advanced"
+            title="Advanced run insights"
+            blurb="Splits, climbing data and pace analysis"
+            peek={
+              <View>
+                {splits.length > 0 && (
+                  <Splits splits={splits.slice(0, 4)} accent={team.glow} bare frosted />
+                )}
+                {advancedStats.length > 0 && (
+                  <View style={[styles.quietRow, styles.quietRowTight]}>
+                    {advancedStats.map((s) => (
+                      <View key={s.label} style={styles.quietStat}>
+                        <Text style={styles.quietLabel}>{s.label}</Text>
+                        <View style={styles.quietValueRow}>
+                          <ProFrosted style={styles.quietValue}>
+                            {s.unit ? `${s.value} ${s.unit}` : s.value}
+                          </ProFrosted>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            }
             style={{ marginTop: space.xl }}
           >
-            <Splits splits={splits} accent={team.glow} />
+            <View>
+              {splits.length > 0 && (
+                <Splits splits={splits} accent={team.glow} />
+              )}
+              {advancedStats.length > 0 && (
+                <View style={[styles.quietRow, styles.quietRowTight]}>
+                  {advancedStats.map((s) => (
+                    <QuietStat key={s.label} label={s.label} value={s.value} unit={s.unit} />
+                  ))}
+                </View>
+              )}
+            </View>
           </ProLockedSection>
         </Reveal>
       )}
@@ -2293,7 +2377,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderTopColor: toon.ink,
   },
   claimSheetInner: { paddingHorizontal: space.lg, paddingTop: space.sm },
-  claimFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 1 },
+  claimFooter: { flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 1 },
+  claimCost: { alignSelf: 'flex-start', width: '100%' },
   claimEnergy: { flex: 1, minWidth: 0 },
   claimButtonWrap: { width: 132, flexShrink: 0 },
   claimButton: { width: '100%' },
@@ -2367,6 +2452,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // its own offset, so without this it lands under whatever is below it.
   cardShadow: { marginBottom: NB.offset, marginRight: NB.offset },
   polyWrap: { alignSelf: 'stretch', marginBottom: space.sm },
+  polyWrapLarge: { alignSelf: 'stretch', marginBottom: space.md, minHeight: 180 },
   heroRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: space.sm },
   heroArea: { ...type.statHero },
   heroUnit: { ...type.statMd, color: colors.textMuted, marginBottom: 6 },
@@ -2444,4 +2530,76 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // `shareBtn` / `shareBtnText` were here — the gradient pill's own padding
   // and label colour. ToonButton brings both, so they went with it.
   actions: { marginTop: space.xl, gap: space.md },
+
+  // Claim step visualization styles
+  placementHandle: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  handleOuter: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 3,
+    opacity: 0.8,
+  },
+  handleInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
+  handleIcon: {
+    position: 'absolute',
+    bottom: -8,
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.textMuted,
+  },
+  
+  rotationRing: {
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  rotationCircle: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 2,
+    opacity: 0.6,
+  },
+  rotationIndicator: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rotationArrow: {
+    position: 'absolute',
+    top: 4,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderTopWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#ffffff',
+  },
+  rotationIcon: {
+    position: 'absolute',
+    right: -10,
+    top: '50%',
+    marginTop: -12,
+    fontSize: 20,
+    color: colors.textMuted,
+  },
 });

@@ -60,24 +60,15 @@ export const COPY = {
 // DATA ONLY, like the rest of this file. Each beat's icon is the component's
 // business; `key` is what it looks the icon up by.
 //
-// Three beats, one short sentence each: who is here, what to do, what it
-// costs them in privacy. The last one is not filler — it is the answer to the
-// question the screen provokes. The familiarity ladder (Familiar Face →
-// Running Regular → Local Legend) used to be a fourth beat here; it is
-// already printed under each character's own card, so a first-time reader
-// meets it there instead of in a wall of text before they have met anyone.
+// Two beats, one short sentence each: who is here, what happens.
 export const INTRO_BEATS = [
   {
     key: 'plaza',
-    text: 'These runners crossed paths with you on a recent run.',
+    text: 'Runners you cross collect in your plaza.',
   },
   {
     key: 'tap',
-    text: 'Tap anyone to high five them or see their profile.',
-  },
-  {
-    key: 'privacy',
-    text: 'They never see your route, location or crossing time. Hide or block anyone, any time.',
+    text: 'Pass by them enough and you\'ll be Pasers!',
   },
 ];
 

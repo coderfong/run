@@ -22,7 +22,6 @@ SHOP_ITEMS = {
     "starnecklace": ("accessory", "rare"),  # Star pendant
     "greenscarf": ("accessory", "common"),  # Knit scarf
     "tealscarf": ("accessory", "common"),  # Winter scarf
-    "gaiter": ("accessory", "common"),  # Neck gaiter
     "lacecollar": ("accessory", "rare"),  # Lace collar
     "dogtags": ("accessory", "rare"),  # Dog tags
     "pearlcollar": ("accessory", "rare"),  # Pearl collar
@@ -78,8 +77,6 @@ SHOP_ITEMS = {
     "wf070": ("footwear", "rare"),  # Cream strap shoes
     "wf085": ("footwear", "rare"),  # Burgundy strap heels
     # --- glasses ---
-    "rounds": ("glasses", "common"),  # Rounds
-    "wayfarer": ("glasses", "common"),  # Wayfarers
     "roundgold": ("glasses", "common"),  # Round golds
     "halfframe": ("glasses", "rare"),  # Half frames
     "heart": ("glasses", "rare"),  # Heart sunnies
@@ -153,7 +150,6 @@ SHOP_ITEMS = {
     "angelheart": ("headwear", "epic"),  # Angel heart
     "ballcap": ("headwear", "common"),  # Ball cap
     "canvasbucket": ("headwear", "common"),  # Canvas bucket
-    "runvisor": ("headwear", "common"),  # Run visor
     "headphones": ("headwear", "rare"),  # Headphones
     "sitehelmet": ("headwear", "rare"),  # Site helmet
     "witchhat": ("headwear", "epic"),  # Witch hat

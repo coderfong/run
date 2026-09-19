@@ -426,6 +426,10 @@ export default function LeaderboardTransition({
           />
 
           <View style={styles.header} pointerEvents="none">
+            {/* The same runner who dashed the board in, now at the top */}
+            <View style={styles.topBustSlot} pointerEvents="none">
+              <CharacterBust equipped={attacker || {}} size={FOOTER_BUST} bg="transparent" />
+            </View>
             {rays ? (
               <Image source={rays} style={styles.rays} resizeMode="contain" fadeDuration={0} />
             ) : null}
@@ -459,12 +463,6 @@ export default function LeaderboardTransition({
           )}
 
           <View style={styles.actions}>
-            {/* The same runner who dashed the board in, stood next to the way
-                out of it. Hidden under Reduce Motion's tighter layout only if
-                the screen is genuinely short. */}
-            <View style={styles.bustSlot} pointerEvents="none">
-              <CharacterBust equipped={attacker || {}} size={FOOTER_BUST} bg="transparent" />
-            </View>
             {/* No HardShadow here: ToonButton is FRAMED, so its silhouette is
                 a drawn wobbly box and it carries its own drop for exactly that
                 reason. See the `shadow` note in ui/ToonButton. */}
@@ -539,17 +537,23 @@ function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
   }));
 
   return (
-    <Animated.ScrollView
-      ref={boardRef}
-      style={styles.board}
-      contentContainerStyle={styles.boardContent}
-      showsVerticalScrollIndicator={false}
-      scrollEnabled={finished || !hasPlayer}
-      onTouchStart={() => { if (finished) driving.value = false; }}
-      onLayout={event => setViewport(event.nativeEvent.layout.height)}
-      onContentSizeChange={(_, height) => setContentHeight(height)}
-      testID="standings-travel-board"
-    >
+    <View style={styles.boardWrapper}>
+      {/* Top fade gradient */}
+      <View style={styles.fadeTop} pointerEvents="none">
+        <View style={[styles.fadeGradient, { backgroundColor: colors.bg }]} />
+      </View>
+
+      <Animated.ScrollView
+        ref={boardRef}
+        style={styles.board}
+        contentContainerStyle={styles.boardContent}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={finished || !hasPlayer}
+        onTouchStart={() => { if (finished) driving.value = false; }}
+        onLayout={event => setViewport(event.nativeEvent.layout.height)}
+        onContentSizeChange={(_, height) => setContentHeight(height)}
+        testID="standings-travel-board"
+      >
       {rows.map((row, index) => {
         const isMe = row.user_id === playerId;
         return (
@@ -571,6 +575,12 @@ function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
       })}
       {children}
     </Animated.ScrollView>
+
+      {/* Bottom fade gradient */}
+      <View style={styles.fadeBottom} pointerEvents="none">
+        <View style={[styles.fadeGradient, { backgroundColor: colors.bg }]} />
+      </View>
+    </View>
   );
 }
 
@@ -579,7 +589,7 @@ const styles = StyleSheet.create({
   content: { flex: 1, paddingHorizontal: space.gutter },
   confetti: { position: 'absolute' },
 
-  header: { alignItems: 'center' },
+  header: { alignItems: 'center', position: 'relative' },
   // Behind the banner and wider than it, so the rays read as light coming off
   // the heading rather than as a picture behind a box.
   rays: {
@@ -592,6 +602,7 @@ const styles = StyleSheet.create({
   },
   banner: { alignSelf: 'center' },
   title: { color: '#fff', textAlign: 'center' },
+  topBustSlot: { position: 'absolute', right: space.gutter, top: 0, zIndex: 2 },
 
   summary: { alignItems: 'center', marginTop: space.sm },
   medallion: { alignItems: 'center', justifyContent: 'center' },
@@ -603,7 +614,8 @@ const styles = StyleSheet.create({
   summaryRank: { color: '#fff', fontSize: 42, lineHeight: 50 },
   chip: { marginTop: -6 },
 
-  board: { flex: 1, marginTop: space.lg },
+  boardWrapper: { flex: 1, marginTop: space.lg, position: 'relative' },
+  board: { flex: 1 },
   boardContent: { paddingBottom: space.md },
   meShadow: { marginBottom: NB.offset },
   gap: {
@@ -616,11 +628,12 @@ const styles = StyleSheet.create({
   gapRule: { height: 2, flex: 1, maxWidth: 72, borderRadius: 1 },
   fallback: { textAlign: 'center', marginTop: space.xl },
 
-  actions: { paddingTop: space.lg },
-  // Sits ON the button's row, overlapping it from the left, so the character
-  // leans into the CTA instead of costing the layout another band of height.
-  bustSlot: { position: 'absolute', left: -6, bottom: space.lg - 6, zIndex: 2 },
-  cta: { marginLeft: FOOTER_BUST - 18 },
+  fadeTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 60, zIndex: 1 },
+  fadeBottom: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, zIndex: 1 },
+  fadeGradient: { flex: 1, opacity: 0.8 },
+
+  actions: { paddingTop: space.lg, alignItems: 'center' },
+  cta: { alignSelf: 'center' },
 
   dash: {
     position: 'absolute',

@@ -92,6 +92,37 @@ console.log('duplicate cosmetic IDs:', duplicateIds.length
   : 'none');
 console.log('suspicious cosmetic IDs:', suspiciousIds.length ? suspiciousIds.join(', ') : 'none');
 
+// --- PASER running cosmetics validation (2026-09-17) ---
+const paserIds = [
+  'splitraceshorts', 'training5shorts', 'twoinoneshorts', 'performancehalftights',
+  'fullrunningtights', 'trailrunningshorts', 'raceskort', 'modestrunningpants',
+  'dailytrainer', 'maxcushiontrainer', 'temposhoe', 'carbonracer',
+  'trailgripshoe', 'wetweatherrunner', 'reflectivenightrunner', 'recoveryslides',
+  'runningbelt', 'racebib', 'gpswatch', 'runningearbuds', 'phonearmband',
+  'coolingtowel', 'chestlight', 'clubslingbag',
+  'eastcoastsunrisesinglet', 'marinanighttee', 'parkconnectortee',
+  'kallangtracksinglet', 'monsoonshell', 'humiditymeshtee',
+  'clubtrainingtee', 'clubracesinglet', 'trailsleevelesstop', 'nationaldaysinglet',
+  'aerowrapshades', 'clearnightglasses', 'photochromicshades',
+  'lightweightracecap', 'reflectivenightcap', 'trailsuncap',
+];
+const missingPaserIds = paserIds.filter((id) => !catalogueIds.has(id));
+if (missingPaserIds.length) errors.push(`missing PASER IDs: ${missingPaserIds.join(', ')}`);
+for (const id of paserIds) {
+  if (!catalogueIds.has(id)) continue;
+  if (!Object.hasOwn(COSMETIC_CURATION, id)) {
+    errors.push(`${id}: PASER item missing curation metadata`);
+  }
+  const itemCollection = COSMETIC_CURATION[id]?.collection;
+  const validCollections = [
+    'east_coast_sunrise', 'marina_after_dark', 'kallang_track', 'park_connector',
+    'monsoon_miles', 'trail', 'clubhouse', 'national_day', 'runner_essentials',
+  ];
+  if (itemCollection !== null && !validCollections.includes(itemCollection)) {
+    errors.push(`${id}: invalid collection ${JSON.stringify(itemCollection)}`);
+  }
+}
+
 if (errors.length) {
   for (const error of errors) console.error(`ERROR: ${error}`);
   process.exitCode = 1;

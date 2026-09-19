@@ -16,13 +16,12 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
 import { ToonButton } from '../components/ui';
+import BackButton from '../components/ui/BackButton';
 import { space, useTheme, useThemedStyles } from '../theme';
-import { PressableScale } from '../ui/motion';
 import ResultScreen from './ResultScreen';
 
 // The claim screen draws `{latitude, longitude}` points; the server stores
@@ -97,15 +96,7 @@ export default function PlanAttackScreen({ navigation, route }) {
         { paddingTop: insets.top + space.sm, paddingBottom: insets.bottom + space.lg },
       ]}
     >
-      <PressableScale
-        onPress={close}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        hitSlop={12}
-        style={styles.close}
-      >
-        <X size={26} color={colors.text} strokeWidth={2.5} />
-      </PressableScale>
+      <BackButton onPress={close} />
       <View style={styles.body}>
         {state.status === 'loading' ? (
           <>
@@ -125,7 +116,6 @@ export default function PlanAttackScreen({ navigation, route }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: space.lg },
-  close: { alignSelf: 'flex-start', padding: 4 },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md },
   note: { ...type.bodySm, color: colors.textMuted },
   message: { ...type.bodySmBold, color: colors.text, textAlign: 'center' },

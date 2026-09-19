@@ -140,11 +140,22 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
   func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
     guard userInfo["event"] as? String == "watchRunFinished" else { return }
     let distance = userInfo["distance"] as? String ?? "0.00"
+    let time = userInfo["time"] as? String ?? ""
+    let pace = userInfo["pace"] as? String ?? ""
+    
     let content = UNMutableNotificationContent()
     content.title = "Run saved · \(distance) km"
     content.body = "Your route is ready. Open PASER to plan your attack."
     content.sound = .default
-    content.userInfo = ["category": "watch_run_saved", "screen": "record"]
+    // Include more data for proper routing
+    content.userInfo = [
+      "category": "watch_run_saved",
+      "screen": "record",
+      "distance": distance,
+      "time": time,
+      "pace": pace,
+      "source": "watch"
+    ]
     let request = UNNotificationRequest(
       identifier: "watch-run-\(UUID().uuidString)",
       content: content,

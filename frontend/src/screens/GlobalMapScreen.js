@@ -164,6 +164,8 @@ function toFeatures(territories, userId, playerAccent) {
   for (const t of territories) {
     const c = t.clan_color || NEUTRAL;
     const mine = t.user_id === userId;
+    // Use player accent for MY territories OR solo territories (no clan color)
+    const useAccent = mine || !t.clan_color;
     territoryRings(t).forEach((ring, ri) => {
       const coords = ring.map(([lon, lat]) => [lon, lat]);
       if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
@@ -176,16 +178,17 @@ function toFeatures(territories, userId, playerAccent) {
         properties: {
           territoryId: t.id,
           clanTag: t.clan_tag || 'Solo',
-          fillColor: mine && playerAccent ? playerAccent : c.stroke,
-          strokeColor: mine && playerAccent ? playerAccent : c.stroke,
-          // Territory fill ~48% (own a touch higher), faded by decay so land
-          // visibly weakens as it nears expiry — but never down to the wash
-          // it used to fade to, which read as barely-there rather than aged.
-          // Then deepened by repeat claims (`reinforcements`), capped, so
-          // hard-held ground reads more saturated than a single claim.
+          fillColor: useAccent && playerAccent ? playerAccent : c.stroke,
+          strokeColor: useAccent && playerAccent ? playerAccent : c.stroke,
+          // Territory fill: MY territories are bold and obvious (0.75 base),
+          // others' territories are faded (0.25 base) to make them less prominent.
+          // Then faded by decay so land visibly weakens as it nears expiry — but never
+          // down to the wash it used to fade to, which read as barely-there rather than aged.
+          // Then deepened by repeat claims (`reinforcements`), capped, so hard-held ground
+          // reads more saturated than a single claim.
           fillOpacity: Math.min(
             SAT_MAX,
-            (mine ? 0.58 : 0.48) * (0.55 + 0.45 * (t.freshness ?? 1)) * claimSaturation(t.reinforcements)
+            (mine ? 0.75 : 0.25) * (0.55 + 0.45 * (t.freshness ?? 1)) * claimSaturation(t.reinforcements)
           ),
           contested: !!t.contested,
         },
@@ -878,7 +881,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   // on all four sides. (Before that it was inset by a gutter on every side,
   // which cost the map a band of itself twice over: once to the gutter and
   // again to the frame drawn inside it.)
-  const boardTop = 0;
+  // Offset by -insets.top to go under the status bar for flush appearance
+  const boardTop = -insets.top;
   // Everything the frame would otherwise cover gets pushed in past the rail.
   const rail = Math.round(screenW * RAIL);
   // The top controls clear the rail AND the notch. With the frame on the top
@@ -1328,22 +1332,33 @@ export default function GlobalMapScreen({ route, navigation }) {
       {!planning && selected && selectedColor && (
         <Card style={styles.card}>
           <View style={styles.cardRow}>
-            <Pill label={selected.clan_tag || 'Solo'} color={selectedColor.stroke} dot />
             <TouchableOpacity onPress={() => setSelected(null)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close">
               <X size={18} color={colors.textDim} />
             </TouchableOpacity>
           </View>
-          <Text style={[type.bodyBold, { marginTop: space.sm }]} numberOfLines={1}>
-            Captured by {selected.username}
-            {selected.user_id === user.id ? ' (you)' : ''}
-          </Text>
-          <Text style={[type.caption, { marginTop: 2 }]}>
-            {(selected.area_m2 / 1e6).toFixed(selected.area_m2 >= 1e5 ? 2 : 3)} km²,{' '}
-            strength ×{(selected.strength || 1).toFixed(1)},{' '}
-            {selected.defenders > 1 ? `${selected.defenders} defenders, ` : ''}
-            held since {shortDate(selected.created_at)}
-            {selected.contested ? ', contested' : ''}
-          </Text>
+          <View style={styles.cardMain}>
+            <View style={styles.cardHeader}>
+              <Text style={[type.bodyBold]} numberOfLines={1}>
+                Captured by {selected.username}
+                {selected.user_id === user.id ? ' (you)' : ''}
+              </Text>
+              {/* Strength bar and defenders badge */}
+              <View style={styles.cardStats}>
+                <View style={styles.strengthBarContainer}>
+                  <View style={[styles.strengthBar, { width: `${Math.min(100, (selected.strength || 1) * 10)}%`, backgroundColor: selectedColor.stroke }]} />
+                </View>
+                {selected.defenders > 0 && (
+                  <View style={[styles.defendersBadge, { backgroundColor: selected.defenders > 3 ? '#22C55E' : '#EF4444' }]}>
+                    <Text style={styles.defendersText}>{selected.defenders}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            <Text style={[type.caption, { marginTop: 2 }]}>
+              {(selected.area_m2 / 1e6).toFixed(selected.area_m2 >= 1e5 ? 2 : 3)} km², held since {shortDate(selected.created_at)}
+              {selected.contested ? ', contested' : ''}
+            </Text>
+          </View>
           <View style={styles.cardActions}>
             <Button
               title="View territory"
@@ -1746,8 +1761,15 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   lockedNote: { textAlign: 'center', color: '#F4F4F7' },
 
   card: { position: 'absolute', left: space.gutter, right: space.gutter, bottom: space.xl },
-  cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
+  cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  cardMain: { flex: 1 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.sm },
+  cardStats: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  strengthBarContainer: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.cardAlt, overflow: 'hidden' },
+  strengthBar: { height: '100%', borderRadius: 3 },
+  defendersBadge: { minWidth: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  defendersText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  cardActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md, justifyContent: 'center' },
 
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56 },
   legendDot: { width: 12, height: 12, borderRadius: 6 },

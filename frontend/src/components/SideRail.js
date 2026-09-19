@@ -40,6 +40,14 @@
 import { Lock } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated, {
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { Image } from '../ui/image';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -87,6 +95,28 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
   const src = art(artKey);
   const { colors } = useTheme();
   const type = useThemedType();
+  const badgePulse = useSharedValue(1);
+  
+  // Pulse animation for badge when present
+  const hasBadge = badge && !locked;
+  
+  React.useEffect(() => {
+    if (hasBadge) {
+      badgePulse.value = withRepeat(
+        withSpring(1.15, { damping: 8, stiffness: 400 }),
+        -1,
+        true
+      );
+    } else {
+      badgePulse.value = 1;
+    }
+    return () => cancelAnimation(badgePulse);
+  }, [hasBadge, badgePulse]);
+  
+  const badgeAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: badgePulse.value }],
+  }));
+  
   return (
     <View style={[styles.slot, inline && styles.inlineSlot]}>
       {/* THE WORD IS PART OF THE BUTTON, not a caption beside it: the press
@@ -135,9 +165,9 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
               <Lock size={14} color={colors.text} />
             </View>
           ) : badge ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText} numberOfLines={1}>{badge}</Text>
-            </View>
+            <Animated.View style={[styles.badge, styles.badgeProminent, badgeAnimatedStyle]}>
+              <Text style={[styles.badgeText, styles.badgeTextProminent]} numberOfLines={1}>{badge}</Text>
+            </Animated.View>
           ) : null}
         </View>
         {/* Already in the pressable's accessibility label, so it is not read
@@ -318,6 +348,7 @@ const styles = StyleSheet.create({
     textTransform: 'none',
     marginTop: 6,
     textAlign: 'center',
+    width: '100%',
   },
   // Fallback stickers fill the frame instead: unlike the rail art, they are
   // trimmed to ~80% of their own canvas, so the extra 16% here only spends the
@@ -337,5 +368,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeProminent: {
+    backgroundColor: '#ef4444',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
   badgeText: { color: '#fff', fontSize: 11, fontFamily: fonts.bold },
+  badgeTextProminent: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: fonts.black,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
 });
