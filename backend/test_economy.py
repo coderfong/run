@@ -2,8 +2,8 @@
 
 Covers the verification matrix for the stabilisation pass:
 
-  1  a 20 m activity earns nothing and cannot claim
-  2  a 600 m / 5 min activity earns rewards but cannot claim
+  1  a 20 m activity earns nothing and cannot claim (but shows area it would earn)
+  2  a 600 m / 5 min activity earns rewards but cannot claim (but shows area it would earn)
   3  a 1.2 km / 8 min activity does the full loop
   4  ten 1 km runs == one 10 km run in territorial entitlement
   5  three neutral claims, then a fourth is refused
@@ -230,6 +230,8 @@ def test_live_tiers(base_lat, base_lon):
     check("20 m: pays nothing",
           tiny["coins_gained"] == 0 and tiny["energy_gained"] == 0 and tiny["xp_gained"] == 0)
     check("20 m: says why", bool(tiny["qualification_reason"]), tiny["qualification_reason"])
+    # Now short runs show the area they would earn if they met requirements
+    check("20 m: shows calculated area based on distance", tiny["claim_area_m2"] > 0, tiny["claim_area_m2"])
 
     rid_r, rewarded = do_run(tok, base_lat + 0.01, base_lon, 600, duration_s=300)
     check("600 m / 5 min: rewards only",
@@ -240,6 +242,8 @@ def test_live_tiers(base_lat, base_lon):
     check("600 m / 5 min: claim reason is about CLAIMING",
           rewarded["qualification_reason"] == economy.REASON_MIN_CLAIM_DISTANCE,
           rewarded["qualification_reason"])
+    # Rewarded runs now show the area they would earn if they met claim requirements
+    check("600 m / 5 min: shows calculated area based on distance", rewarded["claim_area_m2"] > 0, rewarded["claim_area_m2"])
     st, refused = S.call("POST", "/claim-territory", {"run_id": rid_r}, token=tok)
     check("600 m / 5 min: claim refused", st == 422, f"{st} {refused}")
 

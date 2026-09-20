@@ -30,6 +30,7 @@ export default function OutlinedText({
   // drawn at the original size around a smaller word.
   fit = false,
   minimumFontScale = 0.7,
+  onLayout,
   ...rest
 }) {
   const shared = [style, { textAlign: align }];
@@ -66,7 +67,7 @@ export default function OutlinedText({
         ))}
       </View>
       ) : null}
-      <Text numberOfLines={lines} {...fitProps} style={shared} {...rest}>
+      <Text numberOfLines={lines} {...fitProps} style={shared} onLayout={onLayout} {...rest}>
         {children}
       </Text>
     </View>

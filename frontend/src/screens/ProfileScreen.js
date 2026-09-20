@@ -613,10 +613,12 @@ export default function ProfileScreen({ navigation }) {
                     style={styles.trophy}
                     fill={got ? '#FFF2C6' : colors.card}
                   >
-                    <AppIcon name={icon} size={30} opacity={got ? 1 : 0.6} />
-                    <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? '#292015' : colors.textMuted }]}>
-                      {label}
-                    </Text>
+                    <View style={styles.trophyContent}>
+                      <AppIcon name={icon} size={30} opacity={got ? 1 : 0.6} />
+                      <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? '#292015' : colors.textMuted }]}>
+                        {label}
+                      </Text>
+                    </View>
                   </Card>
                 );
               })}
@@ -996,7 +998,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   sections: { marginTop: space.xl },
 
   trophyRow: { flexDirection: 'row', gap: space.sm },
-  trophy: { flex: 1, paddingVertical: space.md, alignItems: 'center' },
+  trophy: { flex: 1, paddingVertical: space.md, alignItems: 'center', justifyContent: 'center', minHeight: 80 },
+  trophyContent: { alignItems: 'center', justifyContent: 'center', flex: 1 },
 
   runRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
   runDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },

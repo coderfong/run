@@ -461,37 +461,41 @@ function MemberHub({ clanId, navigation }) {
             pointerEvents="none"
           />
         )}
-        <TouchableOpacity
-          onPress={changePhoto}
-          disabled={!canManage || photoBusy}
-          activeOpacity={0.85}
-          accessibilityRole={canManage ? 'button' : 'image'}
-          accessibilityLabel={canManage ? 'Change the club photo' : `${clan.name} photo`}
-        >
-          <ClubAvatar
-            photoUrl={clan.photo_url}
-            badgeIcon={clan.badge_icon}
-            color={clan.color}
-            size={64}
-          />
-          {canManage ? (
-            // The upload is a photo's worth of base64 over mobile data, so the
-            // corner marker doubles as the progress it would otherwise lack.
-            <View style={[styles.crestEdit, { backgroundColor: accent }]}>
-              {photoBusy
-                ? <ActivityIndicator size="small" color="#FFFFFF" />
-                : <Camera size={13} color="#FFFFFF" strokeWidth={2.4} />}
-            </View>
-          ) : null}
-        </TouchableOpacity>
-        <Text style={[type.title, { marginTop: space.sm }]}>[{clan.tag}] {clan.name}</Text>
-        {clan.description ? <Text style={[type.caption, { textAlign: 'center', marginTop: 2 }]}>{clan.description}</Text> : null}
-        <Row gap={8} style={{ marginTop: space.sm }}>
-          {clan.league ? <Pill label={LEAGUE_LABEL[clan.league]} color={accent} /> : null}
-          {/* No colour: a metadata chip deals its own from the deck. Seeded on
-              what it MEANS rather than on its label, so the chip does not
-              change colour when a member joins. */}
-          <Pill label={`${clan.member_count} members`} seed="club:members" />
+        <Row gap={space.md} style={styles.headerContent}>
+          <TouchableOpacity
+            onPress={changePhoto}
+            disabled={!canManage || photoBusy}
+            activeOpacity={0.85}
+            accessibilityRole={canManage ? 'button' : 'image'}
+            accessibilityLabel={canManage ? 'Change the club photo' : `${clan.name} photo`}
+          >
+            <ClubAvatar
+              photoUrl={clan.photo_url}
+              badgeIcon={clan.badge_icon}
+              color={clan.color}
+              size={64}
+            />
+            {canManage ? (
+              // The upload is a photo's worth of base64 over mobile data, so the
+              // corner marker doubles as the progress it would otherwise lack.
+              <View style={[styles.crestEdit, { backgroundColor: accent }]}>
+                {photoBusy
+                  ? <ActivityIndicator size="small" color="#FFFFFF" />
+                  : <Camera size={13} color="#FFFFFF" strokeWidth={2.4} />}
+              </View>
+            ) : null}
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={type.title}>[{clan.tag}] {clan.name}</Text>
+            {clan.description ? <Text style={[type.caption, { marginTop: 2 }]}>{clan.description}</Text> : null}
+            <Row gap={8} style={{ marginTop: space.sm }}>
+              {clan.league ? <Pill label={LEAGUE_LABEL[clan.league]} color={accent} /> : null}
+              {/* No colour: a metadata chip deals its own from the deck. Seeded on
+                  what it MEANS rather than on its label, so the chip does not
+                  change colour when a member joins. */}
+              <Pill label={`${clan.member_count} members`} seed="club:members" />
+            </Row>
+          </View>
         </Row>
       </Card>
 
@@ -739,7 +743,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: colors.bg,
   },
-  header: { alignItems: 'center', overflow: 'hidden', marginTop: space.md },
+  header: { overflow: 'hidden', marginTop: space.md },
+  headerContent: { alignItems: 'center' },
   rankHero: { marginTop: space.md },
   headerArt: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, opacity: 0.22 },
   barTrack: { height: 10, borderRadius: 5, backgroundColor: colors.bgElevated, overflow: 'hidden' },

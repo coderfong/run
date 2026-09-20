@@ -82,6 +82,10 @@ export function territorialDistanceM(distanceM) {
  *
  * This is the CURVE, not the entitlement — see `entitledAreaM2`, which is what
  * a run is actually worth once the rest of the day is taken into account.
+ *
+ * This function now calculates area for ALL runs based on distance, even short ones.
+ * The tier system still enforces reward restrictions - short runs will show the area
+ * they would earn if they met minimum requirements, but won't be able to claim.
  */
 export function claimAreaM2(distanceM) {
   return Math.min(

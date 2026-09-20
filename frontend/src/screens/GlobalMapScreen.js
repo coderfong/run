@@ -1569,6 +1569,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    overflow: 'hidden',
   },
   // What the clubs view is held in, having no rank and so no drawn frame. It
   // fills the same rect the art would, so stepping between the two moves

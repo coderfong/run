@@ -269,6 +269,7 @@ def end_run(
         run.gate_reason = economy.REASON_MIN_REWARD_DISTANCE
         run.reward_coins = run.reward_energy = run.reward_xp = 0
         run.claim_distance_m = 0.0
+        # For zero-distance runs, area is 0
         run.claim_area_m2 = 0.0
         db.commit()
         return _end_run_replay(db, run)
@@ -331,7 +332,10 @@ def end_run(
         area = claim_area_m2(run.distance_m)
     else:
         run.claim_distance_m = 0.0
-        area = 0.0
+        # Calculate the actual area based on distance even for short runs,
+        # so users see what they would earn if they met the minimum requirements.
+        # The tier system still enforces the reward restrictions (no rewards/claims).
+        area = claim_area_m2(run.distance_m)
     run.claim_area_m2 = area
     radius = claim_radius_m(run.distance_m) if eligible else 0.0
     claim_ring = []

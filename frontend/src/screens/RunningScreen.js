@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Linking, Pressable, StyleSheet, Text, View, StatusBar } from 'react-native';
 import GameMap, {
   MapPoint,
   TerritoryLayer,
@@ -1453,6 +1453,7 @@ export default function RunningScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
+      <StatusBar hidden={true} />
       {/* The one map that does NOT follow the app's scheme. This screen is a
           night-run surface by design (see `D` above) and its HUD is painted
           dark whatever the rest of the app is wearing, so a light map style
@@ -1585,13 +1586,7 @@ export default function RunningScreen({ navigation, route }) {
         </View>
       </View>
 
-      {/* Minimal GPS indicator */}
-      <View style={styles.gpsIndicator}>
-        <View style={[styles.gpsDot, { backgroundColor: gpsColor(accuracyM) }]} />
-        <Text style={styles.gpsText}>
-          {accuracyM == null ? 'GPS' : `±${Math.round(accuracyM)}m`}
-        </Text>
-      </View>
+      {/* GPS indicator removed */}
 
       {/* Recenter button - appears after user manually pans */}
       {userPanned && isRunning && (
@@ -1676,7 +1671,7 @@ export default function RunningScreen({ navigation, route }) {
                 colour. Replaces a flat pill so the screen you start a run from
                 reads as neo-brutalist like the rest of the game. */}
             <ToonButton
-              title={starting ? 'Get ready…' : 'Start run'}
+              title='Start run'
               onPress={startRun}
               disabled={starting}
               accessibilityLabel="Start run"

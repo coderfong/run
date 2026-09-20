@@ -213,7 +213,7 @@ function km2(m2) {
 }
 
 function paceLabel(distanceM, durationS) {
-  if (!distanceM || distanceM < 50 || !durationS) return null;
+  if (!distanceM || distanceM < 1 || !durationS) return null;
   const secPerKm = durationS / (distanceM / 1000);
   const m = Math.floor(secPerKm / 60);
   const s = Math.round(secPerKm % 60);

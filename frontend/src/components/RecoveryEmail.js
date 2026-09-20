@@ -174,7 +174,7 @@ export default function RecoveryEmail({ nested = false }) {
               style={[s.input, s.codeInput]}
               accessibilityLabel="The code from your email"
             />
-            <Row gap={space.sm} style={{ marginTop: space.md }}>
+            <Row gap={space.sm} style={{ marginTop: space.md, flexWrap: 'wrap' }}>
               <Button
                 title="Confirm"
                 size="sm"
@@ -183,14 +183,16 @@ export default function RecoveryEmail({ nested = false }) {
                 loading={busy}
                 disabled={code.length < 6}
                 onPress={confirm}
+                style={{ flex: 1, minWidth: 100 }}
               />
-              <Button title="Send again" size="sm" full={false} variant="secondary" onPress={resend} />
+              <Button title="Send again" size="sm" full={false} variant="secondary" onPress={resend} style={{ flex: 1, minWidth: 100 }} />
               <Button
                 title="Change"
                 size="sm"
                 full={false}
                 variant="secondary"
                 onPress={() => { setEditing(true); setDraft(data.email || ''); }}
+                style={{ flex: 1, minWidth: 100 }}
               />
             </Row>
           </>
@@ -255,14 +257,15 @@ export default function RecoveryEmail({ nested = false }) {
             <Text style={[type.caption, { marginTop: space.sm }]}>
               We will send a 6 digit code to confirm the address.
             </Text>
-            <Row gap={space.sm} style={{ marginTop: space.md }}>
-              <Button title="Save" size="sm" full={false} variant="gradient" loading={busy} onPress={save} />
+            <Row gap={space.sm} style={{ marginTop: space.md, flexWrap: 'wrap' }}>
+              <Button title="Save" size="sm" full={false} variant="gradient" loading={busy} onPress={save} style={{ flex: 1, minWidth: 100 }} />
               <Button
                 title="Cancel"
                 size="sm"
                 full={false}
                 variant="secondary"
                 onPress={() => { setEditing(false); setPassword(''); }}
+                style={{ flex: 1, minWidth: 100 }}
               />
             </Row>
           </>

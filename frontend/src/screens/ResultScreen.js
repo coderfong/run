@@ -275,7 +275,7 @@ function paceConsistencySeconds(splits) {
 }
 
 function formatPace(distanceM, durationS) {
-  if (!distanceM || distanceM < 50 || !durationS) return '·';
+  if (!distanceM || distanceM < 1 || !durationS) return '·';
   return `${paceStr((durationS / (distanceM / 1000)))} /km`;
 }
 

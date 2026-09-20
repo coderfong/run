@@ -142,7 +142,7 @@ function PairedPhotoCard({ media, photoPage, onPage, color, itemId }) {
 }
 
 function pace(distanceM, durationS) {
-  if (!distanceM || distanceM < 50 || !durationS) return NO_VALUE;
+  if (!distanceM || distanceM < 1 || !durationS) return NO_VALUE;
   const mpk = durationS / 60 / (distanceM / 1000);
   const m = Math.floor(mpk);
   const sec = Math.round((mpk - m) * 60);
