@@ -80,6 +80,94 @@ describe('watch app compatibility', () => {
   });
 });
 
+describe('the runner portrait', () => {
+  const link = read('PhoneLink.swift');
+  const store = read('WatchAvatar.swift');
+
+  // A picture is not run state. The state is re-sent on a ten second
+  // heartbeat for the length of a run and goes out over a size limited live
+  // message, so a base64 portrait riding along with it would be tens of
+  // kilobytes on the wire per beat. It travels as its own file transfer.
+  it('arrives as a file transfer rather than inside the run state', () => {
+    expect(link).toMatch(/didReceive file: WCSessionFile/);
+    expect(read('RunState.swift')).not.toMatch(/avatar/i);
+  });
+
+  it('asks the phone only for a portrait this watch does not already have', () => {
+    expect(link).toMatch(/"cmd": "avatar"/);
+    expect(link).toMatch(/"have": WatchAvatarStore\.shared\.key/);
+  });
+
+  // The watch records standalone, so it can go a whole run without the phone.
+  // The portrait has to survive that, and a relaunch.
+  it('keeps the last portrait on this watch', () => {
+    expect(store).toMatch(/applicationSupportDirectory/);
+    expect(store).toMatch(/UserDefaults/);
+  });
+
+  it('draws something in its place rather than a face that is not theirs', () => {
+    expect(store).toMatch(/placeholder/);
+  });
+});
+
+describe('watch screen layout', () => {
+  const laidOut = ['RedesignedScreens.swift', 'RunScreen.swift'];
+
+  // A fixed VStack centres what fits and silently cuts off what does not.
+  // That is how the Ready screen's own Start button ended up under the curve
+  // of the glass on a 40mm, with no way to reach it. WatchScreen scrolls.
+  it.each(laidOut)('%s puts every screen in the scrolling container', (file) => {
+    const source = read(file);
+    const screens = source
+      .split(/^struct /m)
+      .slice(1)
+      .filter((block) => /^\w+(View|Page): View \{/.test(block))
+      // The pagers lay out other screens rather than content of their own.
+      .filter((block) => !/TabView/.test(block));
+    expect(screens.length).toBeGreaterThan(0);
+    const loose = screens
+      .filter((block) => !/WatchScreen\(/.test(block))
+      .map((block) => block.slice(0, block.indexOf(':')));
+    expect(loose).toEqual([]);
+  });
+
+  // watchOS draws the time over the app. PASER is not in a NavigationStack,
+  // so nothing is inset for it and anything at the top of a screen lands
+  // underneath it: that is what put the GPS pill and RUN STATS on top of the
+  // clock. Reserved once, in the container every screen goes through.
+  it('reserves the strip where watchOS draws the time', () => {
+    expect(read('ResponsiveDesign.swift')).toMatch(/static var clockInset/);
+    expect(read('WatchDesign.swift')).toMatch(
+      /\.padding\(\.top, WatchLayout\.clockInset\)/
+    );
+  });
+
+  // A pager draws its dots OVER its pages, so a page that does not say it is
+  // in one runs its last line under them.
+  it('tells every page of a pager that it is in one', () => {
+    const source = read('RedesignedScreens.swift');
+    const paged = [...source.matchAll(/(\w+)\(\)\.tag\(\d+\)/g)].map((m) => m[1]);
+    expect(paged.length).toBeGreaterThan(0);
+    const blocks = new Map(
+      source
+        .split(/^struct /m)
+        .slice(1)
+        .map((block) => [block.slice(0, block.indexOf(':')), block])
+    );
+    const loose = paged.filter((name) => !/inPager: true/.test(blocks.get(name) || ''));
+    expect(loose).toEqual([]);
+  });
+
+  // PASER runs on watches from 136 points wide to 208. Type written in fixed
+  // points fits exactly one of them.
+  it.each(fs.readdirSync(WATCH_DIR).filter((f) => f.endsWith('.swift')))(
+    '%s sizes its type against the screen',
+    (file) => {
+      expect(read(file)).not.toMatch(/\.font\(\.system\(size: \d/);
+    }
+  );
+});
+
 describe('standalone watch recording', () => {
   const recorder = read('WorkoutManager.swift');
   const plist = read('Info.plist');

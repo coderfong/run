@@ -9703,5 +9703,1357 @@
     "defaultMoved": null,
     "shopCatalog": "  top: 93",
     "forcedPastRefs": []
+  },
+  {
+    "at": "2026-09-20T11:27:33.679Z",
+    "slot": "top",
+    "id": "aurorajacket",
+    "label": "Aurora jacket",
+    "file": "cosmetics.js",
+    "line": 391,
+    "sourceLine": "{ id: 'aurorajacket', label: 'Aurora jacket', img: require('../../assets/character/outfit/top19.png'), layout: { w: 1.0618, top: 0.2846, dx: 0.005 }, rarity: 'epic', unlock: premiumOnly },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top19.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top19.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 29,
+        "text": "\"aurorajacket\": {\"status\":\"vault\",\"theme\":\"casual\",\"collection\":null,\"family\":null,\"acquisitionType\":\"pro\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 339,
+        "text": "\"top:aurorajacket\": [0, 0.056, 1, 0.944],",
+        "generated": false
+      },
+      {
+        "file": "backend/app/progression.py",
+        "line": 100,
+        "text": "16: (\"top:aurorajacket\", \"Aurora jacket\"),",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:36:46.098Z",
+    "slot": "top",
+    "id": "greyhoodie",
+    "label": "Hoodie",
+    "file": "cosmetics.js",
+    "line": 393,
+    "sourceLine": "{ id: 'greyhoodie', label: 'Hoodie', img: require('../../assets/character/outfit/top23.png'), layout: { w: 0.9751, top: 0.2626, dx: 0.0017 }, rarity: 'common', unlock: passOnly },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top23.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top23.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 129,
+        "text": "\"greyhoodie\": {\"status\":\"vault\",\"theme\":\"casual\",\"collection\":null,\"family\":null,\"acquisitionType\":\"battlepass\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 349,
+        "text": "\"top:greyhoodie\": [0.0227, 0, 0.9773, 1],",
+        "generated": false
+      },
+      {
+        "file": "backend/app/progression.py",
+        "line": 154,
+        "text": "8: (\"top:greyhoodie\", \"Hoodie\"),",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:37:06.223Z",
+    "slot": "top",
+    "id": "varsity",
+    "label": "Varsity jacket",
+    "file": "cosmetics.js",
+    "line": 391,
+    "sourceLine": "{ id: 'varsity', label: 'Varsity jacket', img: require('../../assets/character/outfit/top20.png'), layout: { w: 1.0485, top: 0.285, dx: 0.0083 }, rarity: 'epic', unlock: premiumOnly },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top20.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top20.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 364,
+        "text": "\"varsity\": {\"status\":\"vault\",\"theme\":\"club\",\"collection\":null,\"family\":null,\"acquisitionType\":\"pro\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 434,
+        "text": "\"top:varsity\": [0, 0.0502, 1, 0.9498],",
+        "generated": false
+      },
+      {
+        "file": "backend/app/progression.py",
+        "line": 96,
+        "text": "6: (\"top:varsity\", \"Varsity jacket\"),",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:37:45.768Z",
+    "slot": "top",
+    "id": "judogi",
+    "label": "Judo gi",
+    "file": "cosmetics.js",
+    "line": 395,
+    "sourceLine": "{ id: 'judogi', label: 'Judo gi', img: require('../../assets/character/outfit/top28.png'), rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top28.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top28.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 40",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 160,
+        "text": "\"judogi\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":null,\"acquisitionType\":\"zones\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 350,
+        "text": "\"top:judogi\": [0, 0.0339, 1, 0.9615],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:38:02.793Z",
+    "slot": "top",
+    "id": "puffer",
+    "label": "Puffer jacket",
+    "file": "cosmetics.js",
+    "line": 396,
+    "sourceLine": "{ id: 'puffer', label: 'Puffer jacket', img: require('../../assets/character/outfit/top31.png'), layout: { w: 1.0185, top: 0.2911, dx: 0.0033 }, rarity: 'rare', unlock: passOnly },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top31.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top31.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 277,
+        "text": "\"puffer\": {\"status\":\"vault\",\"theme\":\"casual\",\"collection\":null,\"family\":null,\"acquisitionType\":\"battlepass\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 423,
+        "text": "\"top:puffer\": [0.0044, 0.0441, 1, 0.9559],",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 424,
+        "text": "\"top:puffervest\": [0.0377, 0.0042, 0.9623, 1],",
+        "generated": false
+      },
+      {
+        "file": "backend/app/progression.py",
+        "line": 168,
+        "text": "26: (\"top:puffer\", \"Puffer jacket\"),",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:38:07.783Z",
+    "slot": "top",
+    "id": "letterman",
+    "label": "Letterman jacket",
+    "file": "cosmetics.js",
+    "line": 398,
+    "sourceLine": "{ id: 'letterman', label: 'Letterman jacket', img: require('../../assets/character/outfit/top33.png'), layout: { w: 1.0085, top: 0.2937, dx: 0.0083 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top33.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top33.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 38",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 188,
+        "text": "\"letterman\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":null,\"acquisitionType\":\"distance\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 368,
+        "text": "\"top:letterman\": [0, 0.0653, 1, 0.9347],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:40:08.598Z",
+    "slot": "top",
+    "id": "puffervest",
+    "label": "Puffer vest",
+    "file": "cosmetics.js",
+    "line": 400,
+    "sourceLine": "{ id: 'puffervest', label: 'Puffer vest', img: require('../../assets/character/outfit/top36.png'), layout: { w: 0.68, top: 0.3078, dx: 0.0117 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top36.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top36.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 37",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 278,
+        "text": "\"puffervest\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":null,\"acquisitionType\":\"zones\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 424,
+        "text": "\"top:puffervest\": [0.0377, 0.0042, 0.9623, 1],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:45:20.185Z",
+    "slot": "top",
+    "id": "maidapron",
+    "label": "Maid apron",
+    "file": "cosmetics.js",
+    "line": 405,
+    "sourceLine": "{ id: 'maidapron', label: 'Maid apron', img: require('../../assets/character/outfit/top42.png'), layout: { w: 0.7451, top: 0.3512, dx: 0.0033 }, rarity: 'rare', unlock: level(8) },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top42.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top42.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 36",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 191,
+        "text": "\"maidapron\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":null,\"acquisitionType\":\"level\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 369,
+        "text": "\"top:maidapron\": [0, 0.0408, 1, 0.9592],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:46:27.512Z",
+    "slot": "top",
+    "id": "knightarmor",
+    "label": "Knight armour",
+    "file": "cosmetics.js",
+    "line": 406,
+    "sourceLine": "{ id: 'knightarmor', label: 'Knight armour', img: require('../../assets/character/outfit/top45.png'), layout: { w: 0.9918, top: 0.3104, dx: 0.01 }, rarity: 'legendary', unlock: premiumOnly },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/top45.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/top45.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 179,
+        "text": "\"knightarmor\": {\"status\":\"vault\",\"theme\":\"fantasy\",\"collection\":null,\"family\":null,\"acquisitionType\":\"pro\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 366,
+        "text": "\"top:knightarmor\": [0.004, 0.0996, 0.996, 0.9004],",
+        "generated": false
+      },
+      {
+        "file": "backend/app/progression.py",
+        "line": 104,
+        "text": "28: (\"top:knightarmor\", \"Knight armour\"),",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:46:42.791Z",
+    "slot": "top",
+    "id": "o0t",
+    "label": "Navy zip jacket",
+    "file": "outfitItems.js",
+    "line": 39,
+    "sourceLine": "{ id: 'o0t', label: 'Navy zip jacket', family: 'Zip jacket', colorway: 'Navy', img: require('../../assets/character/outfit/ofT1.png'), layout: { w: 1.05, top: 0.2952, dx: 0.0167 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT1.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT1.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 210,
+        "text": "\"o0t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Zip jacket\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 370,
+        "text": "\"top:o0t\": [0.0204, 0.1207, 0.9714, 0.9018],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:47:21.575Z",
+    "slot": "top",
+    "id": "o4t",
+    "label": "Black crew tee",
+    "file": "outfitItems.js",
+    "line": 42,
+    "sourceLine": "{ id: 'o4t', label: 'Black crew tee', family: 'Crew tee', colorway: 'Black', img: require('../../assets/character/outfit/ofT5.png'), layout: { w: 1.0316, top: 0.3172, dx: 0.01 }, rarity: 'epic', unlock: passOnly },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT5.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT5.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 228,
+        "text": "\"o4t\": {\"status\":\"vault\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Crew tee\",\"acquisitionType\":\"battlepass\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 388,
+        "text": "\"top:o4t\": [0.0022, 0.0511, 0.9978, 0.9076],",
+        "generated": false
+      },
+      {
+        "file": "backend/app/progression.py",
+        "line": 174,
+        "text": "33: (\"top:o4t\", \"Black crew tee\"),",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:47:41.680Z",
+    "slot": "top",
+    "id": "o9t",
+    "label": "Sea glass tee",
+    "file": "outfitItems.js",
+    "line": 43,
+    "sourceLine": "{ id: 'o9t', label: 'Sea glass tee', family: 'Loose tee', colorway: 'Sea glass', img: require('../../assets/character/outfit/ofT10.png'), layout: { w: 0.9299, top: 0.3094, dx: 0.0017 }, rarity: 'epic', unlock: dist(25, 'Run 25 km total') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT10.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT10.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 35",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 257,
+        "text": "\"o9t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Loose tee\",\"acquisitionType\":\"distance\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 417,
+        "text": "\"top:o9t\": [0.0628, 0.0022, 0.9372, 0.8965],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:47:47.332Z",
+    "slot": "top",
+    "id": "o10t",
+    "label": "Red zip hoodie",
+    "file": "outfitItems.js",
+    "line": 43,
+    "sourceLine": "{ id: 'o10t', label: 'Red zip hoodie', family: 'Zip hoodie', colorway: 'Red', img: require('../../assets/character/outfit/ofT11.png'), layout: { w: 1.0034, top: 0.3013, dx: 0.0033 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT11.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT11.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 211,
+        "text": "\"o10t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Zip hoodie\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 371,
+        "text": "\"top:o10t\": [0.0022, 0.0923, 0.9978, 0.9077],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:48:24.138Z",
+    "slot": "top",
+    "id": "o14t",
+    "label": "Black loose tee",
+    "file": "outfitItems.js",
+    "line": 44,
+    "sourceLine": "{ id: 'o14t', label: 'Black loose tee', family: 'Loose tee', colorway: 'Black', img: require('../../assets/character/outfit/ofT15.png'), layout: { w: 0.9381, top: 0.3172 }, rarity: 'epic', unlock: dist(10, 'Run 10 km total') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT15.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT15.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 34",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 214,
+        "text": "\"o14t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Loose tee\",\"acquisitionType\":\"distance\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 374,
+        "text": "\"top:o14t\": [0.0022, 0.0143, 0.9978, 0.9857],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:48:29.238Z",
+    "slot": "top",
+    "id": "o16t",
+    "label": "White polo",
+    "file": "outfitItems.js",
+    "line": 44,
+    "sourceLine": "{ id: 'o16t', label: 'White polo', family: 'Polo', colorway: 'White', img: require('../../assets/character/outfit/ofT17.png'), layout: { w: 0.9822, top: 0.3048, dx: 0.0017 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT17.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT17.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 215,
+        "text": "\"o16t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Polo\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 375,
+        "text": "\"top:o16t\": [0.0291, 0.1244, 0.9686, 0.8285],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:48:42.572Z",
+    "slot": "top",
+    "id": "o3t",
+    "label": "Yellow zip hoodie",
+    "file": "outfitItems.js",
+    "line": 41,
+    "sourceLine": "{ id: 'o3t', label: 'Yellow zip hoodie', family: 'Zip hoodie', colorway: 'Yellow', img: require('../../assets/character/outfit/ofT4.png'), layout: { w: 1.0341, top: 0.294, dx: 0.01 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT4.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT4.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 32",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 222,
+        "text": "\"o3t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Zip hoodie\",\"acquisitionType\":\"runs\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 382,
+        "text": "\"top:o3t\": [0.0022, 0.0884, 0.9955, 0.9116],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:48:47.715Z",
+    "slot": "top",
+    "id": "o31t",
+    "label": "Orange tank top",
+    "file": "outfitItems.js",
+    "line": 44,
+    "sourceLine": "{ id: 'o31t', label: 'Orange tank top', family: 'Tank top', colorway: 'Orange', img: require('../../assets/character/outfit/ofT22.png'), layout: { w: 1.0133, top: 0.3249, dx: 0.0117 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT22.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT22.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 220,
+        "text": "\"o31t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Tank top\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 380,
+        "text": "\"top:o31t\": [0.1835, 0.1062, 0.7959, 0.8959],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:49:15.954Z",
+    "slot": "top",
+    "id": "o40t",
+    "label": "Orange layered vest",
+    "file": "outfitItems.js",
+    "line": 45,
+    "sourceLine": "{ id: 'o40t', label: 'Orange layered vest', family: 'Layered vest', colorway: 'Orange', img: require('../../assets/character/outfit/ofT31.png'), layout: { w: 0.9787, top: 0.3172 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT31.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT31.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 223,
+        "text": "\"o40t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Layered vest\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 383,
+        "text": "\"top:o40t\": [0.0043, 0.0684, 0.9979, 0.9359],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:49:28.691Z",
+    "slot": "top",
+    "id": "o45t",
+    "label": "Coral stripe jacket",
+    "file": "outfitItems.js",
+    "line": 46,
+    "sourceLine": "{ id: 'o45t', label: 'Coral stripe jacket', family: 'Stripe jacket', colorway: 'Coral', img: require('../../assets/character/outfit/ofT36.png'), layout: { w: 1.0152, top: 0.2914, dx: 0.0067 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT36.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT36.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 225,
+        "text": "\"o45t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Stripe jacket\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 385,
+        "text": "\"top:o45t\": [0.0071, 0.0531, 0.9929, 0.9469],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:49:39.930Z",
+    "slot": "top",
+    "id": "o49t",
+    "label": "Red varsity jacket",
+    "file": "outfitItems.js",
+    "line": 46,
+    "sourceLine": "{ id: 'o49t', label: 'Red varsity jacket', family: 'Varsity jacket', colorway: 'Red', img: require('../../assets/character/outfit/ofT40.png'), layout: { w: 0.9932, top: 0.2933, dx: 0.0167 }, rarity: 'epic', unlock: passOnly },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT40.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT40.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 227,
+        "text": "\"o49t\": {\"status\":\"vault\",\"theme\":\"club\",\"collection\":null,\"family\":\"Varsity jacket\",\"acquisitionType\":\"battlepass\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 387,
+        "text": "\"top:o49t\": [0.0334, 0.1002, 0.9687, 0.9081],",
+        "generated": false
+      },
+      {
+        "file": "backend/app/progression.py",
+        "line": 182,
+        "text": "43: (\"top:o49t\", \"Red varsity jacket\"),",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:53:59.974Z",
+    "slot": "top",
+    "id": "o71t",
+    "label": "Black puffer vest",
+    "file": "outfitItems.js",
+    "line": 51,
+    "sourceLine": "{ id: 'o71t', label: 'Black puffer vest', family: 'Puffer vest', colorway: 'Black', img: require('../../assets/character/outfit/ofT52.png'), layout: { w: 0.9603, top: 0.2681, dx: 0.0033 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT52.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT52.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 243,
+        "text": "\"o71t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Puffer vest\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 403,
+        "text": "\"top:o71t\": [0, 0.0207, 0.9978, 0.9815],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:54:46.760Z",
+    "slot": "top",
+    "id": "o78t",
+    "label": "Jet black hoodie",
+    "file": "outfitItems.js",
+    "line": 52,
+    "sourceLine": "{ id: 'o78t', label: 'Jet black hoodie', family: 'Pullover hoodie', colorway: 'Jet black', img: require('../../assets/character/outfit/ofT59.png'), layout: { w: 0.9781, top: 0.2875, dx: 0.0033 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT59.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT59.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 30",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 245,
+        "text": "\"o78t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Pullover hoodie\",\"acquisitionType\":\"runs\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 405,
+        "text": "\"top:o78t\": [0.0145, 0, 0.9835, 0.9401],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:54:51.528Z",
+    "slot": "top",
+    "id": "o82t",
+    "label": "Blush button cardigan",
+    "file": "outfitItems.js",
+    "line": 52,
+    "sourceLine": "{ id: 'o82t', label: 'Blush button cardigan', family: 'Button cardigan', colorway: 'Blush', img: require('../../assets/character/outfit/ofT62.png'), layout: { w: 1.0501, top: 0.3056, dx: 0.005 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT62.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT62.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 247,
+        "text": "\"o82t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Button cardigan\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 407,
+        "text": "\"top:o82t\": [0.002, 0.0332, 0.9961, 0.9688],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:55:05.774Z",
+    "slot": "top",
+    "id": "o88t",
+    "label": "Ash hooded puffer",
+    "file": "outfitItems.js",
+    "line": 53,
+    "sourceLine": "{ id: 'o88t', label: 'Ash hooded puffer', family: 'Hooded puffer', colorway: 'Ash', img: require('../../assets/character/outfit/ofT68.png'), layout: { w: 0.9699, top: 0.263, dx: 0.0033 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT68.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT68.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 29",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 249,
+        "text": "\"o88t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Hooded puffer\",\"acquisitionType\":\"runs\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 409,
+        "text": "\"top:o88t\": [0.0116, 0.0021, 0.9884, 0.9979],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:55:33.633Z",
+    "slot": "top",
+    "id": "o90t",
+    "label": "Grey blazer",
+    "file": "outfitItems.js",
+    "line": 54,
+    "sourceLine": "{ id: 'o90t', label: 'Grey blazer', family: 'Blazer', colorway: 'Grey', img: require('../../assets/character/outfit/ofT70.png'), layout: { w: 0.9662, top: 0.3107, dx: -0.0033 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT70.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT70.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 251,
+        "text": "\"o90t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Blazer\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 411,
+        "text": "\"top:o90t\": [0, 0.1067, 0.9978, 0.9089],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:55:42.676Z",
+    "slot": "top",
+    "id": "o92t",
+    "label": "Cream long cardigan",
+    "file": "outfitItems.js",
+    "line": 54,
+    "sourceLine": "{ id: 'o92t', label: 'Cream long cardigan', family: 'Long cardigan', colorway: 'Cream', img: require('../../assets/character/outfit/ofT72.png'), layout: { w: 0.9815, top: 0.3249, dx: 0.0133 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT72.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT72.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 253,
+        "text": "\"o92t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Long cardigan\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 413,
+        "text": "\"top:o92t\": [0.005, 0.1135, 0.9975, 0.8965],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:55:45.707Z",
+    "slot": "top",
+    "id": "o93t",
+    "label": "Navy blazer",
+    "file": "outfitItems.js",
+    "line": 54,
+    "sourceLine": "{ id: 'o93t', label: 'Navy blazer', family: 'Blazer', colorway: 'Navy', img: require('../../assets/character/outfit/ofT73.png'), layout: { w: 1.0032, top: 0.3223, dx: 0.005 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT73.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT73.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 28",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 254,
+        "text": "\"o93t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Blazer\",\"acquisitionType\":\"runs\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 414,
+        "text": "\"top:o93t\": [0.0044, 0.1436, 0.9978, 0.8586],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:55:54.258Z",
+    "slot": "top",
+    "id": "o94t",
+    "label": "Cream striped knit",
+    "file": "outfitItems.js",
+    "line": 54,
+    "sourceLine": "{ id: 'o94t', label: 'Cream striped knit', family: 'Striped knit', colorway: 'Cream', img: require('../../assets/character/outfit/ofT74.png'), layout: { w: 1.0256, top: 0.3249, dx: 0.0083 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT74.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT74.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 27",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 255,
+        "text": "\"o94t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Striped knit\",\"acquisitionType\":\"runs\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 415,
+        "text": "\"top:o94t\": [0.0024, 0.1374, 1, 0.8649],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:56:01.931Z",
+    "slot": "top",
+    "id": "o95t",
+    "label": "Mauve zip hoodie",
+    "file": "outfitItems.js",
+    "line": 54,
+    "sourceLine": "{ id: 'o95t', label: 'Mauve zip hoodie', family: 'Zip hoodie', colorway: 'Mauve', img: require('../../assets/character/outfit/ofT75.png'), layout: { w: 0.9958, top: 0.2914, dx: 0.005 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT75.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT75.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 256,
+        "text": "\"o95t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Zip hoodie\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 416,
+        "text": "\"top:o95t\": [0.0023, 0.0057, 0.9977, 0.9943],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:56:05.158Z",
+    "slot": "top",
+    "id": "k1t",
+    "label": "White running vest",
+    "file": "outfitItems.js",
+    "line": 57,
+    "sourceLine": "{ id: 'k1t', label: 'White running vest', family: 'Running vest', colorway: 'White', img: require('../../assets/character/outfit/ofT101.png'), layout: { w: 0.61, top: 0.3328, dx: -0.0017 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT101.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT101.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 167,
+        "text": "\"k1t\": {\"status\":\"core\",\"theme\":\"running\",\"collection\":null,\"family\":\"Running vest\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/cosmetics.js",
+        "line": 464,
+        "text": "'k1t', 'singlet', 'o56t', 'k2t', 'o36t', 'k3t',",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 357,
+        "text": "\"top:k1t\": [0.1335, 0, 0.8708, 1],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:56:14.683Z",
+    "slot": "top",
+    "id": "k3t",
+    "label": "Charcoal zip hoodie",
+    "file": "outfitItems.js",
+    "line": 57,
+    "sourceLine": "{ id: 'k3t', label: 'Charcoal zip hoodie', family: 'Zip hoodie', colorway: 'Charcoal', img: require('../../assets/character/outfit/ofT103.png'), layout: { w: 1.05, top: 0.298 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT103.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT103.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 169,
+        "text": "\"k3t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Zip hoodie\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/cosmetics.js",
+        "line": 464,
+        "text": "'k1t', 'singlet', 'o56t', 'k2t', 'o36t', 'k3t',",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 359,
+        "text": "\"top:k3t\": [0, 0.0651, 0.9963, 0.9387],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:57:08.917Z",
+    "slot": "top",
+    "id": "k6t",
+    "label": "Blue track hoodie",
+    "file": "outfitItems.js",
+    "line": 59,
+    "sourceLine": "{ id: 'k6t', label: 'Blue track hoodie', family: 'Track hoodie', colorway: 'Blue', img: require('../../assets/character/outfit/ofT106.png'), layout: { w: 1.05, top: 0.298 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT106.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT106.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 26",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 172,
+        "text": "\"k6t\": {\"status\":\"core\",\"theme\":\"running\",\"collection\":null,\"family\":\"Track hoodie\",\"acquisitionType\":\"runs\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 362,
+        "text": "\"top:k6t\": [0, 0.0669, 0.9963, 0.9331],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T11:57:33.678Z",
+    "slot": "top",
+    "id": "k11t",
+    "label": "White stripe polo",
+    "file": "outfitItems.js",
+    "line": 62,
+    "sourceLine": "{ id: 'k11t', label: 'White stripe polo', family: 'Stripe polo', colorway: 'White', img: require('../../assets/character/outfit/ofT111.png'), layout: { w: 1.02, top: 0.31 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT111.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT111.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 162,
+        "text": "\"k11t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Stripe polo\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 352,
+        "text": "\"top:k11t\": [0, 0.0717, 1, 0.9283],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T12:01:12.350Z",
+    "slot": "top",
+    "id": "k15t",
+    "label": "Slate pocket hoodie",
+    "file": "outfitItems.js",
+    "line": 65,
+    "sourceLine": "{ id: 'k15t', label: 'Slate pocket hoodie', family: 'Pocket hoodie', colorway: 'Slate', img: require('../../assets/character/outfit/ofT115.png'), layout: { w: 1.05, top: 0.2696, dx: 0.0067 }, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofT115.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofT115.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 166,
+        "text": "\"k15t\": {\"status\":\"lifestyle\",\"theme\":\"casual\",\"collection\":null,\"family\":\"Pocket hoodie\",\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 356,
+        "text": "\"top:k15t\": [0, 0.0448, 1, 0.9552],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T12:01:25.604Z",
+    "slot": "top",
+    "id": "o60o",
+    "label": "Astronaut suit",
+    "file": "outfitItems.js",
+    "line": 196,
+    "sourceLine": "{ id: 'o60o', label: 'Astronaut suit', img: require('../../assets/character/outfit/ofS4.png'), layout: { w: 1.0317, top: 0.2919, dx: 0.0033 }, fit: 'onepiece', hidesBottom: true, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofS4.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofS4.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 235,
+        "text": "\"o60o\": {\"status\":\"lifestyle\",\"theme\":\"fantasy\",\"collection\":null,\"family\":null,\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 395,
+        "text": "\"top:o60o\": [0.165, 0.002, 0.8369, 1],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T12:01:28.645Z",
+    "slot": "top",
+    "id": "o61o",
+    "label": "Pirate coat",
+    "file": "outfitItems.js",
+    "line": 196,
+    "sourceLine": "{ id: 'o61o', label: 'Pirate coat', img: require('../../assets/character/outfit/ofS5.png'), layout: { w: 1.0663, top: 0.3172, dx: 0.0033 }, fit: 'onepiece', hidesBottom: true, rarity: 'rare', unlock: runs(3, 'Finish 3 runs') },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofS5.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofS5.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": "  top: 25",
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 236,
+        "text": "\"o61o\": {\"status\":\"lifestyle\",\"theme\":\"fantasy\",\"collection\":null,\"family\":null,\"acquisitionType\":\"runs\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 396,
+        "text": "\"top:o61o\": [0.1221, 0.002, 0.8779, 1],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T12:01:41.057Z",
+    "slot": "top",
+    "id": "o64o",
+    "label": "Leaf fairy dress",
+    "file": "outfitItems.js",
+    "line": 196,
+    "sourceLine": "{ id: 'o64o', label: 'Leaf fairy dress', img: require('../../assets/character/outfit/ofS8.png'), layout: { w: 1.024, top: 0.3209, dx: 0.0017 }, fit: 'onepiece', hidesBottom: true, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofS8.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofS8.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 237,
+        "text": "\"o64o\": {\"status\":\"lifestyle\",\"theme\":\"fantasy\",\"collection\":null,\"family\":null,\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 397,
+        "text": "\"top:o64o\": [0.2041, 0.0996, 0.7939, 0.666],",
+        "generated": false
+      }
+    ]
+  },
+  {
+    "at": "2026-09-20T12:01:44.293Z",
+    "slot": "top",
+    "id": "o66o",
+    "label": "Valkyrie armour",
+    "file": "outfitItems.js",
+    "line": 196,
+    "sourceLine": "{ id: 'o66o', label: 'Valkyrie armour', img: require('../../assets/character/outfit/ofS9.png'), layout: { w: 1.0456, top: 0.3159, dx: 0.0212 }, fit: 'onepiece', hidesBottom: true, rarity: 'common', unlock: free },",
+    "previewLine": null,
+    "art": [
+      "assets/character/outfit/ofS9.png"
+    ],
+    "artMoved": [
+      "assets/character/outfit/ofS9.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 238,
+        "text": "\"o66o\": {\"status\":\"lifestyle\",\"theme\":\"fantasy\",\"collection\":null,\"family\":null,\"acquisitionType\":\"starter\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/itemInkBounds.json",
+        "line": 398,
+        "text": "\"top:o66o\": [0.207, 0.002, 0.8105, 1],",
+        "generated": false
+      }
+    ]
   }
 ]

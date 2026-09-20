@@ -26,7 +26,7 @@ import { useClan } from '../state/clan';
 import { Bar, Pop, ScreenIn, useOnScreen, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
-import { ringCentroid } from '../components/territoryBoard';
+import { landColor, ringCentroid } from '../components/territoryBoard';
 import { territoryRings } from '../components/claim/geometry';
 import GameMap, {
   ContestedOutline,
@@ -41,6 +41,7 @@ import MapProfileSheet from '../components/MapProfileSheet';
 import MapLayersSheet from '../components/map/MapLayersSheet';
 import TerritoryPlanner from '../components/map/TerritoryPlanner';
 import { EVENTS, track } from '../analytics';
+import { PHASE, TARGET, TutorialAnchor, useTutorial, useTutorialState } from '../tutorial';
 import { layerByKey, layerFeatureCollection } from '../map/intelligence';
 import { boardPresentation } from '../map/presentation';
 import { createViewportCache, selectPortraits } from '../map/viewportCache';
@@ -99,6 +100,12 @@ const CLUB_INK = '#F4F4F7';
 // UNDER a rail unless it is pushed in past this.
 const RAIL = 0.085;
 
+// The box the first-run tutorial lights around the runner's own dot, once the
+// camera has been flown to it. Generous rather than tight: the dot is 14pt and
+// a cutout traced round it would read as a smudge on the glass rather than as
+// a spotlight on somebody.
+const TUTORIAL_PLAYER_BOX = 92;
+
 // One compact menu holds every map action. It stays on the right edge where the
 // old tool rail lived, but opens wide enough for labels and the rank stepper so
 // the map never asks the runner to decode five unrelated floating icons.
@@ -118,17 +125,21 @@ const LOCATE_SIZE = 60;
 // two states of one switch labelled in two different languages.
 const VIEW_SWITCH_SIZE = 104;
 
-const LandPortrait = React.memo(function LandPortrait({ marker: m, accent, bg, onSelect }) {
+// `m.ring` is the colour of the land under the portrait, own land included —
+// landColor already spends the viewer's accent there when they have one. The
+// ring used to branch on `mine` and take the accent directly, which now says a
+// different colour from the ground it is standing on.
+const LandPortrait = React.memo(function LandPortrait({ marker: m, bg, onSelect }) {
   const onPress = useCallback(() => onSelect(m.userId), [onSelect, m.userId]);
   return (
     <UserMarker point={m.at} onPress={onPress}>
-      <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.mine ? accent : m.ring} bg={bg} />
+      <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.ring} bg={bg} />
     </UserMarker>
   );
 }, (a, b) => a.marker.id === b.marker.id && a.marker.avatar === b.marker.avatar
   && a.marker.userId === b.marker.userId && a.marker.mine === b.marker.mine
   && a.marker.ring === b.marker.ring && a.marker.at.latitude === b.marker.at.latitude
-  && a.marker.at.longitude === b.marker.at.longitude && a.accent === b.accent
+  && a.marker.at.longitude === b.marker.at.longitude
   && a.bg === b.bg && a.onSelect === b.onSelect);
 
 function RankMark({ tier }) {
@@ -162,10 +173,11 @@ function claimSaturation(reinforcements) {
 function toFeatures(territories, userId, playerAccent) {
   const features = [];
   for (const t of territories) {
-    const c = t.clan_color || NEUTRAL;
     const mine = t.user_id === userId;
-    // Use player accent for MY territories OR solo territories (no clan color)
-    const useAccent = mine || !t.clan_color;
+    // One colour per owner — see landColor. This used to hand the VIEWER's
+    // accent to every clubless plot on the board, which painted the whole solo
+    // world in one colour (the neutral slate, for a viewer without a club).
+    const color = landColor(t, { mine, accent: playerAccent });
     territoryRings(t).forEach((ring, ri) => {
       const coords = ring.map(([lon, lat]) => [lon, lat]);
       if (coords[0][0] !== coords[coords.length - 1][0] || coords[0][1] !== coords[coords.length - 1][1]) {
@@ -178,17 +190,21 @@ function toFeatures(territories, userId, playerAccent) {
         properties: {
           territoryId: t.id,
           clanTag: t.clan_tag || 'Solo',
-          fillColor: useAccent && playerAccent ? playerAccent : c.stroke,
-          strokeColor: useAccent && playerAccent ? playerAccent : c.stroke,
+          fillColor: color,
+          strokeColor: color,
           // Territory fill: MY territories are bold and obvious (0.75 base),
-          // others' territories are faded (0.25 base) to make them less prominent.
+          // others' are quieter (0.40) but still plainly COLOURED LAND. They
+          // used to sit at 0.25, which after decay landed near 0.19 — under a
+          // 2.5px border plus a blurred glow, so a plot read as an outline
+          // with nothing inside it and the board read as wire. The fill leads
+          // now and the border follows it in (see TerritoryLayer).
           // Then faded by decay so land visibly weakens as it nears expiry — but never
           // down to the wash it used to fade to, which read as barely-there rather than aged.
           // Then deepened by repeat claims (`reinforcements`), capped, so hard-held ground
           // reads more saturated than a single claim.
           fillOpacity: Math.min(
             SAT_MAX,
-            (mine ? 0.75 : 0.25) * (0.55 + 0.45 * (t.freshness ?? 1)) * claimSaturation(t.reinforcements)
+            (mine ? 0.75 : 0.40) * (0.55 + 0.45 * (t.freshness ?? 1)) * claimSaturation(t.reinforcements)
           ),
           contested: !!t.contested,
         },
@@ -248,6 +264,9 @@ function HeatOutline({ featureCollection, reduce }) {
   return (
     <ContestedOutline
       featureCollection={featureCollection}
+      // Every plot claimed in the last week is in here, so it follows the
+      // board's borders down as the camera pulls back.
+      scaleWithZoom
       opacity={reduce ? 0.8 : pulse}
       // Matched to the interval: the layer is always mid glide, never sitting
       // at an endpoint waiting for the next step.
@@ -591,6 +610,37 @@ export default function GlobalMapScreen({ route, navigation }) {
     }
   }, [locState, list, user.id]);
 
+  // --- the first-run tutorial's three map beats ---------------------------
+  //
+  // This screen OFFERS facts and a rectangle; it makes no decisions. Whether a
+  // coach mark is due, which one, and what it says all live in src/tutorial.
+  //
+  //   playerLocated  is there a dot to point at. With location refused the
+  //                  "that's you" step is skipped rather than pointing at an
+  //                  empty patch of map.
+  //   ownsLand       decides which true sentence the territory step says.
+  const { setFacts } = useTutorial();
+  const { phase: tutorialPhase } = useTutorialState();
+  const ownsLand = useMemo(
+    () => (list || []).some((t) => t.user_id === user.id),
+    [list, user.id]
+  );
+  useEffect(() => {
+    setFacts({
+      ownsLand,
+      playerLocated: locState === 'pending' ? null : !!myLoc,
+    });
+  }, [setFacts, ownsLand, myLoc, locState]);
+
+  // "That's you" points at the middle of the board, so the runner has to BE in
+  // the middle of the board. The camera is sent to them as the step opens —
+  // which is also what the screen does on its own the first time it loads, so
+  // this is nudging an existing behaviour rather than inventing one.
+  useEffect(() => {
+    if (tutorialPhase !== PHASE.PLAYER || !myLoc) return;
+    mapRef.current?.flyTo(myLoc, 15.5, 600);
+  }, [tutorialPhase, myLoc]);
+
   // Owner portraits pinned to the centre of EVERY territory in view. Others'
   // avatars come from the API; the viewer's own uses the freshest local
   // loadout. Capped + shown only when zoomed in enough to avoid clutter/perf.
@@ -603,12 +653,14 @@ export default function GlobalMapScreen({ route, navigation }) {
         userId: t.user_id,
         mine: t.user_id === user.id,
         avatar: t.user_id === user.id ? equipped : t.avatar,
-        ring: (t.clan_color || NEUTRAL).stroke,
+        // The ring is the land's own colour, so the portrait names the plot
+        // it sits in rather than floating over it in slate.
+        ring: landColor(t, { mine: t.user_id === user.id, accent }),
         area: t.area_m2 || 0,
         at: ringCentroid(territoryRings(t)[0]),
       }))
       .filter((m) => m.at && m.avatar), portraitBounds);
-  }, [list, user.id, equipped, zoom, isClubView, planning, portraitBounds]);
+  }, [list, user.id, equipped, accent, zoom, isClubView, planning, portraitBounds]);
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
@@ -857,7 +909,10 @@ export default function GlobalMapScreen({ route, navigation }) {
     );
   }
 
-  const selectedColor = selected ? (selected.clan_color || NEUTRAL) : null;
+  // The tapped card wears the colour of the land it opened from.
+  const selectedColor = selected
+    ? landColor(selected, { mine: selected.user_id === user.id, accent })
+    : null;
   const loaded = list !== null;
   const showEmpty = loaded && visibleRows.length === 0 && !loadError;
 
@@ -881,8 +936,14 @@ export default function GlobalMapScreen({ route, navigation }) {
   // on all four sides. (Before that it was inset by a gutter on every side,
   // which cost the map a band of itself twice over: once to the gutter and
   // again to the frame drawn inside it.)
-  // Offset by -insets.top to go under the status bar for flush appearance
-  const boardTop = -insets.top;
+  // ZERO, NOT -insets.top. This screen is already full bleed — the pager's
+  // scene starts at the physical top edge, which is why the clock sits over
+  // live map — so pulling the board up by the inset did not tuck the frame
+  // under the status bar, it pushed the whole top rail off the screen. Every
+  // tier lost its top rail to that except mythic, whose rail is drawn at 7.6%
+  // of the art's height against 4.0-5.9% for the rest, and so was the only one
+  // thick enough to still reach back down past the notch.
+  const boardTop = 0;
   // Everything the frame would otherwise cover gets pushed in past the rail.
   const rail = Math.round(screenW * RAIL);
   // The top controls clear the rail AND the notch. With the frame on the top
@@ -984,7 +1045,7 @@ export default function GlobalMapScreen({ route, navigation }) {
             : null}
           {/* owner portrait in the middle of every territory in view */}
           {landPortraits.map((m) => (
-            <LandPortrait key={m.id} marker={m} accent={accent} bg={colors.card} onSelect={setProfileUserId} />
+            <LandPortrait key={m.id} marker={m} bg={colors.card} onSelect={setProfileUserId} />
           ))}
           {/* Keep location visible when pulled back without covering the land. */}
           {myLoc && (
@@ -993,6 +1054,33 @@ export default function GlobalMapScreen({ route, navigation }) {
             </UserMarker>
           )}
         </GameMap>
+
+        {/* WHAT THE TUTORIAL LIGHTS UP, declared rather than measured.
+            Mapbox draws the board and the runner's dot natively, and there is
+            no React view around either that could be measured — so the screen
+            states the two rectangles it means and the tutorial measures those.
+            They paint nothing and take no touches.
+
+            The player box is the middle of the board on purpose: the camera is
+            flown to the runner as that step opens (see the effect above), so
+            the centre of the board IS where they are standing. */}
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: railTop, left: rail, right: rail, bottom: rail }}
+        >
+          <TutorialAnchor id={TARGET.MAP_BOARD} style={StyleSheet.absoluteFill} />
+          <TutorialAnchor
+            id={TARGET.MAP_PLAYER}
+            style={{
+              left: '50%',
+              top: '50%',
+              width: TUTORIAL_PLAYER_BOX,
+              height: TUTORIAL_PLAYER_BOX,
+              marginLeft: -TUTORIAL_PLAYER_BOX / 2,
+              marginTop: -TUTORIAL_PLAYER_BOX / 2,
+            }}
+          />
+        </View>
 
         {/* LOCKED. Scouting a tier above your own covers the whole board, not
             a chip in a corner: the board is the thing that is locked, and a
@@ -1345,7 +1433,7 @@ export default function GlobalMapScreen({ route, navigation }) {
               {/* Strength bar and defenders badge */}
               <View style={styles.cardStats}>
                 <View style={styles.strengthBarContainer}>
-                  <View style={[styles.strengthBar, { width: `${Math.min(100, (selected.strength || 1) * 10)}%`, backgroundColor: selectedColor.stroke }]} />
+                  <View style={[styles.strengthBar, { width: `${Math.min(100, (selected.strength || 1) * 10)}%`, backgroundColor: selectedColor }]} />
                 </View>
                 {selected.defenders > 0 && (
                   <View style={[styles.defendersBadge, { backgroundColor: selected.defenders > 3 ? '#22C55E' : '#EF4444' }]}>

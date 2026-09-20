@@ -61,6 +61,7 @@ import { itemPreviewSources } from '../config/cosmetics';
 import { preloadImages } from '../utils/imagePreload';
 import { preloadScreenImagesAfterInteractions } from '../config/screenAssets';
 import { shortDate } from '../utils/time';
+import { TARGET, TIP, TutorialTarget, useTutorial, useTutorialTip } from '../tutorial';
 
 // Trophy shelf — derived from live stats; earned trophies glow in the accent.
 // The shelf is PASER's own sticker art, not line icons. It used to be four
@@ -161,6 +162,13 @@ export default function ProfileScreen({ navigation }) {
   // grey tiles. `loading` stays true only until the very first successful
   // fetch on a fresh install.
   const { data: stats } = useQuery('me:stats', api.meStats, { fallback: {} });
+  // "Everything you've earned lives here", said once, and not until there is
+  // something earned on screen to say it about.
+  useTutorialTip(TIP.PROGRESSION, stats != null);
+  // Replaying the tutorial deliberately, from the one place in the app where
+  // preferences live. It writes a single key in the local profile: no account
+  // data, no runs, no territory and no progression is touched.
+  const { replay: replayTutorial } = useTutorial();
   // The ladder's tier thresholds, for the numbers under the rank rail. Cached
   // hard: it counts every rated player, and a threshold that moved between two
   // openings of this page would read as noise rather than as a ladder. The
@@ -296,6 +304,9 @@ export default function ProfileScreen({ navigation }) {
           roadside scene (the art leaves its centre clear for it). The header
           reserves the scene's full height so the stat wall below starts clear
           of it instead of floating over the road. */}
+      {/* What the You tip lights: the runner, their rank and their level, all
+          in one box. */}
+      <TutorialTarget id={TARGET.YOU_MAIN}>
       <Reveal style={[styles.header, { minHeight: headerH, paddingTop: skyTop + space.lg }]}>
         {/* Wind through the scene. A no-op when the leaf art is not in the
             build, so this line is safe whatever the asset selection says. It
@@ -405,6 +416,7 @@ export default function ProfileScreen({ navigation }) {
             more bar in a header that is meant to be who you are, not what you
             have left. */}
       </Reveal>
+      </TutorialTarget>
 
 
       {/* stat wall */}
@@ -660,12 +672,40 @@ export default function ProfileScreen({ navigation }) {
 
         <AccordionSection
           title="App customisation"
-          subtitle="Theme and runner colour"
+          subtitle="Theme, runner colour and the tutorial"
           open={section === 'customisation'}
           onToggle={() => toggleSection('customisation')}
         >
+            {/* THE WAY BACK INTO THE TUTORIAL. It belongs here rather than in
+                Account because it is a preference about the app, not an
+                operation on the account: it rewrites one key in the local
+                profile and nothing else. Runs, territory, level, rank and
+                cosmetics are all untouched, which is why it can sit next to
+                the theme switch without a confirmation. */}
+            <SectionHeader title="Help" framed={false} style={{ marginTop: space.md, marginBottom: space.md }} />
+            <Card>
+              <Text style={type.labelSm}>Tutorial</Text>
+              <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
+                Play the first run walkthrough again. Nothing you have earned is affected.
+              </Text>
+              <Button
+                title="Replay tutorial"
+                variant="secondary"
+                size="sm"
+                full={false}
+                onPress={() => {
+                  replayTutorial();
+                  // The tutorial opens on Home, and the runner is on the You
+                  // page: send them where it starts rather than leaving the
+                  // first card to arrive over the settings they just changed.
+                  // 'Home' is not on this stack, so it bubbles to the tabs.
+                  navigation.navigate('Home');
+                }}
+              />
+            </Card>
+
             {/* appearance */}
-            <SectionHeader title="Appearance" framed={false} style={{ marginTop: space.md, marginBottom: space.md }} />
+            <SectionHeader title="Appearance" framed={false} style={{ marginTop: space.xl, marginBottom: space.md }} />
             <Card>
               <Text style={type.labelSm}>Theme</Text>
               <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>

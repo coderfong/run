@@ -25,7 +25,6 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
     private var pendingTimer: Timer?
     private var hasState = false
-    private var lastAvatarData: String?
 
     override init() {
         super.init()
@@ -37,6 +36,15 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     /// iPhone app when it is asleep in a pocket.
     func refresh() {
         transmit(["cmd": "sync"])
+        requestPortrait()
+    }
+
+    /// Asks for the runner's portrait, naming the one already on this watch so
+    /// a wrist that is up to date costs nothing. The phone answers with a file
+    /// transfer, which the system delivers in its own time: there is no reply
+    /// to wait for and nothing on screen waits for it.
+    func requestPortrait() {
+        transmit(["cmd": "avatar", "have": WatchAvatarStore.shared.key])
     }
 
     func send(_ command: RunCommand) {
@@ -86,15 +94,6 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         state = next
         receivedAt = Date()
         if next.phase != previous.phase { clearPending() }
-        
-        // Handle avatar synchronization
-        if let avatarData = next.avatarData, avatarData != lastAvatarData {
-            lastAvatarData = avatarData
-            if let data = Data(base64Encoded: avatarData) {
-                WatchAvatarStore.shared.updateAvatar(from: data)
-            }
-        }
-        
         // The first state after launch is catching up, not news: no buzz for
         // a run that started before the app was opened.
         if hasState { Haptics.play(from: previous, to: next) }
@@ -135,5 +134,16 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
 
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         DispatchQueue.main.async { self.apply(message) }
+    }
+
+    /// The runner's portrait. File transfers are queued by the system and
+    /// arrive whenever they arrive, including while this app is not running,
+    /// so this is the only place a new face can land. `file.fileURL` is the
+    /// system's copy and is deleted as soon as this returns, which is why the
+    /// store moves it before doing anything else.
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard file.metadata?["kind"] as? String == "avatar" else { return }
+        let key = file.metadata?["key"] as? String ?? ""
+        WatchAvatarStore.shared.receive(from: file.fileURL, key: key)
     }
 }

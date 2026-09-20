@@ -313,7 +313,6 @@ export default function LeaderboardTransition({
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const T = timingFor(reducedMotion);
-  const c = colors;
 
   const wipe = useSharedValue(0);
   const dashX = useSharedValue(-160);
@@ -480,6 +479,10 @@ export default function LeaderboardTransition({
 // Measure before travelling so large text and short screens still land on
 // the player's actual slot. Remount for each replay to start at the podium.
 function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
+  // Its own theme. The fades at the top and bottom of the board are painted in
+  // the page colour, and this is a separate component from the screen above —
+  // reaching for the parent's `colors` from in here is a free variable.
+  const { colors } = useTheme();
   const boardRef = useAnimatedRef();
   const offset = useSharedValue(0);
   const driving = useSharedValue(false);
@@ -541,7 +544,7 @@ function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
     <View style={styles.boardWrapper}>
       {/* Top fade gradient */}
       <View style={styles.fadeTop} pointerEvents="none">
-        <View style={[styles.fadeGradient, { backgroundColor: c.bg }]} />
+        <View style={[styles.fadeGradient, { backgroundColor: colors.bg }]} />
       </View>
 
       <Animated.ScrollView
@@ -579,7 +582,7 @@ function TravelBoard({ rows, playerId, reducedMotion, startDelay, children }) {
 
       {/* Bottom fade gradient */}
       <View style={styles.fadeBottom} pointerEvents="none">
-        <View style={[styles.fadeGradient, { backgroundColor: c.bg }]} />
+        <View style={[styles.fadeGradient, { backgroundColor: colors.bg }]} />
       </View>
     </View>
   );

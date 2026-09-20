@@ -18,6 +18,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -52,6 +53,14 @@ const EMPTY = {
   // their own. Defaults false for every account for the same reason
   // `crossroadsIntroSeen` does.
   rankGuideSeen: false,
+  // The first-run tutorial's whole record: which phase it is on, whether it
+  // has been finished or skipped, and which contextual tips have been shown.
+  // One VERSIONED object rather than a flag per lesson, so a second tutorial
+  // can be introduced later without this file growing a new boolean each time.
+  // Shape, defaults and the "is this account actually new" decision all live
+  // in src/tutorial/progress.js; nothing here needs to understand it beyond
+  // "read it, write it back whole".
+  tutorial: null,
 };
 
 const ProfileContext = createContext({
@@ -63,6 +72,7 @@ const ProfileContext = createContext({
   completeTutorial: async () => {},
   completeCrossroadsIntro: async () => {},
   completeRankGuide: async () => {},
+  saveTutorial: async () => {},
 });
 
 export function ProfileProvider({ children }) {
@@ -73,7 +83,7 @@ export function ProfileProvider({ children }) {
   useEffect(() => {
     let alive = true;
     if (!signedIn) {
-      setProfile(EMPTY);
+      apply(EMPTY);
       setLoading(false);
       return undefined;
     }
@@ -81,7 +91,7 @@ export function ProfileProvider({ children }) {
     AsyncStorage.getItem(keyFor(user))
       .then((raw) => {
         if (!alive) return;
-        setProfile(raw ? { ...EMPTY, ...JSON.parse(raw) } : EMPTY);
+        apply(raw ? { ...EMPTY, ...JSON.parse(raw) } : EMPTY);
       })
       .catch(() => {})
       .finally(() => alive && setLoading(false));
@@ -90,13 +100,26 @@ export function ProfileProvider({ children }) {
     };
   }, [signedIn, user?.username]);
 
+  // WHAT IS ABOUT TO BE STORED, held outside React.
+  //
+  // `write` used to read the previous profile from inside a setState updater
+  // and then persist the value that updater had assigned. That works only
+  // while React can evaluate the updater EAGERLY, which it stops doing the
+  // moment a second update is already queued — so two writes in one tick (the
+  // tutorial arming itself and clearing the intro's pending flag, say) left
+  // the second one stringifying `undefined`. Keeping the intended next value
+  // in a ref makes both the state update and the write derive from the same
+  // object, and makes writes in the same tick compose instead of racing.
+  const latest = useRef(EMPTY);
+  const apply = (next) => {
+    latest.current = next;
+    setProfile(next);
+  };
+
   const write = useCallback(
     async (patch) => {
-      let next;
-      setProfile((prev) => {
-        next = { ...prev, ...patch };
-        return next;
-      });
+      const next = { ...latest.current, ...patch };
+      apply(next);
       try {
         await AsyncStorage.setItem(keyFor(user), JSON.stringify(next));
       } catch {}
@@ -114,12 +137,21 @@ export function ProfileProvider({ children }) {
   );
 
   // Finishing the intro arms the in-app tutorial (existing accounts never get
-  // it — the flag only exists for users who ran the new flow).
+  // it — the flag only exists for users who ran the new flow). The tutorial
+  // system reads `tutorialPending` as its one unambiguous "this account was
+  // created on this phone, moments ago" signal and seeds itself from it; see
+  // decideCoreState in src/tutorial/progress.js.
   const completeIntro = useCallback(
     () => write({ introDone: true, tutorialPending: true }),
     [write]
   );
   const completeTutorial = useCallback(() => write({ tutorialPending: false }), [write]);
+
+  // The tutorial's own record, written back whole. It is one key: a tutorial
+  // write can never disturb the name, the birthday, the theme or any other
+  // preference in here, which is the property that lets the tutorial persist
+  // on every step without anybody having to think about what else is stored.
+  const saveTutorial = useCallback((tutorial) => write({ tutorial }), [write]);
   const completeCrossroadsIntro = useCallback(
     () => write({ crossroadsIntroSeen: true }),
     [write]
@@ -138,6 +170,7 @@ export function ProfileProvider({ children }) {
       completeTutorial,
       completeCrossroadsIntro,
       completeRankGuide,
+      saveTutorial,
     }),
     [
       profile,
@@ -148,6 +181,7 @@ export function ProfileProvider({ children }) {
       completeTutorial,
       completeCrossroadsIntro,
       completeRankGuide,
+      saveTutorial,
     ]
   );
 

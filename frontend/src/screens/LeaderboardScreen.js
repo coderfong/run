@@ -28,6 +28,7 @@ import { Screen, Segmented, ToonHeader } from '../components/ui';
 import LeaderboardView from '../components/LeaderboardView';
 import { art } from '../config/onboardingArt';
 import { Reveal } from '../ui/motion';
+import { TARGET, TIP, TutorialTarget, useTutorialTip } from '../tutorial';
 
 const TABS = [
   { key: 'rank', label: 'Rank' },
@@ -54,6 +55,8 @@ export default function LeaderboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [board, setBoard] = useState('rank');
   const meta = BOARDS[board];
+  // One card, the first time the boards are opened.
+  useTutorialTip(TIP.LEADERBOARD);
 
   return (
     <Screen gutter={false} edges={[]}>
@@ -89,9 +92,13 @@ export default function LeaderboardScreen({ navigation }) {
       {/* keyed so switching boards remounts the list rather than animating
           one dataset into the other's row positions — and so the new board
           arrives on its own entrance instead of swapping in cold. */}
-      <Reveal key={board} from="none" duration={260} style={{ flex: 1 }}>
-        <LeaderboardView board={board} />
-      </Reveal>
+      {/* The rows are what the tip is about ("your runs move you up the
+          rankings"), so the rows are what it lights. */}
+      <TutorialTarget id={TARGET.LEADERBOARD_MAIN} style={{ flex: 1 }}>
+        <Reveal key={board} from="none" duration={260} style={{ flex: 1 }}>
+          <LeaderboardView board={board} />
+        </Reveal>
+      </TutorialTarget>
     </Screen>
   );
 }

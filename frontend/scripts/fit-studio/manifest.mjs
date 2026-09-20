@@ -19,13 +19,14 @@ export const FRONTEND = path.resolve(HERE, '..', '..');
 const CONFIG = path.join(FRONTEND, 'src', 'config');
 const RIG_FILE = path.join(FRONTEND, 'src', 'components', 'character', 'CharacterRig.js');
 
-const CATALOG_FILES = ['cosmetics.js', 'cosmeticsArt.js', 'outfitItems.js', 'hairSheetItems.js'];
+const CATALOG_FILES = ['cosmetics.js', 'cosmeticsArt.js', 'outfitItems.js', 'hairSheetItems.js', 'curatedCosmetics.js'];
 
 // Which source file owns each item — that is where a fit gets written back.
 export const SOURCE_FILES = {
   cosmetics: path.join(CONFIG, 'cosmetics.js'),
   outfits: path.join(CONFIG, 'outfitItems.js'),
   hairSheets: path.join(CONFIG, 'hairSheetItems.js'),
+  curated: path.join(CONFIG, 'curatedCosmetics.js'),
 };
 
 const rel = (abs) => path.relative(FRONTEND, abs).split(path.sep).join('/');
@@ -57,7 +58,7 @@ export function readRig() {
   }
   const body = src.slice(from, to).replace(/^export /gm, '');
   const read = new Function(
-    `${body}\nreturn { BODY_RATIO, HEADROOM, HEAD, LAYOUT, HAIR_LIFT, BUST,` +
+    `const HAIR_COLORS = ['#26282B','#4A2F1F','#7B4B2A','#C9922B','#E8D06B'];\n${body}\nreturn { BODY_RATIO, HEADROOM, HEAD, LAYOUT, HAIR_LIFT, BUST,` +
     ` FACE_W_OF_HEAD, FACE_TOP_OF_HEAD, EYE_LINE_OF_HEAD, GLASSES_W_OF_HEAD };`
   );
   const rig = read();
@@ -75,18 +76,19 @@ async function loadCatalog() {
     src = src.replace(/require\((['"])(.*?)\1\)/g, (_m, _q, spec) =>
       JSON.stringify(rel(path.resolve(CONFIG, spec)))
     );
-    src = src.replace(/from '\.\/(cosmeticsArt|outfitItems|hairSheetItems)'/g, "from './$1.mjs'");
+    src = src.replace(/from '\.\/(cosmeticsArt|outfitItems|hairSheetItems|curatedCosmetics)'/g, "from './$1.mjs'");
     fs.writeFileSync(path.join(tmp, file.replace(/\.js$/, '.mjs')), src, 'utf8');
   }
   const mod = await import(`${url.pathToFileURL(path.join(tmp, 'cosmetics.mjs'))}?t=${Date.now()}`);
   const outfits = await import(`${url.pathToFileURL(path.join(tmp, 'outfitItems.mjs'))}?t=${Date.now()}`);
   const hair = await import(`${url.pathToFileURL(path.join(tmp, 'hairSheetItems.mjs'))}?t=${Date.now()}`);
+  const curated = await import(`${url.pathToFileURL(path.join(tmp, 'curatedCosmetics.mjs'))}?t=${Date.now()}`);
   fs.rmSync(tmp, { recursive: true, force: true });
-  return { mod, outfits, hair };
+  return { mod, outfits, hair, curated };
 }
 
 export async function buildManifest() {
-  const { mod, outfits, hair } = await loadCatalog();
+  const { mod, outfits, hair, curated } = await loadCatalog();
 
   // Generated waves live in their own files; everything else is hand-written
   // in cosmetics.js.
@@ -95,13 +97,20 @@ export async function buildManifest() {
       .map((i) => i.id)
   );
   const fromHairSheets = new Set(hair.HAIR_SHEETS.map((i) => i.id));
+  const fromCurated = new Set([
+    ...curated.CURATED_TOPS, ...curated.CURATED_BOTTOMS, ...curated.CURATED_FOOTWEAR,
+    ...curated.CURATED_HEADWEAR, ...curated.CURATED_GLASSES,
+    ...curated.CURATED_ACCESSORIES, ...curated.CURATED_EXTRAS,
+  ].map((i) => i.id));
   const sourceOf = (id) =>
-    fromOutfits.has(id) ? 'outfits' : fromHairSheets.has(id) ? 'hairSheets' : 'cosmetics';
+    fromOutfits.has(id) ? 'outfits' : fromHairSheets.has(id) ? 'hairSheets' : fromCurated.has(id) ? 'curated' : 'cosmetics';
 
   const slots = mod.SLOTS.map(({ key, label }) => ({ key, label }));
   const items = {};
   for (const { key } of slots) {
-    items[key] = (mod.ITEMS[key] || []).map((item) => ({
+    items[key] = (mod.ITEMS[key] || []).map((item) => {
+      const override = path.join(FRONTEND, 'assets', 'character', 'body-overrides', key, `${item.id}.png`);
+      return ({
       id: item.id,
       label: item.label,
       source: sourceOf(item.id),
@@ -132,7 +141,9 @@ export async function buildManifest() {
       hidesBottom: !!item.hidesBottom,
       bulky: !!item.bulky,
       rarity: item.rarity || null,
-    }));
+      bodyOverride: fs.existsSync(override) ? rel(override) : null,
+    });
+    });
   }
 
   return {

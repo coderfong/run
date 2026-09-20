@@ -42,7 +42,7 @@ import { MapPin, ShieldAlert, Swords, TriangleAlert } from 'lucide-react-native'
 
 import { invalidateAfterLandLoss } from '../api/cache';
 import { subscribeNotificationEvents } from '../notifications/events';
-import { MAPBOX_PUBLIC_TOKEN, MAP_READY, styleForTheme } from '../config/map';
+import { TIP, useTutorial } from '../tutorial';
 import { useAvatar } from '../state/avatar';
 import { brand, space, toon, toonRadius, toonType, useTheme, withAlpha } from '../theme';
 import { haptic, useReduceMotion } from '../ui/motion';
@@ -50,7 +50,7 @@ import {
   landCaptureAlertKey,
   normaliseLandCaptureAlert,
 } from '../utils/landCaptureAlerts';
-import { fitRingToBox } from '../utils/staticMercator';
+import { fitRingToBox, staticMapUrl } from '../utils/staticMercator';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
@@ -69,29 +69,7 @@ import TerritoryRevealCanvas from './claim/TerritoryRevealCanvas';
 import TerritoryVictoryBeat from './claim/TerritoryVictoryBeat';
 import AppIcon from './AppIcon';
 
-// A still frame of exactly where this happened, not a live map: this modal
-// can pop up over any screen, and a second live Mapbox instance mounted on
-// top of whatever the screen underneath is already running is a cost with no
-// payoff here. The Static Images API is one HTTPS image — same style, same
-// token, none of the weight.
-function staticMapUrl({ lat, lon, width, height, scheme, pinHex, zoom = 15 }) {
-  if (!MAP_READY || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  const style = styleForTheme(scheme).replace('mapbox://styles/', '');
-  // The API caps a side at 640, and the cutscene stage is now the whole screen
-  // — taller than that on every phone. Clamping the two sides INDEPENDENTLY
-  // would change the aspect ratio, and the ring is projected assuming one box
-  // pixel is one map pixel at `zoom` (see fitRingToBox), so the outline would
-  // no longer sit on the streets it was drawn from. Shrink both sides by the
-  // same factor and drop the zoom by that same power of two instead: fewer
-  // pixels covering the identical ground. @2x puts the density back.
-  const longest = Math.max(width, height);
-  const shrink = longest > 640 ? 640 / longest : 1;
-  const w = Math.max(64, Math.min(640, Math.round(width * shrink)));
-  const h = Math.max(64, Math.min(640, Math.round(height * shrink)));
-  const z = Math.max(1, Math.min(20, (Number(zoom) || 15) + Math.log2(shrink)));
-  const pin = `pin-s+${pinHex}(${lon},${lat})`;
-  return `https://api.mapbox.com/styles/v1/${style}/static/${pin}/${lon},${lat},${z.toFixed(2)},0/${w}x${h}@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`;
-}
+const PIN_HEX = 'FF4967';
 
 const DUPLICATE_TTL_MS = 45_000;
 
@@ -260,6 +238,23 @@ export function LandCaptureAlertHost({ onViewLand }) {
     setCurrent(queue[0]);
     setQueue((items) => items.slice(1));
   }, [current, queue]);
+
+  // DEFENDING, taught the first time somebody takes ground off this runner.
+  // AFTER the alert closes, never over it: that alert is a full screen
+  // cutscene about losing land, and a tutorial card on top of it would be a
+  // second voice talking through the moment. The tip is one line about what to
+  // do next, which is the right thing to say once the bad news has landed.
+  const { requestTip } = useTutorial();
+  const hadAlert = useRef(false);
+  useEffect(() => {
+    if (current) {
+      hadAlert.current = true;
+      return;
+    }
+    if (!hadAlert.current) return;
+    hadAlert.current = false;
+    requestTip(TIP.DEFENSE);
+  }, [current, requestTip]);
 
   // The root notification setup owns the one native listener + active poll;
   // this host only answers the stolen-land events it publishes.
@@ -440,19 +435,28 @@ export function LandCaptureAlertHost({ onViewLand }) {
       `reveal:${playToken}`
     );
   }, [revealSpec, revealRings, stageBox, claimPoint, characterRect, defenderRects, safeInsets, playToken]);
+  // A still frame of exactly where this happened, not a live map: this modal
+  // can pop up over any screen, and a second live Mapbox instance mounted on
+  // top of whatever the screen underneath is already running is a cost with no
+  // payoff here. The Static Images API is one HTTPS image — same style, same
+  // token, none of the weight.
   const mapUrl = useMemo(
-    () => staticMapUrl({
-      // Centre + zoom the snapshot on the ring when we have it, so the projected
-      // box lines up with the streets under it; otherwise the claim point at a
-      // default zoom.
-      lat: framed?.center.lat ?? current?.lat,
-      lon: framed?.center.lon ?? current?.lon,
-      zoom: framed?.zoom,
-      width: stageBox.width,
-      height: stageBox.height,
-      scheme,
-      pinHex: 'FF4967',
-    }),
+    () => {
+      // Centre + zoom the snapshot on the ring when we have it, so the
+      // projected box lines up with the streets under it; otherwise the claim
+      // point at a default zoom.
+      const lat = framed?.center.lat ?? current?.lat;
+      const lon = framed?.center.lon ?? current?.lon;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+      return staticMapUrl({
+        center: { lat, lon },
+        zoom: framed?.zoom,
+        width: stageBox.width,
+        height: stageBox.height,
+        scheme,
+        overlay: `pin-s+${PIN_HEX}(${lon},${lat})`,
+      });
+    },
     [current, stageBox, scheme, framed]
   );
 

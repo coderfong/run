@@ -51,16 +51,57 @@ function ringsOf(t) {
   return t.rings?.length ? t.rings : [t.polygon];
 }
 
+// LAND HAS A COLOUR, AND IT IS THE OWNER'S.
+//
+// Every clubless plot used to be painted with one colour: the neutral slate
+// here, the viewer's own accent on GlobalMap. A viewer without a club HAS the
+// slate for an accent, so the whole solo board came out the same grey blue —
+// hundreds of identical route-shaped ribbons that read as wireframe rather
+// than as ground anybody owns. Club land never had that problem, because a
+// club owns a hue. This gives a solo runner the same thing, keyed off their
+// user id so a runner's land is the same colour on every device and in every
+// session without the server storing anything.
+//
+// The palette is the server's twelve club hues (clans_meta.py), so both boards
+// speak one colour language. NEUTRAL is untouched and still means what it
+// meant: the app's own tint for a clubless viewer. It was never meant to be
+// the colour of land.
+const LAND_HUES = [
+  '#9333ea', '#15803d', '#2563eb', '#dc2626', '#b45309', '#0f766e',
+  '#be123c', '#4338ca', '#4d7c0f', '#0e7490', '#a21caf', '#c2410c',
+];
+
+// FNV-1a over the id string. Any stable hash would do; what matters is that
+// every client computes the same one and nothing has to be persisted.
+function hueIndex(seed) {
+  const s = String(seed ?? '');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h % LAND_HUES.length;
+}
+
+// The colour a plot is painted: the viewer's accent over their own land, the
+// owning club's hue over club land, else the owner's own hue. A clubless
+// viewer falls through to their hue too — their accent is the slate, and own
+// land going grey while everyone else's is coloured is the bug, not the rule.
+export function landColor(t, { mine = false, accent = null } = {}) {
+  if (mine && accent && accent !== NEUTRAL.stroke) return accent;
+  if (t?.clan_color?.stroke) return t.clan_color.stroke;
+  return LAND_HUES[hueIndex(t?.user_id)];
+}
+
 // GeoJSON features for the TerritoryLayer. Own land reads a touch stronger and
-// uses the viewer accent; everyone else uses their clan colour. Opacity fades
-// with freshness so decaying land visibly weakens.
+// uses the viewer accent; everyone else wears their club's or their own hue.
+// Opacity fades with freshness so decaying land visibly weakens.
 export function buildBoardFeatures(territories, { userId, accent, highlightedUserIds = [] }) {
   const highlighted = new Set(highlightedUserIds);
   const features = [];
   for (const t of territories || []) {
     const mine = t.user_id === userId;
-    const col = t.clan_color || NEUTRAL;
-    const fill = mine ? accent : col.stroke;
+    const fill = landColor(t, { mine, accent });
     ringsOf(t).forEach((ring, ri) => {
       if (!ring || ring.length < 3) return;
       const coords = ring.map(([lon, lat]) => [lon, lat]);
@@ -90,14 +131,14 @@ export function buildLandPortraits(territories, { userId, accent, equipped, cap 
   return (territories || [])
     .map((t) => {
       const mine = t.user_id === userId;
-      const col = t.clan_color || NEUTRAL;
       return {
         id: t.id,
         mine,
         userId: t.user_id,
         username: t.username,
         avatar: mine ? equipped : t.avatar,
-        ring: mine ? accent : col.stroke,
+        // The ring is the land's colour, so a portrait names the plot under it.
+        ring: landColor(t, { mine, accent }),
         area: t.area_m2 || 0,
         at: ringCentroid(ringsOf(t)[0]),
       };
@@ -161,10 +202,11 @@ export function estimateClaimsInRing(territories, ring, { userId, grid = 34 } = 
     const tb = bboxOf(rings);
     if (tb.maxLon < bb.minLon || tb.minLon > bb.maxLon ||
         tb.maxLat < bb.minLat || tb.minLat > bb.maxLat) continue;
-    const col = t.clan_color || NEUTRAL;
     rivals.push({
       id: t.id, username: t.username, avatar: t.avatar,
-      clanTag: t.clan_tag || null, ring: col.stroke, rings, hits: 0,
+      // Same colour the defender's land is painted, so the cast on the capture
+      // screen matches the ground being taken. Own land is skipped above.
+      clanTag: t.clan_tag || null, ring: landColor(t), rings, hits: 0,
     });
   }
   if (!rivals.length) return empty;

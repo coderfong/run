@@ -28,6 +28,21 @@ export function styleForTheme(theme) {
   return theme === 'dark' ? MAP_STYLE_DARK : MAP_STYLE_LIGHT;
 }
 
+// Roughly the land colour each style paints, for anything drawn ON a map that
+// has to decide its own ink before the picture arrives (see RouteThumb). An
+// approximation on purpose: a basemap is streets and parks and water, not one
+// flat colour, and what a caller needs from this is only "is the ground I am
+// drawing on light or dark". Worth re-sampling when the hand-designed Studio
+// styles replace the fallbacks above.
+export const MAP_SURFACE = {
+  light: '#F0ECE6',
+  dark: '#1A1B1D',
+};
+
+export function mapSurfaceFor(theme) {
+  return theme === 'dark' ? MAP_SURFACE.dark : MAP_SURFACE.light;
+}
+
 // True once a real token is present. Screens can show a graceful placeholder
 // in dev builds where no token is configured yet.
 export const MAP_READY = MAPBOX_PUBLIC_TOKEN.startsWith('pk.');

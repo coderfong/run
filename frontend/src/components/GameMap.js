@@ -395,6 +395,35 @@ export function MapPoint({ id = 'point', point, color, radius = 7 }) {
   );
 }
 
+// THE FILL LEADS, THE BORDER FOLLOWS IT IN.
+//
+// A territory is a route-shaped ribbon. Pull back to the whole city and that
+// ribbon is a few pixels wide, so a flat 2.5px stroke — plus a 6px blurred
+// glow either side of it — is wider than the land it is supposed to outline.
+// The board stopped being coloured ground and became a tangle of pale wire:
+// every plot read as an empty outline, and the fill, the thing that says WHO
+// OWNS THIS, was buried under its own border.
+//
+// Club view already knew this: its overview drops strokes entirely and lets
+// the fill carry the reading, which is the look the rest of the board wanted.
+// Interpolating on zoom gives every board the same thing, and hands the whole
+// decision to Mapbox — one style expression, evaluated on the render thread,
+// no zoom state in React and no re-stringified GeoJSON on every pinch.
+//
+// The border is not deleted at city scale, it is DEMOTED: thin, and dropped to
+// half opacity, so it reads as the edge of coloured land rather than as the
+// land itself. Deleting it outright would be the opposite mistake — a ribbon
+// that narrow needs an edge to be seen at all from that far out. Full weight
+// returns around 13.25, the zoom that also brings in owner portraits and club
+// detail: the scale at which one plot is a thing you can aim a finger at.
+//
+// The blurred glow IS switched off out there, because a halo is all bleed and
+// no shape, and bleeding four pixels either side of a two pixel ribbon is
+// precisely how a coloured board turns white.
+const BORDER_BY_ZOOM = ['interpolate', ['linear'], ['zoom'], 11.5, 0.8, 13.25, 1.6, 15, 2.2];
+const BORDER_FADE_BY_ZOOM = ['interpolate', ['linear'], ['zoom'], 11.5, 0.5, 13.25, 0.85, 15, 1];
+const BORDER_GLOW_BY_ZOOM = ['interpolate', ['linear'], ['zoom'], 12.5, 0, 14, 4, 16, 6];
+
 // Many territories from a prebuilt GeoJSON FeatureCollection (Phase 3 uses
 // this for the whole board). Each feature carries `fillColor`/`strokeColor`
 // properties so one source paints every clan.
@@ -416,7 +445,15 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
         }}
       />
       {dark && !overview && (
-        <LineLayer id={`${id}-glow`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 6, lineOpacity: 0.5, lineBlur: 3 }} />
+        <LineLayer
+          id={`${id}-glow`}
+          style={{
+            lineColor: ['get', 'strokeColor'],
+            lineWidth: BORDER_GLOW_BY_ZOOM,
+            lineOpacity: 0.45,
+            lineBlur: 3,
+          }}
+        />
       )}
       {!overview && (
         <LineLayer
@@ -430,11 +467,26 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
         />
       )}
       {!overview ? (
-        <LineLayer id={`${id}-stroke`} style={{ lineColor: ['get', 'strokeColor'], lineWidth: 2.5 }} />
+        <LineLayer
+          id={`${id}-stroke`}
+          style={{
+            lineColor: ['get', 'strokeColor'],
+            lineWidth: BORDER_BY_ZOOM,
+            lineOpacity: BORDER_FADE_BY_ZOOM,
+          }}
+        />
       ) : null}
     </ShapeSource>
   );
 }
+
+// A contested outline is HEAVIER than a border, so it needs the same zoom ramp
+// even more badly — land counts as contested for a week, which on a live board
+// is most of it, so a flat 3.5px line at city scale redraws the whole board in
+// wire on top of the border that just stood down. This one does go to nothing
+// out there: the base border is already holding the edge, and two lines on the
+// same ribbon is the tangle. See BORDER_BY_ZOOM.
+const HEAT_BY_ZOOM = ['interpolate', ['linear'], ['zoom'], 12, 0, 13.25, 2.4, 15, 3.5];
 
 // Contested-zone outline: a bright per-feature stroke whose opacity the
 // screen pulses. Rendered above the base board for recently-claimed land.
@@ -442,7 +494,12 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
 // layer eases to each new value instead of cutting to it, which is what makes a
 // stepped pulse read as breathing. 0 (the default) keeps the hard set, which is
 // what a one off overlay wants.
-export function ContestedOutline({ id = 'contested', featureCollection, opacity = 0.8, transition = 0 }) {
+//
+// `scaleWithZoom` is for the whole board's contested land, which has to get out
+// of the fill's way when you pull back. The intelligence overlays leave it off:
+// they outline a HANDFUL of picked plots, and being visible across a city is
+// the entire point of switching one on.
+export function ContestedOutline({ id = 'contested', featureCollection, opacity = 0.8, transition = 0, scaleWithZoom = false }) {
   if (!MAPBOX_AVAILABLE) return null;
   if (!featureCollection?.features?.length) return null;
   return (
@@ -451,7 +508,7 @@ export function ContestedOutline({ id = 'contested', featureCollection, opacity 
         id={`${id}-line`}
         style={{
           lineColor: ['get', 'strokeColor'],
-          lineWidth: 3.5,
+          lineWidth: scaleWithZoom ? HEAT_BY_ZOOM : 3.5,
           lineOpacity: opacity,
           ...(transition ? { lineOpacityTransition: { duration: transition, delay: 0 } } : null),
           lineCap: 'round',

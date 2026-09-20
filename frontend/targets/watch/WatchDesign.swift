@@ -1,5 +1,44 @@
 import SwiftUI
 
+// MARK: - Screen container
+
+/// Every screen in the app sits in one of these.
+///
+/// A watch screen used to be a fixed VStack with a Spacer at each end, which
+/// centres content that fits and silently cuts off content that does not: on
+/// a 40mm the Ready screen's own Start button ran off the bottom of the glass,
+/// with no way to reach it. A ScrollView cannot do that. Content shorter than
+/// the screen still sits centred, because the minimum height below keeps the
+/// old look on the watches where it worked; content taller than the screen
+/// scrolls, under a finger or under the crown.
+struct WatchScreen<Content: View>: View {
+    var spacing: CGFloat = 10
+    /// Off for a screen that reads top down (a list of stats) rather than as
+    /// one composition around a hero.
+    var centred: Bool = true
+    /// A page inside a TabView. Two things are true there and nowhere else:
+    /// the pager draws its dots OVER the page, and it hands the page the
+    /// whole screen, so the clock strip has to be reserved even on a page
+    /// that would otherwise start below it.
+    var inPager: Bool = false
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        GeometryReader { geo in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: spacing) {
+                    content()
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, WatchLayout.gutter)
+                .padding(.top, WatchLayout.clockInset)
+                .padding(.bottom, WatchLayout.floorInset + (inPager ? WatchLayout.pagerInset : 0))
+                .frame(minHeight: centred ? geo.size.height : 0, alignment: .center)
+            }
+        }
+    }
+}
+
 // MARK: - Page Indicators
 
 /// Page indicator for swipeable content.
@@ -35,7 +74,7 @@ struct PaserButton: View {
             action()
         }) {
             Text(title)
-                .font(.system(size: 14, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(14), weight: .black, design: .rounded))
                 .foregroundColor(PaserStyle.ink)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -65,9 +104,9 @@ struct CompactButton: View {
         }) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .black))
+                    .font(.system(size: WatchLayout.font(14), weight: .black))
                 Text(label)
-                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .font(.system(size: WatchLayout.font(10), weight: .black, design: .rounded))
             }
             .foregroundColor(PaserStyle.ink)
             .frame(maxWidth: .infinity)
@@ -156,7 +195,7 @@ struct StatusHeader: View {
                 GPSIndicator(state: gpsState)
             }
         }
-        .font(.system(size: 10, weight: .semibold, design: .rounded))
+        .font(.system(size: WatchLayout.font(10), weight: .semibold, design: .rounded))
     }
 }
 
@@ -235,13 +274,13 @@ struct LargeMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 11, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(11), weight: .black, design: .rounded))
                 .tracking(1.2)
                 .foregroundColor(PaserStyle.muted)
             
             HStack(alignment: .lastTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 42, weight: .black, design: .rounded))
+                    .font(.system(size: WatchLayout.font(42, floor: 30), weight: .black, design: .rounded))
                     .foregroundColor(color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -249,7 +288,7 @@ struct LargeMetric: View {
                 
                 if let unit = unit {
                     Text(unit)
-                        .font(.system(size: 12, weight: .black, design: .rounded))
+                        .font(.system(size: WatchLayout.font(12), weight: .black, design: .rounded))
                         .foregroundColor(PaserStyle.pink)
                 }
             }
@@ -266,11 +305,11 @@ struct CompactMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label)
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(9), weight: .black, design: .rounded))
                 .foregroundColor(PaserStyle.muted)
             
             Text(value)
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(16, floor: 13), weight: .black, design: .rounded))
                 .foregroundColor(color)
                 .monospacedDigit()
                 .lineLimit(1)
@@ -289,19 +328,19 @@ struct StatCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
-                .font(.system(size: 10, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(10), weight: .black, design: .rounded))
                 .foregroundColor(PaserStyle.muted)
                 .tracking(0.8)
             
             Text(value)
-                .font(.system(size: 28, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(28, floor: 21), weight: .black, design: .rounded))
                 .foregroundColor(PaserStyle.teal)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(WatchLayout.size(12))
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(PaserStyle.card)

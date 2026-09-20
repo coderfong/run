@@ -3,8 +3,12 @@
 // somebody — the steal itself, played out on the card.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Dimensions, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInUp, FadeInDown, LayoutAnimation, Platform, UIManager } from 'react-native-reanimated';
+import { Dimensions, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, UIManager, View } from 'react-native';
+// Reanimated exports its OWN animation vocabulary and nothing else: `Platform`
+// and `UIManager` came from here for a while, which made them undefined, and
+// the `Platform.OS` read below then threw at REQUIRE time — the whole feed
+// gone before a card was ever asked to render.
+import Animated, { FadeIn, FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { Pencil } from 'lucide-react-native';
 import AppIcon from './AppIcon';
 import RouteThumb, { hasRouteData } from './RouteThumb';

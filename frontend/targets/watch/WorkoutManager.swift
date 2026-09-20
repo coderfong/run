@@ -46,6 +46,16 @@ final class WorkoutManager: NSObject, ObservableObject {
         guard secondsPerKm.isFinite, secondsPerKm < 3600 else { return RunState.empty }
         return String(format: "%d:%02d", Int(secondsPerKm) / 60, Int(secondsPerKm) % 60)
     }
+    /// Steps a second, for the portrait's stride (PortraitMotion.run). Real
+    /// cadence needs the accelerometer; this is the run's own average speed
+    /// mapped onto the range a person actually turns their legs over, which is
+    /// all the picture needs to plod on a walk and drive on a sprint. Falls
+    /// back to an easy jog until there is enough run to divide.
+    var cadenceHz: Double {
+        guard elapsed > 5, distance > 10 else { return 2.4 }
+        let speed = distance / elapsed
+        return min(3.2, max(1.6, 1.6 + speed * 0.35))
+    }
     var distanceText: String { String(format: "%.2f", distance / 1000) }
     var elapsedText: String { RunFormat.clock(elapsed) }
     var heartRateText: String { heartRate > 0 ? String(Int(heartRate.rounded())) : RunState.empty }

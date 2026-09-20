@@ -25,6 +25,7 @@ import { framePose, frameVariant } from '../ui/frameRegistry';
 import { Arrival, Bar, PressableScale, useArrival } from '../ui/motion';
 import GameLottie from '../components/GameLottie';
 import { INK } from '../ui/frameRegistry';
+import { TARGET, TIP, TutorialTarget, useTutorialTip } from '../tutorial';
 
 const km = (m) => (m / 1000).toFixed(1);
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
@@ -192,7 +193,12 @@ function Directory({ navigation }) {
       </View>
 
 
-      <Button title="Create a club" variant="gradient" icon={<AppIcon name="invite" size={20} />} onPress={() => navigation.navigate('ClubCreate')} />
+      {/* The tutorial's Club tip lights the primary ACTION rather than the
+          whole page: for somebody with no club, joining or starting one is the
+          only thing this screen is for. */}
+      <TutorialTarget id={TARGET.CLUB_MAIN}>
+        <Button title="Create a club" variant="gradient" icon={<AppIcon name="invite" size={20} />} onPress={() => navigation.navigate('ClubCreate')} />
+      </TutorialTarget>
 
       {/* the Join button matches the input height and centres with it */}
       <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md, alignItems: 'center' }}>
@@ -678,6 +684,9 @@ function GoalBar({ label, pct, mine, accent }) {
 export default function ClubScreen({ navigation }) {
   const { clan, loading } = useClan();
   const [introStep, setIntroStep] = useState(null);
+  // One card, the first time this tab is actually looked at. Held until the
+  // club has resolved, so it is never taught against a screenful of skeletons.
+  useTutorialTip(TIP.CLUB, !loading);
 
   useEffect(() => {
     if (!clan?.clan_id) {

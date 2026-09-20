@@ -71,6 +71,12 @@
   #ceStage canvas { background: #f3efe7; border-radius: 8px; cursor: crosshair; touch-action: none; display: block; }
   #ceStage figcaption { color: var(--dim); font-size: 11px; padding-top: 6px; }
   #ceHint { padding: 8px 14px 12px; color: var(--dim); font-size: 12px; text-align: center; }
+  #pixelEdit { position: fixed; inset: 0; background: rgba(8,10,13,.9); z-index: 55; display:flex; flex-direction:column; }
+  #peBar { display:flex; gap:10px; align-items:center; padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  #peBar .grow { flex:1; }
+  #peStage { flex:1; overflow:auto; display:flex; justify-content:safe center; align-items:flex-start; padding:18px; }
+  #peCanvas { background: repeating-conic-gradient(#d9d9d9 0 25%, #fff 0 50%) 50% / 20px 20px; border-radius:8px; cursor:crosshair; touch-action:none; image-rendering:pixelated; }
+  #peHint { padding:8px 14px 12px; color:var(--dim); text-align:center; }
   #askBox { position: fixed; inset: 0; background: rgba(8,10,13,.72); z-index: 60; display: flex; align-items: center; justify-content: center; }
   #askCard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; max-width: 640px; max-height: 70vh; overflow: auto; box-shadow: 0 18px 60px #0009; }
   #askText { white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
@@ -123,6 +129,10 @@
           <button id="bReset">Reset item</button>
           <button id="bNext">Next item →</button>
         </div>
+        <div class="btns" style="margin-top:10px">
+          <button id="bEraseAsset">Erase selected art…</button>
+          <button id="bEraseBody">Erase character body…</button>
+        </div>
         <div class="btns" style="margin-top:10px; align-items:center">
           <button class="danger" id="bDelete">Delete item</button>
           <label class="check muted"><input type="checkbox" id="oDelArt" checked /> its art too</label>
@@ -160,6 +170,19 @@
     </div>
     <div id="status">loading…</div>
   </aside>
+</div>
+
+<div id="pixelEdit" style="display:none">
+  <div id="peBar">
+    <b>Pixel eraser</b><span id="peName" class="muted"></span>
+    <label class="check">brush <input type="range" id="peBrush" min="2" max="160" step="1" value="24" /></label>
+    <label class="check">zoom <input type="range" id="peZoom" min="1" max="8" step="1" value="2" /></label>
+    <button id="peUndo">Undo</button><button id="peReset" class="ghost">Reset</button>
+    <span class="grow"></span><span id="peOut" class="muted"></span>
+    <button id="peCancel">Cancel</button><button id="peSave" class="primary">Save erased pixels</button>
+  </div>
+  <div id="peStage"><canvas id="peCanvas"></canvas></div>
+  <div id="peHint">Drag to erase pixels. Hold <kbd>alt</kbd> or use the right mouse button to restore them. <kbd>[</kbd>/<kbd>]</kbd> brush · <kbd>ctrl</kbd>+<kbd>z</kbd> undo · <kbd>esc</kbd> close. Saving creates a recoverable backup.</div>
 </div>
 
 <!-- Painting the collar's back piece. The split puts a horizontal line through
@@ -387,7 +410,11 @@ function layerStack() {
   } else {
     add('footBack', 'footwear', it.footwear, it.footwear && it.footwear.backImg);
   }
-  L.push({ key: 'body', src: M.body, fixed: true });
+  // Body edits belong to the cosmetic currently being fitted, never to the
+  // shared base body. Selecting another asset swaps to its own cutout (or the
+  // untouched base body when it has none).
+  const fitting = itemById(slot, selId);
+  L.push({ key: 'body', src: fitting?.bodyOverride || M.body, fixed: true });
   // Shoes under the trouser hem: a hem falls ON the foot, so a shoe drawn over
   // it cuts the trouser off in a straight line.
   if (hasFeet(it.footwear)) {
@@ -664,6 +691,14 @@ window.addEventListener('keydown', (e) => {
     else if (e.key === '[') { brush.value = Number(brush.value) - 1; }
     else if (e.key === ']') { brush.value = Number(brush.value) + 1; }
     else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) $('ceUndo').click();
+    return;
+  }
+  if (PE.open) {
+    const brush = $('peBrush');
+    if (e.key === 'Escape') closePixelEdit();
+    else if (e.key === '[') brush.value = Math.max(2, Number(brush.value) - 2);
+    else if (e.key === ']') brush.value = Math.min(160, Number(brush.value) + 2);
+    else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) $('peUndo').click();
     return;
   }
   const item = itemById(slot, selId);
@@ -1051,6 +1086,96 @@ function blankPng(p) {
   c.width = p.w; c.height = p.h;
   return c.toDataURL('image/png');
 }
+
+// --- direct pixel eraser ---------------------------------------------------
+// Unlike the collar editor this intentionally changes alpha. Every save is
+// backed up by the server first, and Reset/alt-paint restore the loaded image.
+const PE = { open: false, asset: null, label: '', kind: 'asset', slot: null, id: null, w: 0, h: 0, original: null, resetPixels: null, pixels: null, undo: [] };
+
+async function openPixelEdit(asset, label, options = {}) {
+  if (!asset) throw new Error('This selection has no editable PNG.');
+  const im = await loadImage(artUrl(asset));
+  const data = pixelsOf(im);
+  PE.open = true; PE.asset = asset; PE.label = label; PE.kind = options.kind || 'asset';
+  PE.slot = options.slot || null; PE.id = options.id || null; PE.w = data.width; PE.h = data.height;
+  PE.original = new ImageData(new Uint8ClampedArray(data.data), data.width, data.height);
+  PE.resetPixels = PE.original;
+  if (PE.kind === 'body' && asset !== M.body) {
+    const base = pixelsOf(await loadImage(artUrl(M.body)));
+    if (base.width !== data.width || base.height !== data.height) throw new Error('Body override dimensions do not match the base body.');
+    PE.resetPixels = new ImageData(new Uint8ClampedArray(base.data), base.width, base.height);
+  }
+  PE.pixels = new ImageData(new Uint8ClampedArray(data.data), data.width, data.height);
+  PE.undo = [];
+  $('peName').textContent = label + ' · ' + asset.split('/').pop() + ' · ' + data.width + '×' + data.height;
+  $('peOut').textContent = '';
+  $('pixelEdit').style.display = '';
+  const fit = Math.max(1, Math.min(8, Math.floor(Math.min((innerWidth - 50) / data.width, (innerHeight - 150) / data.height))));
+  $('peZoom').value = fit;
+  drawPixelEdit();
+}
+
+function drawPixelEdit() {
+  const c = $('peCanvas'), scale = Number($('peZoom').value);
+  c.width = PE.w * scale; c.height = PE.h * scale;
+  const off = document.createElement('canvas'); off.width = PE.w; off.height = PE.h;
+  off.getContext('2d').putImageData(PE.pixels, 0, 0);
+  const x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.imageSmoothingEnabled = false;
+  x.drawImage(off, 0, 0, c.width, c.height);
+}
+
+function pixelBrush(cx, cy, restore) {
+  const radius = Number($('peBrush').value) / 2;
+  const x0 = Math.max(0, Math.floor(cx-radius)), x1 = Math.min(PE.w-1, Math.ceil(cx+radius));
+  const y0 = Math.max(0, Math.floor(cy-radius)), y1 = Math.min(PE.h-1, Math.ceil(cy+radius));
+  for (let y=y0; y<=y1; y++) for (let x=x0; x<=x1; x++) {
+    const dx=x+.5-cx, dy=y+.5-cy; if (dx*dx+dy*dy > radius*radius) continue;
+    const i=(y*PE.w+x)*4;
+    if (restore) for (let q=0;q<4;q++) PE.pixels.data[i+q]=PE.original.data[i+q];
+    else PE.pixels.data[i+3]=0;
+  }
+}
+
+(() => {
+  const c = $('peCanvas'); let down=false, last=null;
+  const point = e => { const b=c.getBoundingClientRect(); return {x:(e.clientX-b.left)*PE.w/b.width,y:(e.clientY-b.top)*PE.h/b.height}; };
+  const stroke = (p, restore) => {
+    const steps=last ? Math.max(1,Math.ceil(Math.hypot(p.x-last.x,p.y-last.y))) : 1;
+    for(let n=1;n<=steps;n++) pixelBrush(last ? last.x+(p.x-last.x)*n/steps : p.x, last ? last.y+(p.y-last.y)*n/steps : p.y, restore);
+    last=p; drawPixelEdit();
+  };
+  c.addEventListener('pointerdown',e=>{e.preventDefault(); PE.undo.push(new Uint8ClampedArray(PE.pixels.data)); if(PE.undo.length>40)PE.undo.shift(); down=true;last=null;c.setPointerCapture(e.pointerId);stroke(point(e),e.altKey||e.button===2);});
+  c.addEventListener('pointermove',e=>{if(down)stroke(point(e),e.altKey||e.buttons===2);});
+  c.addEventListener('pointerup',()=>{down=false;last=null;}); c.addEventListener('pointercancel',()=>{down=false;last=null;});
+  c.addEventListener('contextmenu',e=>e.preventDefault());
+})();
+
+function closePixelEdit(){ PE.open=false; PE.undo=[]; $('pixelEdit').style.display='none'; }
+$('bEraseAsset').addEventListener('click', async()=>{ const item=itemById(slot,selId); try{await openPixelEdit(imgOf(slot,item),item?.label||'Selected art');}catch(e){$('status').textContent='! '+e.message;} });
+$('bEraseBody').addEventListener('click', async()=>{
+  const item=itemById(slot,selId);
+  if(!item || item.id==='none'){ $('status').textContent='Select a cosmetic before editing its body cutout.'; return; }
+  try{await openPixelEdit(item.bodyOverride||M.body,'Body cutout for '+item.label,{kind:'body',slot,id:item.id});}
+  catch(e){$('status').textContent='! '+e.message;}
+});
+$('peZoom').addEventListener('input',()=>{if(PE.open)drawPixelEdit();});
+$('peUndo').addEventListener('click',()=>{const a=PE.undo.pop();if(!a)return;PE.pixels=new ImageData(a,PE.w,PE.h);drawPixelEdit();});
+$('peReset').addEventListener('click',()=>{
+  PE.undo.push(new Uint8ClampedArray(PE.pixels.data));
+  PE.pixels=new ImageData(new Uint8ClampedArray(PE.resetPixels.data),PE.w,PE.h);
+  $('peOut').textContent=PE.kind==='body' ? 'body erasure reset — Save to keep' : 'asset reset — Save to keep';
+  drawPixelEdit();
+});
+$('peCancel').addEventListener('click',closePixelEdit);
+$('peSave').addEventListener('click',async()=>{
+  $('peOut').textContent='saving…';
+  const out=document.createElement('canvas');out.width=PE.w;out.height=PE.h;out.getContext('2d').putImageData(PE.pixels,0,0);
+  const savedAsset=PE.asset;
+  const j=await(await fetch('/erase-save',{method:'POST',body:JSON.stringify({asset:PE.asset,png:out.toDataURL('image/png'),kind:PE.kind,slot:PE.slot,id:PE.id})})).json();
+  if(!j.ok){$('peOut').textContent='! '+(j.error||'save failed');return;}
+  const backup=j.backup; const wasBody=PE.kind==='body'; closePixelEdit(); artVer+=1; sizes.delete(savedAsset); await boot(true);
+  $('status').textContent=wasBody ? 'Per-cosmetic body cutout saved · '+j.key : 'Erased art saved · backup: '+backup;
+});
 
 for (const [r, n] of [['rw', 'nw'], ['rt', 'nt'], ['rd', 'nd'], ['rr', 'nr']]) {
   $(r).addEventListener('input', () => { $(n).value = $(r).value; fieldChanged(); });

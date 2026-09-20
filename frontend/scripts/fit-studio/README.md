@@ -65,6 +65,7 @@ that is staying is left where it is.
 | hand-written catalogue | `src/config/cosmetics.js` |
 | generated outfit waves | `src/config/outfitItems.js` |
 | hair sheets | `src/config/hairSheetItems.js` |
+| curated 2026 catalog | `src/config/curatedCosmetics.js` |
 
 Each file is copied to `<name>.fitbak-<timestamp>` before it is rewritten, and
 the applied overrides are kept as `fit-overrides.applied-<timestamp>.json`.

@@ -33,22 +33,25 @@ struct RunScreen: View {
 struct ErrorView: View {
     @EnvironmentObject private var workout: WorkoutManager
     var body: some View {
-        VStack(spacing: 12) {
+        // The one screen whose length is not known in advance: the message is
+        // whatever went wrong, and on a compact watch a long one is several
+        // lines. It scrolls, so Try Again is always reachable.
+        WatchScreen(spacing: WatchLayout.size(10)) {
             PaserMark()
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.system(size: 36, weight: .bold))
+                .font(.system(size: WatchLayout.font(32), weight: .bold))
                 .foregroundColor(PaserStyle.yellow)
             Text("RUN NOT STARTED")
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(16, floor: 13), weight: .black, design: .rounded))
+                .multilineTextAlignment(.center)
             Text(workout.errorMessage)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: WatchLayout.font(11), weight: .semibold, design: .rounded))
                 .foregroundColor(PaserStyle.muted)
                 .multilineTextAlignment(.center)
             Button("TRY AGAIN", action: workout.reset)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(13), weight: .black, design: .rounded))
                 .buttonStyle(PaserCapsuleStyle(color: PaserStyle.pink))
         }
-        .padding(14)
     }
 }
 
@@ -59,10 +62,10 @@ struct PaserMark: View {
         HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(PaserStyle.pink)
-                .frame(width: 7, height: 13)
+                .frame(width: WatchLayout.size(7), height: WatchLayout.size(13))
                 .rotationEffect(.degrees(12))
             Text("PASER")
-                .font(.system(size: 12, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(12), weight: .black, design: .rounded))
                 .tracking(1)
         }
     }

@@ -44,6 +44,7 @@ import { buildTerritoryAnchorModel, layoutDefenders, resolveRevealOrigin } from 
 import { CAPTURE_LAYER } from '../effects/layers';
 import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
 import TwoStepClaimFlow, { CLAIM_STEPS } from '../components/claim/TwoStepClaimFlow';
+import { SIGNAL, TARGET, useTutorial, useTutorialTarget } from '../tutorial';
 import CutsceneBackdrop from '../components/claim/CutsceneBackdrop';
 import { CLAIM_PHASE, atOrAfter } from '../components/claim/phases';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
@@ -143,6 +144,12 @@ function fmtCoins(n) {
 // finished travelling (XpProgress starts at 420 and runs for ~900), so the two
 // rewards are read one after the other rather than competing.
 const COINS_DELAY = 1180;
+
+// How long the first-run tutorial will wait for the claim chooser before it
+// decides this run cannot teach the claim. The options request is one round
+// trip against a backend that can be cold (see the note on warmUp in App.js),
+// so this is generous — it is the point at which the sheet has given up too.
+const CLAIM_TEACHABLE_MS = 20000;
 
 // Total climb, from the altitude stored on each fix. GPS altitude is noisy by
 // several metres even standing still, so only rises past a threshold count —
@@ -357,6 +364,23 @@ export default function ResultScreen({ navigation, route }) {
   const label = clan?.tag || 'Solo';
   const insets = useSafeAreaInsets();
   const { height: winHeight } = useWindowDimensions();
+
+  // --- the first-run tutorial ---------------------------------------------
+  //
+  // Declared up here, above everything that uses it, because a dependency
+  // array is evaluated in the component body and a const read before its own
+  // declaration throws (see scripts/check-tdz.mjs for the time that shipped).
+  //
+  // The claim steps sit ON TOP of the real claim system: they light the real
+  // dial and the real button, they end when those are really used, and there
+  // is no tutorial-only claim anywhere in this file.
+  const {
+    setFacts: setTutorialFacts,
+    signal: tutorialSignal,
+    remeasure: remeasureTutorial,
+  } = useTutorial();
+  const claimSheetTarget = useTutorialTarget(TARGET.CLAIM_SHEET);
+  const claimButtonTarget = useTutorialTarget(TARGET.CLAIM_BUTTON);
 
   const path = route.params.path || [];
 
@@ -825,9 +849,15 @@ export default function ResultScreen({ navigation, route }) {
   const onPose = useCallback(
     (next, { commit } = {}) => {
       setPose(next);
-      if (commit) requestPreview(next);
+      // The runner has USED the chooser. That is what ends the tutorial's
+      // "choose where you want to claim" step: not a Next button, the real
+      // dial. Only on commit, so a drag reports once rather than per frame.
+      if (commit) {
+        tutorialSignal(SIGNAL.CLAIM_ADJUSTED);
+        requestPreview(next);
+      }
     },
-    [requestPreview]
+    [requestPreview, tutorialSignal]
   );
 
   // THIS RUN'S claim, which is not the same shape as the runner's territory:
@@ -1099,6 +1129,39 @@ export default function ResultScreen({ navigation, route }) {
   }, [claim?.rank_up, claim?.rank_key_before, claim?.rank_key_after, claim?.solo_elo]);
   const closeRankUp = useCallback(() => setRankUp(null), []);
 
+  // --- what the tutorial is allowed to say, and when ----------------------
+  //
+  // `claimReady`      there are real controls on screen to be taught. Not the
+  //                   moment the screen opens: the shape has to have arrived.
+  // `claimCelebrated` the WHOLE celebration is over — flyover, encounter,
+  //                   reveal, victory, payoff, standings — and the recap is
+  //                   what is on screen. The "it's yours" card waits for this
+  //                   so it can never land on top of the cutscene, and waits
+  //                   for crossed paths to close too, for the same reason.
+  useEffect(() => {
+    setTutorialFacts({
+      claimReady: canPlace && !!options && !!pose,
+      claimCelebrated: captured && stage === STAGE.SUMMARY && !crossedOpen,
+    });
+  }, [setTutorialFacts, canPlace, options, pose, captured, stage, crossedOpen]);
+
+  // NOTHING TO CLAIM, or the shape never arrived. Either way this run cannot
+  // teach the claim, so the tutorial rewinds to "start a run" and waits for
+  // one that can. It never gets stuck pointing at a sheet that is not there.
+  useEffect(() => {
+    if (captured || deferred) return undefined;
+    if (claimArea <= 0) {
+      tutorialSignal(SIGNAL.CLAIM_UNAVAILABLE);
+      return undefined;
+    }
+    // A slow options request is not a failure. This is the outside edge of
+    // "it is coming": past it, the sheet is showing its fallback and there is
+    // no chooser to teach.
+    if (options) return undefined;
+    const timer = setTimeout(() => tutorialSignal(SIGNAL.CLAIM_UNAVAILABLE), CLAIM_TEACHABLE_MS);
+    return () => clearTimeout(timer);
+  }, [captured, deferred, claimArea, options, tutorialSignal]);
+
   // DEMOTION, the other way round: a failed claim that costs enough points to
   // cross a floor. Same server flag, same reasoning as `rank_up` above.
   const [rankDown, setRankDown] = useState(null);
@@ -1170,6 +1233,9 @@ export default function ResultScreen({ navigation, route }) {
         reinforced_m2: out.reinforced_m2 || 0,
         claim_rings: out.claim_rings?.length ? out.claim_rings : null,
       });
+      // The claim landed. The tutorial's payoff waits on the celebration
+      // below finishing, not on this line — see `claimCelebrated`.
+      tutorialSignal(SIGNAL.CLAIM_PLACED);
       if (out.energy_max) setEnergyStatus((s) => ({ ...(s || {}), energy: out.energy, energy_max: out.energy_max }));
       // Land changed hands: territory, energy, rivalries, club totals and every
       // board are now wrong in the cache. Drop them so the tabs behind this
@@ -1699,7 +1765,15 @@ export default function ResultScreen({ navigation, route }) {
         {/* A cap, not a fixed height: the sheet wraps its content and only
             starts to scroll past this. Generous enough for the recommendation
             cards + rail + breakdown on a small phone; the map keeps the rest. */}
-        <View style={[styles.claimSheet, { maxHeight: winHeight * 0.56 }]}>
+        {/* The tutorial lights this whole sheet for "choose where you want to
+            claim": the dial AND the button, so a runner happy with where the
+            land fell can simply claim it rather than being made to drag
+            something first. */}
+        <View
+          style={[styles.claimSheet, { maxHeight: winHeight * 0.56 }]}
+          {...claimSheetTarget}
+          collapsable={false}
+        >
           <ScrollView
             scrollEnabled={!claimControlActive}
             contentContainerStyle={[
@@ -1707,6 +1781,11 @@ export default function ResultScreen({ navigation, route }) {
               { paddingBottom: insets.bottom + space.lg },
             ]}
             showsVerticalScrollIndicator={false}
+            // The claim button is INSIDE this list, and onLayout does not fire
+            // when a list scrolls under a view. This is the one target in the
+            // app that has to be re-measured by hand.
+            onScroll={remeasureTutorial}
+            scrollEventThrottle={64}
           >
             {__DEV__ && payoff && (
               <DevSequenceControls sequence={seq} fallbackAvatar={equipped} />
@@ -1786,16 +1865,20 @@ export default function ResultScreen({ navigation, route }) {
                     />
                   )}
 
-                <ToonButton
-                  title={claiming ? 'Claiming…' : 'CLAIM HERE'}
-                  onPress={placeClaim}
-                  loading={claiming}
-                  disabled={claiming || seq.isRunning || moveBlocked}
-                  size="sm"
-                  containerStyle={styles.claimButtonWrap}
-                  style={styles.claimButton}
-                  fill={{ color: team.glow, colors: [team.glow, team.glow, team.glow], border: toon.ink }}
-                />
+                {/* "Looks good? Claim it." lights THIS button and lets the
+                    press through to it. */}
+                <View {...claimButtonTarget} collapsable={false}>
+                  <ToonButton
+                    title={claiming ? 'Claiming…' : 'CLAIM HERE'}
+                    onPress={placeClaim}
+                    loading={claiming}
+                    disabled={claiming || seq.isRunning || moveBlocked}
+                    size="sm"
+                    containerStyle={styles.claimButtonWrap}
+                    style={styles.claimButton}
+                    fill={{ color: team.glow, colors: [team.glow, team.glow, team.glow], border: toon.ink }}
+                  />
+                </View>
                 </View>
               </>
             )}

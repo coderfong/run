@@ -33,7 +33,6 @@ import GlobalMapScreen from './src/screens/GlobalMapScreen';
 import LeaderboardScreen from './src/screens/LeaderboardScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingFlow from './src/onboarding/OnboardingFlow';
-import TutorialOverlay from './src/onboarding/TutorialOverlay';
 import ProfileScreen from './src/screens/ProfileScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
 import RunDetailScreen from './src/screens/RunDetailScreen';
@@ -80,11 +79,15 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import { usePushRegistration } from './src/hooks/usePush';
 import { useProSync } from './src/hooks/usePro';
 import ProProvider from './src/pro/ProProvider';
+// The first-run tutorial: coach marks over the real app, following the real
+// run and claim flow rather than replacing it. See src/tutorial/index.js.
+import { TutorialProvider, TutorialOverlay } from './src/tutorial';
 import { hydrateProExposure } from './src/pro/exposure';
 import { hydrateCache } from './src/api/cache';
 import { warmUp } from './src/api/client';
 import { preloadCriticalImages, preloadHomeFeedRunners, preloadStartupImages } from './src/config/screenAssets';
 import { addWatchCommandListener, publishToWatch } from './src/watch/watchLink';
+import WatchAvatarSync from './src/watch/watchAvatar';
 import { commandAllowed, PHASE as WATCH_PHASE } from './src/watch/watchState';
 // No static `colors` here on purpose — App used to build the nav theme and the
 // header chrome from it, which pinned both to the dark palette. Everything
@@ -517,7 +520,15 @@ const RecordStackNav = createNativeStackNavigator();
 function RecordModal({ route }) {
   return (
     <ErrorBoundary>
-      <RecordStack watchStartAt={route?.params?.watchStartAt} />
+      {/* The tutorial's second host. `fullScreenModal` presents a real view
+          controller above the React root, so the overlay beside the navigator
+          cannot reach this screen — the run and claim coach marks are drawn
+          from in here instead. It renders nothing unless the tutorial is on a
+          step that belongs to it. */}
+      <View style={{ flex: 1 }}>
+        <RecordStack watchStartAt={route?.params?.watchStartAt} />
+        <TutorialOverlay host="record" />
+      </View>
     </ErrorBoundary>
   );
 }
@@ -538,7 +549,12 @@ function RunShareModal(props) {
 function PlanAttackModal(props) {
   return (
     <ErrorBoundary>
-      <PlanAttackScreen {...props} />
+      {/* Same claim screen, same modal presentation, so the same second host —
+          a runner whose first claim is placed later still gets taught it. */}
+      <View style={{ flex: 1 }}>
+        <PlanAttackScreen {...props} />
+        <TutorialOverlay host="record" />
+      </View>
     </ErrorBoundary>
   );
 }
@@ -707,7 +723,7 @@ function RootNavigator() {
     completeOnboarding,
   } = useAuth();
   const { needsSetup: avatarNeedsSetup, loading: avatarLoading } = useAvatar();
-  const { profile, displayName, loading: profileLoading, completeTutorial } = useProfile();
+  const { loading: profileLoading } = useProfile();
   const reduced = useReduceMotion();
   const [locStatus, setLocStatus] = useState(null);
   const [locHandled, setLocHandled] = useState(false);
@@ -850,20 +866,12 @@ function RootNavigator() {
             });
           }}
         />
-        {/* first-run coach marks, dimming the real home screen behind them */}
-        {profile.tutorialPending ? (
-          <TutorialOverlay
-            name={displayName}
-            onDone={completeTutorial}
-            onStartRun={() => {
-              if (!navigationRef.isReady()) return;
-              // The record modal lives at the root, alongside Tabs — the same
-              // target the tab bar's record button and every "take it back"
-              // CTA use.
-              navigationRef.navigate('Record');
-            }}
-          />
-        ) : null}
+        {/* First-run coach marks over the tabs: the world, the loop, and the
+            record button. The run and claim halves of the same tutorial are
+            drawn by a SECOND host inside the record modal — a fullScreenModal
+            is presented above the React root, so nothing mounted out here can
+            draw on it. See src/tutorial/TutorialOverlay.js. */}
+        <TutorialOverlay host="root" />
       </>
     );
   }
@@ -934,6 +942,16 @@ function SharePreview() {
       </View>
     </View>
   );
+}
+
+// Keeps the runner's portrait on the Apple Watch in step with the studio.
+// Mounted at the root rather than on the Run screen: the watch app records
+// standalone, so the wrist can want the picture on a morning the Run screen is
+// never opened. Draws nothing and costs one hash per loadout change on a phone
+// with no watch.
+function WatchPortrait() {
+  const { equipped } = useAvatar();
+  return <WatchAvatarSync equipped={equipped} />;
 }
 
 function App() {
@@ -1025,10 +1043,19 @@ function App() {
                           mount a paywall of their own any more — they call
                           openPaywall(context). See src/pro/ProProvider.js. */}
                       <ProProvider>
-                        <ThemedStatusBar />
-                        <RootNavigator />
-                        <OfflineBanner />
-                        <ToastHost />
+                        {/* Inside ProProvider because the one thing it needs
+                            that nothing else has is the account's finished-run
+                            count — the second half of "is this a genuinely new
+                            player". Everything below it is passed as children,
+                            so a coach mark moving re-renders the overlay and
+                            nothing else. */}
+                        <TutorialProvider navigationRef={navigationRef}>
+                          <ThemedStatusBar />
+                          <WatchPortrait />
+                          <RootNavigator />
+                          <OfflineBanner />
+                          <ToastHost />
+                        </TutorialProvider>
                       </ProProvider>
                     </SettingsProvider>
                   </RecordingProvider>

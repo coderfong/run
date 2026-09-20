@@ -38,7 +38,8 @@ import { createGpsFilter, DROP, filterPoints, haversineM, pathDistanceM } from '
 import { buildSimulatedRun, FALLBACK_ORIGIN } from '../run/simulatedRun';
 import { withoutPausedPoints } from '../run/pauseWindows';
 import { createVehicleGate } from '../run/vehicleGate';
-import { useClan, NEUTRAL } from '../state/clan';
+import { useClan } from '../state/clan';
+import { landColor } from '../components/territoryBoard';
 import { useRecording } from '../state/recording';
 import { useSettings } from '../state/settings';
 import { writeWorkout } from '../health';
@@ -52,6 +53,7 @@ import { haptic, PressableScale } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { landCaptureAlert } from '../components/LandCaptureAlert';
 import { RunEventOverlay, RunStartOverlay } from '../components/run/RunGameplayFx';
+import { SIGNAL, TARGET, TutorialAnchor, useTutorial, useTutorialTarget } from '../tutorial';
 
 // In-progress run persisted here so an OS kill / crash can't lose a run.
 const ACTIVE_RUN_KEY = 'tr.activeRun';
@@ -565,8 +567,9 @@ export default function RunningScreen({ navigation, route }) {
           // Show ALL claimed land around the runner, including their own
           // (their earlier claims), so the board matches the global map.
           const mine = t.user_id === user.id;
-          const col = t.clan_color || NEUTRAL;
-          const fill = mine ? accent : col.stroke;
+          // Same colour the global map paints this plot — see landColor. Land
+          // you run past should be the land you saw on the board.
+          const fill = landColor(t, { mine, accent });
           const rings = t.rings?.length ? t.rings : [t.polygon];
           if (!mine) rivalTerritories.push({ id: t.id, rings: rings.filter((ring) => ring?.length >= 3) });
           rings.forEach((ring, ri) => {
@@ -1125,6 +1128,10 @@ export default function RunningScreen({ navigation, route }) {
     pausedRef.current = false;
     setPaused(false);
     setLocked(false);
+    // The run is over: the tutorial's "hold FINISH" step ends here, at the
+    // same moment the run itself does. One line, no branching, and the run
+    // does not wait for it.
+    tutorialSignal(SIGNAL.RUN_FINISHED);
     stopWatchingLocation();
     stopPedometer();
     stopVehicleWatch();
@@ -1384,6 +1391,27 @@ export default function RunningScreen({ navigation, route }) {
   // Rough energy estimate: ~1.036 kcal per kg per km at a 70 kg default.
   const caloriesKcal = 1.036 * T.defaultWeightKg * (distance / 1000);
 
+  // --- the first-run tutorial ---------------------------------------------
+  //
+  // Two facts and one report, and nothing else. `runClaimable` is what holds
+  // the "hold FINISH" coach mark back until the run has actually earned ground
+  // — telling somebody to stop at forty metres is telling them to stop before
+  // they have started. The run's own state machine is untouched: the report
+  // rides along inside finishRun, where the run already ends.
+  const { setFacts: setTutorialFacts, signal: tutorialSignal } = useTutorial();
+  const finishTarget = useTutorialTarget(TARGET.FINISH_RUN);
+  // The stats sheet's measured height, so the coach mark's spotlight can cover
+  // the route and stop short of the numbers the runner is watching.
+  const [panelH, setPanelH] = useState(0);
+  const onPanelLayout = useCallback((e) => {
+    const next = Math.round(e.nativeEvent.layout.height);
+    setPanelH((prev) => (Math.abs(prev - next) > 1 ? next : prev));
+  }, []);
+
+  useEffect(() => {
+    setTutorialFacts({ runClaimable: currentTier === RUN_TIER.CLAIMABLE });
+  }, [setTutorialFacts, currentTier]);
+
   // The run as the wrist sees it (src/watch, docs/APPLE_WATCH.md). The watch's
   // buttons go through the same functions as the ones on this screen, and
   // useWatchRun lets each through only in the phase it makes sense in.
@@ -1629,7 +1657,17 @@ export default function RunningScreen({ navigation, route }) {
         </Pressable>
       ) : null}
 
-      <View style={styles.panel}>
+      {/* The route, for the one coach mark shown mid run. Declared rather than
+          measured: Mapbox draws the trail natively and there is no React view
+          around it. It stops short of the stats sheet below, because the
+          numbers are the thing a runner is actually looking at and a spotlight
+          must not sit on them. */}
+      <TutorialAnchor
+        id={TARGET.RUN_ROUTE}
+        style={{ top: space.sm, left: space.md, right: space.md, bottom: panelH + space.sm }}
+      />
+
+      <View style={styles.panel} onLayout={onPanelLayout}>
         {/* hero distance + supporting stats (PACER layout) */}
         <View style={styles.heroRow}>
           <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -1700,7 +1738,9 @@ export default function RunningScreen({ navigation, route }) {
               <AppIcon name={paused ? 'play' : 'pause'} size={26} />
             </PressableScale>
 
-            <View style={{ flex: 1 }}>
+            {/* The tutorial lights THIS control and lets the press through to
+                it — there is no tutorial copy of the finish button. */}
+            <View style={{ flex: 1 }} {...finishTarget} collapsable={false}>
               <HoldToFinishButton onFinish={finishRun} />
             </View>
 

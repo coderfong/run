@@ -110,6 +110,11 @@ export function sanitizeAccent(color) {
 // boolean: WatchConnectivity only carries property list values, and a null
 // would sink the whole update.
 //
+// The runner's PORTRAIT is deliberately not in here. It is a picture, it
+// changes when somebody visits the studio rather than when a run moves, and
+// this state is re-sent on a ten second heartbeat: it travels on its own as a
+// file transfer instead (src/watch/watchAvatar.js).
+//
 // `input` is what the Run screen knows: phase, getElapsedMs() (or elapsedMs),
 // distanceM, paceSPerKm, landM2 (null while the run earns nothing),
 // accuracyM, hint, accent, countdown, qualified, and afterRun, the ended run's
@@ -141,7 +146,6 @@ export function buildWatchState(input = {}, { seq = 0, nowMs = Date.now() } = {}
     notice: after && typeof after.notice === 'string' ? after.notice : '',
     summaryDistance: ended ? formatDistanceKm(after.distanceM) : '',
     summaryTime: ended && Number(after.elapsedMs) > 0 ? formatClock(after.elapsedMs) : '',
-    avatarData: typeof input.avatarData === 'string' ? input.avatarData : null,
   };
 }
 

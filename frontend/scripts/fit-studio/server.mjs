@@ -14,6 +14,7 @@ import { buildManifest, FRONTEND } from './manifest.mjs';
 import { applyOverrides, OVERRIDES_FILE } from './apply-fit.mjs';
 import { deleteItem } from './delete-item.mjs';
 import { removeCollar, collarArt, origFile, savePaint } from './collar.mjs';
+import { saveBodyOverride, saveErasedArt } from './pixel-erase.mjs';
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const PORT = Number(process.env.FIT_PORT || 5178);
@@ -102,6 +103,15 @@ const server = http.createServer(async (req, res) => {
         console.log(`collar repainted on ${id} (${result.stem}): ${result.wrote.join(', ')}` +
           (result.catalogue === 'unchanged' ? '' : ` [catalogue ${result.catalogue}]`));
       }
+      return send(res, 200, JSON.stringify(result));
+    }
+
+    if (pathname === '/erase-save' && req.method === 'POST') {
+      const { asset, png, kind, slot, id } = JSON.parse(await readBody(req) || '{}');
+      const result = kind === 'body'
+        ? saveBodyOverride({ frontend: FRONTEND, slot, id, png })
+        : saveErasedArt({ frontend: FRONTEND, asset, png });
+      console.log(`pixel erase saved: ${result.asset}${result.backup ? ` (backup: ${result.backup})` : ''}`);
       return send(res, 200, JSON.stringify(result));
     }
 

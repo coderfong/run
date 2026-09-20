@@ -212,36 +212,11 @@ SHOP_ITEMS = {
     "bomber": ("top", "rare"),  # Bomber jacket
     "denimjacket": ("top", "rare"),  # Denim jacket
     "cardigan": ("top", "common"),  # Cardigan
-    "judogi": ("top", "rare"),  # Judo gi
-    "utilityvest": ("top", "rare"),  # Utility vest
-    "sailortop": ("top", "common"),  # Sailor top
-    "letterman": ("top", "rare"),  # Letterman jacket
-    "teamjersey": ("top", "rare"),  # Team jersey
-    "cyclejersey": ("top", "rare"),  # Cycle jersey
-    "puffervest": ("top", "rare"),  # Puffer vest
-    "blackvest": ("top", "rare"),  # Tech vest
-    "pastelcardi": ("top", "common"),  # Pastel cardigan
-    "snowpuffer": ("top", "rare"),  # Snow puffer
-    "sleevehoodie": ("top", "common"),  # Sleeveless hoodie
-    "frilltop": ("top", "common"),  # Frill top
-    "maidapron": ("top", "rare"),  # Maid apron
-    "bowcami": ("top", "common"),  # Bow cami
-    "o3t": ("top", "rare"),  # Yellow zip hoodie
-    "o9t": ("top", "epic"),  # Sea glass tee
     "o13t": ("top", "rare"),  # Yellow ringer tee
-    "o14t": ("top", "epic"),  # Black loose tee
-    "o18t": ("top", "rare"),  # Mint loose tee
-    "o48t": ("top", "rare"),  # Lilac polo
     "o54t": ("top", "rare"),  # Blush shrug
     "o68t": ("top", "rare"),  # Black hoodie
-    "o78t": ("top", "rare"),  # Jet black hoodie
-    "o88t": ("top", "rare"),  # Ash hooded puffer
     "o89t": ("top", "rare"),  # Green bomber jacket
-    "o93t": ("top", "rare"),  # Navy blazer
-    "o94t": ("top", "rare"),  # Cream striped knit
-    "k6t": ("top", "rare"),  # Blue track hoodie
     "k12t": ("top", "rare"),  # Blush crop jacket
-    "o61o": ("top", "rare"),  # Pirate coat
     "o69o": ("top", "epic"),  # Tactical rig
 }
 

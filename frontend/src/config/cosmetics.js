@@ -11,6 +11,10 @@
 import { ART } from './cosmeticsArt';
 import { OUTFIT_TOPS, OUTFIT_BOTTOMS, OUTFIT_SUITS, FOOTWEAR } from './outfitItems';
 import { HAIR_SHEETS } from './hairSheetItems';
+import {
+  CURATED_TOPS, CURATED_BOTTOMS, CURATED_FOOTWEAR, CURATED_HEADWEAR,
+  CURATED_GLASSES, CURATED_ACCESSORIES, CURATED_EXTRAS,
+} from './curatedCosmetics';
 
 // ---------------------------------------------------------------------------
 // Palettes — hex values are for the studio swatches; the index into these
@@ -374,9 +378,9 @@ export const ITEMS = {
   ],
   top: [
     { id: 'stripetee', label: 'Stripe tee', img: require('../../assets/character/outfit/top5.png'), layout: { top: 0.3121 }, rarity: 'common', unlock: free },
-    { id: 'daisydress', label: 'Daisy dress', img: require('../../assets/character/outfit/top4.png'), layout: { w: 0.9451, top: 0.3192, dx: 0 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'overshirt', label: 'Overshirt', img: require('../../assets/character/outfit/top6.png'), layout: { w: 1.04, top: 0.2869, dx: 0.0017 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
-    { id: 'sweater', label: 'Sweater', img: require('../../assets/character/outfit/top11.png'), layout: { w: 0.9818, top: 0.3097, dx: -0.0017 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
+    { id: 'daisydress', label: 'Daisy dress', img: require('../../assets/character/outfit/top4.png'), layout: { w: 0.9151, top: 0.3179, dx: 0.0017 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'overshirt', label: 'Overshirt', img: require('../../assets/character/outfit/top6.png'), layout: { w: 0.9867, top: 0.2921, dx: -0.0083 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
+    { id: 'sweater', label: 'Sweater', img: require('../../assets/character/outfit/top11.png'), layout: { w: 0.9651, top: 0.322, dx: 0.0033 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'singlet', label: 'Race singlet', img: require('../../assets/character/outfit/top12.png'), layout: { w: 0.6233, top: 0.3356, dx: 0.0067 }, rarity: 'common', unlock: free },
     { id: 'oversized', label: 'Oversized tee', img: require('../../assets/character/outfit/top17.png'), layout: { w: 1.0, top: 0.3021 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
     { id: 'camisole', label: 'Camisole', img: require('../../assets/character/outfit/top16.png'), layout: { w: 0.64, top: 0.3397, dx: 0.01 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
@@ -384,32 +388,10 @@ export const ITEMS = {
     { id: 'windbreaker', label: 'Windbreaker', img: require('../../assets/character/outfit/top14.png'), layout: { w: 0.98, top: 0.2744 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
     // Drawn much longer than the other tops (313px against a 225px median),
     // so at full width it hung past the hips and over the bottoms.
-    { id: 'aurorajacket', label: 'Aurora jacket', img: require('../../assets/character/outfit/top19.png'), layout: { w: 1.0618, top: 0.2846, dx: 0.005 }, rarity: 'epic', unlock: premiumOnly },
-    { id: 'varsity', label: 'Varsity jacket', img: require('../../assets/character/outfit/top20.png'), layout: { w: 1.0485, top: 0.285, dx: 0.0083 }, rarity: 'epic', unlock: premiumOnly },
-    { id: 'sportpolo', label: 'Sport polo', img: require('../../assets/character/outfit/top22.png'), layout: { top: 0.2911, dx: 0.01 }, rarity: 'common', unlock: passOnly },
-    { id: 'greyhoodie', label: 'Hoodie', img: require('../../assets/character/outfit/top23.png'), layout: { w: 0.9751, top: 0.2626, dx: 0.0017 }, rarity: 'common', unlock: passOnly },
     { id: 'bomber', label: 'Bomber jacket', img: require('../../assets/character/outfit/top24.png'), layout: { w: 1.0518, top: 0.2911 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'denimjacket', label: 'Denim jacket', img: require('../../assets/character/outfit/top25.png'), layout: { w: 1.0285, top: 0.2996, dx: 0.0183 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
     { id: 'cardigan', label: 'Cardigan', img: require('../../assets/character/outfit/top26.png'), layout: { w: 1.0118, top: 0.3069, dx: 0.01 }, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
     { id: 'labcoat', label: 'Lab coat', img: require('../../assets/character/outfit/top27.png'), layout: { top: 0.2924, dx: 0.0033 }, rarity: 'rare', unlock: passOnly },
-    { id: 'judogi', label: 'Judo gi', img: require('../../assets/character/outfit/top28.png'), rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
-    { id: 'utilityvest', label: 'Utility vest', img: require('../../assets/character/outfit/top29.png'), layout: { top: 0.3053, dx: 0.0167 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
-    { id: 'sailortop', label: 'Sailor top', img: require('../../assets/character/outfit/top30.png'), rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
-    { id: 'puffer', label: 'Puffer jacket', img: require('../../assets/character/outfit/top31.png'), layout: { w: 1.0185, top: 0.2911, dx: 0.0033 }, rarity: 'rare', unlock: passOnly },
-    // --- wave 3 (2026-07-31) ---
-    { id: 'puffblouse', label: 'Puff blouse', img: require('../../assets/character/outfit/top32.png'), layout: { w: 0.9751, top: 0.3548, dx: 0.0083 }, rarity: 'common', unlock: free },
-    { id: 'letterman', label: 'Letterman jacket', img: require('../../assets/character/outfit/top33.png'), layout: { w: 1.0085, top: 0.2937, dx: 0.0083 }, rarity: 'rare', unlock: dist(50, 'Run 50 km total') },
-    { id: 'teamjersey', label: 'Team jersey', img: require('../../assets/character/outfit/top34.png'), layout: { w: 1.0051, top: 0.3079, dx: 0.0067 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },
-    { id: 'cyclejersey', label: 'Cycle jersey', img: require('../../assets/character/outfit/top35.png'), layout: { w: 1.0385, top: 0.2953, dx: 0.01 }, rarity: 'rare', unlock: dist(75, 'Run 75 km total') },
-    { id: 'puffervest', label: 'Puffer vest', img: require('../../assets/character/outfit/top36.png'), layout: { w: 0.7218, top: 0.299, dx: 0.0117 }, rarity: 'rare', unlock: zones(3, 'Hold 3 zones') },
-    { id: 'blackvest', label: 'Tech vest', img: require('../../assets/character/outfit/top37.png'), layout: { w: 0.6618, top: 0.2935, dx: 0.0083 }, rarity: 'rare', unlock: level(12) },
-    { id: 'pastelcardi', label: 'Pastel cardigan', img: require('../../assets/character/outfit/top38.png'), rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
-    { id: 'snowpuffer', label: 'Snow puffer', img: require('../../assets/character/outfit/top39.png'), layout: { w: 1.0218, top: 0.288, dx: 0.0083 }, rarity: 'rare', unlock: dist(100, 'Run 100 km total') },
-    { id: 'sleevehoodie', label: 'Sleeveless hoodie', img: require('../../assets/character/outfit/top40.png'), layout: { w: 0.6551, top: 0.2873, dx: 0.005 }, rarity: 'common', unlock: runs(8, 'Finish 8 runs') },
-    { id: 'frilltop', label: 'Frill top', img: require('../../assets/character/outfit/top41.png'), layout: { w: 0.7951, top: 0.2879, dx: 0.005 }, rarity: 'common', unlock: streak(2, 'Hold a 2 week streak') },
-    { id: 'maidapron', label: 'Maid apron', img: require('../../assets/character/outfit/top42.png'), layout: { w: 0.7451, top: 0.3512, dx: 0.0033 }, rarity: 'rare', unlock: level(8) },
-    { id: 'bowcami', label: 'Bow cami', img: require('../../assets/character/outfit/top44.png'), layout: { w: 0.6751, top: 0.335, dx: 0.0083 }, rarity: 'common', unlock: dist(15, 'Run 15 km total') },
-    { id: 'knightarmor', label: 'Knight armour', img: require('../../assets/character/outfit/top45.png'), layout: { w: 0.9918, top: 0.3104, dx: 0.01 }, rarity: 'legendary', unlock: premiumOnly },
   ],
   bottom: [
     { id: 'none', label: 'None', art: null, rarity: 'common', unlock: free },
@@ -421,11 +403,17 @@ export const ITEMS = {
 // config/outfitItems.js), and keeping it out of the hand-written lists means
 // a re-run of the cutter never has to reconcile with edits made here.
 ITEMS.hair.push(...HAIR_SHEETS);
+ITEMS.headwear.push(...CURATED_HEADWEAR);
+ITEMS.glasses.push(...CURATED_GLASSES);
+ITEMS.accessory.push(...CURATED_ACCESSORIES, ...CURATED_EXTRAS);
 ITEMS.top.push(...OUTFIT_TOPS, ...OUTFIT_SUITS);
+ITEMS.top.push(...CURATED_TOPS);
 ITEMS.bottom.push(...OUTFIT_BOTTOMS);
+ITEMS.bottom.push(...CURATED_BOTTOMS);
 ITEMS.footwear = [
   { id: 'none', label: 'Barefoot', art: null, rarity: 'common', unlock: free },
   ...FOOTWEAR,
+  ...CURATED_FOOTWEAR,
 ];
 
 // ---------------------------------------------------------------------------
@@ -462,8 +450,9 @@ export const FIRST_RUN_ITEMS = {
     'swept', 'curls', 'pixie', 'bluntbob',
   ],
   top: [
-    'k1t', 'singlet', 'o56t', 'k2t', 'o36t', 'k3t',
-    'o12t', 'puffblouse',
+    'cur_everydaytechnicaltee', 'singlet', 'o56t',
+    'cur_hotweathermeshtee', 'o36t', 'cur_greeneverydayrunningshirt',
+    'cur_lightweightrainshell', 'cur_runclubtechnicalshirt',
   ],
   bottom: [
     'wb012', 'wb002', 'wb018', 'wb072', 'wb083', 'wb106',

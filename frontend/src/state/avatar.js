@@ -29,7 +29,6 @@ import {
 } from '../config/cosmetics';
 import { BORDER_ART } from '../config/borderArt';
 import { preloadImages } from '../utils/imagePreload';
-import { renderWatchAvatar } from '../watch/watchAvatar';
 
 // v2 = the real-art catalog (face/hair/glasses/top/bottom ids). v1 loadouts
 // referenced the retired SVG catalog, so v2 starts fresh (studio shows once).
@@ -150,10 +149,10 @@ export function AvatarProvider({ children }) {
       // Mirror to the server so other players can render this character on
       // feeds/cards. Best-effort — a failure never blocks local editing.
       if (signedIn) api.setAvatar(next).catch(() => {});
-      
-      // Trigger Watch avatar update (best-effort, non-blocking)
-      // Avatar rendering will be implemented when the view context is available
-      // renderWatchAvatar(next).catch(() => {});
+      // The Apple Watch portrait is NOT pushed from here. It is a rasterised
+      // drawing of this loadout, so it needs a rig on screen to capture, and
+      // the component that owns one watches `equipped` from the app root
+      // (WatchAvatarSync in src/watch/watchAvatar.js).
     },
     [user?.username, signedIn]
   );

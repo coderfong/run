@@ -46,6 +46,25 @@ export function watchAppInstalled() {
   return s.paired && s.installed;
 }
 
+// Hand the watch the runner's portrait: base64 PNG bytes plus the key that
+// names the look (src/watch/watchAvatar.js). The native side writes it to a
+// file and queues a WatchConnectivity file transfer, which the system
+// delivers even when neither app is running, so this resolves as soon as the
+// transfer is ACCEPTED rather than when the wrist has it.
+//
+// False wherever there is no watch link in this build, which is the signal to
+// try again next time rather than to record the look as sent.
+export async function syncAvatarToWatch(base64, key) {
+  const mod = nativeWatch();
+  if (!mod || typeof mod.updateAvatar !== 'function') return false;
+  if (typeof base64 !== 'string' || !base64 || typeof key !== 'string' || !key) return false;
+  try {
+    return !!(await mod.updateAvatar(base64, key));
+  } catch (err) {
+    return false;
+  }
+}
+
 // A bounded iOS execution grant for saving after GPS has stopped. Older
 // binaries and other platforms still save normally without this extra time.
 export async function beginRunSave() {

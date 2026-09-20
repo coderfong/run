@@ -45,7 +45,6 @@ struct RunState: Equatable {
     var notice = ""
     var summaryDistance = ""
     var summaryTime = ""
-    var avatarData: String? // Base64 encoded avatar image data
 
     init() {}
 
@@ -71,7 +70,6 @@ struct RunState: Equatable {
         notice = (dict["notice"] as? String) ?? notice
         summaryDistance = (dict["summaryDistance"] as? String) ?? summaryDistance
         summaryTime = (dict["summaryTime"] as? String) ?? summaryTime
-        avatarData = dict["avatarData"] as? String
     }
 
     var accent: Color {

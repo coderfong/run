@@ -48,6 +48,26 @@ export const EVENTS = {
   PLANNER_FREE_USE: 'territory_planner_free_use',
   PASERBY_REVEAL_VIEWED: 'paserby_reveal_viewed',
   PASERBY_HIGH_FIVE: 'paserby_highfive',
+
+  // The first-run tutorial. This funnel answers one question the monetisation
+  // one cannot: WHERE DO NEW RUNNERS GET STUCK. Every step reports being seen
+  // and being completed, so the drop between the two is readable per step —
+  // and the four action events below are the ones that matter most, because
+  // they are the beats where the runner has to do something real rather than
+  // press Next.
+  TUTORIAL_STARTED: 'tutorial_started',
+  TUTORIAL_STEP_VIEWED: 'tutorial_step_viewed',
+  TUTORIAL_STEP_COMPLETED: 'tutorial_step_completed',
+  TUTORIAL_SKIPPED: 'tutorial_skipped',
+  TUTORIAL_COMPLETED: 'tutorial_completed',
+  // The real actions, not the cards that asked for them.
+  TUTORIAL_START_RUN_COMPLETED: 'tutorial_start_run_completed',
+  TUTORIAL_FINISH_RUN_COMPLETED: 'tutorial_finish_run_completed',
+  TUTORIAL_CLAIM_SELECTED: 'tutorial_claim_selected',
+  TUTORIAL_FIRST_CLAIM_COMPLETED: 'tutorial_first_claim_completed',
+  // Contextual first-open tips, which are a different funnel: nobody can drop
+  // out of a one-card tip, so only the impression is worth having.
+  TUTORIAL_TIP_VIEWED: 'tutorial_tip_viewed',
 };
 
 // Every `source` a PRO event may carry. A source that is not on this list is

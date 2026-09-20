@@ -86,7 +86,22 @@ const LAYOUT = {
 // Bust framing (profile picture): head-and-shoulders inside a circle of
 // diameter D — head top at ~0.15 D, head width ~0.47 D, shirt at the bottom.
 // Verified offline against the exact math above.
-const BUST = { bodyScale: 0.58, top: -0.074 };
+export const BUST = { bodyScale: 0.58, top: -0.074 };
+
+// The same portrait, cropped for a wrist (src/watch/watchAvatar.js). It lives
+// here, beside the framing it is a variant of, so the two cannot drift.
+//
+// A watch draws this at 57 to 73 points. At BUST's proportions the head is
+// 37% of the circle's width, which is 21 points of face on a 40mm: enough to
+// know somebody is there, not enough to see whose hat it is. This takes the
+// head to 48% and keeps a quarter of the frame for shoulders, so it still
+// reads as the same picture rather than as a different one.
+//
+// Derived, not tuned: the head is 157 of the body art's 248 across and spans
+// y=8 to y=226 of its 640, so `bodyScale` sets the head width (0.633 x scale)
+// and `top` places the art such that the hair, which starts 0.045 of a body
+// height above the body box, still clears the top edge.
+export const WATCH_BUST = { bodyScale: 0.76, top: -0.17 };
 
 // One global dial to raise EVERY hairstyle (base + per-item overrides) so
 // more forehead shows. Negative = higher.

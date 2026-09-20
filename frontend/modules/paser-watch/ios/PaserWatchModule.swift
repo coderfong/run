@@ -51,6 +51,14 @@ public class PaserWatchModule: Module {
       PhoneWatchSession.shared.update(state)
     }
 
+    // The runner's portrait as base64 PNG bytes, named by the look it draws
+    // (see src/watch/watchAvatar.js). True once the transfer has been queued
+    // with the system, which is as far as the phone can see: delivery happens
+    // in the background, possibly long after this app is gone.
+    AsyncFunction("updateAvatar") { (base64: String, key: String) -> Bool in
+      return PhoneWatchSession.shared.sendAvatar(base64: base64, key: key)
+    }
+
     AsyncFunction("beginRunSave") { () -> Bool in
       self.endSaveTask()
       self.saveTask = UIApplication.shared.beginBackgroundTask(withName: "Save PASER run") { [weak self] in

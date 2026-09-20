@@ -1,136 +1,109 @@
 import SwiftUI
+import WatchKit
 
-// MARK: - Redesigned Ready Screen
+// Every screen here is laid out against the screen it is on (WatchLayout) and
+// sits inside a WatchScreen, which scrolls. Fixed point sizes and a VStack
+// with a Spacer at each end were what put the Start button under the curve of
+// the glass on a 40mm, with no way to reach it.
+
+// MARK: - Ready
 
 struct ReadyView: View {
     @EnvironmentObject private var workout: WorkoutManager
-    @EnvironmentObject private var avatarStore: WatchAvatarStore
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pulse = false
-    
+    @EnvironmentObject private var portrait: WatchAvatarStore
+
     var body: some View {
-        VStack(spacing: 12) {
-            // Compact status header
+        WatchScreen(spacing: WatchLayout.size(10)) {
             StatusHeader(showGPS: true, gpsState: workout.gpsReady ? .ready : .searching)
-            
-            Spacer()
-            
-            // PASER character head as hero
-            ZStack {
-                // Gradient halo ring
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            gradient: Gradient(colors: [PaserStyle.pink.opacity(0.5), PaserStyle.teal.opacity(0.3)]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 4
-                    )
-                    .frame(width: 120, height: 120)
-                    .scaleEffect(pulse ? 1.1 : 0.95)
-                    .opacity(pulse ? 0.6 : 1.0)
-                
-                // PASER character head
-                PaserAvatarHead(size: 90)
+
+            PaserPortrait(size: WatchLayout.hero, motion: .idle)
+
+            // The prompt is the first thing shed on a small watch. It is the
+            // one line here that says nothing the button below it does not,
+            // and 38mm to 41mm is where the screen runs out.
+            if !WatchLayout.isCompact {
+                Text("READY?")
+                    .font(.system(size: WatchLayout.font(18, floor: 15), weight: .black, design: .rounded))
+                    .tracking(1.5)
+                    .foregroundColor(PaserStyle.cream)
             }
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeOut(duration: 2.0).repeatForever(autoreverses: false)) {
-                    pulse = true
-                }
-            }
-            
-            // Ready prompt
-            Text("READY?")
-                .font(.system(size: 18, weight: .black, design: .rounded))
-                .tracking(1.5)
-                .foregroundColor(PaserStyle.cream)
-            
-            // Start button
+
             Button(action: {
                 Haptics.lightTap()
                 workout.start()
             }) {
                 Text("START RUN")
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .font(.system(size: WatchLayout.font(16, floor: 14), weight: .black, design: .rounded))
                     .tracking(1.2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .foregroundColor(PaserStyle.ink)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, WatchLayout.size(13))
                     .background(
                         RoundedRectangle(cornerRadius: 14)
                             .fill(PaserStyle.pink)
                             .overlay(RoundedRectangle(cornerRadius: 14).stroke(PaserStyle.cream, lineWidth: 3))
                     )
-                    .shadow(color: PaserStyle.pink.opacity(0.5), radius: 8, x: 0, y: 4)
             }
             .buttonStyle(.plain)
             .accessibleTouchTarget()
-            
-            // GPS status text
-            Text(workout.gpsReady ? "GPS READY" : "FINDING GPS")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(workout.gpsReady ? PaserStyle.green : PaserStyle.yellow)
-            
-            Text("Recorded on this watch")
-                .font(.system(size: 9, weight: .medium, design: .rounded))
-                .foregroundColor(PaserStyle.muted)
-            
-            Spacer()
+
+            // ONE supporting line, and it says the most useful thing true
+            // right now. Three stacked lines of small print were most of what
+            // did not fit, and two of them repeated the header.
+            Text(hint)
+                .font(.system(size: WatchLayout.font(10), weight: .semibold, design: .rounded))
+                .foregroundColor(hintColor)
+                .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+    }
+
+    private var hint: String {
+        if !workout.gpsReady { return "Finding GPS" }
+        if !portrait.hasPortrait { return "Open PASER on iPhone for your runner" }
+        return "Recorded on this watch"
+    }
+
+    private var hintColor: Color {
+        workout.gpsReady ? PaserStyle.muted : PaserStyle.yellow
     }
 }
 
-// MARK: - Redesigned Countdown
+// MARK: - Countdown
 
 struct CountdownView: View {
     @EnvironmentObject private var workout: WorkoutManager
-    @EnvironmentObject private var avatarStore: WatchAvatarStore
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var scale = 0.7
-    
+
+    private var ringSize: CGFloat {
+        min(WatchLayout.screen.width * 0.80, WatchLayout.screen.height * 0.58).rounded()
+    }
+
     var body: some View {
-        ZStack {
-            // Countdown ring
-            PaserRing(
-                progress: Double(4 - workout.countdown) / 3.0,
-                size: 140,
-                lineWidth: 6
-            )
-            
-            VStack(spacing: 8) {
-                Text("GET READY")
-                    .font(.system(size: 12, weight: .black, design: .rounded))
-                    .tracking(1.4)
-                    .foregroundColor(PaserStyle.teal)
-                
-                // Countdown number
-                Text(workout.countdown == 0 ? "GO!" : "\(workout.countdown)")
-                    .font(.system(size: 72, weight: .black, design: .rounded))
-                    .foregroundColor(PaserStyle.cream)
-                    .id(workout.countdown)
-                    .transition(.scale.combined(with: .opacity))
-                    .scaleEffect(scale)
-                
-                // Small PASER head during countdown
-                PaserAvatarHead(size: 40)
-                    .opacity(0.6)
-            }
-        }
-        .animation(PaserMotion.spring, value: workout.countdown)
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(PaserMotion.spring) {
-                scale = 1.05
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(PaserMotion.spring) {
-                    scale = 1.0
+        WatchScreen(spacing: 0) {
+            ZStack {
+                PaserRing(
+                    progress: Double(4 - workout.countdown) / 3.0,
+                    size: ringSize,
+                    lineWidth: WatchLayout.size(6)
+                )
+
+                VStack(spacing: WatchLayout.size(6)) {
+                    Text("GET READY")
+                        .font(.system(size: WatchLayout.font(12), weight: .black, design: .rounded))
+                        .tracking(1.4)
+                        .foregroundColor(PaserStyle.teal)
+
+                    Text(workout.countdown == 0 ? "GO!" : "\(workout.countdown)")
+                        .font(.system(size: WatchLayout.font(60, floor: 44), weight: .black, design: .rounded))
+                        .foregroundColor(PaserStyle.cream)
+                        .id(workout.countdown)
+
+                    PaserPortrait(size: WatchLayout.size(34), motion: .brace, ring: false)
                 }
             }
+            .frame(width: ringSize, height: ringSize)
+            .animation(PaserMotion.spring, value: workout.countdown)
         }
     }
 }
@@ -138,19 +111,13 @@ struct CountdownView: View {
 // MARK: - Swipeable Active Run Pages
 
 struct ActiveRunPager: View {
-    @EnvironmentObject private var workout: WorkoutManager
     @State private var currentPage = 0
-    
+
     var body: some View {
         TabView(selection: $currentPage) {
-            PrimaryRunPage()
-                .tag(0)
-            
-            StatsPage()
-                .tag(1)
-            
-            ControlsPage()
-                .tag(2)
+            PrimaryRunPage().tag(0)
+            StatsPage().tag(1)
+            ControlsPage().tag(2)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .overlay(alignment: .bottom) {
@@ -163,14 +130,23 @@ struct ActiveRunPager: View {
 
 struct PrimaryRunPage: View {
     @EnvironmentObject private var workout: WorkoutManager
-    
+
     var body: some View {
-        VStack(spacing: 16) {
-            StatusHeader(showGPS: true, gpsState: .ready)
-            
-            Spacer()
-            
-            // Large distance as hero
+        WatchScreen(spacing: WatchLayout.size(12), inPager: true) {
+            // Everything in this row is pushed LEFT. The clock lives in the
+            // top right corner of every watch screen, and a GPS pill sitting
+            // under it reads as two badges fighting for the same corner.
+            HStack(spacing: WatchLayout.size(6)) {
+                PaserPortrait(
+                    size: WatchLayout.size(26),
+                    motion: .run(workout.cadenceHz),
+                    ring: false
+                )
+                GPSIndicator(state: workout.gpsReady ? .ready : .weak)
+                    .font(.system(size: WatchLayout.font(10), weight: .semibold, design: .rounded))
+                Spacer()
+            }
+
             LargeMetric(
                 label: "DISTANCE",
                 value: workout.distanceText,
@@ -178,34 +154,15 @@ struct PrimaryRunPage: View {
                 color: PaserStyle.cream
             )
             .metricAccessibility(label: "Distance", value: workout.distanceText, unit: "kilometers")
-            
-            // Secondary metrics row
-            HStack(spacing: 12) {
-                CompactMetric(
-                    label: "TIME",
-                    value: workout.elapsedText,
-                    color: PaserStyle.teal
-                )
-                .metricAccessibility(label: "Time", value: workout.elapsedText)
-                
-                CompactMetric(
-                    label: "PACE",
-                    value: workout.pace + "/KM",
-                    color: PaserStyle.yellow
-                )
-                .metricAccessibility(label: "Pace", value: workout.pace, unit: "per kilometer")
+
+            HStack(spacing: WatchLayout.size(12)) {
+                CompactMetric(label: "TIME", value: workout.elapsedText, color: PaserStyle.teal)
+                    .metricAccessibility(label: "Time", value: workout.elapsedText)
+
+                CompactMetric(label: "PACE", value: workout.pace + "/KM", color: PaserStyle.yellow)
+                    .metricAccessibility(label: "Pace", value: workout.pace, unit: "per kilometer")
             }
-            
-            // Small avatar in corner
-            HStack {
-                PaserAvatarHead(size: 32)
-                Spacer()
-            }
-            
-            Spacer()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
     }
 }
 
@@ -213,84 +170,44 @@ struct PrimaryRunPage: View {
 
 struct StatsPage: View {
     @EnvironmentObject private var workout: WorkoutManager
-    
+
     var body: some View {
-        VStack(spacing: 12) {
-            StatusHeader(showGPS: false, gpsState: .ready)
-            
+        WatchScreen(spacing: WatchLayout.size(10), centred: false, inPager: true) {
+            // No PASER mark on a page of a run. It repeated what the previous
+            // page already said, and on a 40mm it cost a whole row that a
+            // stat card wanted.
             Text("RUN STATS")
-                .font(.system(size: 14, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(14), weight: .black, design: .rounded))
                 .tracking(1.2)
                 .foregroundColor(PaserStyle.muted)
-                .padding(.top, 8)
-            
-            VStack(spacing: 10) {
-                StatCard(label: "AVG PACE", value: workout.pace + "/KM")
-                
-                if workout.heartRate > 0 {
-                    StatCard(label: "HEART RATE", value: workout.heartRateText + " BPM")
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            StatCard(label: "AVG PACE", value: workout.pace + "/KM")
+
+            if workout.heartRate > 0 {
+                StatCard(label: "HEART RATE", value: workout.heartRateText + " BPM")
             }
-            
-            Spacer()
-            
-            Text("Swipe for controls")
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundColor(PaserStyle.muted)
-                .padding(.bottom, 8)
+
+            StatCard(label: "DISTANCE", value: workout.distanceText + " KM")
         }
-        .padding(.horizontal, 14)
     }
 }
 
-// MARK: - Controls Page (Dedicated Controls)
+// MARK: - Finish Page
 
+/// One control, and it is the only one a run needs from the wrist.
+///
+/// Pause is gone. It was the loudest thing on the page, it sat one swipe from
+/// a run in progress, and a yellow bar reading PAUSE beside a small dark dial
+/// reading END made the destructive control the quiet one. What is left is the
+/// dial, big enough to be the page, and it still takes a deliberate hold.
 struct ControlsPage: View {
     @EnvironmentObject private var workout: WorkoutManager
-    
+
     var body: some View {
-        VStack(spacing: 20) {
-            StatusHeader(showGPS: false, gpsState: .ready)
-            
-            Spacer()
-            
-            Text("CONTROLS")
-                .font(.system(size: 16, weight: .black, design: .rounded))
-                .tracking(1.5)
-                .foregroundColor(PaserStyle.muted)
-            
-            // Large pause/resume button
-            Button(action: {
-                WKInterfaceDevice.current().play(.click)
-                if workout.phase == .paused {
-                    workout.resume()
-                } else {
-                    workout.pause()
-                }
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: workout.phase == .paused ? "play.fill" : "pause.fill")
-                        .font(.system(size: 20, weight: .black))
-                    Text(workout.phase == .paused ? "RESUME" : "PAUSE")
-                        .font(.system(size: 16, weight: .black, design: .rounded))
-                }
-                .foregroundColor(PaserStyle.ink)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(workout.phase == .paused ? PaserStyle.teal : PaserStyle.yellow)
-                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(PaserStyle.cream, lineWidth: 3))
-                )
-            }
-            .buttonStyle(.plain)
-            
-            // Hold to finish button
+        WatchScreen(spacing: WatchLayout.size(12), inPager: true) {
             HoldToFinishButton(action: workout.finish)
-            
-            Spacer()
         }
-        .padding(.horizontal, 14)
     }
 }
 
@@ -298,99 +215,95 @@ struct ControlsPage: View {
 
 struct HoldToFinishButton: View {
     let action: () -> Void
-    @State private var holding = false
     @State private var progress: Double = 0
-    
+
+    /// It is the whole page now that Pause has gone, so it is sized off the
+    /// screen rather than written down: a thumb on the move needs the target,
+    /// and there is nothing left to share the room with.
+    private var dial: CGFloat {
+        min(WatchLayout.screen.width * 0.42, WatchLayout.screen.height * 0.32).rounded()
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: WatchLayout.size(10)) {
             ZStack {
-                // Background ring
                 Circle()
                     .fill(PaserStyle.card)
                     .overlay(Circle().stroke(PaserStyle.cream, lineWidth: 2))
-                    .frame(width: 60, height: 60)
-                
-                // Progress ring
+                    .frame(width: dial, height: dial)
+
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(PaserStyle.pink, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .stroke(PaserStyle.pink, style: StrokeStyle(lineWidth: max(4, dial * 0.07), lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .frame(width: 60, height: 60)
-                
-                // Stop icon
+                    .frame(width: dial, height: dial)
+
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 24, weight: .black))
+                    .font(.system(size: dial * 0.36, weight: .black))
                     .foregroundColor(PaserStyle.cream)
             }
-            
-            Text("PRESS & HOLD TO END")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+
+            Text("PRESS AND HOLD TO END")
+                .font(.system(size: WatchLayout.font(10), weight: .semibold, design: .rounded))
                 .foregroundColor(PaserStyle.muted)
+                .multilineTextAlignment(.center)
         }
         .contentShape(Rectangle())
         .onLongPressGesture(minimumDuration: 1.5, pressing: { pressing in
             if pressing {
-                withAnimation(.linear(duration: 1.5)) {
-                    progress = 1.0
-                }
+                withAnimation(.linear(duration: 1.5)) { progress = 1.0 }
             } else {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    progress = 0
-                }
+                withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
             }
         }) {
-            // Completion
-            if progress >= 0.95 {
-                WKInterfaceDevice.current().play(.success)
-                action()
-            }
+            WKInterfaceDevice.current().play(.success)
+            action()
         }
     }
 }
 
-// MARK: - Redesigned Paused State
+// MARK: - Paused
 
+/// Nothing on the wrist raises this any more: the Pause button is gone (see
+/// ControlsPage). The phase, and the paused time bookkeeping behind it, stay
+/// on WorkoutManager because that is what keeps elapsed time honest, and
+/// because bringing Pause back should be a button rather than a rewrite.
 struct PausedView: View {
     @EnvironmentObject private var workout: WorkoutManager
-    @EnvironmentObject private var avatarStore: WatchAvatarStore
-    
+
     var body: some View {
-        VStack(spacing: 16) {
-            StatusHeader(showGPS: false, gpsState: .ready)
-            
-            Spacer()
-            
-            // Paused indicator
-            Circle()
-                .fill(PaserStyle.yellow)
-                .frame(width: 12, height: 12)
-            
-            Text("PAUSED")
-                .font(.system(size: 28, weight: .black, design: .rounded))
-                .tracking(1.5)
-                .foregroundColor(PaserStyle.yellow)
-            
-            // Elapsed time
+        WatchScreen(spacing: WatchLayout.size(10)) {
+            HStack(spacing: WatchLayout.size(6)) {
+                Circle()
+                    .fill(PaserStyle.yellow)
+                    .frame(width: WatchLayout.size(10), height: WatchLayout.size(10))
+                Text("PAUSED")
+                    .font(.system(size: WatchLayout.font(22, floor: 18), weight: .black, design: .rounded))
+                    .tracking(1.5)
+                    .foregroundColor(PaserStyle.yellow)
+            }
+
             Text(workout.elapsedText)
-                .font(.system(size: 42, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(38, floor: 28), weight: .black, design: .rounded))
                 .foregroundColor(PaserStyle.cream)
                 .monospacedDigit()
-            
-            // Small avatar
-            PaserAvatarHead(size: 50)
-                .opacity(0.7)
-            
-            // Resume button
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            PaserPortrait(size: WatchLayout.size(46), motion: .rest, ring: false)
+
             Button(action: {
                 WKInterfaceDevice.current().play(.start)
                 workout.resume()
             }) {
                 Text("RESUME RUN")
-                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .font(.system(size: WatchLayout.font(16, floor: 14), weight: .black, design: .rounded))
                     .tracking(1.2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                     .foregroundColor(PaserStyle.ink)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, WatchLayout.size(13))
                     .background(
                         RoundedRectangle(cornerRadius: 14)
                             .fill(PaserStyle.teal)
@@ -398,60 +311,43 @@ struct PausedView: View {
                     )
             }
             .buttonStyle(.plain)
-            
-            Spacer()
+            .accessibleTouchTarget()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(PaserStyle.background.opacity(0.8))
     }
 }
 
-// MARK: - Redesigned Saving View
+// MARK: - Saving
 
 struct SavingView: View {
-    @EnvironmentObject private var avatarStore: WatchAvatarStore
-    @State private var progress = 0.0
-    
+    private var ringSize: CGFloat {
+        min(WatchLayout.screen.width * 0.72, WatchLayout.screen.height * 0.50).rounded()
+    }
+
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            // PASER avatar with saving ring
+        WatchScreen(spacing: WatchLayout.size(14)) {
             ZStack {
-                PaserAvatarHead(size: 80)
-                
-                AnimatedRing(size: 140, lineWidth: 6)
+                PaserPortrait(size: ringSize * 0.62, motion: .idle, ring: false)
+                AnimatedRing(size: ringSize, lineWidth: WatchLayout.size(6))
             }
-            
-            Text("SAVING RUN…")
-                .font(.system(size: 18, weight: .black, design: .rounded))
+
+            Text("SAVING RUN")
+                .font(.system(size: WatchLayout.font(17, floor: 14), weight: .black, design: .rounded))
                 .tracking(1.2)
                 .foregroundColor(PaserStyle.cream)
-            
-            Spacer()
         }
-        .padding(.horizontal, 14)
     }
 }
 
-// MARK: - Redesigned Post-Run Pager
+// MARK: - Post-Run Pager
 
 struct PostRunPager: View {
-    @EnvironmentObject private var workout: WorkoutManager
-    @EnvironmentObject private var avatarStore: WatchAvatarStore
     @State private var currentPage = 0
-    
+
     var body: some View {
         TabView(selection: $currentPage) {
-            CelebrationPage()
-                .tag(0)
-            
-            ResultsPage()
-                .tag(1)
-            
-            ClaimHandoffPage()
-                .tag(2)
+            CelebrationPage().tag(0)
+            ResultsPage().tag(1)
+            ClaimHandoffPage().tag(2)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
         .overlay(alignment: .bottom) {
@@ -464,52 +360,30 @@ struct PostRunPager: View {
 
 struct CelebrationPage: View {
     @EnvironmentObject private var workout: WorkoutManager
-    @EnvironmentObject private var avatarStore: WatchAvatarStore
-    @State private var celebrate = false
-    
+    @State private var arrived = false
+
     var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            
-            // Large PASER avatar
-            PaserAvatarHead(size: 100)
-                .scaleEffect(celebrate ? 1.1 : 0.8)
-                .animation(PaserMotion.spring, value: celebrate)
-            
-            // Success checkmark
-            ZStack {
-                Circle()
-                    .fill(PaserStyle.teal)
-                    .frame(width: 50, height: 50)
-                    .overlay(Circle().stroke(PaserStyle.cream, lineWidth: 2))
-                
-                Image(systemName: "checkmark")
-                    .font(.system(size: 28, weight: .black))
-                    .foregroundColor(PaserStyle.ink)
-            }
-            .scaleEffect(celebrate ? 1.0 : 0.5)
-            .animation(PaserMotion.spring.delay(0.2), value: celebrate)
-            
+        WatchScreen(spacing: WatchLayout.size(8), inPager: true) {
+            PaserPortrait(size: WatchLayout.hero, motion: .cheer)
+
             Text("RUN SAVED")
-                .font(.system(size: 20, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(18, floor: 15), weight: .black, design: .rounded))
                 .tracking(1.5)
                 .foregroundColor(PaserStyle.cream)
-                .opacity(celebrate ? 1.0 : 0.0)
-                .animation(PaserMotion.fade.delay(0.3), value: celebrate)
-            
-            // Distance
+                .opacity(arrived ? 1.0 : 0.0)
+                .animation(PaserMotion.fade.delay(0.2), value: arrived)
+
             Text(workout.distanceText + " KM")
-                .font(.system(size: 36, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(32, floor: 24), weight: .black, design: .rounded))
                 .foregroundColor(PaserStyle.pink)
                 .monospacedDigit()
-                .opacity(celebrate ? 1.0 : 0.0)
-                .animation(PaserMotion.fade.delay(0.4), value: celebrate)
-            
-            Spacer()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .opacity(arrived ? 1.0 : 0.0)
+                .animation(PaserMotion.fade.delay(0.3), value: arrived)
         }
-        .padding(.horizontal, 14)
         .onAppear {
-            celebrate = true
+            arrived = true
             WKInterfaceDevice.current().play(.success)
         }
     }
@@ -519,25 +393,18 @@ struct CelebrationPage: View {
 
 struct ResultsPage: View {
     @EnvironmentObject private var workout: WorkoutManager
-    
+
     var body: some View {
-        VStack(spacing: 16) {
-            StatusHeader(showGPS: false, gpsState: .ready)
-            
+        WatchScreen(spacing: WatchLayout.size(10), centred: false, inPager: true) {
             Text("YOUR RUN")
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(14), weight: .black, design: .rounded))
                 .tracking(1.2)
                 .foregroundColor(PaserStyle.muted)
-                .padding(.top, 8)
-            
-            VStack(spacing: 12) {
-                StatCard(label: "TIME", value: workout.elapsedText)
-                StatCard(label: "AVG PACE", value: workout.pace + "/KM")
-            }
-            
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            StatCard(label: "TIME", value: workout.elapsedText)
+            StatCard(label: "AVG PACE", value: workout.pace + "/KM")
         }
-        .padding(.horizontal, 14)
     }
 }
 
@@ -545,57 +412,29 @@ struct ResultsPage: View {
 
 struct ClaimHandoffPage: View {
     @EnvironmentObject private var workout: WorkoutManager
-    @EnvironmentObject private var avatarStore: WatchAvatarStore
-    
+
     var body: some View {
-        VStack(spacing: 16) {
-            StatusHeader(showGPS: false, gpsState: .ready)
-            
-            Spacer()
-            
-            // PASER avatar
-            PaserAvatarHead(size: 80)
-            
-            // Success badge
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(PaserStyle.green)
-                    .frame(width: 8, height: 8)
-                Text("RUN SYNCED")
-                    .font(.system(size: 12, weight: .black, design: .rounded))
-                    .foregroundColor(PaserStyle.green)
-            }
-            
+        WatchScreen(spacing: WatchLayout.size(10), inPager: true) {
+            PaserPortrait(size: WatchLayout.size(52), motion: .idle, ring: false)
+
+            // There used to be a green RUN SYNCED badge here. The watch hands
+            // the run over with transferUserInfo, which the system delivers
+            // whenever it can, so a watch out of range of the phone was
+            // showing a green light for something that had not happened. It
+            // also said the same thing as the two lines under it.
             Text("READY TO CLAIM")
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(16, floor: 13), weight: .black, design: .rounded))
                 .tracking(1.0)
                 .foregroundColor(PaserStyle.cream)
-            
-            // Territory animation placeholder
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(PaserStyle.teal, lineWidth: 2)
-                .frame(width: 60, height: 60)
-                .overlay(
-                    Image(systemName: "location.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(PaserStyle.teal)
-                )
-            
-            Text("OPEN PASER ON IPHONE")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+
+            Text("Open PASER on iPhone to plan your attack")
+                .font(.system(size: WatchLayout.font(11), weight: .semibold, design: .rounded))
                 .foregroundColor(PaserStyle.teal)
-            
-            Text("PLAN YOUR ATTACK")
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundColor(PaserStyle.muted)
-            
-            // Done button
+                .multilineTextAlignment(.center)
+
             Button("DONE", action: workout.reset)
-                .font(.system(size: 13, weight: .black, design: .rounded))
+                .font(.system(size: WatchLayout.font(13), weight: .black, design: .rounded))
                 .buttonStyle(PaserCapsuleStyle(color: PaserStyle.cream))
-            
-            Spacer()
         }
-        .padding(.horizontal, 14)
     }
 }

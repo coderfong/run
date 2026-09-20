@@ -37,6 +37,7 @@ import { useRecording } from '../state/recording';
 import AppIcon from '../components/AppIcon';
 import Framed from '../components/ui/Framed';
 import { preloadScreenImages } from '../config/screenAssets';
+import { TARGET, useTutorialTarget } from '../tutorial';
 
 const INACTIVE = '#9ca3af';
 // route name → generated sticker-icon key (assets/icons/*).
@@ -96,6 +97,11 @@ function RecordButton({ accent, onPress, onWarm }) {
   const { isRecording } = useRecording();
   const reduce = useReduceMotion();
   const pulse = useSharedValue(1);
+  // The tutorial's "tap here to start your run" points at THIS button, and the
+  // press it teaches is a press of this button — the coach mark cuts a hole in
+  // its own scrim rather than drawing a copy of it. Registering costs nothing
+  // until a step actually asks where it is.
+  const tutorialTarget = useTutorialTarget(TARGET.START_RUN);
 
   useEffect(() => {
     if (isRecording && !reduce) {
@@ -109,7 +115,7 @@ function RecordButton({ accent, onPress, onWarm }) {
   const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 
   return (
-    <View style={styles.recordSlot}>
+    <View style={styles.recordSlot} {...tutorialTarget} collapsable={false}>
       <PressableScale
         style={styles.record}
         scaleTo={0.94}
