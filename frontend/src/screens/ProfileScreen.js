@@ -31,7 +31,6 @@ import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
-import { useTabSwipeLock } from '../hooks/useTabSwipeLock';
 import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
 import { CharacterBust } from '../components/character/CharacterRig';
 import PortraitBorder from '../components/PortraitBorder';
@@ -42,7 +41,6 @@ import HealthSyncSettings from '../components/HealthSyncSettings';
 import RecoveryEmail from '../components/RecoveryEmail';
 import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
 import { brand, nbField, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
-import { levelBandColor } from '../config/progression';
 import { COPY as PASERBY_COPY } from '../config/paserby';
 import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText, AccordionSection } from '../components/ui';
 import ThemeToggle from '../components/ThemeToggle';
@@ -126,9 +124,6 @@ export default function ProfileScreen({ navigation }) {
   const { user, signOut, updateUsername, deleteAccount } = useAuth();
   const { equipped } = useAvatar();
   const { trailGlow, setTrailGlow } = useSettings();
-  // The rank rail scrolls sideways inside a tab pager that also swipes
-  // sideways; while a finger is on the rail, the You tab stops swiping.
-  const lockTabSwipe = useTabSwipeLock(navigation);
   // The runner colour picker below is exactly this: club colour unless a
   // fixed one is chosen. This page's own frames used to hardcode the club
   // colour, which is why only whichever swatch happened to match the club's
@@ -320,54 +315,57 @@ export default function ProfileScreen({ navigation }) {
           bleed
           ambient="leaves"
         />
+        {/* Bust must FILL the border's hole (both 104) and sit on an opaque
+            disc — at 96 with a translucent backdrop, the banner behind it
+            showed through the 8px gap. Same pairing as ProgressionScreen.
+            Border comes from RANK (territorial standing), not level. */}
         <PressableScale
           onPress={() => navigation.navigate('AvatarStudio')}
           accessibilityRole="button"
           accessibilityLabel="Your runner, tap to customize"
         >
-          {/* Bust must FILL the border's hole (both 104) and sit on an opaque
-              disc — at 96 with a translucent backdrop, the banner behind it
-              showed through the 8px gap. Same pairing as ProgressionScreen. */}
-          {/* The name sits ON the scene, not on the page background, so it takes
-            the game treatment — white with an ink outline — instead of the
-            palette's body colour. Themed text went dark-on-cream in light mode
-            and got lost in the hedge the moment it wrapped past the art. */}
-        <OutlinedText 
-          style={[type.title, styles.nameTop, { color: '#fff' }]} 
-          outline={toon.ink} 
-          width={2.5}
+          <PortraitBorder borderKey={stats?.rank_key || 'wood'} size={104}>
+            <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
+          </PortraitBorder>
+        </PressableScale>
+
+        {/* Name, then level, both under the portrait and centred on it. They
+            sit ON the scene, not on the page background, so both take the game
+            treatment — white with an ink outline — and the level is spelled
+            out in the same voice as the name rather than riding a disc.
+            The block is measured so the scene grows to keep it on the art. */}
+        <View
+          style={styles.identity}
           onLayout={(e) => {
             const { y, height } = e.nativeEvent.layout;
             setNameBottom(y + height);
           }}
         >
-          {user?.username}
-        </OutlinedText>
-
-        {/* Border comes from RANK (territorial standing), not level. */}
-        <PortraitBorder borderKey={stats?.rank_key || 'wood'} size={104}>
-          <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
-        </PortraitBorder>
-        </PressableScale>
-        
-        {/* The level badge IS the way to levels and rewards now. The XP bar
-            that used to carry that tap sat between the name and the rank
-            rail, which meant the header stacked two progress tracks on top
-            of each other before you reached anything you could do — so the
-            header keeps the ladder that is the game (rank) and the level
-            keeps its route out, on the badge that states it. */}
-        {stats && (
-          <PressableScale
-            style={[styles.levelBadge, styles.levelBottom, { backgroundColor: levelBandColor(stats.level ?? 0) }]}
-            onPress={() => navigation.navigate('Progression')}
-            accessibilityRole="button"
-            accessibilityLabel={`Level ${stats.level ?? 0}. View levels and rewards`}
+          <OutlinedText
+            style={[type.title, styles.name, { color: '#fff' }]}
+            outline={toon.ink}
+            width={2.5}
           >
-            <OutlinedText style={[type.statSm, { color: '#fff' }]} outline={toon.ink} width={1.5}>
-              {String(stats.level ?? 0)}
-            </OutlinedText>
-          </PressableScale>
-        )}
+            {user?.username}
+          </OutlinedText>
+
+          {/* The level IS the way to levels and rewards, so it stays a tap. */}
+          {stats && (
+            <PressableScale
+              onPress={() => navigation.navigate('Progression')}
+              accessibilityRole="button"
+              accessibilityLabel={`Level ${stats.level ?? 0}. View levels and rewards`}
+            >
+              <OutlinedText
+                style={[type.title, styles.levelText, { color: '#fff' }]}
+                outline={toon.ink}
+                width={2}
+              >
+                {`Level ${stats.level ?? 0}`}
+              </OutlinedText>
+            </PressableScale>
+          )}
+        </View>
 
         {/* RANK, directly under the runner it belongs to and above the
             actions. It is the ladder the game is actually played on.
@@ -377,7 +375,6 @@ export default function ProfileScreen({ navigation }) {
             standing={standingFrom(stats)}
             floors={rankFloors}
             onPress={() => navigation.navigate('RankLadder')}
-            onGrab={lockTabSwipe}
             style={styles.rankRail}
           />
         )}
@@ -977,27 +974,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Solid, and the fill steps every five levels (config/progression.js). It
-  // used to be a card-coloured disc ringed in the CLAN accent, which told you
-  // which club the runner was in — something the tag already says — and left
-  // two players forty levels apart wearing the same chip.
-  nameTop: {
-    textAlign: 'center',
-    marginBottom: space.sm,
-  },
-  levelBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 3,
-    borderColor: toon.ink,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  levelBottom: {
-    alignSelf: 'center',
-    marginTop: space.sm,
-  },
+  identity: { alignItems: 'center', marginTop: space.sm },
+  name: { textAlign: 'center' },
+  // Same outlined title voice as the name, one step down so the name leads.
+  levelText: { textAlign: 'center', fontSize: 16, lineHeight: 22, marginTop: 2 },
 
   // The PRO poster — Home's hero card geometry, deliberately: a fixed 190pt
   // box with the copy column on the left and the cut-out bleeding off the

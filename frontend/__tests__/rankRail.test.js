@@ -1,24 +1,16 @@
-// The horizontal rank rail that sits under the portrait on the You page.
+// The rank rail that sits under the portrait on the You page.
 //
-// Two things are worth a test here.
-//
-// The geometry: one continuous track through ten nodes, filled to exactly
-// where the runner is standing. Get the marker arithmetic wrong and it still
-// renders — just pointing at the wrong tier — which is the kind of bug only a
-// measurement catches.
-//
-// The HEIGHT: this is a horizontal ScrollView nested inside the profile page's
-// vertical one, and an unsized one takes the parent's height rather than its
-// content's. That shipped once, and it pushed the entire You page below the
-// fold — the stat wall, the streak, the trophies, the run list and every
-// setting — so the page looked as though everything under the portrait had
-// been deleted. The rail must state its own height.
+// It draws ONLY the tier you are standing in — Wood I, Wood II, Wood III — and
+// ends there. What is worth testing: that it never shows another tier, that
+// the fill and marker land exactly where your progress through the tier says,
+// and that it states its own height (an unsized version once buried the whole
+// You page under the portrait).
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 
-import RankRail, { RAIL_H } from '../src/components/rank/RankRail';
+import RankRail, { RAIL_H, divisionAt } from '../src/components/rank/RankRail';
 import { RANK_TIERS, standingFrom } from '../src/config/rankLadder';
 
 const FLOORS = [800, 1050, 1200, 1350, 1500, 1650, 1800, 1950, 2150, 2400];
@@ -36,51 +28,66 @@ function texts(tree) {
   }).join('|');
 }
 
-/**
- * Width of the FILLED portion of the track.
- *
- * Matched on the tier's colour, not on document order: the empty track behind
- * it has the same shape and the same height, and picking the wrong one silently
- * returns the rail's full length for every input — which looks like a passing
- * monotonicity test right up until it does not.
- */
-function fillWidth(tree, standing) {
-  const bar = tree.root.findAll((n) => {
-    const flat = StyleSheet.flatten(n.props?.style);
-    return !!flat
-      && flat.backgroundColor === standing.color
-      && typeof flat.width === 'number'
-      && flat.borderWidth === undefined;
-  })[0];
-  return bar ? StyleSheet.flatten(bar.props.style).width : null;
+function pct(value) {
+  return Number(String(value).replace('%', ''));
+}
+
+function fillPct(tree) {
+  const bar = tree.root.findAll((n) => n.props.testID === 'rank-fill' && typeof n.type === 'string')[0]
+    || tree.root.findAll((n) => n.props.testID === 'rank-fill')[0];
+  return pct(StyleSheet.flatten(bar.props.style).width);
+}
+
+function markerPct(tree) {
+  const m = tree.root.findAll((n) => n.props.testID === 'rank-position-marker')[0];
+  return pct(StyleSheet.flatten(m.props.style).left);
 }
 
 describe('the rail', () => {
   test('null thresholds preserve supplied progress and use loaded ladder floors', () => {
     const standing = standingFrom({ rank_key: 'wood', rank_points: 1000, floor: null, rank_next_points: null, rank_progress: 0.8 });
     expect(standing.progress).toBe(0.8);
-    expect(standing.next).toBeNull();
     const tree = render(<RankRail standing={standing} floors={FLOORS} onPress={() => {}} />);
     expect(texts(tree)).toContain('50 to Bronze');
   });
 
-  test('the position marker follows progress and paints after the nodes', () => {
-    const standing = standingFrom({ key: 'gold', points: 1425, floor: 1350, next_points: 1500 });
-    const tree = render(<RankRail standing={standing} floors={FLOORS} onPress={() => {}} />);
-    const marker = tree.root.findAll((n) => n.props.testID === 'rank-position-marker')[0];
-    const style = StyleSheet.flatten(marker.props.style);
-    expect(style.left + style.width / 2).toBe(3 * 66 + 33 + 0.5 * 66);
-    expect(marker.parent.children[marker.parent.children.length - 1]).toBe(marker);
-    expect(style.top + style.height).toBeLessThan(22);
+  test('shows only the divisions of the tier you are in, ending at that tier', () => {
+    const tree = render(
+      <RankRail standing={standingFrom({ key: 'wood', points: 1000, floor: 800, next_points: 1050 })}
+                floors={FLOORS} onPress={() => {}} />
+    );
+    const labels = texts(tree).split('|');
+    expect(labels).toEqual(expect.arrayContaining(['Wood I', 'Wood II', 'Wood III']));
+    // No other tier is drawn as a node. ("Bronze" may appear only in the
+    // "50 to Bronze" line, which is the target, not a rung.)
+    for (const tier of RANK_TIERS.slice(1)) {
+      expect(labels.filter((l) => l.startsWith(tier.label))).toHaveLength(0);
+    }
   });
 
-  test('shows every tier as a milestone', () => {
+  test('follows the tier on gold too', () => {
     const tree = render(
       <RankRail standing={standingFrom({ key: 'gold', points: 1420, floor: 1350, next_points: 1500 })}
                 floors={FLOORS} onPress={() => {}} />
     );
-    const t = texts(tree);
-    for (const tier of RANK_TIERS) expect(t).toContain(tier.label);
+    const labels = texts(tree).split('|');
+    expect(labels).toEqual(expect.arrayContaining(['Gold I', 'Gold II', 'Gold III']));
+    expect(labels).not.toContain('Wood I');
+  });
+
+  test('the fill and marker sit at progress through the tier', () => {
+    const standing = standingFrom({ key: 'gold', points: 1425, floor: 1350, next_points: 1500 });
+    const tree = render(<RankRail standing={standing} floors={FLOORS} onPress={() => {}} />);
+    expect(fillPct(tree)).toBeCloseTo(50);
+    expect(markerPct(tree)).toBeCloseTo(50);
+    const marker = tree.root.findAll((n) => n.props.testID === 'rank-position-marker')[0];
+    expect(marker.parent.children[marker.parent.children.length - 1]).toBe(marker);
+  });
+
+  test('division nodes sit where each division begins', () => {
+    expect(divisionAt(1)).toBe(0);
+    expect(divisionAt(2)).toBeCloseTo(100 / 3);
+    expect(divisionAt(3)).toBeCloseTo(200 / 3);
   });
 
   test('states where you stand and what you are chasing, in real numbers', () => {
@@ -95,8 +102,6 @@ describe('the rail', () => {
   });
 
   test('names the target off the ladder when the payload carries no threshold', () => {
-    // /me/stats sends a progress fraction and no next-tier points at all. The
-    // rail must still say what the number to beat is rather than "0 to go".
     const tree = render(
       <RankRail standing={standingFrom({ rank_key: 'wood', rank_points: 1000, rank_progress: 0.8 })}
                 floors={FLOORS} onPress={() => {}} />
@@ -106,88 +111,42 @@ describe('the rail', () => {
     expect(t).toContain('50 to Bronze');
   });
 
-  test('is horizontally scrollable, inside a vertically scrolling page', () => {
+  test('does not scroll sideways, so it never fights the tab pager', () => {
     const tree = render(
       <RankRail standing={standingFrom({ key: 'wood', points: 0 })} floors={FLOORS} onPress={() => {}} />
     );
-    const sv = tree.root.findAllByType(ScrollView)[0];
-    expect(sv.props.horizontal).toBe(true);
-    // Without these the parent ScrollView swallows the drag on Android.
-    expect(sv.props.nestedScrollEnabled).toBe(true);
-    expect(sv.props.directionalLockEnabled).toBe(true);
-  });
-
-  test('reports a finger on the track, so the page can hold the tab pager still', () => {
-    // The tabs are a swipeable pager. Without this the drag that should push
-    // the rail along swipes to the next tab instead.
-    const onGrab = jest.fn();
-    const tree = render(
-      <RankRail standing={standingFrom({ key: 'mythic', points: 2600, floor: 2400, next_points: null })}
-                floors={FLOORS} onPress={() => {}} onGrab={onGrab} />
-    );
-    const sv = tree.root.findAllByType(ScrollView)[0];
-    act(() => { sv.props.onTouchStart(); });
-    expect(onGrab).toHaveBeenLastCalledWith(true);
-    act(() => { sv.props.onTouchEnd(); });
-    expect(onGrab).toHaveBeenLastCalledWith(false);
-    // The scroll view taking the gesture cancels the touch; that lets go too.
-    act(() => { sv.props.onTouchStart(); sv.props.onTouchCancel(); });
-    expect(onGrab).toHaveBeenLastCalledWith(false);
-    act(() => { sv.props.onTouchStart(); sv.props.onScrollEndDrag(); });
-    expect(onGrab).toHaveBeenLastCalledWith(false);
+    expect(tree.root.findAllByType(ScrollView)).toHaveLength(0);
   });
 
   test('states its own height, so it cannot swallow the page under it', () => {
     const tree = render(
       <RankRail standing={standingFrom({ key: 'wood', points: 0 })} floors={FLOORS} onPress={() => {}} />
     );
-    const sv = tree.root.findAllByType(ScrollView)[0];
-    expect(typeof StyleSheet.flatten(sv.props.style).height).toBe('number');
-
     const wrap = tree.root.findAll(
       (n) => String(n.props?.accessibilityLabel || '').includes('Open the rank ladder')
     )[0];
     expect(StyleSheet.flatten(wrap.props.style).height).toBe(RAIL_H);
-    // Compact enough to sit between the portrait and the runner actions.
     expect(RAIL_H).toBeLessThan(90);
   });
 
-  test('the fill grows monotonically as the runner climbs', () => {
-    const widths = [
-      standingFrom({ key: 'wood', points: 800, floor: 800, next_points: 1050 }),
-      standingFrom({ key: 'silver', points: 1200, floor: 1200, next_points: 1350 }),
-      standingFrom({ key: 'gold', points: 1490, floor: 1350, next_points: 1500 }),
-      standingFrom({ key: 'mythic', points: 2600, floor: 2400, next_points: null }),
-    ].map((standing) => fillWidth(
-      render(<RankRail standing={standing} floors={FLOORS} onPress={() => {}} />), standing
-    ));
-
-    expect(widths.every((w) => typeof w === 'number')).toBe(true);
-    for (let i = 1; i < widths.length; i += 1) {
-      expect(widths[i]).toBeGreaterThan(widths[i - 1]);
-    }
-  });
-
-  test('progress within a tier moves the fill without changing tier', () => {
+  test('progress within a tier moves the fill', () => {
     const early = standingFrom({ key: 'gold', points: 1360, floor: 1350, next_points: 1500 });
     const late = standingFrom({ key: 'gold', points: 1490, floor: 1350, next_points: 1500 });
-    const low = fillWidth(render(<RankRail standing={early} floors={FLOORS} onPress={() => {}} />), early);
-    const high = fillWidth(render(<RankRail standing={late} floors={FLOORS} onPress={() => {}} />), late);
+    const low = fillPct(render(<RankRail standing={early} floors={FLOORS} onPress={() => {}} />));
+    const high = fillPct(render(<RankRail standing={late} floors={FLOORS} onPress={() => {}} />));
     expect(low).toBeGreaterThan(0);
     expect(high).toBeGreaterThan(low);
   });
 
-  test('the top of the ladder does not overrun the end of the track', () => {
+  test('the top of the ladder is full and does not overrun the track', () => {
     const top = standingFrom({ key: 'mythic', points: 99999, floor: 2400, next_points: null });
     const tree = render(<RankRail standing={top} floors={FLOORS} onPress={() => {}} />);
-    // Nine gaps between ten node centres, less the track's own stroke.
-    expect(fillWidth(tree, top)).toBeLessThanOrEqual(9 * 66);
+    expect(fillPct(tree)).toBe(100);
     expect(texts(tree)).toContain('Top of the ladder');
+    expect(texts(tree).split('|')).toContain('Mythic III');
   });
 
-  test('marks the division you are in, on the tier you are in', () => {
-    // "Wood III" is a claim about WHERE in the band you are standing. The
-    // numeral rides the current node so the rail backs the plaque up.
+  test('marks the division you are in', () => {
     const tree = render(
       <RankRail standing={standingFrom({ key: 'wood', points: 1000, floor: 800, next_points: 1050 })}
                 floors={FLOORS} onPress={() => {}} />
@@ -212,7 +171,6 @@ describe('the rail', () => {
   });
 
   test('draws before the thresholds have loaded', () => {
-    // The ladder count is a second, slower request. The rail must not wait on it.
     const tree = render(
       <RankRail standing={standingFrom({ key: 'gold', points: 1420, floor: 1350, next_points: 1500 })}
                 floors={[]} onPress={() => {}} />

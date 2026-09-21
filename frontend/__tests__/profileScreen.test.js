@@ -269,6 +269,18 @@ describe('ProfileScreen', () => {
     act(() => tree.unmount());
   });
 
+  test('the name then the spelled-out level sit under the portrait', async () => {
+    const tree = mount();
+    await act(async () => {});
+    const t = texts(tree);
+    const name = t.indexOf('runner');
+    const level = t.indexOf('Level 2');
+    expect(name).toBeGreaterThan(-1);
+    // The level follows the name, in words — no bare number on a disc.
+    expect(level).toBeGreaterThan(name);
+    act(() => tree.unmount());
+  });
+
   test('the rail reflects the standing the page was actually given', async () => {
     const tree = mount();
     await act(async () => {});
