@@ -5,8 +5,8 @@
 // runner, and the six numbers that say how the game is going. All of it open,
 // all of it the reason anybody taps You.
 //
-// The bottom is FOLDED. Notifications, Statistics, App customisation, Privacy,
-// Account — five headings, one open at a time (see components/ui/Accordion).
+// Statistics and the single notification control stay visible. App
+// customisation, Privacy and Account remain folded, one open at a time.
 // This page carried all of that as one continuous column and it was most of
 // the page by height: the stat wall was followed by a land card, a streak
 // calendar, a trophy shelf, eight runs and then every preference in the app,
@@ -78,17 +78,9 @@ const TROPHIES = [
   { key: 'streak7', label: 'Week streak', icon: 'streak', earned: (s) => (s.current_streak_days || 0) >= 7 },
 ];
 
-const NOTIF_ROWS = [
-  ['stolen', 'Land under attack'],
-  ['defended', 'Attacks your land held off'],
-  ['captured', 'Land you capture'],
-  ['clan_goal', 'Club weekly goal'],
-  ['kudos', 'Kudos received'],
-  ['pasers', 'Paser requests'],
-  ['paserby', 'Crossed paths & high fives'],
-  ['season', 'Season & promotion'],
-  ['recap', 'Weekly recap'],
-  ['reminder', 'Streak & territory reminders'],
+const NOTIF_KEYS = [
+  'stolen', 'defended', 'captured', 'clan_goal', 'kudos',
+  'pasers', 'paserby', 'season', 'recap', 'reminder',
 ];
 
 const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
@@ -213,9 +205,8 @@ export default function ProfileScreen({ navigation }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteDraft, setDeleteDraft] = useState('');
   const [deleting, setDeleting] = useState(false);
-  // Which folded section is showing, or null for none — ONE at a time, which
-  // is what keeps the bottom of the page five lines long however much is
-  // inside them. Plain state, not a stored preference: the You tab stays
+  // Which settings section is showing, or null for none — ONE at a time.
+  // Plain state, not a stored preference: the You tab stays
   // mounted for the life of the app, so a section left open is still open
   // when you come back to it, and nobody has ever wanted a settings section
   // to reopen itself after a cold start.
@@ -243,8 +234,11 @@ export default function ProfileScreen({ navigation }) {
 
 
 
-  const togglePref = async (key) => {
-    const next = { ...prefs, [key]: !prefs[key] };
+  const notificationsOn = prefs ? NOTIF_KEYS.every((key) => prefs[key] !== false) : true;
+  const toggleNotifications = async () => {
+    const enabled = !notificationsOn;
+    const next = { ...prefs };
+    NOTIF_KEYS.forEach((key) => { next[key] = enabled; });
     setPrefs(next);
     try { await api.setNotifPrefs(next); } catch { setPrefs(prefs); }
   };
@@ -468,7 +462,7 @@ export default function ProfileScreen({ navigation }) {
           not otherwise need and ignored the dev entitlement override. Held
           back only while entitlement is still loading, so a subscriber never
           sees their own subscription advertised for a frame. */}
-      {canShowPro && !isPro && !proLoading ? (
+      {false && canShowPro && !isPro && !proLoading ? (
         <Reveal delay={110}>
           <PressableScale
             onPress={() => { haptic.light(); openPaywall('profile'); }}
@@ -546,39 +540,25 @@ export default function ProfileScreen({ navigation }) {
           Five headings, one open at a time, is the same page with the
           scrolling taken out. */}
       <View style={styles.sections}>
-        <AccordionSection
-          title="Notifications"
-          subtitle="What may alert you outside PASER"
-          open={section === 'notifications'}
-          onToggle={() => toggleSection('notifications')}
-        >
-            {/* The section's own heading already says Notifications, so this block
-                opens straight onto the sentence that explains the difference between
-                the inbox and a push. */}
-            <Text style={[type.caption, { color: colors.textMuted, marginBottom: space.md }]}>
-              Every event stays in your in-app inbox. Choose which ones may alert you outside PASER.
-            </Text>
-            <Card padded={false}>
-              {NOTIF_ROWS.map(([key, label], i) => (
-                <View key={key} style={[styles.toggleRow, i > 0 && styles.runDivider]}>
-                  <Text style={type.body}>{label}</Text>
-                  <Switch
-                    value={prefs ? !!prefs[key] : true}
-                    onValueChange={() => prefs && togglePref(key)}
-                    trackColor={{ true: accent }}
-                    disabled={!prefs}
-                  />
-                </View>
-              ))}
-            </Card>
-        </AccordionSection>
+        <SectionHeader title="Notifications" style={{ marginBottom: space.md }} />
+        <Card>
+          <View style={styles.toggleRowInner}>
+            <View style={{ flex: 1, paddingRight: space.md }}>
+              <Text style={type.body}>Notifications</Text>
+              <Text style={type.caption}>Allow PASER alerts outside the app.</Text>
+            </View>
+            <Switch
+              value={notificationsOn}
+              onValueChange={toggleNotifications}
+              trackColor={{ true: accent }}
+              disabled={!prefs}
+              accessibilityLabel="Notifications toggle"
+            />
+          </View>
+        </Card>
 
-        <AccordionSection
-          title="Statistics"
-          subtitle="Your land, streak, trophies and run history"
-          open={section === 'statistics'}
-          onToggle={() => toggleSection('statistics')}
-        >
+        <SectionHeader title="Statistics" style={{ marginTop: space.xl, marginBottom: space.md }} />
+        <View>
             {/* Your land: what is happening to the ground the stat wall counts.
                 The plots about to fade, what held, what was lost; the full list is
                 one tap away. Hides itself if the endpoint is not there. */}
@@ -665,7 +645,7 @@ export default function ProfileScreen({ navigation }) {
                 </Arrival>
               )}
             </Card>
-        </AccordionSection>
+        </View>
 
         <AccordionSection
           title="App customisation"
@@ -914,6 +894,52 @@ export default function ProfileScreen({ navigation }) {
         </AccordionSection>
 
       </View>
+
+      {/* PASER PRO belongs after the profile content, not between the runner and settings. */}
+      {canShowPro && !isPro && !proLoading ? (
+        <Reveal delay={110}>
+          <PressableScale
+            onPress={() => { haptic.light(); openPaywall('profile'); }}
+            accessibilityRole="button"
+            accessibilityLabel="Paser Pro. Planning, stats and styles. Tap to explore"
+          >
+            <Framed
+              frame={frameVariant('featured', 'pro:you')}
+              tint={toon.ink}
+              fill={GOLD}
+              weight={INK.bold}
+              pose={framePose('pro:you')}
+              inset={false}
+              style={styles.proCard}
+              contentStyle={styles.proCardContent}
+            >
+              <View style={styles.proCopy}>
+                <Text style={[type.labelSm, styles.proEyebrow]}>PASER PRO</Text>
+                <Text style={[type.display, styles.proTitle]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                  GO PRO
+                </Text>
+                <Text style={[type.bodySm, styles.proSub]}>Planning. Stats. Style.</Text>
+                <Framed
+                  frame={frameVariant('chip', 'Explore PRO')}
+                  tint={toon.ink}
+                  fill="#ffffff"
+                  weight={INK.thin}
+                  pose={framePose('Explore PRO')}
+                  inset={false}
+                  style={styles.proBtn}
+                  contentStyle={styles.proBtnContent}
+                >
+                  <Row gap={2}>
+                    <Text style={[type.buttonSm, { color: toon.ink }]}>Explore PRO</Text>
+                    <ChevronRight size={14} color={toon.ink} strokeWidth={3} />
+                  </Row>
+                </Framed>
+              </View>
+              <Image source={art('proCrew')} style={styles.proArt} resizeMode="contain" accessible={false} />
+            </Framed>
+          </PressableScale>
+        </Reveal>
+      ) : null}
 
       {/* Every PRO state, previewable from a desk. Invisible to real accounts
           — see the gate in DevProPanel. */}

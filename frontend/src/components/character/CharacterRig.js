@@ -456,6 +456,12 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
   // the body so the item reads as going around the head/neck.
   const accBackHalf = itemBackImage('accessory', it.accessory, equipped);
   const hatBackHalf = itemBackImage('headwear', it.headwear, equipped);
+  // Any worn item can be sent BEHIND the body with `z: 'back'` (set in the Fit
+  // Studio): only what sticks out past the silhouette shows, which is how a
+  // hood's back, a long ponytail or a coat's tails are meant to read.
+  // Accessories have always had it; the other layered slots use the same key.
+  const behind = (s) => it[s] && it[s].z === 'back';
+  const showBottom = !it.top.hidesBottom;
   const Img = captureSafe ? RNImage : ExpoImage;
 
   return (
@@ -495,6 +501,25 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
           <>
             {/* The far rim of the shoe's collar, behind the leg. See Feet. */}
             <Feet item={it.footwear} equipped={equipped} back {...layerBox} />
+            {showBottom && behind('bottom') && (
+              <Layer img={itemImage('bottom', it.bottom, equipped)} slot="bottom" layout={it.bottom.layout} {...layerBox} />
+            )}
+            {behind('top') && (
+              <Layer img={itemImage('top', it.top, equipped)} slot="top" fit={it.top.fit} layout={it.top.layout} {...layerBox} />
+            )}
+          </>
+        )}
+        {behind('hair') && (
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} {...layerBox} />
+        )}
+        {behind('glasses') && (
+          <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
+        )}
+        {behind('headwear') && (
+          <Layer img={itemImage('headwear', it.headwear, equipped)} slot="headwear" layout={it.headwear.layout} {...layerBox} />
+        )}
+        {!headOnly && (
+          <>
             <Img
               source={BODY_IMG}
               style={{ position: 'absolute', width: bodyW, height: bodyH }}
@@ -511,10 +536,12 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
             {/* A one-piece (robe, jumpsuit, armour) IS the legs — drawing a
                 separate bottom under it only pokes trouser cuffs out of the
                 hem. */}
-            {!it.top.hidesBottom && (
+            {showBottom && !behind('bottom') && (
               <Layer img={itemImage('bottom', it.bottom, equipped)} slot="bottom" layout={it.bottom.layout} {...layerBox} />
             )}
-            <Layer img={itemImage('top', it.top, equipped)} slot="top" fit={it.top.fit} layout={it.top.layout} {...layerBox} />
+            {!behind('top') && (
+              <Layer img={itemImage('top', it.top, equipped)} slot="top" fit={it.top.fit} layout={it.top.layout} {...layerBox} />
+            )}
             {/* Everything worn below the jaw — vests, sashes, bags, and all the
                 neckwear. These go UNDER the head plate, so the jaw is in front
                 of them. Their art was also nudged down in cosmetics.js to start
@@ -555,9 +582,15 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
             opaque where it encloses the crown, so it naturally masks that
             portion while preserving the fringe, sides, ponytails and buns —
             matching the supplied hat + hairstyle reference sheets. */}
-        <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} {...layerBox} />
-        <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
-        <Layer img={itemImage('headwear', it.headwear, equipped)} slot="headwear" layout={it.headwear.layout} {...layerBox} />
+        {!behind('hair') && (
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} {...layerBox} />
+        )}
+        {!behind('glasses') && (
+          <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
+        )}
+        {!behind('headwear') && (
+          <Layer img={itemImage('headwear', it.headwear, equipped)} slot="headwear" layout={it.headwear.layout} {...layerBox} />
+        )}
       </View>
     </Animated.View>
   );

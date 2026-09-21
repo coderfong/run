@@ -7,10 +7,11 @@
 // This is the one surface in PASER that is allowed to ignore the palette,
 // because what it sits on is not the page.
 //
-// THREE PRESENTATIONS, one component:
+// FOUR PRESENTATIONS, one component:
 //   card    the ordinary coach mark
 //   loop    RUN → CLAIM → DEFEND, the one moment the tutorial gets to be big
 //   payoff  the first claim landing
+//   training a safe illustrated simulation of the rest of the game
 //
 // The copy comes in with *asterisks* round the words that carry the idea; they
 // come out in PASER pink. See highlight.js.
@@ -58,10 +59,38 @@ function LoopLadder({ accent }) {
   );
 }
 
+const TRAINING_SCENES = {
+  run: { icon: '🏃', track: '● ━━ ● ━━ ●', stat: '2.40 km   14:32   0.18 km²' },
+  claim: { icon: '📍', track: '○ ━━ ◉ ━━ ○', stat: 'CLAIM READY   0.18 km²' },
+  rival: { icon: '⚔️', track: 'YOU  ▶  RIVAL LAND', stat: 'POWER 82   VS   64' },
+  captured: { icon: '🚨', track: 'YOUR LAND  ▶  RIVAL LAND', stat: 'CAPTURED   RUN TO RESPOND' },
+  crossroads: { icon: '🤝', track: 'YOUR ROUTE  ✕  THEIR ROUTE', stat: 'NEW CROSSROADS ENCOUNTER' },
+  customise: { icon: '👕', track: '🧢   👕   👟   ✨', stat: 'EQUIP YOUR LOOK AND EFFECTS' },
+  shop: { icon: '🛒', track: 'EARN  ▶  UNLOCK  ▶  EQUIP', stat: 'COSMETICS ONLY   NO POWER' },
+  progress: { icon: '🏆', track: 'MISSIONS   RANK   CLUBS', stat: 'RUNS BUILD YOUR SEASON' },
+  defend: { icon: '🛡️', track: 'RUN  ▶  CLAIM  ▶  DEFEND', stat: 'YOUR CITY CHANGES WITH YOU' },
+};
+
+function TrainingScene({ scene, accent }) {
+  const item = TRAINING_SCENES[scene];
+  if (!item) return null;
+  return (
+    <View style={styles.training} accessibilityLabel={`${item.track}. ${item.stat}`}>
+      <Text style={styles.trainingIcon}>{item.icon}</Text>
+      <Text style={[styles.trainingTrack, { color: accent }]}>{item.track}</Text>
+      <View style={styles.trainingMeter}>
+        <View style={[styles.trainingMeterFill, { backgroundColor: accent }]} />
+      </View>
+      <Text style={styles.trainingStat}>{item.stat}</Text>
+    </View>
+  );
+}
+
 export default function SpeechCard({
   title,
   lines = [],
   kind = 'card',
+  scene,
   cta,
   onPress,
   hint,
@@ -109,6 +138,7 @@ export default function SpeechCard({
         />
 
         {kind === 'loop' ? <LoopLadder accent={accent} /> : null}
+        {kind === 'training' ? <TrainingScene scene={scene} accent={accent} /> : null}
 
         {lines.map((line) => (
           <Copy key={line} text={line} accent={accent} style={styles.line} />
@@ -171,6 +201,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 18,
     color: 'rgba(12,12,16,0.45)',
+  },
+  training: {
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.xs,
+    borderRadius: 12,
+    backgroundColor: 'rgba(12,12,16,0.06)',
+  },
+  trainingIcon: { fontSize: 31, lineHeight: 38 },
+  trainingTrack: {
+    fontFamily: fonts.bold,
+    fontSize: 14,
+    lineHeight: 19,
+    textAlign: 'center',
+  },
+  trainingMeter: {
+    width: '88%',
+    height: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(12,12,16,0.14)',
+  },
+  trainingMeterFill: { width: '72%', height: '100%', borderRadius: 4 },
+  trainingStat: {
+    ...type.labelSm,
+    color: 'rgba(12,12,16,0.62)',
+    textAlign: 'center',
   },
 
   cta: { alignSelf: 'stretch', marginTop: space.xs },

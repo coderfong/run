@@ -76,11 +76,16 @@ struct CountdownView: View {
     @EnvironmentObject private var workout: WorkoutManager
 
     private var ringSize: CGFloat {
-        min(WatchLayout.screen.width * 0.80, WatchLayout.screen.height * 0.58).rounded()
+        min(WatchLayout.screen.width * 0.68, WatchLayout.screen.height * 0.48).rounded()
     }
 
     var body: some View {
-        WatchScreen(spacing: 0) {
+        WatchScreen(spacing: WatchLayout.size(8)) {
+            Text("GET READY")
+                .font(.system(size: WatchLayout.font(12), weight: .black, design: .rounded))
+                .tracking(1.4)
+                .foregroundColor(PaserStyle.teal)
+
             ZStack {
                 PaserRing(
                     progress: Double(4 - workout.countdown) / 3.0,
@@ -88,18 +93,14 @@ struct CountdownView: View {
                     lineWidth: WatchLayout.size(6)
                 )
 
-                VStack(spacing: WatchLayout.size(6)) {
-                    Text("GET READY")
-                        .font(.system(size: WatchLayout.font(12), weight: .black, design: .rounded))
-                        .tracking(1.4)
-                        .foregroundColor(PaserStyle.teal)
-
+                VStack(spacing: WatchLayout.size(1)) {
                     Text(workout.countdown == 0 ? "GO!" : "\(workout.countdown)")
-                        .font(.system(size: WatchLayout.font(60, floor: 44), weight: .black, design: .rounded))
+                        .font(.system(size: WatchLayout.font(48, floor: 38), weight: .black, design: .rounded))
                         .foregroundColor(PaserStyle.cream)
+                        .lineLimit(1)
                         .id(workout.countdown)
 
-                    PaserPortrait(size: WatchLayout.size(34), motion: .brace, ring: false)
+                    PaserPortrait(size: WatchLayout.size(25), motion: .brace, ring: false)
                 }
             }
             .frame(width: ringSize, height: ringSize)
@@ -143,7 +144,6 @@ struct PrimaryRunPage: View {
                     ring: false
                 )
                 GPSIndicator(state: workout.gpsReady ? .ready : .weak)
-                    .font(.system(size: WatchLayout.font(10), weight: .semibold, design: .rounded))
                 Spacer()
             }
 
@@ -172,7 +172,7 @@ struct StatsPage: View {
     @EnvironmentObject private var workout: WorkoutManager
 
     var body: some View {
-        WatchScreen(spacing: WatchLayout.size(10), centred: false, inPager: true) {
+        WatchScreen(spacing: WatchLayout.size(7), centred: false, inPager: true) {
             // No PASER mark on a page of a run. It repeated what the previous
             // page already said, and on a 40mm it cost a whole row that a
             // stat card wanted.
@@ -182,13 +182,35 @@ struct StatsPage: View {
                 .foregroundColor(PaserStyle.muted)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            StatCard(label: "AVG PACE", value: workout.pace + "/KM")
-
-            if workout.heartRate > 0 {
-                StatCard(label: "HEART RATE", value: workout.heartRateText + " BPM")
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: WatchLayout.size(6)),
+                GridItem(.flexible(), spacing: WatchLayout.size(6))
+            ], spacing: WatchLayout.size(6)) {
+                StatCard(
+                    label: "HEART",
+                    value: workout.heartRate > 0 ? workout.heartRateText + " BPM" : RunState.empty,
+                    icon: "heart.fill",
+                    color: PaserStyle.pink
+                )
+                StatCard(
+                    label: "CALORIES",
+                    value: workout.caloriesText + " KCAL",
+                    icon: "flame.fill",
+                    color: PaserStyle.yellow
+                )
+                StatCard(
+                    label: "ELEVATION",
+                    value: workout.elevationText,
+                    icon: "mountain.2.fill",
+                    color: PaserStyle.green
+                )
+                StatCard(
+                    label: "SPEED",
+                    value: workout.speedText + " KM/H",
+                    icon: "speedometer",
+                    color: PaserStyle.teal
+                )
             }
-
-            StatCard(label: "DISTANCE", value: workout.distanceText + " KM")
         }
     }
 }

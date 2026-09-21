@@ -35,7 +35,7 @@
 // twenty are standing there. The plaza itself never moves, and neither do you.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import Animated, {
@@ -629,17 +629,6 @@ export default function CrossroadsScreen({ navigation }) {
     navigation.navigate('RunnerProfile', { userId: e.user_id, username: e.username });
   };
 
-  const setEnabled = async (next) => {
-    setData((prev) => ({ ...(prev || {}), enabled: next }));
-    try {
-      await api.setPaserby(next);
-      invalidate('me:paserby');
-    } catch (err) {
-      setData((prev) => ({ ...(prev || {}), enabled: !next }));
-      toast.error(err.message || 'Could not change that setting');
-    }
-  };
-
   // Spots are filled NEAREST first (so one visitor stands at the front) but
   // drawn FURTHEST first, or someone at the back would paint over the person
   // in front of them.
@@ -782,19 +771,6 @@ export default function CrossroadsScreen({ navigation }) {
         </View>
       ) : null}
 
-      {/* --- the switch, on a card, at the bottom of the page ------------- */}
-      <Card style={[styles.setting, { bottom: SETTING_LIFT }]} padded={false}>
-        <View style={styles.settingRow}>
-          <View style={{ flex: 1, paddingRight: space.md }}>
-            <Text style={type.bodyBold}>{COPY.setting}</Text>
-            <Text style={type.caption} numberOfLines={1}>
-              They never see your route, location or crossing time.
-            </Text>
-          </View>
-          <Switch value={enabled} onValueChange={setEnabled} trackColor={{ true: PANEL_YELLOW }} />
-        </View>
-      </Card>
-
       {/* Last, so it sits over everything the plaza draws. Tied to `focused`
           as well as to the flag: both tab stacks register this screen, and a
           copy parked behind another one must not put a modal over it. */}
@@ -825,8 +801,6 @@ export default function CrossroadsScreen({ navigation }) {
 // hovering the better part of two hundred points above where it looked like it
 // belonged. One gutter of air off the real page bottom is the whole rule now,
 // and it also gives your own runner (see `You`) the plaza back.
-const SETTING_LIFT = space.md;
-
 const styles = StyleSheet.create({
   transparent: { backgroundColor: 'transparent' },
 
@@ -863,14 +837,4 @@ const styles = StyleSheet.create({
   emptyTitle: { color: '#fff', fontSize: 20 },
   emptyBody: { color: 'rgba(255,255,255,0.94)', textTransform: 'none', textAlign: 'center' },
 
-  setting: { position: 'absolute', left: space.gutter, right: space.gutter },
-  // One tight row rather than the default card padding: this sits over the
-  // scene, so every point of height it takes is a point of plaza it covers.
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-  },
 });

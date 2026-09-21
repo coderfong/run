@@ -13,6 +13,9 @@ final class WorkoutManager: NSObject, ObservableObject {
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var distance: CLLocationDistance = 0
     @Published private(set) var heartRate: Double = 0
+    @Published private(set) var activeCalories: Double = 0
+    @Published private(set) var elevationGain: Double = 0
+    @Published private(set) var currentSpeed: Double = 0
     @Published private(set) var gpsReady = false
     @Published private(set) var countdown = 3
     @Published private(set) var errorMessage = ""
@@ -59,6 +62,9 @@ final class WorkoutManager: NSObject, ObservableObject {
     var distanceText: String { String(format: "%.2f", distance / 1000) }
     var elapsedText: String { RunFormat.clock(elapsed) }
     var heartRateText: String { heartRate > 0 ? String(Int(heartRate.rounded())) : RunState.empty }
+    var caloriesText: String { activeCalories > 0 ? String(Int(activeCalories.rounded())) : "0" }
+    var elevationText: String { "\(Int(elevationGain.rounded())) M" }
+    var speedText: String { String(format: "%.1f", max(0, currentSpeed) * 3.6) }
 
     func start() {
         guard phase == .ready || phase == .error else { return }
@@ -66,7 +72,8 @@ final class WorkoutManager: NSObject, ObservableObject {
         let workout = HKObjectType.workoutType()
         let route = HKSeriesType.workoutRoute()
         let heartRate = HKQuantityType.quantityType(forIdentifier: .heartRate)!
-        healthStore.requestAuthorization(toShare: [workout, route], read: [heartRate]) { [weak self] allowed, error in
+        let energy = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned)!
+        healthStore.requestAuthorization(toShare: [workout, route], read: [heartRate, energy]) { [weak self] allowed, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 guard allowed, error == nil else { self.fail("Allow Workout and Health access to record your run."); return }
@@ -111,6 +118,9 @@ final class WorkoutManager: NSObject, ObservableObject {
             elapsed = 0
             distance = 0
             heartRate = 0
+            activeCalories = 0
+            elevationGain = 0
+            currentSpeed = 0
             lastLocation = nil
             session.startActivity(with: now)
             builder.beginCollection(withStart: now) { _, _ in }
@@ -162,7 +172,8 @@ final class WorkoutManager: NSObject, ObservableObject {
     func reset() {
         workoutSession = nil; workoutBuilder = nil; routeBuilder = nil
         startedAt = nil; pausedAt = nil; pausedDuration = 0; lastLocation = nil
-        elapsed = 0; distance = 0; heartRate = 0; errorMessage = ""
+        elapsed = 0; distance = 0; heartRate = 0; activeCalories = 0
+        elevationGain = 0; currentSpeed = 0; errorMessage = ""
         phase = .ready
         locationManager.startUpdatingLocation()
     }
@@ -206,7 +217,15 @@ extension WorkoutManager: CLLocationManagerDelegate {
                 // Reject GPS teleports and motorised travel. Keep lastLocation
                 // unchanged so one bad bus sample cannot drag the route away.
                 guard runningSpeed <= maximumRunningSpeed, delta <= 60 else { continue }
-                if delta >= 1 { distance += delta }
+                currentSpeed = runningSpeed
+                if delta >= 1 {
+                    distance += delta
+                    if location.verticalAccuracy > 0, location.verticalAccuracy <= 20,
+                       previous.verticalAccuracy > 0, previous.verticalAccuracy <= 20 {
+                        let climb = location.altitude - previous.altitude
+                        if climb > 0, climb < 10 { elevationGain += climb }
+                    }
+                }
             }
             lastLocation = location
             accepted.append(location)
@@ -224,9 +243,14 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
 extension WorkoutManager: HKLiveWorkoutBuilderDelegate {
     func workoutBuilderDidCollectEvent(_ workoutBuilder: HKLiveWorkoutBuilder) {}
     func workoutBuilder(_ workoutBuilder: HKLiveWorkoutBuilder, didCollectDataOf collectedTypes: Set<HKSampleType>) {
-        guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate), collectedTypes.contains(type),
-              let quantity = workoutBuilder.statistics(for: type)?.mostRecentQuantity() else { return }
-        let unit = HKUnit.count().unitDivided(by: .minute())
-        DispatchQueue.main.async { self.heartRate = quantity.doubleValue(for: unit) }
+        if let type = HKQuantityType.quantityType(forIdentifier: .heartRate), collectedTypes.contains(type),
+           let quantity = workoutBuilder.statistics(for: type)?.mostRecentQuantity() {
+            let unit = HKUnit.count().unitDivided(by: .minute())
+            DispatchQueue.main.async { self.heartRate = quantity.doubleValue(for: unit) }
+        }
+        if let type = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned), collectedTypes.contains(type),
+           let quantity = workoutBuilder.statistics(for: type)?.sumQuantity() {
+            DispatchQueue.main.async { self.activeCalories = quantity.doubleValue(for: .kilocalorie()) }
+        }
     }
 }

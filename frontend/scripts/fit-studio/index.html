@@ -60,6 +60,7 @@
   .muted { color: var(--dim); }
   .sw { display: inline-block; width: 16px; height: 16px; border-radius: 4px; margin: 2px; border: 1px solid #0006; cursor: pointer; }
   .sw.on { outline: 2px solid var(--sel); }
+  #zRow button.on { background: var(--sel); color: #06202b; border-color: transparent; font-weight: 600; }
   hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
   #collarEdit { position: fixed; inset: 0; background: rgba(8,10,13,.86); z-index: 50; display: flex; flex-direction: column; }
   #ceBar { display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
@@ -128,6 +129,14 @@
           <button id="bCentre">Centre</button>
           <button id="bReset">Reset item</button>
           <button id="bNext">Next item →</button>
+        </div>
+        <!-- Which side of the body the item is drawn on. Behind: only the part
+             outside the silhouette shows (wings, a cape, a ponytail, a hood's
+             back). Written into the catalogue as z: 'back'. -->
+        <div class="btns" id="zRow" style="margin-top:10px; align-items:center">
+          <button id="bZBack">Send to back</button>
+          <button id="bZFront">Bring to front</button>
+          <span id="zOut" class="muted" style="font-size:11px"></span>
         </div>
         <div class="btns" style="margin-top:10px">
           <button id="bEraseAsset">Erase selected art…</button>
@@ -285,6 +294,26 @@ function savedSpec(s, item) { return { ...(baseSpec(s, item) || {}), ...(item.la
 function liveSpec(s, item) { return { ...savedSpec(s, item), ...((OV[s] || {})[item.id] || {}) }; }
 function edit(s, id) { return (OV[s] || {})[id] || null; }
 
+// Draw side. `z: 'back'` puts an item behind the body; anything else is the
+// slot's usual place in front. Shoes and faces have their own layering.
+const Z_SLOTS = new Set(['hair', 'headwear', 'glasses', 'top', 'bottom', 'accessory']);
+function zOf(s, item) {
+  if (!item) return null;
+  const o = (OV[s] || {})[item.id];
+  return (o && o.z) || item.z || null;
+}
+const isBack = (s, item) => zOf(s, item) === 'back';
+function setZ(s, id, z) {
+  const item = itemById(s, id);
+  if (!item || !Z_SLOTS.has(s)) return;
+  OV[s] = OV[s] || {};
+  const next = { ...(OV[s][id] || {}) };
+  // Only a real change is an edit: the catalogue's own side is not.
+  if ((z === 'back') === (item.z === 'back')) delete next.z; else next.z = z;
+  if (Object.keys(next).length) OV[s][id] = next; else delete OV[s][id];
+  save(); render(); renderList(); syncFields();
+}
+
 // The rig reads `cy` before `top`, so an item keeps whichever anchor its base
 // slot uses — a glasses fit is a centre line, a shirt fit is a top edge.
 function anchorKind(s, item) {
@@ -397,7 +426,7 @@ function layerStack() {
   const L = [];
   const add = (key, s, item, src, opts) => { if (src) L.push({ key, slot: s, item, src, ...(opts || {}) }); };
 
-  add('accBack', 'accessory', acc, acc.z === 'back' ? accImg : null);
+  add('accBack', 'accessory', acc, isBack('accessory', acc) ? accImg : null);
   add('accBackHalf', 'accessory', acc, backImgOf('accessory', acc));
   add('hatBack', 'headwear', it.headwear, backImgOf('headwear', it.headwear));
   // Shoe collars are cut in two so the ankle can pass through them: the far rim
@@ -414,6 +443,12 @@ function layerStack() {
   // shared base body. Selecting another asset swaps to its own cutout (or the
   // untouched base body when it has none).
   const fitting = itemById(slot, selId);
+  // Anything sent to the back, in the order the rig draws it.
+  for (const s of ['bottom', 'top', 'hair', 'glasses', 'headwear']) {
+    if (s === 'bottom' && it.top && it.top.hidesBottom) continue;
+    if (s === 'hair' && hideHair) continue;
+    if (isBack(s, it[s])) add(s + 'Behind', s, it[s], imgOf(s, it[s]));
+  }
   L.push({ key: 'body', src: fitting?.bodyOverride || M.body, fixed: true });
   // Shoes under the trouser hem: a hem falls ON the foot, so a shoe drawn over
   // it cuts the trouser off in a straight line.
@@ -425,15 +460,16 @@ function layerStack() {
   } else {
     add('footwear', 'footwear', it.footwear, wornImgOf('footwear', it.footwear));
   }
-  if (!(it.top && it.top.hidesBottom)) add('bottom', 'bottom', it.bottom, imgOf('bottom', it.bottom));
-  add('top', 'top', it.top, imgOf('top', it.top));
-  add('accFront', 'accessory', acc, acc.atNeck ? null : accImg);
+  if (!(it.top && it.top.hidesBottom) && !isBack('bottom', it.bottom)) add('bottom', 'bottom', it.bottom, imgOf('bottom', it.bottom));
+  if (!isBack('top', it.top)) add('top', 'top', it.top, imgOf('top', it.top));
+  const accFront = isBack('accessory', acc) ? null : accImg;
+  add('accFront', 'accessory', acc, acc.atNeck ? null : accFront);
   L.push({ key: 'head', src: M.head, fixed: true });
-  add('accHead', 'accessory', acc, acc.atNeck ? accImg : null);
+  add('accHead', 'accessory', acc, acc.atNeck ? accFront : null);
   add('face', 'face', it.face, imgOf('face', it.face));
-  if (!hideHair) add('hair', 'hair', it.hair, imgOf('hair', it.hair));
-  add('glasses', 'glasses', it.glasses, imgOf('glasses', it.glasses));
-  add('headwear', 'headwear', it.headwear, imgOf('headwear', it.headwear));
+  if (!hideHair && !isBack('hair', it.hair)) add('hair', 'hair', it.hair, imgOf('hair', it.hair));
+  if (!isBack('glasses', it.glasses)) add('glasses', 'glasses', it.glasses, imgOf('glasses', it.glasses));
+  if (!isBack('headwear', it.headwear)) add('headwear', 'headwear', it.headwear, imgOf('headwear', it.headwear));
   return L;
 }
 
@@ -722,6 +758,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === '.') rotateBy(item, e.shiftKey ? 5 : 1);
   else if (e.key === 'f') { if (hasFeet(item)) { selFoot = selFoot === 'l' ? 'r' : 'l'; render(); } }
   else if (e.key === 'n') nextItem();
+  else if (e.key === 'b' && selId) setZ(slot, selId, isBack(slot, itemById(slot, selId)) ? 'front' : 'back');
   else if (e.key === '0') resetItem();
 });
 
@@ -734,6 +771,15 @@ function syncFields() {
   $('who').innerHTML = '<b>' + item.label + '</b> <span class="muted">' + slot + ':' + item.id +
     (item.fit ? ' · fit ' + item.fit : '') + '</span><br /><span class="muted">' + item.source + '.js</span>';
   $('anchorLabel').textContent = kind === 'cy' ? 'centre y' : 'top';
+  const zable = Z_SLOTS.has(slot) && item.id !== 'none';
+  $('zRow').style.display = zable ? '' : 'none';
+  if (zable) {
+    const back = isBack(slot, item);
+    $('bZBack').classList.toggle('on', back);
+    $('bZFront').classList.toggle('on', !back);
+    const changed = !!(edit(slot, item.id) || {}).z;
+    $('zOut').textContent = (back ? 'behind the body' : 'in front of the body') + (changed ? ' · edited' : '') + '  (b toggles)';
+  }
   const set = (r, n, v) => { $(r).value = v; $(n).value = Math.round(v * 1e4) / 1e4; };
   const feet = hasFeet(item);
   $('footRow').style.display = feet ? '' : 'none';
@@ -1191,6 +1237,8 @@ function resetItem() {
   save(); render(); renderList();
 }
 $('bReset').addEventListener('click', resetItem);
+$('bZBack').addEventListener('click', () => { if (selId) setZ(slot, selId, 'back'); });
+$('bZFront').addEventListener('click', () => { if (selId) setZ(slot, selId, 'front'); });
 $('bCentre').addEventListener('click', () => {
   const item = itemById(slot, selId);
   if (item) setSpec(slot, item.id, { dx: 0 });
@@ -1390,7 +1438,9 @@ $('bCopy').addEventListener('click', () => {
   for (const [s, byId] of Object.entries(OV)) {
     for (const [id, patch] of Object.entries(byId)) {
       const item = itemById(s, id);
-      const parts = Object.entries(patch).map(([k, v]) => k + ': ' + (Math.round(v * 1e4) / 1e4));
+      const parts = Object.entries(patch).filter(([k]) => k !== 'z')
+        .map(([k, v]) => k + ': ' + (Math.round(v * 1e4) / 1e4));
+      if (patch.z) parts.push("z: '" + patch.z + "'");
       lines.push(s + ':' + id + '  (' + (item ? item.label : '?') + ')  layout: { ' + parts.join(', ') + ' }');
     }
   }

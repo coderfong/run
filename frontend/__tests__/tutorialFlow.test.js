@@ -319,11 +319,48 @@ describe('the tour', () => {
     advance(tree); // map
     advance(tree); // player
     advance(tree); // territory
-    advance(tree); // core loop
+    advance(tree); // core loop → training run
+    expect(phase()).toBe(PHASE.TRAINING_RUN);
+    [
+      PHASE.TRAINING_CLAIM,
+      PHASE.TRAINING_RIVAL,
+      PHASE.TRAINING_CAPTURED,
+      PHASE.TRAINING_CROSSROADS,
+      PHASE.TRAINING_CUSTOMISE,
+      PHASE.TRAINING_SHOP,
+      PHASE.TRAINING_PROGRESS,
+      PHASE.TRAINING_DEFEND,
+      PHASE.START_RUN,
+    ].forEach((expected) => {
+      advance(tree);
+      expect(phase()).toBe(expected);
+    });
     expect(phase()).toBe(PHASE.START_RUN);
     // Nothing advances it but really opening the run screen.
     expect(state.step.interactive).toBe(true);
     expect(state.step.dismiss).toBe('action');
+  });
+
+  it('teaches the complete game through safe simulated scenes', () => {
+    const expected = [
+      [PHASE.TRAINING_RUN, 'run'],
+      [PHASE.TRAINING_CLAIM, 'claim'],
+      [PHASE.TRAINING_RIVAL, 'rival'],
+      [PHASE.TRAINING_CAPTURED, 'captured'],
+      [PHASE.TRAINING_CROSSROADS, 'crossroads'],
+      [PHASE.TRAINING_CUSTOMISE, 'customise'],
+      [PHASE.TRAINING_SHOP, 'shop'],
+      [PHASE.TRAINING_PROGRESS, 'progress'],
+      [PHASE.TRAINING_DEFEND, 'defend'],
+    ];
+    expected.forEach(([phaseName, scene]) => {
+      const training = stepFor(phaseName);
+      expect(training.kind).toBe('training');
+      expect(training.scene).toBe(scene);
+      expect(training.dismiss).toBe('cta');
+      expect(training.interactive).toBe(false);
+      expect(training.target).toBeNull();
+    });
   });
 });
 

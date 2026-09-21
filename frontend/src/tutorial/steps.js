@@ -6,14 +6,13 @@
 // one component that can draw any step, and adding, reordering or rewording a
 // step is an edit to this file alone.
 //
-// WHAT THE CORE TUTORIAL TEACHES, AND NOTHING ELSE:
+// WHAT THE CORE TUTORIAL TEACHES:
 //
-//   MAP → YOU → TERRITORY → RUN → FINISH → CLAIM → PAYOFF
+//   WORLD → TRAINING RUN → CLAIM → RIVAL → CAPTURE → CROSSROADS
+//   → CUSTOMISE → SHOP → PROGRESS → DEFEND → REAL RUN
 //
-// Everything else PASER does is taught contextually, later, the first time the
-// runner opens it (tips.js). There is deliberately no step for the shop, the
-// season, energy, rivals, missions or pasers: a tutorial that explains every
-// button is a tutorial nobody finishes.
+// The training beats are simulated inside the coach card. They teach the
+// complete game without writing a route, territory, purchase or rival.
 //
 // COPY RULE. Five to twelve words a line, two lines at most, and the words
 // that carry the idea wrapped in *asterisks* so they land in the game's
@@ -161,6 +160,88 @@ export const STEPS = [
     copy: () => ({
       title: 'Run. Claim. Defend.',
       lines: ['Build your territory one run at a time.'],
+    }),
+  },
+
+  {
+    phase: PHASE.TRAINING_RUN,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'START TRAINING RUN', skippable: true, kind: 'training', scene: 'run',
+    copy: () => ({
+      title: 'First, a practice run.',
+      lines: ['Distance traces a route and earns *claim power*.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_CLAIM,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'PLACE THE CLAIM', skippable: true, kind: 'training', scene: 'claim',
+    copy: () => ({
+      title: 'Practice run complete!',
+      lines: ['Move your earned shape along the route, then *claim*.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_RIVAL,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'ATTACK', skippable: true, kind: 'training', scene: 'rival',
+    copy: () => ({
+      title: 'A rival owns this ground.',
+      lines: ['Claim across their land to *attack* it. Stronger runs win.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_CAPTURED,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'TAKE IT BACK', skippable: true, kind: 'training', scene: 'captured',
+    copy: () => ({
+      title: 'Rivals can capture you too.',
+      lines: ['Run again to reclaim it, or reinforce nearby land.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_CROSSROADS,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'MEET THEM', skippable: true, kind: 'training', scene: 'crossroads',
+    copy: () => ({
+      title: 'Routes can cross.',
+      lines: ['Crossroads remembers nearby runners. View, follow or remove them.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_CUSTOMISE,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'TRY A LOOK', skippable: true, kind: 'training', scene: 'customise',
+    copy: () => ({
+      title: 'Your runner is yours.',
+      lines: ['Change outfits, colours and effects from *You*.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_SHOP,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'KEEP TOURING', skippable: true, kind: 'training', scene: 'shop',
+    copy: () => ({
+      title: 'The shop unlocks new style.',
+      lines: ['Spend earned currency on cosmetics. Gear never buys power.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_PROGRESS,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'SHOW DEFENSE', skippable: true, kind: 'training', scene: 'progress',
+    copy: () => ({
+      title: 'Every run moves something.',
+      lines: ['Missions earn rewards. Rankings and clubs track your season.'],
+    }),
+  },
+  {
+    phase: PHASE.TRAINING_DEFEND,
+    host: 'root', target: null, interactive: false, dismiss: 'cta',
+    cta: 'I AM READY', skippable: true, kind: 'training', scene: 'defend',
+    copy: () => ({
+      title: 'Build, attack, defend, repeat.',
+      lines: ['Notifications warn you when land changes hands. Now run for real.'],
     }),
   },
 

@@ -69,6 +69,19 @@ function parseFeet(text) {
 }
 
 // Layout objects in the catalogue are flat and numeric — `{ w: 0.9, top: 0.31 }`.
+// Draw side. `z: 'back'` sends an item behind the body; the field sits right
+// after the layout. In front is the default everywhere, so 'front' simply drops
+// the field, except on accessories, where the catalogue spells it out.
+function writeZ(line, slot, z) {
+  let out = line.replace(/,\s*z:\s*'(?:back|front)'/g, '');
+  const want = z === 'back' ? 'back' : (slot === 'accessory' ? 'front' : null);
+  if (!want) return out;
+  const field = `, z: '${want}'`;
+  const layout = out.match(/layout:\s*\{[^}]*\}/);
+  if (layout) return out.slice(0, layout.index + layout[0].length) + field + out.slice(layout.index + layout[0].length);
+  return out.includes('rarity:') ? out.replace(/,\s*rarity:/, `${field}, rarity:`) : null;
+}
+
 function parseLayout(text) {
   const out = {};
   for (const m of text.matchAll(/(\w+)\s*:\s*(-?[\d.]+)/g)) out[m[1]] = Number(m[2]);
@@ -133,16 +146,25 @@ export async function applyOverrides({ dryRun = false, slots = null } = {}) {
         }
         line = line.slice(0, found.start) + formatFeet(merged) + line.slice(found.end);
       }
+      if (patch.z) {
+        const next = writeZ(line, slot, patch.z);
+        if (next == null) {
+          errors.push(`${slot}:${id} — nowhere to write z on the line, skipped.`);
+          continue;
+        }
+        line = next;
+      }
       const flat = { ...patch };
       delete flat.feet;
+      delete flat.z;
       if (!Object.keys(flat).length) {
         if (line === f.lines[i]) {
           errors.push(`${slot}:${id} — rewrite produced no change, skipped.`);
           continue;
         }
-        f.lines[i] = line;
         changes.push({ slot, id, label: item.label, file: path.basename(f.path), line: i + 1,
-                       layout: {}, before: f.lines[i], after: line.trim() });
+                       layout: {}, before: f.lines[i].trim(), after: line.trim() });
+        f.lines[i] = line;
         continue;
       }
       const existing = line.match(/layout:\s*\{([^}]*)\}/);
@@ -171,7 +193,7 @@ export async function applyOverrides({ dryRun = false, slots = null } = {}) {
         continue;
       }
       f.lines[i] = updated;
-      changes.push({ slot, id, label: item.label, file: path.basename(f.path), line: i + 1, layout: merged, before: line.trim(), after: updated.trim() });
+      changes.push({ slot, id, label: item.label, file: path.basename(f.path), line: i + 1, layout: merged, before: f.lines[i].trim(), after: updated.trim() });
     }
   }
 

@@ -16,39 +16,26 @@ PRICE_BY_RARITY = {
 # check-catalog.js), so a flat map is safe and keeps lookups simple.
 SHOP_ITEMS = {
     # --- accessory ---
-    "cape": ("accessory", "epic"),  # Cape
-    "angelwings": ("accessory", "epic"),  # Angel wings
-    "redcape": ("accessory", "epic"),  # Hero cape
     "starnecklace": ("accessory", "rare"),  # Star pendant
     "greenscarf": ("accessory", "common"),  # Knit scarf
     "tealscarf": ("accessory", "common"),  # Winter scarf
-    "lacecollar": ("accessory", "rare"),  # Lace collar
     "dogtags": ("accessory", "rare"),  # Dog tags
     "pearlcollar": ("accessory", "rare"),  # Pearl collar
     "pearls": ("accessory", "common"),  # Pearl strand
     "charmchain": ("accessory", "common"),  # Charm chain
     "lei": ("accessory", "common"),  # Flower lei
     "sailorcollar": ("accessory", "common"),  # Sailor collar
-    "bowtie": ("accessory", "common"),  # Bow tie
     "necktie": ("accessory", "common"),  # Necktie
-    "medallion": ("accessory", "epic"),  # Medallion
-    "trophychain": ("accessory", "epic"),  # Trophy chain
-    "silvermedal": ("accessory", "rare"),  # Silver medal
-    "wintscarf": ("accessory", "common"),  # Wool scarf
     "candyscarf": ("accessory", "common"),  # Candy scarf
     "redscarf": ("accessory", "common"),  # Red scarf
     "pageantsash": ("accessory", "rare"),  # Pageant sash
     "racesash": ("accessory", "rare"),  # Race sash
     "harness": ("accessory", "rare"),  # Race harness
     "fairywings": ("accessory", "legendary"),  # Fairy wings
-    "messengerbag": ("accessory", "common"),  # Messenger bag
     "handbag": ("accessory", "common"),  # Handbag
     "sheriffstar": ("accessory", "rare"),  # Sheriff star
-    "royalrobe": ("accessory", "legendary"),  # Royal robe
-    "lacebib": ("accessory", "common"),  # Lace bib
     # --- bottom ---
     "wb065": ("bottom", "rare"),  # Yellow cargo shorts
-    "wb105": ("bottom", "rare"),  # Sand chinos
     # --- face ---
     "wink": ("face", "common"),  # Wink
     "tongueout": ("face", "common"),  # Cheeky
@@ -77,15 +64,10 @@ SHOP_ITEMS = {
     "wf070": ("footwear", "rare"),  # Cream strap shoes
     "wf085": ("footwear", "rare"),  # Burgundy strap heels
     # --- glasses ---
-    "roundgold": ("glasses", "common"),  # Round golds
     "halfframe": ("glasses", "rare"),  # Half frames
-    "heart": ("glasses", "rare"),  # Heart sunnies
-    "shieldvisor": ("glasses", "rare"),  # Shield visor
-    "skigoggles": ("glasses", "epic"),  # Ski goggles
     "starglasses": ("glasses", "rare"),  # Star shades
     "hexshades": ("glasses", "rare"),  # Hex shades
     "cateye": ("glasses", "rare"),  # Cat eye
-    "pixelshades": ("glasses", "epic"),  # Pixel shades
     "aviators": ("glasses", "common"),  # Aviators
     "eyepatch": ("glasses", "rare"),  # Eyepatch
     "clownglasses": ("glasses", "rare"),  # Clown glasses
@@ -209,15 +191,10 @@ SHOP_ITEMS = {
     "camisole": ("top", "common"),  # Camisole
     "polo": ("top", "common"),  # PE polo
     "windbreaker": ("top", "rare"),  # Windbreaker
-    "bomber": ("top", "rare"),  # Bomber jacket
-    "denimjacket": ("top", "rare"),  # Denim jacket
-    "cardigan": ("top", "common"),  # Cardigan
     "o13t": ("top", "rare"),  # Yellow ringer tee
-    "o54t": ("top", "rare"),  # Blush shrug
     "o68t": ("top", "rare"),  # Black hoodie
     "o89t": ("top", "rare"),  # Green bomber jacket
     "k12t": ("top", "rare"),  # Blush crop jacket
-    "o69o": ("top", "epic"),  # Tactical rig
 }
 
 

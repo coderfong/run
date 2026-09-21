@@ -5,6 +5,7 @@
 // Serves the editor, the catalogue manifest, and the art itself; takes the
 // dragged fits back over POST and can write them into the catalogue.
 
+import './fs-retry.mjs'; // first: every module below writes through it
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';

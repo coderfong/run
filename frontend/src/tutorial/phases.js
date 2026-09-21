@@ -20,6 +20,20 @@ export const PHASE = {
   TERRITORY: 'territory',
   CORE_LOOP: 'core-loop',
 
+  // --- a safe training run -----------------------------------------------
+  // These beats are an illustrated simulation. They never call the run,
+  // claim, shop or social APIs, so learning cannot change the player's real
+  // route, land, currency or relationships.
+  TRAINING_RUN: 'training-run',
+  TRAINING_CLAIM: 'training-claim',
+  TRAINING_RIVAL: 'training-rival',
+  TRAINING_CAPTURED: 'training-captured',
+  TRAINING_CROSSROADS: 'training-crossroads',
+  TRAINING_CUSTOMISE: 'training-customise',
+  TRAINING_SHOP: 'training-shop',
+  TRAINING_PROGRESS: 'training-progress',
+  TRAINING_DEFEND: 'training-defend',
+
   // --- the loop, taught by doing it ---------------------------------------
   START_RUN: 'start-run',
   ACTIVE_RUN: 'active-run',
@@ -39,6 +53,15 @@ export const CORE_ORDER = [
   PHASE.PLAYER,
   PHASE.TERRITORY,
   PHASE.CORE_LOOP,
+  PHASE.TRAINING_RUN,
+  PHASE.TRAINING_CLAIM,
+  PHASE.TRAINING_RIVAL,
+  PHASE.TRAINING_CAPTURED,
+  PHASE.TRAINING_CROSSROADS,
+  PHASE.TRAINING_CUSTOMISE,
+  PHASE.TRAINING_SHOP,
+  PHASE.TRAINING_PROGRESS,
+  PHASE.TRAINING_DEFEND,
   PHASE.START_RUN,
   PHASE.ACTIVE_RUN,
   PHASE.FINISH_RUN,

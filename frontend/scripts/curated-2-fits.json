@@ -1,0 +1,109 @@
+{
+ "heritagerunnerjacket": {
+  "sim": 0.81,
+  "from": "cur_lunarrunnerjacket",
+  "layout": {
+   "w": 1.0309849967384215,
+   "top": 0.2832083333333333,
+   "dx": 0.0033333333333333335
+  }
+ },
+ "lightningracesuit": {
+  "sim": 0.729,
+  "from": "cur_lightningracesuit",
+  "layout": {
+   "w": 0.9905432595573442,
+   "top": 0.2909583333333333,
+   "dx": -0.013333333333333334
+  }
+ },
+ "piratecoat": {
+  "sim": 0.72,
+  "from": "cur_leaffairydress",
+  "layout": {
+   "w": 0.9083308569477033,
+   "top": 0.3258333333333333,
+   "dx": -0.13333333333333333
+  }
+ },
+ "regionalchampionshipsinglet": {
+  "sim": 0.812,
+  "from": "cur_regionalchampionshipsinglet",
+  "layout": {
+   "w": 0.5856713114754097,
+   "top": 0.3371166666666666,
+   "dx": -0.004533333333333379
+  }
+ },
+ "shadowrunnertop": {
+  "sim": 0.903,
+  "from": "cur_shadowrunnertop",
+  "layout": {
+   "w": 0.936787072243346,
+   "top": 0.31808333333333333,
+   "dx": 0.01
+  }
+ },
+ "shinobigi": {
+  "sim": 0.853,
+  "from": "cur_astronautsuit",
+  "layout": {
+   "w": 0.9786813186813187,
+   "top": 0.30645833333333333,
+   "dx": 0.0033333333333333335
+  }
+ },
+ "starlitmagerobes": {
+  "sim": 0.782,
+  "from": "cur_cyberrunnerjacket",
+  "layout": {
+   "w": 0.762536945812808,
+   "top": 0.31808333333333333,
+   "dx": -0.005
+  }
+ },
+ "stormparka": {
+  "sim": 0.882,
+  "from": "cur_knightarmour",
+  "layout": {
+   "w": 0.914721919302072,
+   "top": 0.22379166666666664,
+   "dx": 0.01
+  }
+ },
+ "sunrisemarathonsinglet": {
+  "sim": 0.919,
+  "from": "cur_sunrisemarathonsinglet",
+  "layout": {
+   "w": 0.6265346534653466,
+   "top": 0.3203104078264969,
+   "dx": 0.006666666666666667
+  }
+ },
+ "trailexpeditionvest": {
+  "sim": 0.705,
+  "from": "cur_tropicalstormponcho",
+  "layout": {
+   "w": 0.6216568047337275,
+   "top": 0.3064583333333333
+  }
+ },
+ "tropicalcampshirt": {
+  "sim": 0.743,
+  "from": "cur_lilachalfzip",
+  "layout": {
+   "w": 0.8819026548672566,
+   "top": 0.27029166666666665,
+   "dx": 0.008333333333333333
+  }
+ },
+ "tropicalstormponcho": {
+  "sim": 0.917,
+  "from": "cur_dragonteamjersey",
+  "layout": {
+   "w": 1.3586610878661092,
+   "top": 0.15662499999999996,
+   "dx": -0.0016666666666666668
+  }
+ }
+}

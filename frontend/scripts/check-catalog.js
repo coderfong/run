@@ -110,6 +110,41 @@ for (const [arr, slot] of Object.entries(PUSHED)) {
   }
   console.log(`  ${slot} +${ids.length} from ${arr}`);
 }
+// curatedCosmetics.js is pushed in the same way (ITEMS.<slot>.push(...CURATED_*)).
+// Its unlocks are written inline rather than by name, so they are mapped back
+// onto the names the reward rules below expect.
+const curatedSrc = fs.readFileSync('src/config/curatedCosmetics.js', 'utf8');
+const CURATED = {
+  CURATED_TOPS: 'top', CURATED_BOTTOMS: 'bottom', CURATED_FOOTWEAR: 'footwear', CURATED_HEADWEAR: 'headwear',
+  CURATED_GLASSES: 'glasses', CURATED_ACCESSORIES: 'accessory', CURATED_EXTRAS: 'accessory',
+};
+const inlineUnlock = (line) => {
+  const u = line.match(/unlock: (null|\{[^}]*\})/)?.[1];
+  if (u === 'null') return 'free';
+  if (/premium: true/.test(u || '')) return 'premiumOnly';
+  if (/pass: true/.test(u || '')) return 'passOnly';
+  return line.match(/unlock: (\w+)/)?.[1] || 'unknown';
+};
+for (const [arr, slot] of Object.entries(CURATED)) {
+  const start = curatedSrc.indexOf(`export const ${arr} = [`);
+  const end = start < 0 ? -1 : curatedSrc.indexOf('\n];', start);
+  if (start < 0 || end < 0) {
+    console.log(`MISSING array: ${arr} in curatedCosmetics.js`);
+    dupes++;
+    continue;
+  }
+  const lines = curatedSrc.slice(start, end).split('\n').filter((line) => /id: '[^']+'/.test(line));
+  for (const line of lines) {
+    const id = line.match(/id: '([^']+)'/)[1];
+    if (known.has(`${slot}:${id}`)) {
+      console.log(`DUPLICATE id in ${slot}: ${id}`);
+      dupes++;
+    }
+    rememberItem(slot, id, line);
+    itemMeta.get(`${slot}:${id}`).unlock = inlineUnlock(line);
+  }
+  console.log(`  ${slot} +${lines.length} from ${arr}`);
+}
 console.log(`${dupes} duplicate ids`);
 
 // every reward key on BOTH tracks must resolve to a real catalogue item

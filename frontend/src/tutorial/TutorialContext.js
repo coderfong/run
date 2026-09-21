@@ -260,7 +260,11 @@ export function TutorialProvider({ children, navigationRef }) {
   // the watch — and the tutorial has no business knowing which one was used.
   useEffect(() => {
     if (!active || phase !== PHASE.START_RUN) return;
-    if (!facts.route || !RUN_ROUTES.has(facts.route)) return;
+    // Only the recorder starts a run. Result and PlanAttack are also modal
+    // routes, but can still be mounted briefly after an unavailable claim
+    // rewinds the lesson; treating either as a fresh run skips the button and
+    // bounces straight back to ACTIVE_RUN.
+    if (facts.route !== 'Record') return;
     track(EVENTS.TUTORIAL_START_RUN_COMPLETED, {});
     track(EVENTS.TUTORIAL_STEP_COMPLETED, { step: PHASE.START_RUN });
     goTo(nextPhase(PHASE.START_RUN));

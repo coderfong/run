@@ -25,15 +25,20 @@ struct WatchScreen<Content: View>: View {
 
     var body: some View {
         GeometryReader { geo in
+            let bottomInset = WatchLayout.floorInset + (inPager ? WatchLayout.pagerInset : 0)
+            let usableHeight = max(0, geo.size.height - WatchLayout.clockInset - bottomInset)
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: spacing) {
                     content()
                 }
                 .frame(maxWidth: .infinity)
+                // Padding is outside this frame. Subtract it from the viewport
+                // first so a screen that fits does not become scrollable and
+                // launch with its centred content pushed below the glass.
+                .frame(minHeight: centred ? usableHeight : 0, alignment: .center)
                 .padding(.horizontal, WatchLayout.gutter)
                 .padding(.top, WatchLayout.clockInset)
-                .padding(.bottom, WatchLayout.floorInset + (inPager ? WatchLayout.pagerInset : 0))
-                .frame(minHeight: centred ? geo.size.height : 0, alignment: .center)
+                .padding(.bottom, bottomInset)
             }
         }
     }
@@ -199,7 +204,8 @@ struct StatusHeader: View {
     }
 }
 
-/// GPS state indicator with appropriate color and label.
+/// GPS state indicator. The dot carries the state; spelling out "GPS" beside
+/// it consumed scarce horizontal space and competed with the system clock.
 enum GPSState {
     case searching
     case ready
@@ -215,12 +221,12 @@ enum GPSState {
         }
     }
     
-    var label: String {
+    var accessibilityLabel: String {
         switch self {
-        case .searching: return "GPS"
-        case .ready: return "GPS"
-        case .weak: return "GPS WEAK"
-        case .unavailable: return "GPS OFF"
+        case .searching: return "Finding location"
+        case .ready: return "Location ready"
+        case .weak: return "Location signal weak"
+        case .unavailable: return "Location unavailable"
         }
     }
 }
@@ -229,16 +235,11 @@ struct GPSIndicator: View {
     let state: GPSState
     
     var body: some View {
-        HStack(spacing: 3) {
-            Circle()
-                .fill(state.color)
-                .frame(width: 4, height: 4)
-            Text(state.label)
-                .foregroundColor(state.color)
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(Capsule().fill(PaserStyle.card))
+        Circle()
+            .fill(state.color)
+            .frame(width: WatchLayout.size(8), height: WatchLayout.size(8))
+            .shadow(color: state.color.opacity(0.7), radius: 3)
+            .accessibilityLabel(state.accessibilityLabel)
     }
 }
 
@@ -324,27 +325,45 @@ struct CompactMetric: View {
 struct StatCard: View {
     let label: String
     let value: String
+    var icon: String? = nil
+    var color: Color = PaserStyle.teal
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.system(size: WatchLayout.font(10), weight: .black, design: .rounded))
-                .foregroundColor(PaserStyle.muted)
-                .tracking(0.8)
+        VStack(alignment: .leading, spacing: WatchLayout.size(5)) {
+            HStack(spacing: 3) {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: WatchLayout.font(9), weight: .black))
+                }
+                Text(label)
+                    .font(.system(size: WatchLayout.font(9), weight: .black, design: .rounded))
+                    .tracking(0.5)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundColor(PaserStyle.ink.opacity(0.72))
             
             Text(value)
-                .font(.system(size: WatchLayout.font(28, floor: 21), weight: .black, design: .rounded))
-                .foregroundColor(PaserStyle.teal)
+                .font(.system(size: WatchLayout.font(20, floor: 16), weight: .black, design: .rounded))
+                .foregroundColor(PaserStyle.ink)
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.6)
+                .minimumScaleFactor(0.55)
+
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<7, id: \.self) { index in
+                    Capsule()
+                        .fill(PaserStyle.ink.opacity(0.30))
+                        .frame(height: WatchLayout.size(CGFloat(3 + ((index * 5 + label.count) % 9))))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(WatchLayout.size(12))
+        .padding(WatchLayout.size(9))
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(PaserStyle.card)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(PaserStyle.cream.opacity(0.2), lineWidth: 1))
+            RoundedRectangle(cornerRadius: 11)
+                .fill(color)
         )
     }
 }

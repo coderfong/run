@@ -129,41 +129,60 @@ def map_polygons(
     rows = db.execute(
         text(
             f"""
-            SELECT t.id::text, t.user_id::text, u.username, t.area_m2, t.created_at,
-                   (t.created_at >= :contested_since) AS contested,
-                   c.tag, c.color_key,
-                   COALESCE((SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = t.clan_id), 1) AS defenders,
-                   t.strength,
-                   u.avatar,
-                   -- How much of its life is left, for the fade-as-it-ages
-                   -- effect. Measured against the STORED expiry now (0022);
-                   -- the strength formula is only for rows predating it.
-                   GREATEST(0, LEAST(1,
-                       EXTRACT(EPOCH FROM (COALESCE(
-                           t.expires_at,
-                           t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
-                       ) - now()))
-                       / GREATEST(1, EXTRACT(EPOCH FROM (COALESCE(
-                           t.expires_at,
-                           t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
-                       ) - t.created_at)))
-                   )) AS freshness,
-                   t.reinforcements,
-                   ({elo.RATING_SQL}) AS rank_pts,
-                   -- NULL for clubless land, which is only reachable on the
-                   -- solo board (the club board inner joins).
-                   CASE WHEN t.clan_id IS NULL THEN NULL
-                        ELSE ({elo.CLUB_RATING_SQL}) END AS clan_rank_pts,
-                   ST_AsText(ST_SimplifyPreserveTopology(t.polygon, :tol))
-            FROM territories t
-            JOIN users u ON u.id = t.user_id
-            {clan_join}
-            WHERE (t.verified OR t.user_id = :viewer_id)
-              AND now() < COALESCE(t.expires_at, t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400))
-              {bbox_clause}
-              {rank_clause}
-            ORDER BY t.area_m2 DESC
-            LIMIT :limit
+            WITH candidates AS MATERIALIZED (
+                SELECT t.id::text AS id, t.user_id::text AS user_id, u.username,
+                       t.area_m2, t.created_at,
+                       (t.created_at >= :contested_since) AS contested,
+                       c.tag, c.color_key,
+                       COALESCE((SELECT COUNT(*) FROM clan_members m WHERE m.clan_id = t.clan_id), 1) AS defenders,
+                       t.strength,
+                       u.avatar,
+                       GREATEST(0, LEAST(1,
+                           EXTRACT(EPOCH FROM (COALESCE(
+                               t.expires_at,
+                               t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
+                           ) - now()))
+                           / GREATEST(1, EXTRACT(EPOCH FROM (COALESCE(
+                               t.expires_at,
+                               t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400)
+                           ) - t.created_at)))
+                       )) AS freshness,
+                       t.reinforcements,
+                       ({elo.RATING_SQL}) AS rank_pts,
+                       CASE WHEN t.clan_id IS NULL THEN NULL
+                            ELSE ({elo.CLUB_RATING_SQL}) END AS clan_rank_pts,
+                       t.polygon
+                FROM territories t
+                JOIN users u ON u.id = t.user_id
+                {clan_join}
+                WHERE (t.verified OR t.user_id = :viewer_id)
+                  AND now() < COALESCE(t.expires_at, t.created_at + make_interval(secs => GREATEST(t.strength, 0.1) * :life_per * 86400))
+                  {bbox_clause}
+                  {rank_clause}
+                -- Resolve the strongest ground first. A deterministic newest/id
+                -- tie-break means equal-strength legacy overlaps still have one owner.
+                ORDER BY t.strength DESC, t.created_at DESC, t.id
+                LIMIT :limit
+            ), resolved AS (
+                SELECT *, ST_CollectionExtract(ST_MakeValid(ST_Difference(
+                    polygon,
+                    COALESCE(
+                        ST_Union(polygon) OVER (
+                            ORDER BY strength DESC, created_at DESC, id
+                            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                        ),
+                        ST_GeomFromText('MULTIPOLYGON EMPTY', 4326)
+                    )
+                )), 3) AS visible_polygon
+                FROM candidates
+            )
+            SELECT id, user_id, username, ST_Area(visible_polygon::geography), created_at, contested,
+                   tag, color_key, defenders, strength, avatar, freshness,
+                   reinforcements, rank_pts, clan_rank_pts,
+                   ST_AsText(ST_SimplifyPreserveTopology(visible_polygon, :tol))
+            FROM resolved
+            WHERE NOT ST_IsEmpty(visible_polygon)
+            ORDER BY strength DESC, created_at DESC, id
             """
         ),
         {

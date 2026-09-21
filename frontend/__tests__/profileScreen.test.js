@@ -81,7 +81,7 @@ jest.mock('../src/pro/ProProvider', () => ({
   ProProvider: ({ children }) => children,
 }));
 
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Switch, Text } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 
 import ProfileScreen from '../src/screens/ProfileScreen';
@@ -192,18 +192,21 @@ describe('ProfileScreen', () => {
     }
     expect(t).toContain('PASER PRO');
 
-    // Five headings, and nothing under any of them yet.
+    // Notifications and Statistics are regular page content, while the three
+    // settings groups remain folded.
     for (const heading of ['Notifications', 'Statistics', 'App customisation', 'Privacy', 'Account']) {
       expect(t).toContain(heading);
     }
-    for (const buried of ['Running streak', 'Recent runs', 'Appearance', 'Runner colour', 'Sign out']) {
+    expect(t).toContain('Running streak');
+    expect(t).toContain('Recent runs');
+    for (const buried of ['Appearance', 'Runner colour', 'Sign out']) {
       expect(t).not.toContain(buried);
     }
 
     act(() => tree.unmount());
   });
 
-  test('each section holds what its heading says, one at a time', async () => {
+  test('the remaining folded sections hold what their headings say, one at a time', async () => {
     const tree = mount();
     await act(async () => {});
 
@@ -213,15 +216,8 @@ describe('ProfileScreen', () => {
       return texts(tree).join('|');
     };
 
-    let t = await open('Notifications');
-    expect(t).toContain('Land under attack');
-    expect(t).toContain('Kudos received');
-
-    t = await open('Statistics');
-    // Opening one closes the last: that is what keeps the folded page short.
-    expect(t).not.toContain('Land under attack');
-    // The card, not the section's own subtitle, which also says "Your land":
-    // "See all" and the countdown only exist once the card really rendered.
+    let t = texts(tree).join('|');
+    // Statistics are visible without opening a section.
     expect(t).toContain('See all');
     expect(t).toContain('Fades in 5h');
     expect(t).toContain('Running streak');
@@ -237,6 +233,7 @@ describe('ProfileScreen', () => {
     // "Privacy" is the name of the section they now sit inside.
     expect(t).toContain('Your routes');
     expect(t).toContain('Crossed paths');
+    expect(t).not.toContain('Private areas');
 
     t = await open('Account');
     expect(t).toContain('Username');
@@ -251,6 +248,38 @@ describe('ProfileScreen', () => {
     await act(async () => {});
     expect(texts(tree).join('|')).not.toContain('Sign out');
 
+    act(() => tree.unmount());
+  });
+
+  test('one notification toggle controls every notification preference', async () => {
+    const tree = mount();
+    await act(async () => {});
+    const toggle = tree.root.findAllByType(Switch).find(
+      (node) => node.props.accessibilityLabel === 'Notifications toggle'
+    );
+    expect(toggle).toBeTruthy();
+    await act(async () => toggle.props.onValueChange(false));
+    expect(api.setNotifPrefs).toHaveBeenCalledWith(expect.objectContaining({
+      stolen: false,
+      kudos: false,
+      paserby: false,
+      reminder: false,
+    }));
+    act(() => tree.unmount());
+  });
+
+  test('publish delay saves the selected value', async () => {
+    api.privacy.mockImplementation(() => Promise.resolve({ route_trim_m: 0, publish_delay_h: 0 }));
+    api.setPrivacy.mockImplementation((patch) => Promise.resolve({ route_trim_m: 0, publish_delay_h: patch.publish_delay_h }));
+    const tree = mount();
+    await act(async () => {});
+    press(tree, 'Privacy');
+    await act(async () => {});
+    const delay = tree.root.findAll(
+      (node) => node.props?.accessibilityLabel === '3 h delay' && typeof node.props?.onPress === 'function'
+    )[0];
+    await act(async () => delay.props.onPress());
+    expect(api.setPrivacy).toHaveBeenCalledWith({ publish_delay_h: 3 });
     act(() => tree.unmount());
   });
 
@@ -301,8 +330,6 @@ describe('ProfileScreen', () => {
     mockRuns = { detail: 'nope' };
     const tree = mount();
     await act(async () => {});
-    press(tree, 'Statistics');
-    await act(async () => {});
     expect(texts(tree).join('|')).toContain('Recent runs');
     act(() => tree.unmount());
   });
@@ -312,8 +339,6 @@ describe('ProfileScreen', () => {
     // rest of You must not.
     api.myTerritory.mockImplementation(() => Promise.reject(new Error('Request failed (404)')));
     const tree = mount();
-    await act(async () => {});
-    press(tree, 'Statistics');
     await act(async () => {});
     const t = texts(tree).join('|');
     // Its heading and its "See all" go with it. The section's subtitle still

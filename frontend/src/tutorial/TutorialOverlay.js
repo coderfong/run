@@ -153,7 +153,10 @@ export default function TutorialOverlay({ host = 'root' }) {
       dismissTip();
       return;
     }
-    if (step.dismiss === 'tap') {
+    // CTA cards also advance from the surrounding screen. The button remains
+    // a clear visual invitation, but a player never has to hit that exact
+    // target to move through an informational or simulated lesson.
+    if (step.dismiss === 'tap' || step.dismiss === 'cta') {
       haptic.light();
       advance();
     }
@@ -164,7 +167,7 @@ export default function TutorialOverlay({ host = 'root' }) {
   // something the tutorial cannot point at must never be the last word.
   const canEscape = showingStep && (step.skippable || (step.interactive && !spot));
 
-  const tapToContinue = showingStep && step.dismiss === 'tap';
+  const tapToContinue = showingStep && (step.dismiss === 'tap' || step.dismiss === 'cta');
   const progress = showingStep && TOUR.includes(step.phase)
     ? { index: TOUR.indexOf(step.phase), total: TOUR.length }
     : null;
@@ -211,7 +214,7 @@ export default function TutorialOverlay({ host = 'root' }) {
             style={StyleSheet.absoluteFill}
             onPress={onScrim}
             accessibilityRole={tapToContinue || showingTip ? 'button' : 'none'}
-            accessibilityLabel={tapToContinue || showingTip ? 'Continue' : undefined}
+            accessibilityLabel={tapToContinue || showingTip ? 'Tap anywhere to continue' : undefined}
           />
         )}
 
@@ -243,9 +246,10 @@ export default function TutorialOverlay({ host = 'root' }) {
         title={copy.title}
         lines={copy.lines}
         kind={kind}
+        scene={showingStep ? step.scene : undefined}
         cta={showingStep && step.dismiss === 'cta' ? step.cta : undefined}
         onPress={advance}
-        hint={tapToContinue ? 'Tap to continue' : showingTip ? 'Tap to continue' : undefined}
+        hint={tapToContinue ? 'Tap anywhere to continue' : showingTip ? 'Tap anywhere to continue' : undefined}
         accent={ACCENT}
         progress={progress}
         reduced={reduced}

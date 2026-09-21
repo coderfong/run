@@ -13,7 +13,7 @@
 // storage abstraction — and a tutorial write cannot disturb the name, the
 // birthday or anything else in there, because it only ever replaces that key.
 
-import { PHASE, resumePhase } from './phases';
+import { PHASE, phaseIndex } from './phases';
 
 // Bump to introduce a NEW tutorial. A record from an older version is treated
 // as "this person has been taught the old thing", not as unread: they keep
@@ -91,7 +91,13 @@ export function normalise(raw) {
     // A phase that is not a phase (a rename, a corrupt write) rewinds to the
     // start of whatever is still worth teaching rather than pinning the
     // overlay to something that will never resolve.
-    phase: core === CORE.RUNNING ? resumePhase(raw.phase) : (raw.phase || PHASE.IDLE),
+    // Keep the live persisted phase intact. TutorialProvider rewinds record
+    // phases only after navigation proves the modal is gone. Rewinding here
+    // on every profile write turns START_RUN → ACTIVE_RUN into an endless
+    // write loop because an active run is persisted before the next render.
+    phase: core === CORE.RUNNING
+      ? (phaseIndex(raw.phase) >= 0 ? raw.phase : PHASE.WELCOME)
+      : (raw.phase || PHASE.IDLE),
     startedAt: raw.startedAt || null,
     completedAt: raw.completedAt || null,
     reason: typeof raw.reason === 'string' ? raw.reason : null,

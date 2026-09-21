@@ -8,16 +8,14 @@
 // screen, so nothing here is a prerequisite for being safe — it exists so the
 // protection is visible and adjustable, not so it can be switched on.
 
-import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
-import * as Location from 'expo-location';
-import { MapPinOff, Trash2 } from 'lucide-react-native';
+import React from 'react';
+import { Text } from 'react-native';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { radius, space, useTheme, useThemedType } from '../theme';
-import { Card, Row, Button, SectionHeader, Segmented, Skeleton } from './ui';
-import { Arrival, PressableScale, useArrival } from '../ui/motion';
+import { Card, SectionHeader, Segmented, Skeleton } from './ui';
+import { Arrival, useArrival } from '../ui/motion';
 import { toast } from '../ui/toast';
 
 // Offered values. "Off" is deliberately available — this is the runner's call,
@@ -45,7 +43,6 @@ function Heading({ nested }) {
     />
   );
 }
-
 function nearest(options, value) {
   let best = options[0].key;
   for (const o of options) {
@@ -62,8 +59,7 @@ function nearest(options, value) {
 export default function PrivacySettings({ nested = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
-  const { data, setData, refresh } = useQuery('me:privacy', api.privacy);
-  const [busy, setBusy] = useState(false);
+  const { data, setData } = useQuery('me:privacy', api.privacy);
   const arriving = useArrival(!data);
 
   if (!data) {
@@ -75,68 +71,17 @@ export default function PrivacySettings({ nested = false }) {
     );
   }
 
-  const zones = data.zones || [];
-
   // Optimistic: the controls are toggles and a round trip makes them feel
   // broken. A failure puts the old value back and says so.
   const save = async (patch) => {
     const before = data;
     setData({ ...data, ...patch });
-    setBusy(true);
     try {
       setData(await api.setPrivacy(patch));
     } catch (e) {
       setData(before);
       toast.error(e.message || "Couldn't save that");
-    } finally {
-      setBusy(false);
     }
-  };
-
-  const addZoneHere = async () => {
-    try {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        const asked = await Location.requestForegroundPermissionsAsync();
-        if (asked.status !== 'granted') {
-          toast.error('Location is needed to mark this spot private');
-          return;
-        }
-      }
-      if (zones.length >= (data.max_zones ?? 10)) {
-        toast.error(`That's the maximum of ${data.max_zones} private areas`);
-        return;
-      }
-      setBusy(true);
-      const loc = await Location.getCurrentPositionAsync({});
-      await save({
-        zones: [
-          ...zones,
-          {
-            lat: loc.coords.latitude,
-            lon: loc.coords.longitude,
-            radius_m: Math.max(150, data.min_zone_radius_m ?? 100),
-            label: 'Private area',
-          },
-        ],
-      });
-      toast.success('This area is now hidden from your published routes');
-    } catch (e) {
-      toast.error(e.message || "Couldn't read your location");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removeZone = (i) => {
-    Alert.alert('Remove private area?', 'Routes through it will be published again.', [
-      { text: 'Keep', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => save({ zones: zones.filter((_, j) => j !== i) }),
-      },
-    ]);
   };
 
   return (
@@ -181,54 +126,7 @@ export default function PrivacySettings({ nested = false }) {
         />
       </Card>
 
-      <Card style={{ marginTop: space.md }}>
-        <Text style={type.labelSm}>Private areas</Text>
-
-        {zones.length === 0 ? (
-          <Text style={[type.caption, { color: colors.textDim, marginTop: space.sm, marginBottom: space.md }]}>
-            None yet.
-          </Text>
-        ) : (
-          zones.map((z, i) => (
-            <Row between key={`${z.lat},${z.lon},${i}`} style={styles.zoneRow}>
-              <Row gap={10} style={{ flex: 1 }}>
-                <MapPinOff size={18} color={colors.textMuted} />
-                <View style={{ flex: 1 }}>
-                  <Text style={type.bodySmBold} numberOfLines={1}>
-                    {z.label || 'Private area'}
-                  </Text>
-                  <Text style={type.caption}>
-                    {Math.round(z.radius_m)} m around {z.lat.toFixed(3)}, {z.lon.toFixed(3)}
-                  </Text>
-                </View>
-              </Row>
-              <PressableScale
-                onPress={() => removeZone(i)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${z.label || 'private area'}`}
-              >
-                <Trash2 size={18} color={colors.danger} />
-              </PressableScale>
-            </Row>
-          ))
-        )}
-
-        <Button
-          title="Hide my current area"
-          variant="secondary"
-          size="sm"
-          loading={busy}
-          disabled={busy}
-          onPress={addZoneHere}
-          style={{ marginTop: space.sm }}
-        />
-      </Card>
       </Arrival>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  zoneRow: { paddingVertical: space.sm },
-});

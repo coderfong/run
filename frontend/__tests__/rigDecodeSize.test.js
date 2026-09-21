@@ -88,8 +88,11 @@ describe('character art decode size', () => {
   });
 
   it('recombines wrap-around item layers in prize and catalogue thumbnails', () => {
-    const cape = getItem('accessory', 'cape');
-    const tree = render(<PartThumb slot="accessory" item={cape} size={56} />);
+    // Any wrap-around (front art + backImg) will do; the scarf has been one
+    // since wave 1. (This used the cape, deleted in the Fit Studio.)
+    const scarf = getItem('accessory', 'scarf');
+    expect(scarf.backImg).toBeTruthy();
+    const tree = render(<PartThumb slot="accessory" item={scarf} size={56} />);
     expect(layers(tree)).toHaveLength(2);
     act(() => tree.unmount());
   });
