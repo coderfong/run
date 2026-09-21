@@ -43,6 +43,7 @@ import TerritoryPlanner from '../components/map/TerritoryPlanner';
 import { EVENTS, track } from '../analytics';
 import { PHASE, TARGET, TutorialAnchor, useTutorial, useTutorialState } from '../tutorial';
 import { layerByKey, layerFeatureCollection } from '../map/intelligence';
+import { mergeTouchingLand } from '../map/holdings';
 import { boardPresentation, DETAIL_MIN_ZOOM } from '../map/presentation';
 import { createViewportCache, selectPortraits } from '../map/viewportCache';
 import { analyseRoute } from '../map/planner';
@@ -576,14 +577,24 @@ export default function GlobalMapScreen({ route, navigation }) {
   };
 
   const rows = list || [];
+  // ONE RUNNER'S TOUCHING LAND IS ONE HOLDING, before anything else looks at
+  // the board. A claim that overlaps ground its owner already held leaves the
+  // remainder of each old plot behind as its own row, sharing an exact edge
+  // with the claim that cut it — so without this the board traces that cut at
+  // full stroke weight and pins a second copy of the same face beside the
+  // first. Merged here, at the top, because everything below reads these rows:
+  // the features, the portraits, the legend and the intelligence layers all
+  // get the merge without knowing about it, and so does the tapped-territory
+  // card, which reads back the holding rather than one claim inside it.
+  const held = useMemo(() => mergeTouchingLand(rows), [rows]);
   // Pulled back, EITHER board goes calm: muted fills, no borders, no contest
   // pulse, no layer outlines, until the camera is close enough for one plot to
   // be worth reading as a plot. Club view additionally narrows to club-held
   // ground. The planner opts out of both — hidden solo territory and hidden
   // borders each make a route quote dishonest.
   const board = useMemo(
-    () => boardPresentation(rows, { clubView: isClubView && !planning, zoom, planning }),
-    [rows, isClubView, planning, zoom]
+    () => boardPresentation(held, { clubView: isClubView && !planning, zoom, planning }),
+    [held, isClubView, planning, zoom]
   );
   const visibleRows = board.rows;
   const features = useMemo(
@@ -651,7 +662,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   // loadout. Capped + shown only when zoomed in enough to avoid clutter/perf.
   const landPortraits = useMemo(() => {
     if ((isClubView && !planning) || (zoom || 0) < PORTRAIT_MIN_ZOOM) return [];
-    return selectPortraits((list || [])
+    return selectPortraits(held
       .filter((t) => t.user_id === user.id ? equipped : t.avatar)
       .map((t) => ({
         id: t.id,
@@ -665,7 +676,7 @@ export default function GlobalMapScreen({ route, navigation }) {
         at: ringCentroid(territoryRings(t)[0]),
       }))
       .filter((m) => m.at && m.avatar), portraitBounds);
-  }, [list, user.id, equipped, accent, zoom, isClubView, planning, portraitBounds]);
+  }, [held, user.id, equipped, accent, zoom, isClubView, planning, portraitBounds]);
 
   // Top clans in the current view, by summed area (legend).
   const topTeams = useMemo(() => {
@@ -714,10 +725,14 @@ export default function GlobalMapScreen({ route, navigation }) {
       }
       return;
     }
+    // Resolved against the MERGED rows, which is what was actually tapped: the
+    // card then reads back the holding's own size and fits the camera to all
+    // of it, rather than quoting the one claim inside it whose id the feature
+    // happens to carry.
     const id = e?.features?.[0]?.properties?.territoryId;
-    const t = rows.find((x) => x.id === id);
+    const t = held.find((x) => x.id === id);
     if (t) setSelected(t);
-  }, [rows, planning]);
+  }, [held, planning]);
 
   // Same reasoning: GameMap's onPress prop must stay referentially stable.
   // In planning mode a tap DROPS A POINT instead of dismissing the card —

@@ -30,6 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import GameMap, { MAP_READY, TerritoryFill, TerritoryLayer, Trail, UserMarker } from '../components/GameMap';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { buildBoardFeatures, buildLandPortraits, estimateClaimsInRing } from '../components/territoryBoard';
+import { mergeTouchingLand } from '../map/holdings';
 import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import ClaimPayoff from '../components/ClaimPayoff';
@@ -743,20 +744,26 @@ export default function ResultScreen({ navigation, route }) {
     () => (preview?.rivals || []).map((r) => r.user_id).filter(Boolean),
     [preview?.rivals]
   );
+  // The DRAWN board merges one runner's touching land into one holding, the
+  // same as the big map, so the ground behind the claim reads the same on both
+  // screens. Only what is drawn: `localEstimate` below still works the raw
+  // claims, because the payoff is counted per claim taken and a merged holding
+  // is not one of those.
+  const heldBoard = useMemo(() => mergeTouchingLand(board), [board]);
   const boardFC = useMemo(
     () => ({
       type: 'FeatureCollection',
-      features: buildBoardFeatures(board, {
+      features: buildBoardFeatures(heldBoard, {
         userId: user.id,
         accent: team.stroke,
         highlightedUserIds: attackedUserIds,
       }),
     }),
-    [board, user.id, team.stroke, attackedUserIds]
+    [heldBoard, user.id, team.stroke, attackedUserIds]
   );
   const boardPortraits = useMemo(
-    () => buildLandPortraits(board, { userId: user.id, accent: team.stroke, equipped, cap: 24 }),
-    [board, user.id, team.stroke, equipped]
+    () => buildLandPortraits(heldBoard, { userId: user.id, accent: team.stroke, equipped, cap: 24 }),
+    [heldBoard, user.id, team.stroke, equipped]
   );
   // Who — and how much — this claim takes, worked out from the board the map
   // already has. This is the FALLBACK reading, used before the server's own

@@ -8,6 +8,12 @@
 // After a steal carves a plot with ST_Difference, the largest surviving
 // fragment is rings[0], so the owner's portrait stays on the land they still
 // hold instead of floating over ground that was taken from them.
+//
+// ONE ROW IS ONE SHAPE AND ONE PORTRAIT here, which is the whole reason
+// `map/holdings` exists: callers run the payload through `mergeTouchingLand`
+// first, so a runner's touching claims arrive as the single row they should
+// draw as. These helpers do not merge anything themselves — handed raw claims
+// they will faithfully draw every seam between them.
 
 import { NEUTRAL } from '../state/clan';
 
@@ -151,7 +157,7 @@ export function buildLandPortraits(territories, { userId, accent, equipped, cap 
 // ---- live overlap preview (placement map) --------------------------------
 // A ray-cast point-in-ring test on [lon,lat] degrees. Local scale => the
 // planar test is accurate enough for a display-only estimate.
-function pointInRing(lon, lat, ring) {
+export function pointInRing(lon, lat, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const xi = ring[i][0], yi = ring[i][1];
