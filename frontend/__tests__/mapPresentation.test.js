@@ -1,4 +1,4 @@
-import { boardPresentation, CLUB_DETAIL_MIN_ZOOM } from '../src/map/presentation';
+import { boardPresentation, DETAIL_MIN_ZOOM } from '../src/map/presentation';
 
 const rows = [
   { id: 'club-a', clan_tag: 'RUN' },
@@ -10,7 +10,7 @@ describe('map board presentation', () => {
   it('turns a wide Club view into a quiet club-only overview', () => {
     const board = boardPresentation(rows, {
       clubView: true,
-      zoom: CLUB_DETAIL_MIN_ZOOM - 0.01,
+      zoom: DETAIL_MIN_ZOOM - 0.01,
     });
 
     expect(board.rows.map((row) => row.id)).toEqual(['club-a', 'club-b']);
@@ -21,7 +21,7 @@ describe('map board presentation', () => {
   it('restores club borders after zooming in', () => {
     const board = boardPresentation(rows, {
       clubView: true,
-      zoom: CLUB_DETAIL_MIN_ZOOM,
+      zoom: DETAIL_MIN_ZOOM,
     });
 
     expect(board.rows.map((row) => row.id)).toEqual(['club-a', 'club-b']);
@@ -29,10 +29,30 @@ describe('map board presentation', () => {
     expect(board.showTerritoryDetail).toBe(true);
   });
 
-  it('keeps every territory and full detail on ranked boards', () => {
+  // The runners board is the DENSER of the two at the same camera, so the calm
+  // treatment belongs to it at least as much as to the club board. It keeps
+  // every territory either way — only the borders go.
+  it('calms the runners board down when it is pulled back too', () => {
     const board = boardPresentation(rows, { clubView: false, zoom: 9 });
 
     expect(board.rows).toEqual(rows);
+    expect(board.overview).toBe(true);
+    expect(board.showTerritoryDetail).toBe(false);
+  });
+
+  it('restores runner borders after zooming in', () => {
+    const board = boardPresentation(rows, { clubView: false, zoom: DETAIL_MIN_ZOOM });
+
+    expect(board.rows).toEqual(rows);
+    expect(board.overview).toBe(false);
+    expect(board.showTerritoryDetail).toBe(true);
+  });
+
+  // A border you cannot see is one you cannot route around, so the planner
+  // keeps the precise board however far out the camera is.
+  it('keeps full detail while planning at any zoom', () => {
+    const board = boardPresentation(rows, { clubView: false, zoom: 9, planning: true });
+
     expect(board.overview).toBe(false);
     expect(board.showTerritoryDetail).toBe(true);
   });

@@ -43,7 +43,7 @@ import TerritoryPlanner from '../components/map/TerritoryPlanner';
 import { EVENTS, track } from '../analytics';
 import { PHASE, TARGET, TutorialAnchor, useTutorial, useTutorialState } from '../tutorial';
 import { layerByKey, layerFeatureCollection } from '../map/intelligence';
-import { boardPresentation } from '../map/presentation';
+import { boardPresentation, DETAIL_MIN_ZOOM } from '../map/presentation';
 import { createViewportCache, selectPortraits } from '../map/viewportCache';
 import { analyseRoute } from '../map/planner';
 import { isDrag, shouldSample, strokeToRoute } from '../map/freehand';
@@ -214,7 +214,10 @@ function toFeatures(territories, userId, playerAccent) {
   return features;
 }
 
-const PORTRAIT_MIN_ZOOM = 13.25;
+// Owner portraits are part of the close-in detail the board switches on, so
+// they ride the board's own detail line rather than a second copy of the same
+// number that could drift away from it.
+const PORTRAIT_MIN_ZOOM = DETAIL_MIN_ZOOM;
 
 // How the contested outline breathes. The band is narrow on purpose, see the
 // note on HeatOutline.
@@ -573,11 +576,13 @@ export default function GlobalMapScreen({ route, navigation }) {
   };
 
   const rows = list || [];
-  // The planner always gets the precise board: hidden solo territory would
-  // make a route quote dishonest. Outside planning, Club view becomes a calm
-  // club-only overview and restores individual borders once zoomed in.
+  // Pulled back, EITHER board goes calm: muted fills, no borders, no contest
+  // pulse, no layer outlines, until the camera is close enough for one plot to
+  // be worth reading as a plot. Club view additionally narrows to club-held
+  // ground. The planner opts out of both — hidden solo territory and hidden
+  // borders each make a route quote dishonest.
   const board = useMemo(
-    () => boardPresentation(rows, { clubView: isClubView && !planning, zoom }),
+    () => boardPresentation(rows, { clubView: isClubView && !planning, zoom, planning }),
     [rows, isClubView, planning, zoom]
   );
   const visibleRows = board.rows;

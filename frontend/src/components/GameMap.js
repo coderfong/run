@@ -436,9 +436,10 @@ export function TerritoryLayer({ id = 'board', featureCollection, onPress, dark 
         id={`${id}-fill`}
         style={{
           fillColor: ['get', 'fillColor'],
-          // City-scale Club view is about ownership patterns. Muting the raw
-          // plots keeps their combined footprint readable without making a
-          // dense city look like a bundle of marker strokes.
+          // A city-scale board — either board — is about ownership patterns,
+          // not individual plots. Muting the raw fills keeps their combined
+          // footprint readable without making a dense city look like a bundle
+          // of marker strokes; the outline layers below stay off entirely.
           fillOpacity: overview
             ? ['*', ['get', 'fillOpacity'], 0.62]
             : ['get', 'fillOpacity'],

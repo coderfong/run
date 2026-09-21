@@ -73,4 +73,9 @@ describe('what the club board draws', () => {
     expect(boardPresentation([clubLand], { clubView: true, zoom: 11 }).showTerritoryDetail).toBe(false);
     expect(boardPresentation([clubLand], { clubView: true, zoom: 15 }).showTerritoryDetail).toBe(true);
   });
+
+  test('the runners board follows the same detail line', () => {
+    expect(boardPresentation([soloLand], { clubView: false, zoom: 11 }).showTerritoryDetail).toBe(false);
+    expect(boardPresentation([soloLand], { clubView: false, zoom: 15 }).showTerritoryDetail).toBe(true);
+  });
 });
