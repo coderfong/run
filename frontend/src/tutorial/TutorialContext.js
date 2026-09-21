@@ -343,14 +343,48 @@ export function TutorialProvider({ children, navigationRef }) {
   const remeasure = useCallback(() => bumpMeasure(), [bumpMeasure]);
 
   // --- step lifecycle -----------------------------------------------------
+  //
+  // TWO MOMENTS, NOT ONE. A step is ENTERED when the tour reaches it, and SEEN
+  // when it actually draws. For a gated step those are different moments: the
+  // map lesson is entered while the runner is still on Home, and seen once the
+  // map is up.
+  //
+  // `onEnter` is how a step GETS to where it belongs, so it has to run on the
+  // first of the two. It used to run on the second, which made it unreachable
+  // for the one step that needed it: PHASE.MAP asks to be taken to the map,
+  // but its own gate is already "am I on the map", so its `onEnter` could only
+  // ever fire once the answer was yes. Dead code, in other words, and the tour
+  // leaned on the WELCOME card navigating instead.
+  //
+  // WELCOME enters the moment the tutorial arms, which is the single worst
+  // moment to jump tabs: App.js mounts the tabs lazily and does not start
+  // preloading the other three until the app has been idle for ~1.5s, so the
+  // Map tab does not exist yet. The tab index moved and the pager did not —
+  // the tab bar lit Map, `getCurrentRoute()` reported MapMain, every map step
+  // unlocked, and the whole map lesson played over the Home screen with its
+  // spotlight on whatever Home happened to have in that spot.
+  //
+  // Entered here, the jump happens when the tour reaches the map step, which
+  // is after the runner has read the welcome card and pressed SHOW ME — which
+  // is what the comment on that step claimed all along.
+  const enteredRef = useRef(null);
+  useEffect(() => {
+    if (!step || enteredRef.current === step.phase) return;
+    enteredRef.current = step.phase;
+    step.onEnter?.(navigate);
+  }, [step, navigate]);
+
+  // The impression and the haptic stay on the second moment. They belong to
+  // the runner seeing the card, not to the tour reaching it — counting a step
+  // as viewed while it is still waiting behind its gate would report a lesson
+  // nobody was shown.
   const seenRef = useRef(null);
   useEffect(() => {
     if (!stepVisible || seenRef.current === step.phase) return;
     seenRef.current = step.phase;
     track(EVENTS.TUTORIAL_STEP_VIEWED, { step: step.phase });
     if (step.enterHaptic) haptic[step.enterHaptic]?.();
-    step.onEnter?.(navigate);
-  }, [stepVisible, step, navigate]);
+  }, [stepVisible, step]);
 
   // Reset the "already seen" mark when the step changes, so a rewound phase
   // announces itself again the second time around.

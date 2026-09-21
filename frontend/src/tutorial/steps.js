@@ -52,7 +52,11 @@ const onMap = (facts) => facts.route === 'MapMain';
  * @property {(facts: object) => boolean} [gate]  may this step show yet
  * @property {(facts: object) => {title: string, lines: string[]}} copy
  * @property {Object<string,string>} [on]  SIGNAL → the PHASE it moves to
- * @property {(nav: object) => void} [onEnter]
+ * @property {(nav: object) => void} [onEnter]  run when the TOUR REACHES this
+ *                                 step, not when it draws — a gated step is
+ *                                 entered before it is allowed to show, which
+ *                                 is what lets a step navigate to the screen
+ *                                 its own gate is waiting for
  */
 
 /** @type {TutorialStep[]} */
@@ -71,9 +75,13 @@ export const STEPS = [
       title: 'Welcome to PASER 👋',
       lines: ['Run. Claim territory. Take over your city.'],
     }),
-    // The world is the map, so the tour starts by going there. Pressing SHOW
-    // ME is what moves the tab; the next step waits until it has.
-    onEnter: (nav) => nav.goToMap(),
+    // NO NAVIGATION HERE. This step is entered the instant the tutorial arms,
+    // and the Map tab does not exist that early — App.js mounts the tabs
+    // lazily and only starts building the other three once the app has been
+    // idle (see its `preloadDistance`). Jumping from here moved the tab index
+    // onto a tab that had not been built, so the pager stayed on Home while
+    // everything else believed it was on the map. Going to the map belongs to
+    // the step that teaches the map, below.
   },
 
   {
@@ -89,6 +97,12 @@ export const STEPS = [
       title: 'This is your world.',
       lines: ['Every coloured area is *territory*.'],
     }),
+    // THE STEP THAT NEEDS THE MAP IS THE STEP THAT ASKS FOR IT. Entered as
+    // soon as the tour reaches this phase, which is when SHOW ME is pressed,
+    // and gated on having arrived — so the lesson waits on Home, silently,
+    // until the map is really the screen under it. The two halves are not a
+    // contradiction: `onEnter` runs when the tour reaches a step, `gate` when
+    // it is allowed to draw. See the step lifecycle in TutorialContext.
     onEnter: (nav) => nav.goToMap(),
   },
 

@@ -41,6 +41,7 @@ import { TutorialProvider, useTutorial, useTutorialState } from '../src/tutorial
 import { PHASE } from '../src/tutorial/phases';
 import { CORE, TIP } from '../src/tutorial/progress';
 import { SIGNAL } from '../src/tutorial/signals';
+import { stepFor } from '../src/tutorial/steps';
 import { EVENTS, clearRecentEvents, recentEvents } from '../src/analytics';
 
 // --- a fake navigator -------------------------------------------------------
@@ -210,6 +211,70 @@ describe('arming', () => {
   it('reports that it started', () => {
     boot({ tutorialPending: true, runCount: 0 });
     expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_STARTED);
+  });
+});
+
+describe('getting to the map', () => {
+  // The welcome card is entered the instant the tutorial arms, and the Map tab
+  // does not exist that early: App.js builds the tabs lazily and only starts
+  // preloading the other three once the app has been idle. A jump from here
+  // moved the tab INDEX onto a tab that had not been built, so the pager
+  // stayed on Home while the route, the tab bar and every map gate believed
+  // otherwise — and the whole map lesson played over the Home screen.
+  it('does not jump tabs before the runner has pressed anything', () => {
+    const { nav } = boot({ tutorialPending: true });
+
+    expect(phase()).toBe(PHASE.WELCOME);
+    expect(nav.navigate).not.toHaveBeenCalled();
+  });
+
+  // The step that teaches the map is the step that asks for it. This is the
+  // one that has to keep working: it is gated on ALREADY being on the map, so
+  // if entering and drawing were the same moment it could never fire.
+  it('asks for the map when the tour reaches the map, from Home', () => {
+    const { tree, nav } = boot({ tutorialPending: true });
+    // Anything the welcome card did is not what is under test, and it must not
+    // be what satisfies this: the jump has to come from the map step itself.
+    nav.navigate.mockClear();
+    advance(tree); // SHOW ME
+
+    expect(phase()).toBe(PHASE.MAP);
+    expect(nav.navigate).toHaveBeenCalledWith('Tabs', {
+      screen: 'Map',
+      params: { screen: 'MapMain' },
+    });
+    // And it is still holding its card back until the map is really up.
+    expect(stepPhase()).toBeNull();
+  });
+
+  // The bug this whole split exists to prevent: a step that is only allowed to
+  // draw somewhere else must still be able to GET there.
+  it('enters a gated step so it can navigate to what its gate waits for', () => {
+    const { tree, nav } = boot({ tutorialPending: true });
+    nav.navigate.mockClear();
+    advance(tree);
+
+    // `state.step` is the step the overlay may DRAW, and this one is still
+    // held back — which is exactly the condition under test.
+    expect(stepPhase()).toBeNull();
+
+    const gated = stepFor(PHASE.MAP);
+    expect(gated.gate({ route: 'HomeMain' })).toBe(false);
+    expect(gated.onEnter).toBeInstanceOf(Function);
+    expect(nav.navigate).toHaveBeenCalled();
+  });
+
+  // An impression is the runner seeing a card. A step still waiting behind its
+  // gate has not been seen by anybody.
+  it('does not report a step as viewed while it is still waiting', () => {
+    const { tree } = boot({ tutorialPending: true });
+    advance(tree);
+
+    const viewed = recentEvents()
+      .filter((e) => e.name === EVENTS.TUTORIAL_STEP_VIEWED)
+      .map((e) => e.props.step);
+    expect(viewed).toContain(PHASE.WELCOME);
+    expect(viewed).not.toContain(PHASE.MAP);
   });
 });
 
