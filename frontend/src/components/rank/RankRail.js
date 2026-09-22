@@ -147,7 +147,13 @@ export default function RankRail({ standing, floors = [], onPress, style }) {
     <PressableScale
       onPress={onPress}
       scaleTo={0.99}
-      style={[styles.wrap, style]}
+      // The header centres its children (alignItems: 'center'), so the rail
+      // only spans the full width if ITS OWN root stretches — and that root
+      // is PressableScale's outer Pressable, not the inner Animated.View that
+      // `style` lands on. Passing the sizing there instead is what makes the
+      // track run edge to edge rather than shrink to its content, which used
+      // to squeeze all three division labels into overlapping text.
+      containerStyle={[styles.wrap, style]}
       accessibilityRole="button"
       accessibilityLabel={
         standing.isTop

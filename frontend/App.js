@@ -206,11 +206,9 @@ function HomeStack() {
         component={RunDetailScreen}
         options={{ headerShown: false }}
       />
-      <HomeStackNav.Screen
-        name="Notifications"
-        component={NotificationsScreen}
-        options={{ headerShown: true, title: 'Notifications' }}
-      />
+      {/* Draws its own header (with a back button), like Leaderboard and
+          Season — the native one would stack a second bar above it. */}
+      <HomeStackNav.Screen name="Notifications" component={NotificationsScreen} />
       {/* Season draws its own art header (with a back button), like Pasers
           and Rivals — the native one would stack a second bar above it. */}
       <HomeStackNav.Screen name="Season" component={SeasonScreen} />

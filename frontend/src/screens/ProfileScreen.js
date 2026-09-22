@@ -540,24 +540,7 @@ export default function ProfileScreen({ navigation }) {
           Five headings, one open at a time, is the same page with the
           scrolling taken out. */}
       <View style={styles.sections}>
-        <SectionHeader title="Notifications" style={{ marginBottom: space.md }} />
-        <Card>
-          <View style={styles.toggleRowInner}>
-            <View style={{ flex: 1, paddingRight: space.md }}>
-              <Text style={type.body}>Notifications</Text>
-              <Text style={type.caption}>Allow PASER alerts outside the app.</Text>
-            </View>
-            <Switch
-              value={notificationsOn}
-              onValueChange={toggleNotifications}
-              trackColor={{ true: accent }}
-              disabled={!prefs}
-              accessibilityLabel="Notifications toggle"
-            />
-          </View>
-        </Card>
-
-        <SectionHeader title="Statistics" style={{ marginTop: space.xl, marginBottom: space.md }} />
+        <SectionHeader title="Statistics" style={{ marginBottom: space.md }} />
         <View>
             {/* Your land: what is happening to the ground the stat wall counts.
                 The plots about to fade, what held, what was lost; the full list is
@@ -748,6 +731,23 @@ export default function ProfileScreen({ navigation }) {
               </View>
             </Card>
         </AccordionSection>
+
+        <SectionHeader title="Notifications" style={{ marginTop: space.xl, marginBottom: space.md }} />
+        <Card>
+          <View style={styles.toggleRowInner}>
+            <View style={{ flex: 1, paddingRight: space.md }}>
+              <Text style={type.body}>Notifications</Text>
+              <Text style={type.caption}>Allow PASER alerts outside the app.</Text>
+            </View>
+            <Switch
+              value={notificationsOn}
+              onValueChange={toggleNotifications}
+              trackColor={{ true: accent }}
+              disabled={!prefs}
+              accessibilityLabel="Notifications toggle"
+            />
+          </View>
+        </Card>
 
         <AccordionSection
           title="Privacy"

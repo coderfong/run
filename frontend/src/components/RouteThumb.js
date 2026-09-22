@@ -201,7 +201,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
                   points={svgPoints(ring)}
                   fill="none"
                   stroke={withAlpha(surface, 0.7)}
-                  strokeWidth={5.5}
+                  strokeWidth={7.5}
                   strokeLinejoin="round"
                 />
               ))}
@@ -227,7 +227,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
               // because seeing WHICH streets is the entire point of the map.
               fill={withAlpha(ink, mapUrl ? 0.34 : 0.22)}
               stroke={ink}
-              strokeWidth={2.5}
+              strokeWidth={4}
               strokeLinejoin="round"
             />
           ))}

@@ -505,17 +505,17 @@ function MemberHub({ clanId, navigation }) {
         </Row>
       </Card>
 
-      {/* A club stands on the same ten tier ladder its members do. It has no
-          runner to put in the badge, so it wears its own crest instead. */}
+      {/* The club's crest and name already sit in the header above, so this
+          card leads straight with the plaque instead of repeating them. */}
       <RankCard
-        title="Club rank"
+        title=""
         standing={standingFrom({
           key: clan.elo_key,
           points: clan.elo_rating,
           next_points: clan.elo_next_rating,
           progress: clan.elo_progress,
         })}
-        emblem={<ClubAvatar photoUrl={clan.photo_url} badgeIcon={clan.badge_icon} color={clan.color} size={70} />}
+        emblem={null}
         style={{ marginTop: space.lg }}
       />
 
@@ -530,11 +530,7 @@ function MemberHub({ clanId, navigation }) {
               style={styles.clubCompleteFx}
             />
           ) : null}
-          <SectionHeader title="Weekly goal" action={goal.reached ? '✓ reached' : undefined} />
-          <Text style={[type.caption, { marginTop: 4, marginBottom: space.md }]}>
-            Two or more of you on the same route at the same time. Hit it together
-            for a badge frame.
-          </Text>
+          <SectionHeader title="Weekly goal" action={goal.reached ? '✓ reached' : undefined} style={{ marginBottom: space.md }} />
           <GoalBar label={`Distance ${km(goal.progress_distance_m)}/${km(goal.target_distance_m)} km`} pct={distPct} accent={accent} mine={goal.my_distance_m / Math.max(1, goal.target_distance_m)} />
           <GoalBar label={`Claims ${goal.progress_claims}/${goal.target_claims}`} pct={claimPct} accent={accent} mine={goal.my_claims / Math.max(1, goal.target_claims)} />
         </Card>

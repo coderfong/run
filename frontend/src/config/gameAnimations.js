@@ -215,6 +215,46 @@ export const GAME_ANIMATIONS = {
     selfLooping: true,
   },
 
+  // --- Water Point ambient accents ------------------------------------------
+  //
+  // Two small ONE-SHOT reactions (not scenery — unlike the props above,
+  // neither should loop forever) generated via Seedance for the shop
+  // redesign: a sparkle flourish for the try-on mirror (TryOnMirror.js) and
+  // a water-droplet splash for the restock sign (RestockSign.js).
+  //
+  // KEYED WITH A PLAIN THRESHOLD, NOT THE CONNECTIVITY TEST the round-2 shop
+  // assets above use. That test exists for content where the background AND
+  // some legitimate enclosed part of the subject are both near-black (the
+  // OPEN sign's string, a coconut's shadow) — a global key would erase both.
+  // Neither of these two clips has that problem: sampled directly, both
+  // clips' ink came back well clear of pure (0,0,0) (verified by compositing
+  // a keyed frame over magenta and confirming the outline survived crisp),
+  // so a plain `colorkey` threshold keys the true black card without
+  // touching the outline. That is also why this used a different, simpler
+  // tool than scripts/convert-scene-animations.py: ffmpeg's own `colorkey`
+  // filter, run directly — this environment had ffmpeg but no Python
+  // (numpy/scipy/Pillow), so the connectivity path that script uses was not
+  // available. See tmp/seedance/convert_shop_ambient.py for the
+  // connectivity-based conversion, kept as the upgrade path if this content
+  // ever grows an enclosed near-black region a plain key would misread — not
+  // required for what shipped here.
+  //
+  // Frame counts below are exact (`ffprobe -count_frames` against the
+  // shipped files, not estimated) — 33 of the 40 encoded frames and 72 of 75
+  // survived libwebp's near-duplicate merge, same as the round-2 assets.
+  seedanceMirrorSparkle: {
+    source: require('../../assets/animations/seedance-mirror-sparkle.webp'),
+    duration: 1375,
+    aspect: 1,
+    selfLooping: false,
+  },
+  seedanceWaterSplash: {
+    source: require('../../assets/animations/seedance-water-splash.webp'),
+    duration: 3000,
+    aspect: 1,
+    selfLooping: false,
+  },
+
   // --- podium badges -------------------------------------------------------
   //
   // The 1st/2nd/3rd stickers on a standings row. Scenery rather than

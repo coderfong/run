@@ -120,11 +120,16 @@ const LOCATE_SIZE = 60;
 
 // A direct view switch in the other thumb corner. Club view used to be hidden
 // one step left of Wood inside the actions menu; a labelled sticker makes the
-// view discoverable. It names the BOARD it switches to, solo or club, and
-// nothing else: it used to read back the runner's own tier ("Wood rank"),
-// which put a rank on a control that does not change the rank, and left the
-// two states of one switch labelled in two different languages.
-const VIEW_SWITCH_SIZE = 104;
+// view discoverable. It used to read back the runner's own tier ("Wood
+// rank"), which put a rank on a control that does not change the rank, and
+// left the two states of one switch labelled in two different languages.
+//
+// The label names the BOARD you are ON, not the one a tap switches to — "Club
+// view" alone read as an instruction ("go to club view") when it was meant as
+// a status ("you're looking at the club board"), so it now says the sentence
+// out loud: "You're in club view" / "You're in solo view". The icon follows
+// the same rule and shows the current board rather than the destination.
+const VIEW_SWITCH_SIZE = 118;
 
 // `m.ring` is the colour of the land under the portrait, own land included —
 // landColor already spends the viewer's accent there when they have one. The
@@ -444,7 +449,15 @@ export default function GlobalMapScreen({ route, navigation }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusKey]);
 
-  // Land on the player's dot as soon as the screen opens.
+  // Find the player's dot, but leave the camera alone. The screen opens on
+  // GameMap's own default camera — the whole of Singapore, city-centre and
+  // overview zoom (see activeCity.center / the `initialZoom` fallback in
+  // GameMap) — rather than flying in close on wherever the runner happens to
+  // be standing. A street-level opening view showed one corner of the board,
+  // usually with no land in the frame at all; the island-wide view is the one
+  // place every runner's claims and every club's territory are actually
+  // visible at once. The dot itself still lands the moment the fix is in, and
+  // "locate me" (bottom-right) is the explicit way to fly in on it.
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -456,13 +469,6 @@ export default function GlobalMapScreen({ route, navigation }) {
         const p = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
         setMyLoc(p);
         setLocState('ok');
-        // small delay so the camera call lands after the map is ready
-        // Explicit "See the map" focus owns the camera. A late location fix
-        // must not pull the runner away from the land they just asked to see —
-        // whether that focus is a point or the attacker's ring.
-        if (!hasExplicitFocus) {
-          setTimeout(() => mapRef.current?.flyTo(p, 15, 700), 400);
-        }
       } catch {
         if (alive) setLocState('fail');
       }
@@ -1226,10 +1232,13 @@ export default function GlobalMapScreen({ route, navigation }) {
               accessibilityLabel={isClubView ? 'Switch to Solo view' : 'Switch to Club view'}
               accessibilityState={{ selected: isClubView }}
             >
-              <AppIcon name={isClubView ? 'tab-you' : 'tab-club'} size={38} />
+              <AppIcon name={isClubView ? 'tab-club' : 'tab-you'} size={38} />
               <View style={styles.viewSwitchLabel}>
-                <Text style={[type.captionMedium, { color: colors.text }]} numberOfLines={1}>
-                  {isClubView ? 'Solo view' : 'Club view'}
+                <Text
+                  style={[type.captionMedium, styles.viewSwitchLabelText, { color: colors.text }]}
+                  numberOfLines={2}
+                >
+                  {isClubView ? "You're in club view" : "You're in solo view"}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1753,13 +1762,18 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   viewSwitchLabel: {
     marginTop: -2,
-    minWidth: 76,
+    minWidth: 88,
     maxWidth: VIEW_SWITCH_SIZE,
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: radius.pill,
     paddingHorizontal: space.xs,
-    paddingVertical: 2,
+    paddingVertical: 3,
+  },
+  viewSwitchLabelText: {
+    fontSize: 11,
+    lineHeight: 13,
+    textAlign: 'center',
   },
 
   // Placed inline (bottom/left/right), because every edge of it is measured

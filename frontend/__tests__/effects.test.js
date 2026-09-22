@@ -1,12 +1,13 @@
 import {
   CAPTURE_STYLES,
   DEFAULT_CAPTURE_STYLE_ID,
+  DEV_CAPTURE_STYLES,
   PLAYABLE_CAPTURE_STYLES,
   getCaptureStyle,
   pickCaptureStyle,
   resolveCaptureStyle,
 } from '../src/effects/captureStyles';
-import { DRAMA_SCALE } from '../src/effects/choreography';
+import { DRAMA_SCALE, expandCast } from '../src/effects/choreography';
 import {
   REDUCED_BEATS,
   buildCapturePlan,
@@ -33,6 +34,13 @@ import { STEAL_FX } from '../src/components/TerritoryStealBanner';
 // The two Lotties PASER authors itself, which the importer knows nothing about
 // and so are not in its manifest count.
 const BUILTIN_LOTTIE_COUNT = 2;
+// The Seedance-generated animated images (DEV prototypes -- portal-shockwave,
+// party-burst, paser-stamp, meteor-fall, meteor-impact, lightning-charge,
+// lightning-strike, ground-smash, brawl-clash; see
+// docs/SEEDANCE_CAPTURE_ASSET_SPEC*.md), hand-added the same way the
+// Lotties are and for the same reason: the importer's manifest only knows
+// about the sprite-sheet package it curated.
+const BUILTIN_ANIMATED_IMAGE_COUNT = 9;
 import { spriteFrameCoordinates } from '../src/effects/SpriteAnimation';
 
 const BOUNDS = { width: 390, height: 620 };
@@ -68,7 +76,7 @@ describe('PASER release effect registry', () => {
     // total makes ADDING an approved asset look like a regression — which is
     // exactly backwards, since the thing worth guarding is that nothing
     // UNAPPROVED got in and that the registry matches what was imported.
-    expect(effects).toHaveLength(manifest.selectedAssets + BUILTIN_LOTTIE_COUNT);
+    expect(effects).toHaveLength(manifest.selectedAssets + BUILTIN_LOTTIE_COUNT + BUILTIN_ANIMATED_IMAGE_COUNT);
     expect(manifest.releaseApprovedOnly).toBe(true);
     effects.forEach((effect) => expect(effect.releaseApproved).toBe(true));
     effects.filter((effect) => effect.type === 'sprite').forEach((effect) => {
@@ -303,5 +311,208 @@ describe('which capture animation a claim gets', () => {
       expect(style).toBeTruthy();
       expect(validateCaptureStyle(style)).toEqual([]);
     }
+  });
+});
+
+describe('DEV_CAPTURE_STYLES (unshipped prototypes)', () => {
+  test('every dev style is internally valid and excluded from production picks', () => {
+    DEV_CAPTURE_STYLES.forEach((style) => {
+      expect(validateCaptureStyle(style)).toEqual([]);
+      expect(style.releaseApproved).toBe(false);
+    });
+    // pickCaptureStyle()/PLAYABLE_CAPTURE_STYLES only ever read CAPTURE_STYLES
+    // -- a dev id must never be reachable through the real selection path.
+    const devIds = new Set(DEV_CAPTURE_STYLES.map((style) => style.id));
+    expect(PLAYABLE_CAPTURE_STYLES.some((style) => devIds.has(style.id))).toBe(false);
+    for (let i = 0; i < 200; i += 1) expect(devIds.has(pickCaptureStyle(`seed-${i}`))).toBe(false);
+  });
+
+  test('a dev style still resolves through getCaptureStyle, same as a production one', () => {
+    DEV_CAPTURE_STYLES.forEach((style) => {
+      expect(getCaptureStyle(style.id)).toBe(style);
+    });
+  });
+
+  // Round 3 ACTION-BASED prototype: the production Meteor Claim spine with
+  // Seedance PASER-doodle FX plates in place of the sprite-pack rock/burst.
+  describe('seedance_meteor_strike', () => {
+    const style = DEV_CAPTURE_STYLES.find((item) => item.id === 'seedance_meteor_strike');
+
+    test('exists and matches the production Meteor Claim shape', () => {
+      expect(style).toBeTruthy();
+      expect(style.family).toBe('projectile');
+      expect(style.usesProjectile).toBe(true);
+      expect(style.usesContact).toBe(false);
+      expect(style.usesVectorEnvironment).toBe(true);
+      expect(style.duration).toBeGreaterThanOrEqual(2500);
+      expect(style.duration).toBeLessThanOrEqual(3500);
+    });
+
+    test('both Seedance FX plates resolve to real, valid effect specs', () => {
+      const projectileStep = style.sequence.find((step) => step.action === 'projectile');
+      const impactStep = style.sequence.find((step) => (
+        step.track === 'effect' && step.action !== 'projectile'
+      ));
+      expect(projectileStep.effect).toBe('seedance_meteor_fall');
+      expect(impactStep.effect).toBe('seedance_meteor_impact');
+      [projectileStep.effect, impactStep.effect].forEach((id) => {
+        const spec = getEffect(id);
+        expect(spec).toBeTruthy();
+        expect(spec.releaseApproved).toBe(true);
+        expect(spec.type).toBe('animated-image');
+      });
+    });
+
+    // The user-facing "Capture Style Lab" (AnimationGalleryScreen) previews
+    // exactly this: the same style expanded against 0, 1, 2 and 3 defenders,
+    // from both the attacker's and a victim's perspective. `expandCast` is
+    // the resolver step that preview (and the real player) both go through.
+    [0, 1, 2, 3].forEach((defenderCount) => {
+      test(`expands cleanly against ${defenderCount} defender(s)`, () => {
+        const timeline = expandCast(style.sequence, { defenderCount, seed: `lab:${defenderCount}` });
+        expect(timeline.length).toBeGreaterThan(0);
+        const defenderSteps = timeline.filter((step) => step.action === 'actor' && step.role === 'defender');
+        // The spine addresses defenders in three group beats -- notice,
+        // shockwave-knockback, flee -- each expanded to one step per
+        // defender by `expandCast`.
+        expect(defenderSteps).toHaveLength(defenderCount * 3);
+        defenderSteps.forEach((step) => expect(step.index).toBeLessThan(defenderCount));
+        // Every step still resolves to a known action/effect once expanded.
+        timeline.forEach((step) => {
+          if (step.action === 'actor') expect(step.name || step.actions?.length).toBeTruthy();
+        });
+      });
+    });
+  });
+
+  // Round 3, second style: the production Lightning Conquest spine (bolt
+  // earths into the defender GROUP, not territory centre) with Seedance
+  // PASER-doodle FX plates in place of the sprite-pack bolt/electric-impact.
+  describe('seedance_lightning_attack', () => {
+    const style = DEV_CAPTURE_STYLES.find((item) => item.id === 'seedance_lightning_attack');
+
+    test('exists and matches the production Lightning Conquest shape', () => {
+      expect(style).toBeTruthy();
+      expect(style.family).toBe('projectile');
+      expect(style.usesProjectile).toBe(true);
+      expect(style.usesContact).toBe(false);
+      expect(style.duration).toBeGreaterThanOrEqual(2500);
+      expect(style.duration).toBeLessThanOrEqual(3500);
+    });
+
+    test('both Seedance FX plates resolve to real, valid effect specs', () => {
+      const projectileStep = style.sequence.find((step) => step.action === 'projectile');
+      const impactStep = style.sequence.find((step) => (
+        step.track === 'effect' && step.action !== 'projectile'
+      ));
+      expect(projectileStep.effect).toBe('seedance_lightning_charge');
+      expect(impactStep.effect).toBe('seedance_lightning_strike');
+      [projectileStep.effect, impactStep.effect].forEach((id) => {
+        const spec = getEffect(id);
+        expect(spec).toBeTruthy();
+        expect(spec.releaseApproved).toBe(true);
+        expect(spec.type).toBe('animated-image');
+      });
+    });
+
+    [0, 1, 2, 3].forEach((defenderCount) => {
+      test(`expands cleanly against ${defenderCount} defender(s)`, () => {
+        const timeline = expandCast(style.sequence, { defenderCount, seed: `lab:${defenderCount}` });
+        expect(timeline.length).toBeGreaterThan(0);
+        const defenderSteps = timeline.filter((step) => step.action === 'actor' && step.role === 'defender');
+        // notice + shockwave-knockback (both default to target ALL since
+        // this style's defenderSpec never sets `displace`) + flee (EACH).
+        expect(defenderSteps).toHaveLength(defenderCount * 3);
+        defenderSteps.forEach((step) => expect(step.index).toBeLessThan(defenderCount));
+      });
+    });
+  });
+
+  // Round 3, third style: the production Earth Crack spine with a Seedance
+  // PASER-doodle burst in place of the sprite-pack `impact_shock_01`. Only
+  // one FX plate -- no travel beat to cover, and the crack lines/rising
+  // slabs are drawn free by the vector environment, same as production.
+  describe('seedance_ground_smash', () => {
+    const style = DEV_CAPTURE_STYLES.find((item) => item.id === 'seedance_ground_smash');
+
+    test('exists and matches the production Earth Crack shape', () => {
+      expect(style).toBeTruthy();
+      expect(style.family).toBe('territory');
+      expect(style.usesProjectile).toBe(false);
+      expect(style.usesContact).toBe(false);
+      expect(style.usesVectorEnvironment).toBe(true);
+      expect(style.duration).toBeGreaterThanOrEqual(2500);
+      expect(style.duration).toBeLessThanOrEqual(3500);
+    });
+
+    test('the Seedance FX plate resolves to a real, valid effect spec', () => {
+      const impactStep = style.sequence.find((step) => step.track === 'effect');
+      expect(impactStep.effect).toBe('seedance_ground_smash');
+      const spec = getEffect(impactStep.effect);
+      expect(spec).toBeTruthy();
+      expect(spec.releaseApproved).toBe(true);
+      expect(spec.type).toBe('animated-image');
+    });
+
+    [0, 1, 2, 3].forEach((defenderCount) => {
+      test(`expands cleanly against ${defenderCount} defender(s)`, () => {
+        const timeline = expandCast(style.sequence, { defenderCount, seed: `lab:${defenderCount}` });
+        expect(timeline.length).toBeGreaterThan(0);
+        const defenderSteps = timeline.filter((step) => step.action === 'actor' && step.role === 'defender');
+        expect(defenderSteps).toHaveLength(defenderCount * 3);
+        defenderSteps.forEach((step) => expect(step.index).toBeLessThan(defenderCount));
+      });
+    });
+  });
+
+  // Round 3, fourth style: the production Sword Slash spine -- the live
+  // attacker DASH_FORWARDs toward 'nearestDefender' and a `duel()` contact
+  // step is what makes the two characters actually touch -- with a Seedance
+  // comic clash cloud standing in for the weapon-slash FX. No character art
+  // is Seedance-generated; the plate only has to be large enough to cover
+  // the clash point, which it can do for free (FOREGROUND_FX paints above
+  // CHARACTER in layers.js).
+  describe('seedance_comic_brawl', () => {
+    const style = DEV_CAPTURE_STYLES.find((item) => item.id === 'seedance_comic_brawl');
+
+    test('exists and matches the production Sword Slash shape', () => {
+      expect(style).toBeTruthy();
+      expect(style.family).toBe('duel');
+      expect(style.encounterMode).toBe('duel');
+      expect(style.usesProjectile).toBe(false);
+      // Only a DUEL-family style may emit contact -- this is the one place
+      // in Round 3 where that is expected to be true.
+      expect(style.usesContact).toBe(true);
+      expect(style.sequence.some((step) => step.action === 'contact')).toBe(true);
+      expect(style.duration).toBeGreaterThanOrEqual(2500);
+      expect(style.duration).toBeLessThanOrEqual(3500);
+    });
+
+    test('the attacker actually converges on the nearest defender before contact', () => {
+      const strike = style.sequence.find((step) => (
+        step.action === 'actor' && step.role === 'attacker' && step.name === 'dashForward'
+      ));
+      expect(strike).toBeTruthy();
+      expect(strike.toward).toBe('nearestDefender');
+    });
+
+    test('the Seedance FX plate resolves to a real, valid effect spec', () => {
+      const impactStep = style.sequence.find((step) => step.track === 'effect');
+      expect(impactStep.effect).toBe('seedance_brawl_clash');
+      const spec = getEffect(impactStep.effect);
+      expect(spec).toBeTruthy();
+      expect(spec.releaseApproved).toBe(true);
+      expect(spec.type).toBe('animated-image');
+    });
+
+    [0, 1, 2, 3].forEach((defenderCount) => {
+      test(`expands cleanly against ${defenderCount} defender(s)`, () => {
+        const timeline = expandCast(style.sequence, { defenderCount, seed: `lab:${defenderCount}` });
+        expect(timeline.length).toBeGreaterThan(0);
+        const defenderSteps = timeline.filter((step) => step.action === 'actor' && step.role === 'defender');
+        expect(defenderSteps).toHaveLength(defenderCount * 3);
+        defenderSteps.forEach((step) => expect(step.index).toBeLessThan(defenderCount));
+      });
+    });
   });
 });

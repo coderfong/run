@@ -31,7 +31,7 @@ import {
   useThemedStyles,
 } from '../theme';
 import { useReduceMotion, PressableScale, PressableShift } from '../ui/motion';
-import { EmptyState, Framed, HardShadow, OutlinedText, Skeleton } from '../components/ui';
+import { EmptyState, Framed, OutlinedText, Skeleton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
@@ -76,7 +76,37 @@ function countdown() {
 // place. 44% is 137pt there and 130pt on a 360, both of which still show the
 // drawing whole. The PRO card overrides it: its art is a 4:3 scene, not a
 // figure, and it is width-limited rather than height-limited.
-function HeroCard({ width, bg, art, artWidth = '44%', eyebrow, title, sub, cta, onPress, onPressIn }) {
+// Read as motion without new art: a small bob + lean loop on the same PNG.
+const AnimatedImage = Animated.createAnimatedComponent(Image);
+
+function RunningArt({ art, style }) {
+  const reduced = useReduceMotion();
+  const bob = useSharedValue(0);
+
+  useEffect(() => {
+    if (reduced) {
+      cancelAnimation(bob);
+      bob.value = 0;
+      return undefined;
+    }
+    // A jog's cadence, not a spring — reverse:true makes withRepeat yo-yo
+    // 0→1→0 forever, so this never settles the way a run-count-limited
+    // repeat would.
+    bob.value = withRepeat(withTiming(1, { duration: 220 }), -1, true);
+    return () => cancelAnimation(bob);
+  }, [reduced]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -bob.value * 5 },
+      { rotate: `${(bob.value - 0.5) * 3}deg` },
+    ],
+  }));
+
+  return <AnimatedImage source={art} style={[style, animatedStyle]} resizeMode="contain" />;
+}
+
+function HeroCard({ width, bg, art, artWidth = '44%', eyebrow, title, sub, cta, onPress, onPressIn, runLoop = false }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   return (
@@ -139,7 +169,11 @@ function HeroCard({ width, bg, art, artWidth = '44%', eyebrow, title, sub, cta, 
           </Framed>
         </View>
         {/* the transparent illustration, shown whole (contain) — no crop, no fade */}
-        <Image source={art} style={[styles.heroImg, { width: artWidth }]} resizeMode="contain" />
+        {runLoop ? (
+          <RunningArt art={art} style={[styles.heroImg, { width: artWidth }]} />
+        ) : (
+          <Image source={art} style={[styles.heroImg, { width: artWidth }]} resizeMode="contain" />
+        )}
       </Framed>
     </PressableScale>
   );
@@ -197,6 +231,7 @@ function HeroCarousel({ navigation }) {
           eyebrow="THERE'S LAND TO CLAIM"
           title="LET'S RUN"
           cta="Start a run"
+          runLoop
           onPressIn={() => preloadScreenImages('Record')}
           onPress={() => navigation.navigate('Record')}
         />
@@ -614,15 +649,19 @@ export default function HomeScreen({ navigation }) {
   
   useEffect(() => {
     if (unread > 0 && !reduced) {
-      // Pulse animation when there are unread notifications
+      // Keeps pulsing for as long as something is unread, not just a few
+      // beats after landing on Home — a badge that stops moving is a badge
+      // you've already learned to stop looking at.
       bellScale.value = withRepeat(
-        withSpring(1.1, { damping: 12, stiffness: 200 }),
-        3, // Number of repetitions
-        true // Reverse
+        withSpring(1.18, { damping: 12, stiffness: 200 }),
+        -1,
+        true
       );
     } else {
+      cancelAnimation(bellScale);
       bellScale.value = withTiming(1);
     }
+    return () => cancelAnimation(bellScale);
   }, [unread, reduced]);
   
   const bellAnimatedStyle = useAnimatedStyle(() => ({
@@ -715,31 +754,27 @@ export default function HomeScreen({ navigation }) {
               style={styles.headerEnergy}
             />
           )}
-          {/* A stroked box, not a bare glyph. The bell used to be the only
-              tappable thing in the header with no edge on it, which next to a
-              stroked energy chip read as decoration rather than as a control —
-              and it is the one that takes you somewhere.
-              HardShadow, not the iOS-only `hardShadow()` style spread: the
-              drop has to render on Android too. */}
-          <HardShadow offset={NB.offsetSm} radius={radius.sm} on={colors.bg}>
-            <Animated.View style={bellAnimatedStyle}>
-              <PressableShift
-                offset={NB.offsetSm}
-                style={styles.bell}
-                onPress={() => {
-                  // Clear the dot in the cache too, so coming back to Home doesn't
-                  // briefly show a badge for notifications already read.
-                  setNotifs((prev) => ({ ...(prev || {}), unread: 0 }));
-                  navigation.navigate('Notifications');
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-              >
-                <AppIcon name="bell" size={28} />
-                {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
-              </PressableShift>
-            </Animated.View>
-          </HardShadow>
+          {/* A bare glyph, not a boxed control: the sticker's own bold
+              outline already reads as a tappable icon, and the extra card +
+              hard-shadow box around it doubled up on that edge instead of
+              adding one. */}
+          <Animated.View style={bellAnimatedStyle}>
+            <PressableShift
+              offset={NB.offsetSm}
+              style={styles.bell}
+              onPress={() => {
+                // Clear the dot in the cache too, so coming back to Home doesn't
+                // briefly show a badge for notifications already read.
+                setNotifs((prev) => ({ ...(prev || {}), unread: 0 }));
+                navigation.navigate('Notifications');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+            >
+              <AppIcon name="bell" size={38} />
+              {unread > 0 && <View style={[styles.bellDot, { backgroundColor: brand.pink }]} />}
+            </PressableShift>
+          </Animated.View>
         </View>
       </View>
 
@@ -826,18 +861,24 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // on narrow screens.
   headerEnergy: { flex: 1, minWidth: 0 },
   bell: {
-    width: 48,
-    height: 48,
+    width: 52,
+    height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radius.sm,
-    borderWidth: 0,
   },
-  // Nudged inside the box's stroke rather than hanging over the old bare icon's
-  // corner. Its ring is the header ink now, not the page colour: a dot ringed in
-  // `bg` sitting on a card-coloured box punched a hole in the box.
-  bellDot: { position: 'absolute', top: 4, right: 4, width: 12, height: 12, borderRadius: 6, borderWidth: 0 },
+  // Ringed in the page colour now that it sits on the bare icon rather than
+  // on a card-coloured box, so the dot still reads as punched out of
+  // something instead of just stuck to the glyph.
+  bellDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 13,
+    height: 13,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
 
   // The art is ~square, so with resizeMode="contain" its size is capped by the
   // card HEIGHT, not the art box's width — past ~65% width a wider box gains
@@ -854,7 +895,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     alignItems: 'stretch',
     padding: space.md,
   },
-  heroText: { flex: 1, justifyContent: 'space-between', paddingRight: space.sm, alignItems: 'center', paddingTop: space.sm },
+  // flex-start, not center: the button below is left-aligned (`heroBtn` is
+  // `alignSelf: 'flex-start'`), so a centered text block sat on a different
+  // left edge than the CTA it belongs to.
+  heroText: { flex: 1, justifyContent: 'space-between', paddingRight: space.sm, alignItems: 'flex-start', paddingTop: space.sm },
   // bleed to the card edges (negative margins cancel the card padding) so the
   // illustration is as large as possible.
   heroImg: { height: 190, marginVertical: -space.md, marginRight: -space.md },

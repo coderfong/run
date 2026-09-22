@@ -81,6 +81,10 @@ const EMPTY_FACTS = {
   runClaimable: false,
   claimReady: false,
   claimCelebrated: false,
+  // True once the tutorial's own run/claim segment has started — see
+  // RunningScreen's startTutorialSimRun. Lets ACTIVE_RUN and FINISH_RUN say
+  // plainly that this run is a demonstration rather than real GPS.
+  simulatedRun: false,
 };
 
 export function TutorialProvider({ children, navigationRef }) {

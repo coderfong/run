@@ -36,6 +36,7 @@ import {
 } from '../run/backgroundTrack';
 import { createGpsFilter, DROP, filterPoints, haversineM, pathDistanceM } from '../run/gpsFilter';
 import { buildSimulatedRun, FALLBACK_ORIGIN } from '../run/simulatedRun';
+import { buildTutorialResult, buildTutorialTrace } from '../run/tutorialRun';
 import { withoutPausedPoints } from '../run/pauseWindows';
 import { createVehicleGate } from '../run/vehicleGate';
 import { useClan } from '../state/clan';
@@ -53,7 +54,7 @@ import { haptic, PressableScale } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { landCaptureAlert } from '../components/LandCaptureAlert';
 import { RunEventOverlay, RunStartOverlay } from '../components/run/RunGameplayFx';
-import { SIGNAL, TARGET, TutorialAnchor, useTutorial, useTutorialTarget } from '../tutorial';
+import { CORE, PHASE, SIGNAL, TARGET, TutorialAnchor, useTutorial, useTutorialState, useTutorialTarget } from '../tutorial';
 
 // In-progress run persisted here so an OS kill / crash can't lose a run.
 const ACTIVE_RUN_KEY = 'tr.activeRun';
@@ -321,6 +322,12 @@ export default function RunningScreen({ navigation, route }) {
   const runRef = useRef(null);
   const startedAtRef = useRef(null);
   const tickRef = useRef(null);
+  // The first-run tutorial's own run: true from the moment its Start press is
+  // handled until this screen hands off to Result. Latched once, at press
+  // time, so nothing mid-run can flip which branch finishRun takes.
+  const tutorialSimRef = useRef(false);
+  const tutorialSimTimerRef = useRef(null);
+  const tutorialTraceRef = useRef(null);
   // Adaptive-sampling bookkeeping.
   const gpsModeRef = useRef('high'); // 'high' | 'relaxed'
   const pendingModeRef = useRef({ mode: null, count: 0 });
@@ -490,6 +497,7 @@ export default function RunningScreen({ navigation, route }) {
       stopVehicleWatch();
       setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
+      if (tutorialSimTimerRef.current) clearInterval(tutorialSimTimerRef.current);
     };
   }, []);
 
@@ -838,6 +846,86 @@ export default function RunningScreen({ navigation, route }) {
     }
   }
 
+  // TUTORIAL ONLY — see run/tutorialRun.js. Plays the same countdown as a
+  // real start, then a fabricated 5 km trace back over a few real seconds
+  // instead of the ~30 minutes it claims to have taken. Nothing here reaches
+  // the network: the map draws the trail exactly as it would for a real run,
+  // but the run, the claim and everything after it are invented on the
+  // device — see ResultScreen's own `tutorialSim` branches.
+  async function startTutorialSimRun() {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      haptic.light();
+      setAfterRun(null);
+      setStartCountdown(3);
+      await wait(520);
+      setStartCountdown(2);
+      await wait(520);
+      setStartCountdown(1);
+      await wait(520);
+      setStartCountdown('GO');
+      haptic.success();
+
+      tutorialSimRef.current = true;
+      setTutorialFacts({ simulatedRun: true });
+      const trace = buildTutorialTrace({
+        origin: currentLocation || pathRef.current[0] || FALLBACK_ORIGIN,
+        seed: Math.floor(Math.random() * 1e9),
+      });
+      tutorialTraceRef.current = trace;
+      runRef.current = { id: `tutorial-${trace.startedAtMs}` };
+      pauseWindowsRef.current = [];
+      bgHeldRef.current = false;
+      pathRef.current = [];
+      setPath([]);
+      setDistance(0);
+      distanceMRef.current = 0;
+      setElapsedS(0);
+      setPaused(false);
+      pausedRef.current = false;
+      setLocked(false);
+      vehicleGateRef.current.reset();
+      setVehicleNotice(false);
+      setIsRunning(true);
+      isRunningRef.current = true;
+      setRecording(true);
+      lastTierRef.current = RUN_TIER.UNQUALIFIED;
+      startedAtRef.current = Date.now();
+
+      // The fabricated trace, replayed over ~11 real seconds. Distance and
+      // elapsed time advance TOGETHER off the trace's own fraction, so the
+      // pace stat reads correctly even though the clock is visibly racing —
+      // a runner watching the map fill in this fast already knows this is a
+      // demonstration, not real GPS.
+      const points = trace.points;
+      const frames = 36;
+      let frame = 0;
+      tutorialSimTimerRef.current = setInterval(() => {
+        frame += 1;
+        const upto = Math.max(2, Math.min(points.length, Math.round((frame / frames) * points.length)));
+        const slice = points.slice(0, upto);
+        pathRef.current = slice;
+        setPath(slice);
+        const coveredM = totalDistanceMeters(slice);
+        setDistance(coveredM);
+        distanceMRef.current = coveredM;
+        const coveredS = (slice[slice.length - 1].timestamp - points[0].timestamp) / 1000;
+        setElapsedS(Math.max(0, Math.round(coveredS)));
+        setPaceSPerKm(Math.round(trace.durationS / (trace.distanceM / 1000)));
+        if (upto >= points.length && tutorialSimTimerRef.current) {
+          clearInterval(tutorialSimTimerRef.current);
+          tutorialSimTimerRef.current = null;
+        }
+      }, 320);
+    } finally {
+      setTimeout(() => setStartCountdown(null), 620);
+      setStarting(false);
+      startingRef.current = false;
+    }
+  }
+
   // ---- adaptive GPS sampling ---------------------------------------------
   // High accuracy + tight interval while pace is changing or a loop closure
   // is near; relaxed during steady straight-line running to save battery.
@@ -1122,6 +1210,38 @@ export default function RunningScreen({ navigation, route }) {
     if (finishingRef.current || !isRunningRef.current) return;
     finishingRef.current = true;
     haptic.light();
+
+    // TUTORIAL ONLY. The real branch below submits to /end-run; this one
+    // never has a real run to submit — see startTutorialSimRun.
+    if (tutorialSimRef.current) {
+      if (tutorialSimTimerRef.current) {
+        clearInterval(tutorialSimTimerRef.current);
+        tutorialSimTimerRef.current = null;
+      }
+      setPaused(false);
+      setLocked(false);
+      tutorialSignal(SIGNAL.RUN_FINISHED);
+      setIsRunning(false);
+      isRunningRef.current = false;
+      setRecording(false);
+      // Pressed within the first tick — before the trace has drawn even two
+      // points of its own. Falls back to its first stretch rather than
+      // handing ResultScreen a ring with nothing in it.
+      const finalPath = pathRef.current.length >= 2
+        ? pathRef.current
+        : (tutorialTraceRef.current?.points || []).slice(0, 2);
+      const result = buildTutorialResult({
+        path: finalPath,
+        distanceM: totalDistanceMeters(finalPath),
+        startedAtMs: startedAtRef.current,
+        endedAtMs: Date.now(),
+      });
+      tutorialSimRef.current = false;
+      finishingRef.current = false;
+      navigation.navigate('Result', { result, run: result, path: finalPath, tutorialSim: true });
+      return;
+    }
+
     // Finishing while paused ends the run where it paused, the moment its
     // clock stopped. Read before `paused` is cleared below.
     const endedAt = paused && pausedAtRef.current ? pausedAtRef.current : Date.now();
@@ -1400,6 +1520,12 @@ export default function RunningScreen({ navigation, route }) {
   // rides along inside finishRun, where the run already ends.
   const { setFacts: setTutorialFacts, signal: tutorialSignal } = useTutorial();
   const finishTarget = useTutorialTarget(TARGET.FINISH_RUN);
+  // The tutorial is on this screen, waiting for its own Start press — see
+  // steps.js PHASE.START_RUN, whose onEnter never fires: the tab bar button
+  // is real navigation, and the tutorial phase itself is what says "we are
+  // now here for the run beat", not the button that opened it.
+  const { core: tutorialCore, phase: tutorialPhase } = useTutorialState();
+  const tutorialRunPending = tutorialCore === CORE.RUNNING && tutorialPhase === PHASE.ACTIVE_RUN;
   // The stats sheet's measured height, so the coach mark's spotlight can cover
   // the route and stop short of the numbers the runner is watching.
   const [panelH, setPanelH] = useState(0);
@@ -1710,7 +1836,7 @@ export default function RunningScreen({ navigation, route }) {
                 reads as neo-brutalist like the rest of the game. */}
             <ToonButton
               title='Start run'
-              onPress={startRun}
+              onPress={tutorialRunPending ? startTutorialSimRun : startRun}
               disabled={starting}
               accessibilityLabel="Start run"
               fill={{ color: accent, border: toon.ink }}

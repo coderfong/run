@@ -115,7 +115,7 @@ export default function RankCard({
       padded={false}
       style={[styles.card, style]}
       onPress={onPress}
-      accessibilityLabel={`${title}. ${standing.name}. ${copy}`}
+      accessibilityLabel={[title, standing.name, copy].filter(Boolean).join('. ')}
     >
       {art ? (
         <View
@@ -156,12 +156,14 @@ export default function RankCard({
             />
           )}
           <View style={styles.headings}>
-            <Text
-              numberOfLines={1}
-              style={[type.caption, { color: colors.textMuted, letterSpacing: 1 }]}
-            >
-              {String(title).toUpperCase()}
-            </Text>
+            {title ? (
+              <Text
+                numberOfLines={1}
+                style={[type.caption, { color: colors.textMuted, letterSpacing: 1 }]}
+              >
+                {String(title).toUpperCase()}
+              </Text>
+            ) : null}
             <RankPlaque
               name={standing.name}
               color={standing.color}

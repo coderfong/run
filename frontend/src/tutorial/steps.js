@@ -276,10 +276,16 @@ export const STEPS = [
     skippable: false,
     kind: 'card',
     gate: (facts) => facts.running === true,
-    copy: () => ({
-      title: 'Your route appears as you run.',
-      lines: ["Just run normally. We'll handle the rest."],
-    }),
+    copy: (facts) =>
+      facts.simulatedRun
+        ? {
+            title: 'Watch your *5 km* fly by.',
+            lines: ['This run is simulated, so you can see what happens.'],
+          }
+        : {
+            title: 'Your route appears as you run.',
+            lines: ["Just run normally. We'll handle the rest."],
+          },
     on: { [SIGNAL.RUN_FINISHED]: PHASE.CLAIM_SELECT },
   },
 
@@ -298,9 +304,13 @@ export const STEPS = [
     // The control is a PRESS AND HOLD, so the copy says hold. Describing a
     // button as something it is not is how a tutorial gets blamed for a
     // control that does not work.
-    copy: () => ({
+    copy: (facts) => ({
       title: 'Done running?',
-      lines: ['Hold *FINISH* to see what you can claim.'],
+      lines: [
+        facts.simulatedRun
+          ? 'Hold *FINISH* — your 5 km already qualifies.'
+          : 'Hold *FINISH* to see what you can claim.',
+      ],
     }),
     on: { [SIGNAL.RUN_FINISHED]: PHASE.CLAIM_SELECT },
   },
@@ -318,8 +328,8 @@ export const STEPS = [
     kind: 'card',
     gate: (facts) => facts.claimReady === true,
     copy: () => ({
-      title: 'Your run earned you *territory*.',
-      lines: ['Choose where you want to claim.'],
+      title: 'This is *Plan Attack*.',
+      lines: ['Slide and turn your shape, then pick where to land.'],
     }),
     on: {
       [SIGNAL.CLAIM_ADJUSTED]: PHASE.CLAIM_CONFIRM,
@@ -361,9 +371,13 @@ export const STEPS = [
     // an encounter, a radial reveal and a victory beat when a claim lands;
     // this is the sentence after all of that, not a card on top of it.
     gate: (facts) => facts.claimCelebrated === true,
-    copy: () => ({
+    copy: (facts) => ({
       title: "IT'S YOURS!",
-      lines: ['Keep running to grow your territory.'],
+      lines: [
+        facts.simulatedRun
+          ? 'Every real run claims territory the same way.'
+          : 'Keep running to grow your territory.',
+      ],
     }),
   },
 ];

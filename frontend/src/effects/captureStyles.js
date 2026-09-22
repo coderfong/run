@@ -1976,6 +1976,484 @@ export const CAPTURE_STYLES = Object.freeze([
   }),
 ]);
 
+// =============================================================================
+// DEV-ONLY EXPERIMENTAL STYLES
+// =============================================================================
+//
+// NEVER in the production hash pool. Kept in a separate array rather than a
+// `releaseApproved: false` field on a CAPTURE_STYLES entry, because `scene()`
+// does not thread that field through its returned object and
+// `isReleaseApprovedCaptureStyle` treats an absent flag as approved -- a flag
+// alone would be silent and easy to regress. Being structurally absent from
+// CAPTURE_STYLES means PLAYABLE_CAPTURE_STYLES and pickCaptureStyle() cannot
+// ever select one of these, independent of any per-item metadata. See
+// getCaptureStyle() below for how the id still resolves (for the gallery)
+// without being playable (for real captures).
+//
+// Hand-authored rather than built with `scene()`. That compiler is right for
+// the production pack because every style there targets the SAME shape
+// (SPINE.IMPACT ~1.15s, SPINE.END 2.64s) that DRAMA_SCALE was tuned against,
+// and its beat timestamps (DISPLACE, EXIT, SETTLE, WALK, WIN) are hardcoded
+// to that spine rather than derived from `impact.at`/`territory.at`. This
+// style's impact is real, MEASURED footage timing (~2.3s -- see the asset
+// spec doc), not a number `scene()` can be told to build a coherent spine
+// around without changing what every production style is validated against.
+// Authoring the steps directly, with the same exported primitives `scene()`
+// itself calls, keeps every existing style's compiler untouched while still
+// validating under the identical `validateChoreography` rules.
+// Shared by every DEV style below: assigns a `beat` to any step that did not
+// get one explicitly (five thresholds mark the boundaries BETWEEN the six
+// beats: SETUP is "before `action`", CLEANUP is "at or after `cleanup`"),
+// then sorts by start with the same start-then-beat-rank tie-break `scene()`
+// itself uses. Small and local on purpose -- see the note above on why these
+// styles don't go through `scene()` itself. Every call site's own timestamps
+// must sort into non-decreasing beat rank, same as validateChoreography
+// requires of any style -- this only assigns the label, it doesn't fix a
+// call site that got the ordering wrong.
+function finishDevSequence(steps, { action, impact, territory, reaction, cleanup }) {
+  const sequence = steps.map((step) => ({
+    beat: step.beat || (
+      step.start < action ? BEAT.SETUP
+        : step.start < impact ? BEAT.ACTION
+          : step.start < territory ? BEAT.IMPACT
+            : step.start < reaction ? BEAT.TERRITORY
+              : step.start < cleanup ? BEAT.REACTION
+                : BEAT.CLEANUP
+    ),
+    ...step,
+  }));
+  sequence.sort((a, b) => a.start - b.start || BEAT_RANK[a.beat] - BEAT_RANK[b.beat]);
+  return sequence;
+}
+
+export const DEV_CAPTURE_STYLES = Object.freeze([
+  (() => {
+    // The single Seedance FX plate, playing start to finish as the scene's
+    // one hero effect. `hold` is what makes the POST_REVEAL_BUDGET check
+    // pass: the converted asset itself runs 3500ms (trimmed from the 4.04s
+    // source -- see the asset spec doc), and 3420ms here removes it right at
+    // this style's own `duration`, rather than mid-frame.
+    const IMPACT_AT = 2300; // measured against the actual render, not the 1.5s the prompt asked for
+    const REVEAL_AT = 2330;
+    const DURATION = 3450;
+
+    const sequence = finishDevSequence([
+      attacker(0, ACTION.CHARGE),
+      fx(30, 'seedance_portal_shockwave', {
+        anchor: S.TERRITORY_CENTER, size: 300, hold: 3420, beat: BEAT.SETUP,
+      }),
+      cam(150, CAMERA_ACTION.ZOOM_IN, { amount: FRAME_SCALE, duration: 520 }),
+      scatter(1400, NOTICE_POOL, { stagger: 70, duration: 320, from: S.TERRITORY_CENTER }),
+      attacker(2100, ACTION.BRACE, { duration: 500 }),
+      // The hit pause -- see impactSteps()'s identical `at - 40` / freeze
+      // pattern. Mirrored by hand here since this style does not go through
+      // that helper (no separate impact sprite: the plate IS the hero art).
+      cam(IMPACT_AT - 40, CAMERA_ACTION.FREEZE, { duration: 90 }),
+      pause(IMPACT_AT - 40, 90),
+      haptic(IMPACT_AT, 'heavy'),
+      shake(IMPACT_AT, { intensity: 1.3, axis: 'both' }),
+      cam(IMPACT_AT + 20, CAMERA_ACTION.PUNCH_IN, { amount: 1.1 }),
+      reveal(REVEAL_AT, { transition: T.SHOCKWAVE, origin: S.TERRITORY_CENTER, duration: 640 }),
+      defenders(REVEAL_AT + 30, ACTION.SHOCKWAVE_KNOCKBACK, { duration: 420, from: S.TERRITORY_CENTER }),
+      cam(2820, CAMERA_ACTION.RELEASE, { duration: 350 }),
+      scatter(2820, FLIGHT_POOL, { stagger: 50, duration: 480, from: S.TERRITORY_CENTER }),
+      attacker(2650, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER, duration: 380 }),
+      attacker(3050, ACTION.CELEBRATE, { duration: 380 }),
+      victory(3050),
+      sound(3050, 'claim'),
+    ], { action: 1400, impact: IMPACT_AT, territory: REVEAL_AT, reaction: 2650, cleanup: 3050 });
+
+    return Object.freeze({
+      id: 'seedance_portal_test',
+      name: 'Seedance Portal Test (DEV)',
+      family: F.SUMMON,
+      archetype: 'dev:seedance_portal_test',
+      concept: 'DEV PROTOTYPE: a Seedance-generated portal/shockwave FX plate, composited with the live attacker and defenders.',
+      description: 'Experimental -- proves a Seedance FX plate can drive PASER\'s existing capture choreography. Not release-approved.',
+      beats: [
+        'The runner channels energy as a Seedance-generated portal forms over the claim',
+        'The rivals notice the portal building',
+        'The portal detonates -- the real measured impact, ~2.3s into the plate',
+        'The live territory reveal fires off that impact, the rivals are thrown back and leave',
+      ],
+      encounterMode: M.SUMMON_ONLY,
+      usesProjectile: false,
+      usesContact: false,
+      usesEnvironment: false,
+      usesVectorEnvironment: false,
+      territoryTransition: T.SHOCKWAVE,
+      revealOrigin: S.TERRITORY_CENTER,
+      releaseApproved: false,
+      duration: DURATION,
+      sequence: Object.freeze(sequence),
+    });
+  })(),
+
+  // Round 2: PASER-doodle art direction (neo-brutalist sticker style,
+  // verified against theme/nb.js + theme/toon.js + assets/art/claim-explainer.png
+  // -- see docs/SEEDANCE_CAPTURE_ASSET_SPEC_V2.md). Impact lands where the
+  // production spine expects it (~1.1s vs. SPINE.IMPACT's 1.15s), but the
+  // style is still hand-authored rather than built with `scene()`: the
+  // budget is tight enough (see the DURATION comment below) that a change to
+  // any of `scene()`'s hardcoded post-impact beats would risk breaking it,
+  // and touching that shared compiler for one DEV style is out of scope.
+  (() => {
+    const IMPACT_AT = 1100; // measured: the POP lands between 1.06s and 1.10s
+    const REVEAL_AT = 1130;
+    // 2120, not 2150: the DEV_CAPTURE_STYLES header explains why this can't
+    // just be scene()'s SPINE.END -- here specifically, everything (WALK,
+    // DISPLACE, RELEASE, EXIT, CELEBRATE) has to land inside a MUCH smaller
+    // post-reveal budget (1350ms fixed by CLAIM_TIMING, vs. the ~340ms of
+    // slack this leaves) than the production spine was tuned for, because
+    // the real impact is ~1.2s earlier than SPINE.IMPACT.
+    const DURATION = 2120;
+
+    const sequence = finishDevSequence([
+      attacker(0, ACTION.CHARGE),
+      fx(30, 'seedance_party_burst', {
+        anchor: S.TERRITORY_CENTER, size: 280, hold: DURATION - 30, beat: BEAT.SETUP,
+      }),
+      scatter(300, NOTICE_POOL, { stagger: 50, duration: 280, from: S.TERRITORY_CENTER }),
+      // No CHARGE->RECOIL pair: the plate itself performs the anticipation
+      // squash (0.0-0.9s) and the POP (impact), so the attacker's own body
+      // just braces into that impact rather than duplicating the squash.
+      attacker(760, ACTION.BRACE, { duration: 340 }),
+      haptic(IMPACT_AT, 'success'),
+      shake(IMPACT_AT, { intensity: 1.0, axis: 'both' }),
+      cam(IMPACT_AT + 20, CAMERA_ACTION.PUNCH_IN, { amount: 1.08 }),
+      reveal(REVEAL_AT, { transition: T.BLOOM, origin: S.TERRITORY_CENTER, duration: 650 }),
+      attacker(1150, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER, duration: 340 }),
+      defenders(1160, ACTION.SHOCKWAVE_KNOCKBACK, { duration: 350, from: S.TERRITORY_CENTER }),
+      cam(1560, CAMERA_ACTION.RELEASE, { duration: 320 }),
+      scatter(1560, FLIGHT_POOL, { stagger: 50, duration: 420, from: S.TERRITORY_CENTER }),
+      // CELEBRATE/victory/sound come AFTER the reaction beat's own steps
+      // (RELEASE/EXIT at 1560), not before -- the DEV style's beat ranks
+      // must be non-decreasing once sorted by start, same as any style, and
+      // an earlier draft of this file got that ordering backwards.
+      attacker(1600, ACTION.CELEBRATE, { duration: 360 }),
+      victory(1600),
+      sound(1600, 'claim'),
+    ], { action: 300, impact: IMPACT_AT, territory: REVEAL_AT, reaction: 1560, cleanup: 1600 });
+
+    return Object.freeze({
+      id: 'seedance_party_burst_test',
+      name: 'Seedance Party Burst (DEV)',
+      family: F.SUMMON,
+      archetype: 'dev:seedance_party_burst_test',
+      concept: 'DEV PROTOTYPE: a chunky PASER-doodle radial burst (rays, stars, footprints, map-pin) POPs at the claim point.',
+      description: 'Experimental -- PASER-doodle art direction, round 2. Not release-approved.',
+      beats: [
+        'A small teal shape at the claim point winds up with a squash-and-stretch anticipation',
+        'The rivals notice it building',
+        'POP -- the real measured impact, ~1.1s into the plate: a radial doodle burst of PASER iconography',
+        'The live territory reveal fires off that pop, the rivals are knocked back and leave, the burst retracts',
+      ],
+      encounterMode: M.SUMMON_ONLY,
+      usesProjectile: false,
+      usesContact: false,
+      usesEnvironment: false,
+      usesVectorEnvironment: false,
+      territoryTransition: T.BLOOM,
+      revealOrigin: S.TERRITORY_CENTER,
+      releaseApproved: false,
+      duration: DURATION,
+      sequence: Object.freeze(sequence),
+    });
+  })(),
+
+  // Round 2, second candidate. Needed a v02: v01's stamp hovered and did not
+  // land until ~1.7-1.8s (rejected -- "impact is later than 1.5s"). v02's
+  // corrected prompt (explicit "fast, snappy, like a stapler" wording)
+  // overshot the fix -- impact now lands ~0.75-0.78s, earlier than the
+  // 0.9-1.4s ideal window, but that is not one of the listed auto-reject
+  // triggers and is a far smaller miss than v01's lateness, so it was kept
+  // rather than spending a third generation on this concept.
+  (() => {
+    const IMPACT_AT = 780; // measured: the burst is already fully formed by 0.78s, not yet at 0.73s
+    const REVEAL_AT = 810;
+    const DURATION = 2120;
+
+    const sequence = finishDevSequence([
+      // Shortened from CHARGE's natural 760ms: the plate's own anticipation
+      // (motion lines, then the drop) is only ~0.6s here, and the default
+      // duration would still be running when BRACE needs to start.
+      attacker(0, ACTION.CHARGE, { duration: 380 }),
+      fx(30, 'seedance_paser_stamp', {
+        anchor: S.TERRITORY_CENTER, size: 280, hold: DURATION - 30, beat: BEAT.SETUP,
+      }),
+      scatter(100, NOTICE_POOL, { stagger: 40, duration: 240, from: S.TERRITORY_CENTER }),
+      attacker(440, ACTION.BRACE, { duration: 340 }),
+      haptic(IMPACT_AT, 'heavy'),
+      // A stamp lands vertically -- 'y', not 'both' (contrast the radial
+      // party-burst pop, which shakes on both axes).
+      shake(IMPACT_AT, { intensity: 1.2, axis: 'y' }),
+      cam(IMPACT_AT + 20, CAMERA_ACTION.PUNCH_IN, { amount: 1.1 }),
+      // TILE_CONVERT over SHOCKWAVE/BLOOM: a stamp presses ground into new
+      // ownership like printing a tile, which is what this transition draws.
+      reveal(REVEAL_AT, { transition: T.TILE_CONVERT, origin: S.TERRITORY_CENTER, duration: 600 }),
+      attacker(850, ACTION.MOVE_TO, { toward: S.TERRITORY_CENTER, duration: 240 }),
+      defenders(860, ACTION.SHOCKWAVE_KNOCKBACK, { duration: 300, from: S.TERRITORY_CENTER }),
+      cam(1300, CAMERA_ACTION.RELEASE, { duration: 320 }),
+      scatter(1300, FLIGHT_POOL, { stagger: 40, duration: 400, from: S.TERRITORY_CENTER }),
+      attacker(1800, ACTION.CELEBRATE, { duration: 300 }),
+      victory(1800),
+      sound(1800, 'claim'),
+    ], { action: 100, impact: IMPACT_AT, territory: REVEAL_AT, reaction: 1300, cleanup: 1800 });
+
+    return Object.freeze({
+      id: 'seedance_paser_stamp_test',
+      name: 'Seedance PASER Stamp (DEV)',
+      family: F.SUMMON,
+      archetype: 'dev:seedance_paser_stamp_test',
+      concept: 'DEV PROTOTYPE: a chunky PASER-style territory stamp slams onto the claim point with a comic starburst.',
+      description: 'Experimental -- PASER-doodle art direction, round 2. Not release-approved.',
+      beats: [
+        'Doodle motion lines gather as a flat oversized stamp drops toward the claim point',
+        'The rivals notice it falling',
+        'STAMP -- the real measured impact, ~0.78s into the plate: a comic starburst, confetti and stars',
+        'The live territory reveal fires off that stamp, the rivals are knocked back and leave, the stamp settles',
+      ],
+      encounterMode: M.SUMMON_ONLY,
+      usesProjectile: false,
+      usesContact: false,
+      usesEnvironment: false,
+      usesVectorEnvironment: false,
+      territoryTransition: T.TILE_CONVERT,
+      revealOrigin: S.TERRITORY_CENTER,
+      releaseApproved: false,
+      duration: DURATION,
+      sequence: Object.freeze(sequence),
+    });
+  })(),
+
+  // Round 3: ACTION-BASED direction. Stamp/Party Burst (above) were each one
+  // isolated Seedance FX sprite carrying the WHOLE scene by itself -- the
+  // thing that direction was rejected for: a claim needs a mini action
+  // SEQUENCE (anticipation, attack, defender reaction, impact, takeover,
+  // victory), not a single FX sprite standing in for it.
+  //
+  // 'meteor_claim' (the production reference implementation, at the top of
+  // CAPTURE_STYLES) is already exactly that sequence -- attacker calls it
+  // down, defenders notice, it falls growing, one impact, crater takeover,
+  // defenders thrown clear, attacker walks in and celebrates. This is that
+  // SAME `scene()` call -- same SPINE timing, same environment, same
+  // defender/attacker choreography -- with only the two sprite-pack FX ids
+  // (`solar_shrapnel_01`, `warm_explosion_01`) swapped for the Seedance
+  // PASER-doodle plates. It proves the FX-plates-inside-the-existing-
+  // choreography direction rather than the single-clip-does-everything one.
+  //
+  // Both plates are short and were NOT trimmed against a measured impact
+  // timestamp the way the stamp/burst were: `seedance_meteor_fall` is a
+  // looping rock that never itself travels (the engine's own `projectile()`
+  // wrapper drives its position/scale/spin, same as `solar_shrapnel_01`
+  // always was), and `seedance_meteor_impact` is a short, front-loaded burst
+  // plate whose natural 500ms already matches `impact.hold` almost exactly.
+  // See docs/SEEDANCE_CAPTURE_ASSET_SPEC_V3.md.
+  Object.freeze({
+    ...scene({
+      id: 'seedance_meteor_strike',
+      name: 'Seedance Meteor Strike (DEV)',
+      family: F.PROJECTILE,
+      mode: M.PROJECTILE,
+      concept: 'DEV PROTOTYPE: the production Meteor Claim choreography, with Seedance-generated PASER-doodle FX plates standing in for the sprite-pack rock and explosion.',
+      beats: [
+        'The runner points at the sky and a shadow spreads over the claim',
+        'The rivals look up as the Seedance-drawn meteor grows on its way down',
+        'It lands once, hard, and throws them off the ground',
+        'The crater spreads the new colour outward and the dust clears',
+      ],
+      attacker: { open: ACTION.POINT_SKY, openOptions: { toward: 'screenTop' } },
+      defenders: { notice: ACTION.LOOK_UP, noticeFrom: 'screenTop' },
+      world: [
+        env(SPINE.WARN, E.SHADOW, { anchor: S.TERRITORY_CENTER, size: 300, duration: 950, opacity: 0.55 }),
+        env(SPINE.WARN + 60, E.DARKEN, { duration: 900, opacity: 0.22 }),
+        // ONE object to follow, growing as it comes -- same travel wrapper as
+        // meteor_claim's `solar_shrapnel_01`, just a PASER-doodle rock instead
+        // of the sprite-pack one.
+        fly(SPINE.RELEASE, 'seedance_meteor_fall', 'screenTop', S.TERRITORY_CENTER, {
+          duration: 560, size: 130, grow: 2.2, spin: 50,
+        }),
+        cam(SPINE.IMPACT - 260, CAMERA_ACTION.WHIP_DOWN, { duration: 240 }),
+        env(SPINE.IMPACT + 60, E.CRACKS, { anchor: S.TERRITORY_CENTER, size: 320, duration: 460, count: 7 }),
+        env(SPINE.IMPACT + 90, E.DUST, { anchor: S.TERRITORY_CENTER, size: 300, duration: 900, count: 8 }),
+        env(SPINE.CONVERT - 40, E.GLOW_SEAMS, { anchor: S.TERRITORY_CENTER, size: 320, duration: 600, count: 7 }),
+      ],
+      impact: {
+        sprite: 'seedance_meteor_impact',
+        anchor: S.TERRITORY_CENTER,
+        size: 320,
+        // The plate's own natural length (12 frames @ 24fps = 500ms) --
+        // almost no rescale needed, unlike a measured-timing plate.
+        hold: 500,
+        flash: { opacity: 0.5, color: '#ffd54a', duration: 220 },
+        haptic: 'heavy',
+        shake: { intensity: 1.5, axis: 'y' },
+        punch: 1.16,
+        freeze: 90,
+        // No `debris`: the doodle burst plate already draws its own flung
+        // rock chunks, and layering the old pixel `boom_mid_01` sprite over
+        // it would mix two different art styles in the same beat.
+      },
+      territory: { transition: T.SHOCKWAVE, duration: 760 },
+    }),
+    releaseApproved: false,
+  }),
+
+  // LIGHTNING ATTACK -- the production Lightning Conquest choreography
+  // (bolt earths into the defender group, not territory centre), with
+  // Seedance-generated PASER-doodle FX plates standing in for the
+  // sprite-pack bolt (`magical_projectile_01`) and electric impact
+  // (`electric_impact_01`). Same fall/impact split as Meteor: a looping
+  // bolt the engine's own `projectile()` wrapper moves (needs no measured
+  // travel timing), and a short front-loaded strike plate.
+  Object.freeze({
+    ...scene({
+      id: 'seedance_lightning_attack',
+      name: 'Seedance Lightning Attack (DEV)',
+      family: F.PROJECTILE,
+      mode: M.PROJECTILE,
+      concept: 'DEV PROTOTYPE: the production Lightning Conquest choreography, with Seedance-generated PASER-doodle FX plates standing in for the sprite-pack bolt and electric impact.',
+      beats: [
+        'The runner raises a storm and the sky closes over the claim',
+        'The rivals look up and brace',
+        'A single Seedance-drawn bolt earths into the middle of them',
+        'The charge runs out along the ground and throws them off it',
+      ],
+      attacker: { open: ACTION.RAISE_ARMS },
+      defenders: {
+        notice: ACTION.LOOK_UP, noticeFrom: 'screenTop',
+        displaceFrom: 'defenderGroupCenter', exitFrom: 'defenderGroupCenter',
+      },
+      world: [
+        env(SPINE.WARN, E.DARKEN, { duration: 1000, opacity: 0.32 }),
+        fly(SPINE.IMPACT - 260, 'seedance_lightning_charge', 'screenTop', 'defenderGroupCenter', {
+          duration: 220, size: 100, grow: 1.7,
+        }),
+      ],
+      impact: {
+        sprite: 'seedance_lightning_strike',
+        anchor: 'defenderGroupCenter',
+        size: 320,
+        hold: 500,
+        flash: { opacity: 0.55, color: '#fffde8', duration: 200 },
+        haptic: 'heavy',
+        shake: { intensity: 1.2, axis: 'x' },
+        punch: 1.12,
+        freeze: 70,
+      },
+      territory: { transition: T.ELECTRIFY, origin: S.TERRITORY_CENTER, duration: 720 },
+    }),
+    releaseApproved: false,
+  }),
+
+  // GROUND SMASH -- the production Earth Crack choreography (JUMP -> SLAM at
+  // the attacker's own feet, not territory centre), with a Seedance-generated
+  // PASER-doodle burst standing in for the sprite-pack `impact_shock_01`.
+  // Only one plate, deliberately: unlike Meteor's fall+impact split, a ground
+  // smash has no travel beat to cover, and earth_crack's own vector
+  // environment (CRACKS/RISE/GLOW_SEAMS -- free, already tinted from the live
+  // palette) already draws the "crack lines shoot outward, slabs pop up"
+  // half of the brief, so the plate only needs to carry the impact instant.
+  // v1's crack lines rendered charcoal-grey rather than black (see the
+  // effect's own registry comment); v2 corrected them to mint-green.
+  Object.freeze({
+    ...scene({
+      id: 'seedance_ground_smash',
+      name: 'Seedance Ground Smash (DEV)',
+      family: F.TERRITORY,
+      mode: M.ATTACKER_ONLY,
+      concept: 'DEV PROTOTYPE: the production Earth Crack choreography, with a Seedance-generated PASER-doodle FX plate standing in for the sprite-pack ground-impact shock.',
+      beats: [
+        'The runner jumps and comes down on the ground',
+        'The first fissure opens at their feet and races outward',
+        'The slabs lift under everybody and drop back',
+        'The new colour glows up through the cracks',
+      ],
+      attacker: { open: ACTION.JUMP, strike: ACTION.SLAM, strikeOptions: { toward: S.TERRITORY_CENTER } },
+      defenders: {
+        notice: [ACTION.NOTICE, ACTION.LOOK_LEFT, ACTION.SURPRISED, ACTION.LOOK_RIGHT],
+        noticeFrom: 'characterFeet',
+        displaceFrom: 'characterFeet', exitFrom: 'characterFeet',
+      },
+      world: [
+        cam(SPINE.RELEASE, CAMERA_ACTION.WHIP_DOWN, { duration: 200 }),
+        env(SPINE.IMPACT + 40, E.CRACKS, { anchor: 'characterFeet', size: 360, duration: 500, count: 8 }),
+        env(SPINE.IMPACT + 120, E.RISE, { anchor: S.TERRITORY_CENTER, size: 340, duration: 700, count: 5 }),
+        env(SPINE.CONVERT, E.GLOW_SEAMS, { anchor: 'characterFeet', size: 360, duration: 620, count: 8 }),
+      ],
+      impact: {
+        sprite: 'seedance_ground_smash',
+        anchor: 'characterFeet',
+        size: 320,
+        hold: 500,
+        haptic: 'heavy',
+        shake: { intensity: 1.4, axis: 'y' },
+        punch: 1.12,
+        freeze: 90,
+      },
+      territory: { transition: T.CRACK_GLOW, origin: S.CHARACTER_FEET, duration: 780 },
+    }),
+    releaseApproved: false,
+  }),
+
+  // =========================================================================
+  // DUEL — the characters actually touch (Round 3)
+  // =========================================================================
+
+  // COMIC BRAWL / CLASH -- the production Sword Slash choreography (the
+  // attacker's own DASH_FORWARD toward 'nearestDefender' is what makes the
+  // two characters actually CONVERGE, and `duel()` is what makes them touch),
+  // with a Seedance-generated comic clash cloud standing in for the weapon
+  // slash FX. No Seedance-generated characters anywhere -- the live
+  // CharacterRig cast does the fighting; the plate is only the impact cloud
+  // that briefly covers the point of contact. It can do that for free:
+  // FOREGROUND_FX (40) already paints above CHARACTER (30) in layers.js, so
+  // a large enough hero effect at the clash point naturally occludes both
+  // converging rigs without any renderer change.
+  Object.freeze({
+    ...scene({
+      id: 'seedance_comic_brawl',
+      name: 'Seedance Comic Brawl (DEV)',
+      family: F.DUEL,
+      mode: M.DUEL,
+      concept: 'DEV PROTOTYPE: the production Sword Slash choreography (live characters converge and touch), with a Seedance-generated PASER-doodle comic clash cloud standing in for the weapon-slash FX -- no Seedance-generated characters.',
+      beats: [
+        'The two square up to each other',
+        'The runner commits and closes on the nearest rival',
+        'A comic clash cloud bursts at the point of contact, briefly covering both fighters',
+        'It tears the territory open at the clash point',
+      ],
+      attacker: {
+        open: ACTION.STEP_FORWARD,
+        strike: ACTION.DASH_FORWARD,
+        strikeOptions: { toward: 'nearestDefender' },
+      },
+      defenders: {
+        notice: [ACTION.NOTICE, ACTION.BRACE, ACTION.LOOK_LEFT, ACTION.NOTICE],
+        noticeFrom: 'characterCenter',
+        displace: ACTION.FALL_AND_RECOVER, displaceFrom: 'characterCenter',
+        exitFrom: 'characterCenter',
+      },
+      duel: { at: SPINE.IMPACT - 40, variant: 'grin-knock', target: 'nearest' },
+      world: [
+        pause(SPINE.IMPACT - 300, 200),
+      ],
+      impact: {
+        sprite: 'seedance_brawl_clash',
+        anchor: 'nearestDefender',
+        size: 360,
+        hold: 500,
+        haptic: 'heavy',
+        shake: { intensity: 1.15, axis: 'x' },
+        punch: 1.14,
+        freeze: 100,
+      },
+      territory: { transition: T.SHOCKWAVE, origin: S.TERRITORY_CENTER, duration: 740 },
+    }),
+    releaseApproved: false,
+  }),
+]);
+
 export const DEFAULT_CAPTURE_STYLE_ID = 'meteor_claim';
 
 // Old ids may exist in persisted dev replays and gallery deep links. Resolve
@@ -2002,7 +2480,14 @@ const LEGACY_ALIASES = Object.freeze({
 
 export function getCaptureStyle(id) {
   const resolved = LEGACY_ALIASES[id] || id;
-  return CAPTURE_STYLES.find((item) => item.id === resolved) || null;
+  // Production ids resolve here and stop -- `||` short-circuits, so every
+  // existing style's resolution is byte-identical to before this line
+  // existed. DEV_CAPTURE_STYLES is only ever consulted for an id this array
+  // does not have, which is exactly (and only) how the gallery reaches a dev
+  // style: pickCaptureStyle()/PLAYABLE_CAPTURE_STYLES never produce one.
+  return CAPTURE_STYLES.find((item) => item.id === resolved)
+    || DEV_CAPTURE_STYLES.find((item) => item.id === resolved)
+    || null;
 }
 
 export function isReleaseApprovedCaptureStyle(item) {

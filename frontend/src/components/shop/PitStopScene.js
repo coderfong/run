@@ -1,22 +1,26 @@
-// PitStopScene — the animated hydration station above the shop stock.
+// PitStopScene — the animated hydration station the shop's stock stands in.
 //
 // One responsive container of absolutely-positioned layers, every one of them
 // decorative: the whole scene is pointerEvents="none" and hidden from screen
-// readers, so the product grid below owns every touch target and every
-// accessibility label. Nothing in here reads shop data except which item is
-// selected, and nothing in here can buy anything.
+// readers. WaterPointStage draws this component and then lays a second,
+// interactive layer directly on top of it, in the same box (the nine
+// products, the try-on mirror, the restock sign) — that sibling layer owns
+// every touch target and every accessibility label the Water Point has.
+// Nothing in HERE reads shop data except which item is selected (so the
+// crew can react to it), and nothing in here can buy anything.
 //
 // THE STALL IS PAINTED; EVERYTHING THAT MOVES IS NOT. Two plates carry the
 // environment (see PIT_STOP_PLATES) and the whole of the layer order exists to
 // put the moving parts between them:
 //
 //   backdrop plate   sky, canopy, wall, shelves, counter top
-//   shelf props      standing on the painted shelves
 //   hanging props    swinging off the painted canopy
 //   the crew         cut off at the hip by...
 //   counter plate    ...the same painting, from the counter's back edge down
-//   counter stock    standing in front of it
 //   the sign         nothing crosses the stall's name
+//
+// (WaterPointStage's interactive layer then adds the products ON TOP of all
+// of this — on the shelves, on the counter, and on a dais dead centre.)
 //
 // That middle sandwich is the only reason the illustration is cut in two.
 
@@ -36,15 +40,12 @@ import Animated, {
 import {
   PIT_STOP_ANIM,
   PIT_STOP_COLORS,
-  PIT_STOP_ICON_PROPS,
   PIT_STOP_LAYOUT,
   PIT_STOP_PLATES,
   SCENE,
   SCENE_VIEW,
 } from '../../config/pitStop';
-import { ICONS } from '../AppIcon';
 import { useReduceMotion } from '../../ui/motion';
-import GameAnimation from '../GameAnimation';
 import {
   HangingBottleArt,
   HangingMedalArt,
@@ -273,49 +274,18 @@ const Spark = memo(function Spark({ p, spot, frame, scale, size, color, index, r
 // Static furniture
 // ---------------------------------------------------------------------------
 
-const IconProp = memo(function IconProp({ name, frame, scale }) {
-  const source = ICONS[name];
-  if (!source) return null; // an icon key that no longer exists must not crash the shop
-  return (
-    <Image
-      source={source}
-      style={layer(frame, scale)}
-      resizeMode="contain"
-      fadeDuration={0}
-    />
-  );
-});
-
 /**
- * The painted stall, plus the two real PASER icons standing on its shelves.
- *
- * The route board and race bib that used to hang on the vector wall are gone.
- * The painted wall is deliberately bare — the shelves ARE its furniture — and
- * with three heads in front of it there is no strip left wide enough to hang a
- * readable board on. What the wall needed was objects standing on the shelves
- * it already has, which is what these two are.
+ * The painted stall. Its two shelf pockets — where a stopwatch and a trophy
+ * icon used to stand purely as decoration — carry real stock now: see
+ * WaterPointStage, which lays two of the nine products at exactly those
+ * spots (config/shopStageLayout.js's `shelfLeft`/`shelfRight`), on top of
+ * this plate. The route board and race bib that used to hang on the vector
+ * wall are gone with the wall's own drawing; the painted wall is bare by
+ * design, and three heads in front of it leave no strip wide enough for a
+ * readable board.
  */
 const StaticEnvironment = memo(function StaticEnvironment({ scale }) {
-  return (
-    <>
-      <Plate source={PIT_STOP_PLATES.backdrop()} scale={scale} />
-      <IconProp name={PIT_STOP_ICON_PROPS.stopwatch} frame={PIT_STOP_LAYOUT.stopwatch} scale={scale} />
-      <IconProp name={PIT_STOP_ICON_PROPS.trophy} frame={PIT_STOP_LAYOUT.trophy} scale={scale} />
-    </>
-  );
-});
-
-/**
- * A supplied prop clip standing in a layout frame.
- *
- * Every one of these is SCENERY, not a reaction, so each is registered
- * `selfLooping` in config/gameAnimations.js — which is what makes Reduce
- * Motion hold their first frame instead of clearing the counter. A prop that
- * vanished when you turned motion down would be a hole in the painting, not a
- * quieter screen.
- */
-const PropClip = memo(function PropClip({ name, frame, scale }) {
-  return <GameAnimation name={name} size={frame.width * scale} style={layer(frame, scale)} />;
+  return <Plate source={PIT_STOP_PLATES.backdrop()} scale={scale} />;
 });
 
 /**
@@ -366,37 +336,18 @@ const StationSign = memo(function StationSign({ scale }) {
   );
 });
 
-const ForegroundCounter = memo(function ForegroundCounter({ scale, restockBeat, presentBeat, reduced }) {
-  const lootbox = ICONS[PIT_STOP_ICON_PROPS.lootbox];
-  return (
-    <>
-      <Plate source={PIT_STOP_PLATES.counter()} scale={scale} />
-      {/* Left to right along the counter. The lootbox and the soda ride the
-          same beats as the characters holding them, so the hands never visibly
-          detach from the prop. */}
-      <PropClip name="propCoconut" frame={PIT_STOP_LAYOUT.coconut} scale={scale} />
-      {lootbox ? (
-        <BeatProp frame={PIT_STOP_LAYOUT.lootbox} scale={scale} beat={restockBeat} reduced={reduced} lift={10}>
-          <Image source={lootbox} style={StyleSheet.absoluteFillObject} resizeMode="contain" fadeDuration={0} />
-        </BeatProp>
-      ) : null}
-      <PropClip name="propWatermelon" frame={PIT_STOP_LAYOUT.watermelon} scale={scale} />
-      <BeatProp frame={PIT_STOP_LAYOUT.sodaBottles} scale={scale} beat={presentBeat} reduced={reduced} lift={8}>
-        <GameAnimation name="propSodaBottles" size={PIT_STOP_LAYOUT.sodaBottles.width * scale} />
-      </BeatProp>
-    </>
-  );
-});
-
-const BeatProp = memo(function BeatProp({ frame, scale, beat, reduced, lift, children }) {
-  const style = useAnimatedStyle(() => ({
-    transform: [{ translateY: reduced || !beat ? 0 : -beat.value * lift }],
-  }));
-  return (
-    <Animated.View style={[layer(frame, scale), style]} pointerEvents="none">
-      {children}
-    </Animated.View>
-  );
+/**
+ * The counter, from its back edge down. Used to also carry four decorative
+ * food/loot props (a coconut, a lootbox, a watermelon, a rack of soda) —
+ * they are gone with the counter space they stood in, which is real stock
+ * now: WaterPointStage lays six products and the legendary dais along this
+ * same plate, ON TOP of it, the same way those props used to stand on it.
+ * `restockBeat`/`presentBeat` stay on the SUPPORT CHARACTERS (see
+ * SupportCharacters below) — the restocker and helper still bounce on them,
+ * they just are not lifting a prop into frame while they do.
+ */
+const ForegroundCounter = memo(function ForegroundCounter({ scale }) {
+  return <Plate source={PIT_STOP_PLATES.counter()} scale={scale} />;
 });
 
 // ---------------------------------------------------------------------------
@@ -467,7 +418,7 @@ const PitStopScene = memo(function PitStopScene({
           what rises past its top edge. That is the whole crop: no frame is
           re-measured for it. */}
       <View style={stage(scale, cropTop)}>
-        {/* 01 the painted stall, and the two icons standing on its shelves. */}
+        {/* 01 the painted stall. */}
         <StaticEnvironment scale={scale} />
 
         {/* 02 hanging props, swinging off the canopy's lower edge in the two
@@ -514,24 +465,17 @@ const PitStopScene = memo(function PitStopScene({
 
         {/* 05 the counter, from its back edge down — the same painting, cut
             here so it lands in FRONT of the crew and takes their legs. The
-            stock standing on it comes with it. */}
-        <ForegroundCounter
-          scale={scale}
-          restockBeat={restockBeat}
-          presentBeat={presentBeat}
-          reduced={reduced}
-        />
+            products WaterPointStage lays on top of it are what stand on it
+            now. */}
+        <ForegroundCounter scale={scale} />
 
         {/* 06 effects.
-            THE SELECTED PRODUCT IS NOT DRAWN HERE ANY MORE. It used to rise
-            off the counter's left lane, which put the one thing on this
-            screen you have to READ — art, name, rarity, price — inside a
-            decorative, pointerEvents-none illustration, at whatever size the
-            scene happened to be. It has its own card under the scene now
-            (ShopScreen), where the buy button sits next to it and the
-            purchase burst plays over the item you actually bought. What is
-            left in here is the crew's reaction, which is the part that
-            belongs to the scene. */}
+            THE PRODUCTS ARE NOT DRAWN HERE. This whole component stays
+            pointerEvents="none" and hidden from screen readers — the nine
+            items, the try-on mirror and the restock sign are a SIBLING
+            interactive layer WaterPointStage draws on top of this one (see
+            that file's header for why two layers rather than one). What
+            stays in here is the crew's own reaction, which is scenery. */}
         {offerPhase === 'present' ? (
           <SparkBurst
             frame={PIT_STOP_LAYOUT.cup}

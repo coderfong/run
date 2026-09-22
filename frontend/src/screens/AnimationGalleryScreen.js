@@ -16,7 +16,7 @@ import CaptureStylePlayer from '../effects/CaptureStylePlayer';
 import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
 import useCaptureStage from '../effects/useCaptureStage';
 import EffectPlayer from '../effects/EffectPlayer';
-import { CAPTURE_STYLES } from '../effects/captureStyles';
+import { CAPTURE_STYLES, DEV_CAPTURE_STYLES } from '../effects/captureStyles';
 import { layoutDefenders } from '../effects/anchors';
 import { choreographySignature } from '../effects/choreography';
 import { EFFECT_CATEGORY_LABELS } from '../effects/effectCategories';
@@ -34,6 +34,18 @@ const SCENARIOS = [
   { id: 'one', label: '1 rival', defenders: 1 },
   { id: 'two', label: '2 rivals', defenders: 2 },
   { id: 'three', label: '3 rivals', defenders: 3 },
+];
+// The gallery's own list, kept separate from CAPTURE_STYLES/PLAYABLE_CAPTURE_STYLES
+// so a DEV style is browsable here without ever entering pickCaptureStyle()'s
+// pool -- see captureStyles.js's DEV_CAPTURE_STYLES note.
+const LAB_STYLES = [...CAPTURE_STYLES, ...DEV_CAPTURE_STYLES];
+// Mirrors the real victim-side swap in components/LandCaptureAlert.js: the
+// remote attacker's avatar and the local player's avatar trade slots, and the
+// choreography (which of them braces/knocks back vs. strikes/celebrates)
+// plays out unchanged, because it addresses ROLES, not people.
+const PERSPECTIVES = [
+  { id: 'attacker', label: 'Attacker' },
+  { id: 'victim', label: 'Victim' },
 ];
 
 function Chip({ label, active, onPress }) {
@@ -228,12 +240,19 @@ function CaptureStyleLab() {
   const { colors } = useTheme();
   const type = useThemedType();
   const { equipped } = useAvatar();
-  const [styleId, setStyleId] = useState(CAPTURE_STYLES[0].id);
+  const [styleId, setStyleId] = useState(LAB_STYLES[0].id);
   const [scenario, setScenario] = useState(SCENARIOS[0]);
   const [reduced, setReduced] = useState(false);
   const [playToken, setPlayToken] = useState(1);
   const [stage, setStage] = useState({ width: 320, height: 430 });
   const [revealed, setRevealed] = useState(null);
+  const [speed, setSpeed] = useState(1);
+  const [background, setBackground] = useState('map');
+  const [perspective, setPerspective] = useState(PERSPECTIVES[0]);
+  // DEV-only comparison filter: narrows the style row to just the Seedance
+  // candidates, so switching between them (e.g. Stamp vs. Party Burst) is a
+  // single tap rather than scrolling past every production style first.
+  const [seedanceOnly, setSeedanceOnly] = useState(false);
   // The lab drives the same scene and the same body the live claim does, so a
   // style watched here is the style that ships. Without these the gallery
   // would preview only the sprite track — which is exactly the partial view
@@ -257,43 +276,88 @@ function CaptureStyleLab() {
     () => ({ x: center.x - 29, y: center.y - 29, width: 58, height: 58 }),
     [center]
   );
-  const selected = useMemo(() => CAPTURE_STYLES.find((item) => item.id === styleId), [styleId]);
+  const selected = useMemo(() => LAB_STYLES.find((item) => item.id === styleId), [styleId]);
   // The lab casts the same rivals the live claim would, laid out by the same
   // function against the same shape, so "how does this style read against
   // three people" is answerable at a desk. Seeded off the style so switching
   // styles reshuffles who stands where, and replaying one does not.
+  //
+  // Under Victim perspective this becomes exactly one entry, the local
+  // player -- the same shape components/LandCaptureAlert.js casts for a real
+  // victim replay (`[{ user_id: 'me', ... avatar: equipped }]`), never the
+  // scenario's cast size, because a real victim replay is always one person.
+  const isVictim = perspective.id === 'victim';
+  const effectiveDefenderCount = isVictim ? 1 : scenario.defenders;
   const labDefenders = useMemo(
-    () => Array.from({ length: scenario.defenders }, (_, index) => ({
-      id: `lab-${index}`,
-      avatar: equipped,
-      clan_color: { stroke: '#FF8C6B' },
-    })),
-    [equipped, scenario.defenders]
+    () => (isVictim
+      ? [{ id: 'lab-victim-you', avatar: equipped, clan_color: { stroke: '#FF8C6B' } }]
+      : Array.from({ length: scenario.defenders }, (_, index) => ({
+        id: `lab-${index}`,
+        avatar: equipped,
+        clan_color: { stroke: '#FF8C6B' },
+      }))),
+    [equipped, isVictim, scenario.defenders]
   );
   const labRects = useMemo(
     () => layoutDefenders(
-      scenario.defenders,
+      effectiveDefenderCount,
       { bounds: stage, claimPoint: center, territoryRings: rings },
-      `lab:${styleId}`,
+      `lab:${styleId}:${perspective.id}`,
       DEFENDER_SIZE
     ),
-    [center, rings, scenario.defenders, stage, styleId]
+    [center, effectiveDefenderCount, perspective.id, rings, stage, styleId]
   );
+  // Attacker∕defender trade slots for Victim perspective, same as the real
+  // victim-side alert: an empty cosmetics object stands in for "the remote
+  // attacker", since the lab only has the signed-in player's own avatar to
+  // draw from. The choreography does not care whose avatar is in a role.
+  const labAttacker = isVictim ? {} : equipped;
+  const visibleStyles = seedanceOnly ? DEV_CAPTURE_STYLES : LAB_STYLES;
 
   return (
     <ScrollView contentContainerStyle={styles.lab}>
       <Text style={[type.title, { color: colors.text }]}>Capture Style Lab</Text>
       <Text style={[type.bodySm, { color: colors.textMuted }]}>Uses the same style player and current avatar as the live post-run claim.</Text>
+      <View style={styles.chipRow}>
+        <Chip
+          label={seedanceOnly ? 'Seedance / PASER only' : 'Seedance / PASER'}
+          active={seedanceOnly}
+          onPress={() => {
+            const next = !seedanceOnly;
+            setSeedanceOnly(next);
+            // Switching the filter on while a production style is selected
+            // would otherwise leave the row with nothing marked active.
+            if (next && !DEV_CAPTURE_STYLES.some((item) => item.id === styleId)) {
+              setStyleId(DEV_CAPTURE_STYLES[0].id);
+              replay();
+            }
+          }}
+        />
+      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-        {CAPTURE_STYLES.map((item) => <Chip key={item.id} label={item.name} active={styleId === item.id} onPress={() => { setStyleId(item.id); replay(); }} />)}
+        {visibleStyles.map((item) => <Chip key={item.id} label={item.name} active={styleId === item.id} onPress={() => { setStyleId(item.id); replay(); }} />)}
       </ScrollView>
       <View style={styles.chipRow}>
-        {SCENARIOS.map((item) => <Chip key={item.id} label={item.label} active={scenario.id === item.id} onPress={() => { setScenario(item); replay(); }} />)}
+        {SCENARIOS.map((item) => (
+          <Chip
+            key={item.id}
+            label={item.label}
+            active={scenario.id === item.id}
+            // 0/1/2/3 only means anything for Attacker perspective -- Victim
+            // is always exactly 1, matching the real victim-side replay.
+            onPress={() => { if (!isVictim) { setScenario(item); replay(); } }}
+          />
+        ))}
         <Chip label={reduced ? 'Reduced on' : 'Reduced off'} active={reduced} onPress={() => { setReduced((value) => !value); replay(); }} />
         <Chip label="Replay" active={false} onPress={replay} />
       </View>
+      <View style={styles.chipRow}>
+        {PERSPECTIVES.map((item) => <Chip key={item.id} label={item.label} active={perspective.id === item.id} onPress={() => { setPerspective(item); replay(); }} />)}
+        {BACKGROUNDS.map((value) => <Chip key={value} label={value} active={background === value} onPress={() => setBackground(value)} />)}
+        {SPEEDS.map((value) => <Chip key={value} label={`${value}×`} active={speed === value} onPress={() => setSpeed(value)} />)}
+      </View>
       <PreviewBackground
-        mode="map"
+        mode={background}
         style={styles.labStage}
       >
         {/* One stage, exactly as ResultScreen mounts it: the ground, the body
@@ -309,7 +373,7 @@ function CaptureStyleLab() {
           </Svg>
           <CaptureCast
             ref={castRef}
-            attacker={equipped}
+            attacker={labAttacker}
             attackerPoint={center}
             defenders={labDefenders}
             defenderRects={labRects}
@@ -324,9 +388,14 @@ function CaptureStyleLab() {
             territoryRings={rings}
             characterRect={characterRect}
             defenderRects={labRects}
-            defenderCount={scenario.defenders}
+            defenderCount={effectiveDefenderCount}
             reducedMotion={reduced}
-            seed={`lab:${styleId}`}
+            seed={`lab:${styleId}:${perspective.id}`}
+            // `timeScale` stretches DELAYS (see useCaptureStage.js's own
+            // note): a value > 1 is slower, < 1 is faster -- the inverse of
+            // the "0.5x is slower" convention `speed` reads as everywhere
+            // else in this screen (EffectPlayer's playback-rate `speed`).
+            timeScale={1 / speed}
             tint="#54E7A5"
             ink="#54E7A5"
             onTerritoryReveal={reveal}

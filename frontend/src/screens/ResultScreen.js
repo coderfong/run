@@ -49,6 +49,7 @@ import { SIGNAL, TARGET, useTutorial, useTutorialTarget } from '../tutorial';
 import CutsceneBackdrop from '../components/claim/CutsceneBackdrop';
 import { CLAIM_PHASE, atOrAfter } from '../components/claim/phases';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
+import { buildTutorialClaimOut, buildTutorialOptions, tutorialPreviewAt } from '../run/tutorialRun';
 import LeaderboardTransition from '../components/claim/LeaderboardTransition';
 import TerritoryRevealCanvas from '../components/claim/TerritoryRevealCanvas';
 import TerritoryVictoryBeat, { victoryLabel } from '../components/claim/TerritoryVictoryBeat';
@@ -346,6 +347,13 @@ export default function ResultScreen({ navigation, route }) {
   // everything that belonged to the moment the run finished, which was shown
   // then and must not be celebrated or paid out a second time.
   const deferred = !!route.params.deferred;
+  // The first-run tutorial's own run (see run/tutorialRun.js and
+  // RunningScreen's startTutorialSimRun). `result` already carries a real
+  // RunResultOut shape — fabricated, not fetched — so most of this screen
+  // needs no changes at all; only the handful of effects and handlers below
+  // that would otherwise call the network for a run_id that does not exist
+  // on the server branch on this flag instead.
+  const tutorialSim = !!route.params.tutorialSim;
   const { color, clan } = useClan();
   const { equipped, rankKey } = useAvatar();
   const { user } = useAuth();
@@ -780,10 +788,14 @@ export default function ResultScreen({ navigation, route }) {
   // when it's too low. (The state itself is declared above the derived block.)
   useEffect(() => {
     if (!canPlace) return;
+    if (tutorialSim) {
+      setEnergyStatus({ energy: 40, energy_max: 40 });
+      return;
+    }
     let alive = true;
     api.energyStatus().then((s) => { if (alive) setEnergyStatus(s); }).catch(() => {});
     return () => { alive = false; };
-  }, [canPlace]);
+  }, [canPlace, tutorialSim]);
   const refreshEnergy = () => api.energyStatus().then(setEnergyStatus).catch(() => {});
 
   // The attack choice. Fetched once per run: the shape and the sampled grid
@@ -793,6 +805,22 @@ export default function ResultScreen({ navigation, route }) {
   // just without the move.
   useEffect(() => {
     if (captured || claimArea <= 0) return;
+    if (tutorialSim) {
+      // No claim options endpoint to ask — everything the real request would
+      // have answered is invented from `result` instead, synchronously, so
+      // the dial is ready to drag the instant the map is.
+      const routeLonLat = path
+        .map((p) => [Number(p?.longitude), Number(p?.latitude)])
+        .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      const o = buildTutorialOptions(result, routeLonLat);
+      setOptions(o);
+      const seed = o.placements[0];
+      const start = { t: seed.t, deg: normaliseDeg(seed.rotation_deg) };
+      setPose(start);
+      previewPose.current = start;
+      setPreview(seed);
+      return;
+    }
     let alive = true;
     api.claimOptions(result.run_id)
       .then((o) => {
@@ -809,7 +837,7 @@ export default function ResultScreen({ navigation, route }) {
       })
       .catch(() => {});
     return () => { alive = false; };
-  }, [result.run_id, captured, claimArea]);
+  }, [result.run_id, captured, claimArea, tutorialSim, path, result]);
 
   // What the current pose would take. The SHAPE is already on the map — drawn
   // locally, exactly where the claim will land — so this is only ever chasing
@@ -823,6 +851,13 @@ export default function ResultScreen({ navigation, route }) {
   const requestPreview = useCallback(
     (next) => {
       if (!result.run_id || captured) return;
+      if (tutorialSim) {
+        // Open ground everywhere along this loop — no request needed, so the
+        // numbers never lag the shape the way a real debounced preview can.
+        previewPose.current = next;
+        setPreview(tutorialPreviewAt({ ...next, claim_ring: result.claim_ring, claim_area_m2: result.claim_area_m2 }));
+        return;
+      }
       const token = (previewToken.current += 1);
       setPreviewing(true);
       api
@@ -840,7 +875,7 @@ export default function ResultScreen({ navigation, route }) {
           if (token === previewToken.current) setPreviewing(false);
         });
     },
-    [result.run_id, captured]
+    [result.run_id, captured, tutorialSim, result.claim_ring, result.claim_area_m2]
   );
 
   // Are the numbers on screen the ones for the shape on screen? Anything that
@@ -950,6 +985,12 @@ export default function ResultScreen({ navigation, route }) {
   const claimRef = useRef(claim);
   claimRef.current = claim;
   useEffect(() => {
+    if (tutorialSim) {
+      // No real ladder position to report for a run that never happened —
+      // enough of a number to let the XP bar draw somewhere believable.
+      setXpTotal(340);
+      return undefined;
+    }
     let alive = true;
     fetchAndCache('me:progression', api.progression)
       .then((p) => {
@@ -958,7 +999,7 @@ export default function ResultScreen({ navigation, route }) {
       })
       .catch(() => {});
     return () => { alive = false; };
-  }, []);
+  }, [tutorialSim]);
   // The claim does NOT pay again (XP moved to separate screen).
   const xpTotalNow = xpTotal;
 
@@ -1195,8 +1236,10 @@ export default function ResultScreen({ navigation, route }) {
   const [highFivedAll, setHighFivedAll] = useState(false);
   useEffect(() => {
     // Crossed paths belong to the moment the run finished, and were shown
-    // then. A later visit to place the land does not replay them.
-    if (!result.run_id || deferred) return undefined;
+    // then. A later visit to place the land does not replay them. A tutorial
+    // run crossed nobody real either — the earlier training beat already
+    // taught what a crossing looks like, illustrated.
+    if (!result.run_id || deferred || tutorialSim) return undefined;
     let alive = true;
     api
       .paserbyReveal(result.run_id)
@@ -1213,7 +1256,7 @@ export default function ResultScreen({ navigation, route }) {
       // here must never disturb the run's own result.
       .catch(() => {});
     return () => { alive = false; };
-  }, [result.run_id, deferred]);
+  }, [result.run_id, deferred, tutorialSim]);
 
   const placeClaim = async () => {
     if (!center || claiming || !canPlace) return;
@@ -1224,11 +1267,13 @@ export default function ResultScreen({ navigation, route }) {
       // and which way it faces. The server regrows the same shape from the
       // stored route and moves it rigidly to that pose, so the ground claimed
       // is always built from the run that earned it, at the size it earned.
-      const out = await api.claimTerritory(
-        result.run_id,
-        pose ? pose.t : null,
-        pose ? pose.deg : null
-      );
+      const out = tutorialSim
+        ? buildTutorialClaimOut({ result, user, equipped })
+        : await api.claimTerritory(
+            result.run_id,
+            pose ? pose.t : null,
+            pose ? pose.deg : null
+          );
       setClaim({
         territory: out.territory,
         stolen_m2: out.stolen_m2 || 0,
@@ -1247,9 +1292,13 @@ export default function ResultScreen({ navigation, route }) {
       // Land changed hands: territory, energy, rivalries, club totals and every
       // board are now wrong in the cache. Drop them so the tabs behind this
       // screen rebuild from the server rather than from before the claim.
-      invalidateAfterClaim();
-      // ...and this run's own page, which offers the claim while it waits.
-      invalidate(`run:${result.run_id}`);
+      // Nothing real changed for a tutorial claim, so there is nothing to
+      // invalidate — the fabricated run_id was never a real cache key.
+      if (!tutorialSim) {
+        invalidateAfterClaim();
+        // ...and this run's own page, which offers the claim while it waits.
+        invalidate(`run:${result.run_id}`);
+      }
       // The payoff carries the celebration now — no toast on top of it. It is
       // held here but only shown when the sequence reaches its payoff phase.
       setPayoff({ ...out, center });
