@@ -20,6 +20,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from '../ui/image';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
@@ -42,6 +43,15 @@ import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha }
 // Cut off its baked indigo ground by scripts/cut-header-art.py, from
 // assets/art/ui/header-missions.png.
 const MISSIONS_ART = require('../../assets/art/panel/missions.png');
+
+// The wanted-poster board the whole page stands on — a wood frame around a
+// torn parchment sheet. Drawn full-bleed behind the header and the scroll
+// body; the header is an opaque panel so it simply paints over its own
+// portion of it. `cover` so the frame fills every phone width without
+// letterboxing; the art is tall enough (portrait, wider than any phone's own
+// aspect) that the crop only ever trims a sliver off the side rails, never
+// the parchment itself.
+const MISSIONS_BG = require('../../assets/art/panel/missions-bg.png');
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -264,7 +274,20 @@ export default function MissionsScreen({ navigation }) {
   );
 
   return (
-    <Screen gutter={false} edges={[]}>
+    <Screen gutter={false} edges={[]} style={styles.screen}>
+      {/* The wanted-poster board. Behind everything: it's the first child, so
+          the header and the scrolling body (both painted after it) sit on
+          top of it. Non-interactive and absolutely filled, same as the other
+          page backdrops (SceneBackdrop, PassBackdrop) — it adds no layout
+          height of its own. */}
+      <Image
+        source={MISSIONS_BG}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+        fadeDuration={0}
+        pointerEvents="none"
+      />
+
       {/* The Crossroads header: `compact` puts the chevron in the title row
           and sizes the row by the type rather than the art, and the art is a
           cut-out on the panel's own fill rather than a boxed tile.
@@ -293,7 +316,7 @@ export default function MissionsScreen({ navigation }) {
       <Screen
         scroll
         edges={['bottom']}
-        style={styles.body}
+        style={[styles.body, styles.transparent]}
         refreshControl={<RefreshControl refreshing={false} onRefresh={() => refresh()} tintColor={accent} />}
       >
         {state?.week ? (
@@ -374,6 +397,10 @@ export default function MissionsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
+  // Transparent so the wanted-poster board painted behind it shows through
+  // instead of the theme's flat page colour.
+  screen: { backgroundColor: 'transparent' },
+  transparent: { backgroundColor: 'transparent' },
   body: { flex: 1 },
   strip: { marginBottom: space.md },
   skeletons: { marginTop: space.sm },

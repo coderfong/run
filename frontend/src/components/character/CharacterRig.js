@@ -25,6 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
+import { getHeadwearFitProfile } from '../../config/headwearFit';
 import { useOnScreen, useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
 
@@ -168,7 +169,7 @@ function SwapLayer({ img, frame, entered, onSwapIn, captureSafe, crisp = false }
   );
 }
 
-function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false, crisp = false }) {
+function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false, crisp = false, clipTopPx = null }) {
   if (!img) return null;
   const base = LAYOUT[fit || slot];
   if (!base) return null;
@@ -186,6 +187,33 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
   if (slot === 'hair') top += HAIR_LIFT * bodyH;
   // `dx` shifts asymmetric art (e.g. a side ponytail) off centre.
   const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
+
+  // A crown-covering headwear item passes `clipTopPx` — a body-pixel Y
+  // anchored to the rig's fixed HEAD box (see headFrac / config/headwearFit)
+  // — to hide whatever this hair would otherwise draw above it. Only the
+  // hair slot ever receives this, and only when it actually reaches above
+  // the line: cropping is a nested absolutely-positioned View with
+  // `overflow: hidden` rather than any change to the art itself, so a
+  // hairstyle whose ink never reaches the line (a buzz cut under a cap) is
+  // untouched, and turning the equipped headwear off restores the exact
+  // pre-crop layer.
+  if (clipTopPx != null && clipTopPx > top) {
+    const clipHeight = Math.max(0, top + h - clipTopPx);
+    if (clipHeight <= 0) return null;
+    const clipFrame = { position: 'absolute', left, top: clipTopPx, width: w, height: clipHeight, overflow: 'hidden' };
+    const innerFrame = { position: 'absolute', width: w, height: h, left: 0, top: top - clipTopPx };
+    const InnerImg = captureSafe ? RNImage : ExpoImage;
+    return (
+      <View style={clipFrame} pointerEvents="none">
+        {swap ? (
+          <SwapLayer img={img} frame={innerFrame} entered={entered} onSwapIn={onSwapIn} captureSafe={captureSafe} crisp={crisp} />
+        ) : (
+          <InnerImg source={img} style={innerFrame} resizeMode="contain" fadeDuration={0} crisp={crisp} />
+        )}
+      </View>
+    );
+  }
+
   const frame = { position: 'absolute', width: w, height: h, left, top };
   if (swap) {
     return (
@@ -447,6 +475,16 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     footwear: getItem('footwear', equipped.footwear || 'none'),
     accessory: getItem('accessory', equipped.accessory || 'none'),
   };
+  // Where the equipped headwear's crown reaches, if it reaches anywhere —
+  // see config/headwearFit.js. Anchored to the fixed HEAD box via `headFrac`
+  // (never to this hairstyle's own art), so the same hat clips hair to the
+  // same skull depth regardless of which hairstyle is equipped; only how
+  // much of THAT hairstyle's ink still falls below the line changes.
+  const headwearFit = getHeadwearFitProfile(it.headwear);
+  const hairClipTopPx = headwearFit.cropHair
+    ? headFrac(it.hair.bulky && headwearFit.crownCoverYBulky != null ? headwearFit.crownCoverYBulky : headwearFit.crownCoverY) * bodyH
+    : null;
+
   // Accessories carry a z: wings/capes/packs go BEHIND the body, medals/vests
   // in front of the top garment.
   const accImg = itemImage('accessory', it.accessory, equipped);
@@ -510,7 +548,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
           </>
         )}
         {behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} clipTopPx={hairClipTopPx} {...layerBox} />
         )}
         {behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
@@ -578,12 +616,15 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
         ) : (
           <Layer img={itemImage('face', it.face, equipped)} slot="face" layout={it.face.layout} {...layerBox} />
         )}
-        {/* Hair always remains in the stack under headwear. The headwear art is
-            opaque where it encloses the crown, so it naturally masks that
-            portion while preserving the fringe, sides, ponytails and buns —
+        {/* Hair always remains in the stack under headwear. A crown-covering
+            item (see config/headwearFit.js) additionally clips the hair to
+            where its crown reaches, so bulky styles are compressed under it
+            instead of poking out past it; the headwear art drawn next is
+            opaque over whatever crop line it left, and preserves the
+            fringe, sides, ponytails and buns that fall below that line —
             matching the supplied hat + hairstyle reference sheets. */}
         {!behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} clipTopPx={hairClipTopPx} {...layerBox} />
         )}
         {!behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
