@@ -25,7 +25,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
-import { getHeadwearFitProfile } from '../../config/headwearFit';
+import { getHairOcclusion } from '../../config/headwearFit';
 import { useOnScreen, useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
 
@@ -169,7 +169,85 @@ function SwapLayer({ img, frame, entered, onSwapIn, captureSafe, crisp = false }
   );
 }
 
-function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false, crisp = false, clipTopPx = null }) {
+// ---------------------------------------------------------------------------
+// Hair occlusion windows (see config/headwearFit.js for the shape).
+//
+// The visible hair is the region under a seat line that runs flat across the
+// hat's extent and falls away at `fall` degrees beyond each side. RN has no
+// arbitrary masks, so it is drawn as three overflow-hidden windows onto the
+// same art — the centre, and one ROTATED window per side whose top edge is the
+// sloped line — each counter-rotating its content so the hair stays exactly
+// where the plain layer draws it. The side windows overlap the centre one
+// below the seat (never leave a gap), which only redraws identical pixels.
+//
+// Each window also draws a SEAM: a band of the hair's own art tinted to ink,
+// the art's line weight deep, right along the cut. It lands only where there
+// is hair, so a tucked edge beside the hat is outlined like the rest of the
+// drawing instead of ending in a flat, ink-less shelf. Under the hat itself
+// it is hidden by the hat.
+// ---------------------------------------------------------------------------
+
+// The art's outline weight, as a fraction of body height (≈3.8px of 640).
+const HAIR_INK_OF_BODY = 0.006;
+const HAIR_INK = '#000000';
+// Far enough past the rig in every direction that a window never cuts art.
+const WINDOW_REACH = 2;
+
+// Head-fraction x (0..1 across the skull) → body px.
+const headX = (f, bodyW) => bodyW / 2 + (f - 0.5) * (HEAD.w / 248) * bodyW;
+
+function HairImg({ img, frame, ink, captureSafe, crisp }) {
+  if (captureSafe) {
+    return <RNImage source={img} style={ink ? [frame, { tintColor: HAIR_INK }] : frame} resizeMode="contain" fadeDuration={0} />;
+  }
+  return <ExpoImage source={img} style={frame} tintColor={ink ? HAIR_INK : undefined} resizeMode="contain" fadeDuration={0} crisp={crisp} />;
+}
+
+// A window onto the art: a `w`×`h` rect whose top-left sits at (`x`, `y`)
+// relative to `pivot`, in a frame rotated `deg` about that pivot. `frame` is
+// the art's normal body-px frame; the inner wrapper undoes the rotation.
+function Window({ pivot, deg, x, y, w, h, frame, children }) {
+  const left = pivot.x + x;
+  const top = pivot.y + y;
+  const rotated = deg !== 0;
+  const outer = {
+    position: 'absolute', left, top, width: w, height: h, overflow: 'hidden',
+    ...(rotated ? { transformOrigin: [-x, -y, 0], transform: [{ rotate: `${deg}deg` }] } : null),
+  };
+  const inner = {
+    position: 'absolute', left: 0, top: 0, width: w, height: h,
+    ...(rotated ? { transformOrigin: [-x, -y, 0], transform: [{ rotate: `${-deg}deg` }] } : null),
+  };
+  return (
+    <View style={outer} pointerEvents="none">
+      <View style={inner}>{children({ ...frame, left: frame.left - left, top: frame.top - top })}</View>
+    </View>
+  );
+}
+
+function OccludedHair({ occlusion, frame, bodyW, bodyH, art }) {
+  const seatY = headFrac(occlusion.y) * bodyH;
+  const lx = headX(occlusion.x0, bodyW);
+  const rx = headX(occlusion.x1, bodyW);
+  const ink = HAIR_INK_OF_BODY * bodyH;
+  const far = WINDOW_REACH * Math.max(bodyW, bodyH);
+  const L = { x: lx, y: seatY };
+  const R = { x: rx, y: seatY };
+  const f = occlusion.fall;
+  return (
+    <>
+      {/* seams first, so the hair's own outline wins wherever they meet */}
+      <Window pivot={L} deg={0} x={0} y={0} w={rx - lx} h={ink} frame={frame}>{(fr) => art(fr, 'seamC')}</Window>
+      <Window pivot={L} deg={-f} x={-far} y={0} w={far} h={ink} frame={frame}>{(fr) => art(fr, 'seamL')}</Window>
+      <Window pivot={R} deg={f} x={0} y={0} w={far} h={ink} frame={frame}>{(fr) => art(fr, 'seamR')}</Window>
+      <Window pivot={L} deg={0} x={0} y={ink} w={rx - lx} h={far} frame={frame}>{(fr) => art(fr, 'body')}</Window>
+      <Window pivot={L} deg={-f} x={-far} y={ink} w={far} h={far} frame={frame}>{(fr) => art(fr, 'sideL')}</Window>
+      <Window pivot={R} deg={f} x={0} y={ink} w={far} h={far} frame={frame}>{(fr) => art(fr, 'sideR')}</Window>
+    </>
+  );
+}
+
+function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false, crisp = false, occlusion = null }) {
   if (!img) return null;
   const base = LAYOUT[fit || slot];
   if (!base) return null;
@@ -188,33 +266,31 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
   // `dx` shifts asymmetric art (e.g. a side ponytail) off centre.
   const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
 
-  // A crown-covering headwear item passes `clipTopPx` — a body-pixel Y
-  // anchored to the rig's fixed HEAD box (see headFrac / config/headwearFit)
-  // — to hide whatever this hair would otherwise draw above it. Only the
-  // hair slot ever receives this, and only when it actually reaches above
-  // the line: cropping is a nested absolutely-positioned View with
-  // `overflow: hidden` rather than any change to the art itself, so a
-  // hairstyle whose ink never reaches the line (a buzz cut under a cap) is
-  // untouched, and turning the equipped headwear off restores the exact
-  // pre-crop layer.
-  if (clipTopPx != null && clipTopPx > top) {
-    const clipHeight = Math.max(0, top + h - clipTopPx);
-    if (clipHeight <= 0) return null;
-    const clipFrame = { position: 'absolute', left, top: clipTopPx, width: w, height: clipHeight, overflow: 'hidden' };
-    const innerFrame = { position: 'absolute', width: w, height: h, left: 0, top: top - clipTopPx };
-    const InnerImg = captureSafe ? RNImage : ExpoImage;
+  const frame = { position: 'absolute', width: w, height: h, left, top };
+
+  // Hair under a crown-covering hat: draw only what the hat leaves showing
+  // (config/headwearFit.js has the shape and why). Nothing about the art or
+  // its placement changes — the same frame is drawn through windows — so
+  // taking the hat off restores the exact plain layer.
+  if (occlusion) {
+    if (occlusion.hide) return null;
     return (
-      <View style={clipFrame} pointerEvents="none">
-        {swap ? (
-          <SwapLayer img={img} frame={innerFrame} entered={entered} onSwapIn={onSwapIn} captureSafe={captureSafe} crisp={crisp} />
-        ) : (
-          <InnerImg source={img} style={innerFrame} resizeMode="contain" fadeDuration={0} crisp={crisp} />
-        )}
-      </View>
+      <OccludedHair
+        occlusion={occlusion}
+        frame={frame}
+        bodyW={bodyW}
+        bodyH={bodyH}
+        art={(f, key) =>
+          swap && key === 'body' ? (
+            <SwapLayer img={img} frame={f} entered={entered} onSwapIn={onSwapIn} captureSafe={captureSafe} crisp={crisp} />
+          ) : (
+            <HairImg img={img} frame={f} ink={key.startsWith('seam')} captureSafe={captureSafe} crisp={crisp} />
+          )
+        }
+      />
     );
   }
 
-  const frame = { position: 'absolute', width: w, height: h, left, top };
   if (swap) {
     return (
       <SwapLayer
@@ -475,15 +551,12 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     footwear: getItem('footwear', equipped.footwear || 'none'),
     accessory: getItem('accessory', equipped.accessory || 'none'),
   };
-  // Where the equipped headwear's crown reaches, if it reaches anywhere —
-  // see config/headwearFit.js. Anchored to the fixed HEAD box via `headFrac`
-  // (never to this hairstyle's own art), so the same hat clips hair to the
-  // same skull depth regardless of which hairstyle is equipped; only how
-  // much of THAT hairstyle's ink still falls below the line changes.
-  const headwearFit = getHeadwearFitProfile(it.headwear);
-  const hairClipTopPx = headwearFit.cropHair
-    ? headFrac(it.hair.bulky && headwearFit.crownCoverYBulky != null ? headwearFit.crownCoverYBulky : headwearFit.crownCoverY) * bodyH
-    : null;
+  // What the equipped headwear leaves showing of this hair — see
+  // config/headwearFit.js. The shape comes from the HAT (its measured seat on
+  // the skull), never from the hairstyle's own box, and the hat's own layout
+  // never reads the hair: so one hat sits at the same skull position under
+  // every style, and only the hair visible around it changes.
+  const hairOcclusion = getHairOcclusion(it.headwear, it.hair);
 
   // Accessories carry a z: wings/capes/packs go BEHIND the body, medals/vests
   // in front of the top garment.
@@ -548,7 +621,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
           </>
         )}
         {behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} clipTopPx={hairClipTopPx} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} occlusion={hairOcclusion} {...layerBox} />
         )}
         {behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
@@ -616,15 +689,14 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
         ) : (
           <Layer img={itemImage('face', it.face, equipped)} slot="face" layout={it.face.layout} {...layerBox} />
         )}
-        {/* Hair always remains in the stack under headwear. A crown-covering
-            item (see config/headwearFit.js) additionally clips the hair to
-            where its crown reaches, so bulky styles are compressed under it
-            instead of poking out past it; the headwear art drawn next is
-            opaque over whatever crop line it left, and preserves the
-            fringe, sides, ponytails and buns that fall below that line —
-            matching the supplied hat + hairstyle reference sheets. */}
+        {/* Hair, then glasses, then headwear: brims, bands and earcups sit in
+            front of the hair they overlap. Under a crown-covering hat the
+            hair is drawn only where the hat leaves it showing (see
+            OccludedHair): crown and upper sides tucked under the seat, side
+            hair and tied hair falling out from under its edge. Open-top
+            pieces (visor, headband, headphones) keep all of it. */}
         {!behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} clipTopPx={hairClipTopPx} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} occlusion={hairOcclusion} {...layerBox} />
         )}
         {!behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />

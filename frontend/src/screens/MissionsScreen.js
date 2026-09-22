@@ -18,7 +18,7 @@
 // pile of coins.
 
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from '../ui/image';
 
@@ -29,9 +29,8 @@ import { useAccent } from '../hooks/useAccent';
 import { useAvatar } from '../state/avatar';
 import AppIcon from '../components/AppIcon';
 import Chest from '../components/lootbox/Chest';
-import { Card, HardShadow, PANEL_INK, Row, Screen, Skeleton, ToonHeader } from '../components/ui';
+import { BackButton, Card, HardShadow, Row, Screen, Skeleton } from '../components/ui';
 import { ProgressTrack } from '../components/ui/toon';
-import DayStrip from '../components/missions/DayStrip';
 import MissionCard from '../components/missions/MissionCard';
 import CoinFly from '../components/missions/CoinFly';
 import LootboxGamble from '../components/lootbox/LootboxGamble';
@@ -40,18 +39,10 @@ import { toast } from '../ui/toast';
 import { CountUpText, Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
 import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
 
-// Cut off its baked indigo ground by scripts/cut-header-art.py, from
-// assets/art/ui/header-missions.png.
-const MISSIONS_ART = require('../../assets/art/panel/missions.png');
-
-// The wanted-poster board the whole page stands on — a wood frame around a
-// torn parchment sheet. Drawn full-bleed behind the header and the scroll
-// body; the header is an opaque panel so it simply paints over its own
-// portion of it. `cover` so the frame fills every phone width without
-// letterboxing; the art is tall enough (portrait, wider than any phone's own
-// aspect) that the crop only ever trims a sliver off the side rails, never
-// the parchment itself.
-const MISSIONS_BG = require('../../assets/art/panel/missions-bg.png');
+// The user's board art: wood frame, carved "Daily Missions" title, and a torn
+// parchment sheet. It owns the screen chrome now; mission UI is laid over the
+// blank paper instead of living under a separate purple header.
+const MISSIONS_BG = require('../../assets/art/panel/missions-board.png');
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -135,13 +126,14 @@ export default function MissionsScreen({ navigation }) {
   const { colors } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();
+  const { height, width } = useWindowDimensions();
   const accent = useAccent();
   const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
 
   // Which day is on screen. Null means today, which is also what the endpoint
   // defaults to, so the common case sends no parameter and shares one cache
   // key with everything else that wants today.
-  const [day, setDay] = useState(null);
+  const day = null;
   const key = day ? `me:missions:${day}` : 'me:missions';
   const { data, loading, error, refresh, setData } = useQuery(
     key,
@@ -250,6 +242,10 @@ export default function MissionsScreen({ navigation }) {
   // of one player and read as the wallet being wrong. Null until the balance
   // lands, drawn as `·`: a placeholder 0 reads as "you are broke".
   const coins = wallet?.coins ?? null;
+  const titleTop = Math.max(insets.top + 52, height * 0.067);
+  const paperTop = Math.max(insets.top + 132, height * 0.15);
+  const paperSide = Math.max(40, width * 0.11);
+  const boardSide = Math.max(36, width * 0.1);
 
   // Keep the coin-flight destination in the fixed header.
   const purse = (
@@ -288,47 +284,33 @@ export default function MissionsScreen({ navigation }) {
         pointerEvents="none"
       />
 
-      {/* The Crossroads header: `compact` puts the chevron in the title row
-          and sizes the row by the type rather than the art, and the art is a
-          cut-out on the panel's own fill rather than a boxed tile.
-          `pinArt` keeps the art on the right edge: the title is the DAY, and
-          art placed after the last word slid about as the word changed.
-          The purse sits under the title rather than on a footer row of its
-          own, which is most of the height the header gave back. It stays in
-          the header because it is where the coins fly to. The "finish all
-          four" line is gone: the day card under the header says it. */}
-      <ToonHeader
-        panel
-        compact
-        pinArt
-        eyebrow="Missions"
-        title={state?.day === state?.today ? 'Today' : label.charAt(0).toUpperCase() + label.slice(1)}
-        art={MISSIONS_ART}
-        titleStyle={type.display}
-        eyebrowStyle={type.labelSm}
-        solid={brand.purple}
-        top={insets.top}
-        onBack={navigation?.canGoBack?.() ? () => navigation.goBack() : undefined}
-        underTitle={purse}
-        style={styles.header}
-      />
+      <View
+        pointerEvents="box-none"
+        style={[styles.boardTop, { top: titleTop, left: boardSide, right: boardSide }]}
+      >
+        {navigation?.canGoBack?.() ? (
+          <BackButton
+            onPress={() => navigation.goBack()}
+            fill="#F6D797"
+            on="#8A4614"
+            ink="#3A1D0A"
+            size={36}
+            style={styles.boardBack}
+          />
+        ) : null}
+        {purse}
+      </View>
 
       <Screen
         scroll
         edges={['bottom']}
         style={[styles.body, styles.transparent]}
+        contentStyle={[
+          styles.paperContent,
+          { paddingTop: paperTop, paddingHorizontal: paperSide },
+        ]}
         refreshControl={<RefreshControl refreshing={false} onRefresh={() => refresh()} tintColor={accent} />}
       >
-        {state?.week ? (
-          <DayStrip
-            week={state.week}
-            selected={state.day}
-            accent={accent}
-            onSelect={(d) => setDay(d === state.today ? null : d)}
-            style={styles.strip}
-          />
-        ) : null}
-
         {loading && !state ? (
           <View style={styles.skeletons}>
             {[0, 1, 2, 3, 4].map((i) => (
@@ -402,32 +384,34 @@ const styles = StyleSheet.create({
   screen: { backgroundColor: 'transparent' },
   transparent: { backgroundColor: 'transparent' },
   body: { flex: 1 },
-  strip: { marginBottom: space.md },
+  paperContent: {
+    paddingBottom: space.xl,
+  },
   skeletons: { marginTop: space.sm },
   error: { marginTop: space.md },
 
-  // A tighter foot than the compact panel's own: with the purse moved up into
-  // the text column there is no footer row left to pad.
-  header: { marginBottom: space.md, paddingBottom: space.sm },
-  // Left-aligned under the title. The text column fills the row (pinArt), so
-  // without `alignSelf` the tile would stretch across the whole of it.
-  purseWrap: { flexShrink: 0, alignSelf: 'flex-start', marginTop: space.sm },
-  // The same white tile the panel's back chevron wears, for the same reason:
-  // a panel is a saturated brand fill in both schemes, so its controls are
-  // fixed white-on-ink rather than themed.
+  boardTop: {
+    position: 'absolute',
+    zIndex: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  boardBack: { marginTop: 2 },
+  purseWrap: { flexShrink: 0, alignSelf: 'flex-start' },
   purse: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     height: 36,
     paddingHorizontal: space.sm,
-    backgroundColor: '#fff',
-    borderColor: PANEL_INK,
+    backgroundColor: '#F6D797',
+    borderColor: '#3A1D0A',
     borderWidth: NB.stroke,
     borderRadius: nbRadius.sm,
   },
-  purseText: { fontFamily: fonts.bold, fontSize: 15, color: PANEL_INK },
-  purseEmpty: { color: withAlpha(PANEL_INK, 0.45) },
+  purseText: { fontFamily: fonts.bold, fontSize: 15, color: '#3A1D0A' },
+  purseEmpty: { color: withAlpha('#3A1D0A', 0.45) },
 
   banner: { padding: space.md, borderWidth: 2 },
   bannerRow: { alignItems: 'center' },

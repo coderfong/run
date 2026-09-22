@@ -1,160 +1,83 @@
-// Headwear-fit system — reusable HAIR + HEADWEAR occlusion, not per-combo
-// hacks. See CharacterRig.js for where this actually clips the hair layer.
+// Headwear-fit system: reusable HAIR + HEADWEAR occlusion, not per-pair
+// hacks. CharacterRig's `Layer` does the drawing; this file decides the shape.
 //
-// THE BUG THIS FIXES: the rig used to draw hair at full size, then draw
-// headwear on top, and rely entirely on the headwear PNG's own opacity to
-// mask whatever hair sat underneath it. That reads fine for a snug swim cap
-// over short hair, but for anything with real volume — an afro, a topknot, a
-// pair of space buns — the hairstyle's silhouette is taller and wider than
-// the hat's own art, so the extra hair pokes out past the hat instead of
-// being tucked under it: a hat FLOATING ON TOP of an unchanged hairstyle
-// rather than a hat someone is actually wearing.
+// THE RULE. A hat is anchored to the SKULL, never to the hairstyle: every
+// hat's layout is fixed per item and nothing about the hair moves it. The
+// visible hair is then
 //
-// THE FIX: every headwear item resolves (via `getHeadwearFitProfile`) to a
-// small FIT PROFILE that says how deep into the skull its crown reaches.
-// CharacterRig clips the hair layer to that line before drawing the hat —
-// anchored to the rig's own fixed HEAD box (see CharacterRig's `HEAD` /
-// `headFrac`), NEVER to the hairstyle's own bounding box. That's what keeps
-// a cap sitting at the same skull depth whether the hair under it is a buzz
-// cut or a big afro: only how much of THAT hair still pokes out changes,
-// which is the whole point (see CharacterRig's acceptance comment).
+//     the hairstyle  minus  the part of the head the hat physically covers
 //
-// Categories that don't enclose the crown at all — a headphone band +
-// earcups, a thin headband, cat ears, a visor — do NO clipping. The existing
-// draw order (hair, then the item, painted after) already reads correctly
-// for those: nothing about them ever claims the whole scalp, so it's a
-// z-order problem, not a crop problem, and they already have correct
-// z-order (see the reference sheets' headphones/visor notes).
+// and that covered part is described by the HAT, measured once from its own
+// art, so swapping hairstyles under one hat only changes which hair is left
+// showing around it.
 //
-// WHY THIS DOESN'T NEED PER-COMBINATION AUTHORING: `crownCoverY` is a
-// constant per CATEGORY, derived once from how deep that kind of headwear
-// physically sits on a skull — never from a specific hairstyle's art. A
-// hairstyle only visibly changes shape under a hat if its own ink actually
-// reaches past that universal line; a buzz cut's ink never gets close, so
-// cropping is a no-op for it under every category, while an afro's ink
-// reaches deep past it under all of them. New hairstyles and new headwear
-// items both plug into the existing system for free: a hairstyle needs
-// nothing extra at all, and a headwear item needs only the SAME two flags
-// the catalog already carries (`hideHair` / `hidesBulky` — see
-// config/cosmetics.js) to get a sensible category, or an explicit entry
-// below if its physical silhouette needs to be pinned down precisely.
+// WHY THE FIRST PASS STILL FLOATED. It clipped hair along ONE horizontal
+// line per category, and put that line at or ABOVE the skull top for
+// caps/brims (-0.06/-0.08) so ordinary hair was untouched. Anything wider
+// than the hat (side hair, bobs, pigtail roots, curls) kept its whole upper
+// silhouette beside the hat and read as the hat sitting on top of an
+// unchanged hairstyle. Pushing the line down would not have fixed it either:
+// a flat full-width cut leaves a boxy, ink-less shelf of hair beside the hat.
+//
+// THE SHAPE NOW (head fractions: x 0..1 across the skull, y 0 = skull top,
+// 1 = chin; see `getHairOcclusion`):
+//
+//          fall ↘        [ hat from x0 to x1 ]        ↙ fall
+//      ─────────────────●━━━━━━━━━━━ seat y ━━━━━━━●─────────────────
+//        hair below the     hidden under the hat     hair below the
+//        sloped line shows  above the seat line      sloped line shows
+//
+//   - SEAT (`y`): where the hat's lower edge meets the head, measured per item
+//     by scripts/measure-headwear-fit.py (its lowest ink across the skull,
+//     10th percentile), pulled up by the category's `edgeInset` so the cut
+//     always sits UNDER the hat's own ink. Crown and upper-side hair above it
+//     is gone for every closed hat, however tall the style.
+//   - SIDES (`x0`/`x1` and `fall`): beyond the hat's own extent the cut falls
+//     away at `fall` degrees below horizontal, so side hair, pigtails and
+//     ponytails appear to come out FROM UNDER the edge instead of standing
+//     up beside it.
+//   - SEAM: where that cut crosses hair outside the hat, the rig draws a thin
+//     line of ink (a tinted copy of the hair itself, so it only lands on
+//     hair), so a tucked edge is outlined like the rest of the art.
+//
+// CATEGORY decides whether any of that happens and how deep it goes; HAIR
+// metadata covers the few styles whose geometry breaks the default. Open-top
+// pieces (visor, headband, headphones, ears/crowns/clips) never clip: they keep
+// the top hair, and the existing draw order (hair, then the item) already puts
+// their band, brim or earcups in front of it.
+//
+// The data lives in headwearFit.json so the offline QA compositor
+// (scripts/headwear-fit-qa.py) reads the exact same numbers. After adding or
+// re-laying out headwear:
+//   node scripts/dump-hair-headwear.js > scripts/qa-headwear-fit/catalog.json
+//   python scripts/measure-headwear-fit.py
+//   python scripts/headwear-fit-qa.py
+import FIT from './headwearFit.json';
 
 export const HEADWEAR_CATEGORY = {
-  CLOSED_HAT: 'closed_hat', // structured cap/hat with a dome — cricket cap, baseball cap, ball cap
-  WIDE_BRIM_HAT: 'wide_brim_hat', // tall/brimmed hat with real headroom under the crown
-  BEANIE: 'beanie', // snug knit/fabric cap that follows the skull closely
-  HELMET: 'helmet', // rigid shell, sits snug like a beanie but doesn't flex
-  HEADWRAP: 'headwrap', // wraps around the scalp — turban, headscarf, mob cap
-  VISOR: 'visor', // open-top band across the forehead, crown fully exposed
-  HEADBAND: 'headband', // thin band, doesn't claim the scalp at all
-  HEADPHONES: 'headphones', // band + earcups; z-order only, no crop
-  OPEN_HEADWEAR: 'open_headwear', // decorative — ears, horns, crowns, clips, bows, wings
+  CLOSED_HAT: 'closed_hat', // structured cap with a brim near the brow: baseball, trucker, bucket
+  WIDE_BRIM_HAT: 'wide_brim_hat', // crowned hat with a brim or a soft body: fedora, cowboy, beret, flat cap
+  BEANIE: 'beanie', // snug knit cap that follows the skull
+  HELMET: 'helmet', // rigid shell; chin straps are capped by maxEdgeY
+  HEADWRAP: 'headwrap', // wraps the scalp: turban, headscarf, swim cap
+  VISOR: 'visor', // open top: crown hair preserved, band in front
+  HEADBAND: 'headband', // thin band, never claims the scalp
+  HEADPHONES: 'headphones', // band over the hair, earcups in front of it
+  OPEN_HEADWEAR: 'open_headwear', // decorative: ears, horns, crowns, clips, bows
 };
 
-// `crownCoverY` / `crownCoverYBulky` are HEAD-fractions (0 = the fixed
-// skull top of CharacterRig's HEAD box, 1 = the chin; negative sits ABOVE
-// the skull, inside the natural volume a hairstyle draws into). Hair ink
-// above this line is clipped away before the headwear art is drawn.
-//
-// `crownCoverYBulky` applies when the equipped hairstyle carries the
-// existing `bulky` flag (afros, buns, topknots, space buns, high ponies —
-// see config/cosmetics.js). Two families need genuinely different depths:
-//
-//   - Items the catalog already flags `hidesBulky` (a structured cap/hat
-//     that has room under its dome) were clearly authored on the
-//     assumption that ORDINARY hair sits fine under them as-is — only
-//     bulky hair needs compressing. So `crownCoverY` for closed_hat /
-//     wide_brim_hat stays shallow (near a no-op for a buzz cut or
-//     curtains) and only `crownCoverYBulky` reaches deep enough to
-//     actually compress an afro or a bun.
-//   - Items flagged `hideHair` (beanie, helmet, headwrap families) were
-//     authored to hide hair outright, regardless of volume, so both
-//     values sit deep — `crownCoverYBulky` just a little deeper still.
-const FIT_PROFILES = {
-  [HEADWEAR_CATEGORY.BEANIE]: { cropHair: true, crownCoverY: 0.06, crownCoverYBulky: 0.10 },
-  [HEADWEAR_CATEGORY.HELMET]: { cropHair: true, crownCoverY: 0.04, crownCoverYBulky: 0.08 },
-  [HEADWEAR_CATEGORY.HEADWRAP]: { cropHair: true, crownCoverY: 0.05, crownCoverYBulky: 0.09 },
-  [HEADWEAR_CATEGORY.CLOSED_HAT]: { cropHair: true, crownCoverY: -0.06, crownCoverYBulky: 0.055 },
-  [HEADWEAR_CATEGORY.WIDE_BRIM_HAT]: { cropHair: true, crownCoverY: -0.08, crownCoverYBulky: 0.035 },
-  [HEADWEAR_CATEGORY.VISOR]: { cropHair: false },
-  [HEADWEAR_CATEGORY.HEADBAND]: { cropHair: false },
-  [HEADWEAR_CATEGORY.HEADPHONES]: { cropHair: false },
-  [HEADWEAR_CATEGORY.OPEN_HEADWEAR]: { cropHair: false },
-};
+// Where a hat with no measured entry (a new item not yet run through
+// measure-headwear-fit.py) is assumed to reach across. A bit past the skull
+// either side, which is what a typical cap measures.
+const DEFAULT_EXTENT = { x0: -0.08, x1: 1.08 };
 
-// Explicit categorisation, by item id, for silhouettes the `hideHair` /
-// `hidesBulky` heuristic below would get wrong — mostly the wide-brim,
-// helmet, wrap, visor and headband families, since a cap-shaped default
-// would put their crown line at the wrong depth. Everything NOT listed
-// here (the large majority of the ~130-item catalog) falls through to
-// `getHeadwearCategory`'s heuristic, which is deliberate: a new hat only
-// needs the two flags it already carries for the picker/unlocks, not a
-// third bespoke entry, unless its fit needs pinning down precisely.
-const CATEGORY_OVERRIDES = {
-  // snug knit / fabric caps
-  beanie: 'beanie', pombeanie: 'beanie', knitbeanie: 'beanie', cuffbeanie: 'beanie',
-  catbeanie: 'beanie', frogbeanie: 'beanie', ushanka: 'beanie', trapperhat: 'beanie',
-  santahat: 'beanie', cur_knitbeanie: 'beanie',
-
-  // rigid shells
-  vikinghelm: 'helmet', bikehelmet: 'helmet', skatehelmet: 'helmet', hardhat: 'helmet',
-  spacehelmet: 'helmet', firehelmet: 'helmet', minerhelmet: 'helmet', samuraihelm: 'helmet',
-  kabuto: 'helmet', aviatorcap: 'helmet', flightcap: 'helmet',
-  cur_knighthelmet: 'helmet', cur_astronauthelmet: 'helmet',
-
-  // wraps / turbans / fully-enclosing scarves
-  headwrap: 'headwrap', turban: 'headwrap', sultanturban: 'headwrap', headscarf: 'headwrap',
-  mobcap: 'headwrap', tiedbandana: 'headwrap', bandana: 'headwrap', chefhat: 'headwrap',
-  cheftoque: 'headwrap', paradeshako: 'headwrap', jestercap: 'headwrap', skullcap: 'headwrap',
-  swimcap: 'headwrap', scrumcap: 'headwrap',
-
-  // structured caps (visible dome, brim near the brow)
-  cap: 'closed_hat', snapback: 'closed_hat', ballcap: 'closed_hat', classiccap: 'closed_hat',
-  dadcap: 'closed_hat', jockeycap: 'closed_hat', sportcap: 'closed_hat', golfcap: 'closed_hat',
-  navycap: 'closed_hat', officercap: 'closed_hat', ribboncap: 'closed_hat', flatsnap: 'closed_hat',
-  lightweightracecap: 'closed_hat', reflectivenightcap: 'closed_hat', trailsuncap: 'closed_hat',
-  bucket: 'closed_hat', gradcap: 'closed_hat', mortarboard: 'closed_hat',
-  cur_technicalracecap: 'closed_hat', cur_sunprotectionrunningcap: 'closed_hat',
-  cur_runclubcap: 'closed_hat', cur_cyclingcap: 'closed_hat', cur_nightstripecap: 'closed_hat',
-  cur_desertflapcap: 'closed_hat', cur_trailflapcap: 'closed_hat', cur_buckethat: 'closed_hat',
-  cur_truckercap: 'closed_hat', cur_tealbrimcap: 'closed_hat', cur_snapback: 'closed_hat',
-  cur_glowingracecap: 'closed_hat',
-
-  // taller/brimmed hats with real headroom under the crown
-  fedora: 'wide_brim_hat', tophat: 'wide_brim_hat', cowboyhat: 'wide_brim_hat',
-  cowpokehat: 'wide_brim_hat', rodeohat: 'wide_brim_hat', witchhat: 'wide_brim_hat',
-  boater: 'wide_brim_hat', boaterhat: 'wide_brim_hat', bowler: 'wide_brim_hat',
-  gardenhat: 'wide_brim_hat', sunbowhat: 'wide_brim_hat', derbyhat: 'wide_brim_hat',
-  clochehat: 'wide_brim_hat', tricorn: 'wide_brim_hat', piratehat: 'wide_brim_hat',
-  sailorhat: 'wide_brim_hat', newsboy: 'wide_brim_hat', flatcap: 'wide_brim_hat',
-  captaincap: 'wide_brim_hat', beret: 'wide_brim_hat', flatberet: 'wide_brim_hat',
-  slouchberet: 'wide_brim_hat', bowberet: 'wide_brim_hat', bowcap: 'wide_brim_hat',
-  fez: 'wide_brim_hat', wizardhat: 'wide_brim_hat',
-  cur_wizardhat: 'wide_brim_hat', cur_piratehat: 'wide_brim_hat', cur_cowboyhat: 'wide_brim_hat',
-  cur_beret: 'wide_brim_hat', cur_sailorcap: 'wide_brim_hat', cur_tropicalstrawhat: 'wide_brim_hat',
-
-  // band + earcups — z-order only, crown stays visible
-  headphones: 'headphones', puffmuffs: 'headphones',
-
-  // open-top band across the forehead
-  visor: 'visor', runvisor: 'visor', cur_racingvisor: 'visor',
-
-  // thin bands that never claim the scalp
-  sweatband: 'headband', wideband: 'headband', daisyband: 'headband', bowband: 'headband',
-  maidband: 'headband', scallopband: 'headband', spikecrown: 'headband', punkcrown: 'headband',
-  cur_sweatband: 'headband', cur_performanceheadband: 'headband', cur_shinobiheadband: 'headband',
-  cur_neonantennaheadband: 'headband',
-};
-
-// Resolve a headwear item to its fit category. Order: an explicit override,
-// then the catalog's own `hideHair` (encloses the head regardless of hair
-// volume → treat like a beanie) or `hidesBulky` (structured cap that only
-// needs to compress a bulky style → treat like a closed hat), then anything
-// left over — decorative pieces (ears, horns, crowns, clips, bows, wings)
-// that were never meant to hide hair at all.
+// Resolve a headwear item to its fit category: an explicit override, then
+// the catalogue's own flags (`hideHair` encloses the head → beanie,
+// `hidesBulky` is a structured hat → closed hat), then decorative.
 export function getHeadwearCategory(item) {
   if (!item || !item.id || item.id === 'none') return null;
-  if (CATEGORY_OVERRIDES[item.id]) return CATEGORY_OVERRIDES[item.id];
+  const override = FIT.overrides[item.id];
+  if (override) return override;
   if (item.hideHair) return HEADWEAR_CATEGORY.BEANIE;
   if (item.hidesBulky) return HEADWEAR_CATEGORY.CLOSED_HAT;
   return HEADWEAR_CATEGORY.OPEN_HEADWEAR;
@@ -162,7 +85,36 @@ export function getHeadwearCategory(item) {
 
 export function getHeadwearFitProfile(item) {
   const category = getHeadwearCategory(item);
-  if (!category) return { cropHair: false, category: null };
-  const profile = FIT_PROFILES[category] || { cropHair: false };
-  return { ...profile, category };
+  if (!category) return { occlude: false, category: null };
+  return { ...FIT.profiles[category], ...FIT.hatTweaks[item.id], category };
+}
+
+// Hairstyle region metadata (headwearFit.json `hairRegions`). The seat line
+// already splits every style into crown (above it, hidden) and fringe/side/
+// back (below it, kept), so most styles need nothing. The exception is a
+// style that is ALL gathered on the crown (`gathered: 'crown'`), whose
+// hanging parts only exist because of the bun: under a closed hat the bun is
+// gone, so the tail would be left floating in the air.
+export function getHairRegions(hair) {
+  return (hair && FIT.hairRegions[hair.id]) || null;
+}
+
+// The occlusion to apply to `hair` under `hat`, or null when nothing clips.
+//   { hide: true }                         → no hair survives under this hat
+//   { y, x0, x1, fall }                    → the seat shape described above
+// y/x0/x1 in HEAD fractions, fall in screen degrees below horizontal.
+export function getHairOcclusion(hat, hair) {
+  if (!hair || hair.id === 'none') return null;
+  const profile = getHeadwearFitProfile(hat);
+  if (!profile.occlude) return null;
+  const regions = getHairRegions(hair);
+  if (regions && regions.gathered === 'crown') return { hide: true };
+  const m = FIT.hats[hat.id] || {};
+  const edge = m.edgeY != null ? m.edgeY : profile.defaultEdgeY;
+  return {
+    y: Math.min(edge, profile.maxEdgeY) - profile.edgeInset,
+    x0: m.x0 != null ? m.x0 : DEFAULT_EXTENT.x0,
+    x1: m.x1 != null ? m.x1 : DEFAULT_EXTENT.x1,
+    fall: profile.sideFall,
+  };
 }

@@ -100,7 +100,9 @@ describe('character art decode size', () => {
   it('keeps hairstyle details visible beneath enclosing headwear', () => {
     const bald = render(<CharacterRig equipped={{ hair: 'none', headwear: 'beanie' }} size={110} />);
     const styled = render(<CharacterRig equipped={{ hair: 'highpony', headwear: 'beanie' }} size={110} />);
-    expect(layers(styled)).toHaveLength(layers(bald).length + 1);
+    // Hair under a closed hat is drawn through the fit windows (three views of
+    // the art plus three inked seams — see OccludedHair), not dropped.
+    expect(layers(styled)).toHaveLength(layers(bald).length + 6);
     act(() => bald.unmount());
     act(() => styled.unmount());
   });
