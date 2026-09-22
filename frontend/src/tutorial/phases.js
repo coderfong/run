@@ -47,6 +47,19 @@ export const PHASE = {
 
 // Order matters for "have we reached / passed this beat" questions, and for
 // `nextPhase`, which is what a tap on an informational card does.
+//
+// THE PRACTICE RUN IS PLAYED, NOT DRAWN. It used to be two illustrated cards
+// (a fake progress bar, a fake claim) near the start and the real run branch
+// at the very end, which meant the runner was told about the run screen long
+// before they saw it. Now the practice card opens the real run screen, and the
+// run, the claim, the celebration, the recap and the share page all play
+// themselves (see the autopilot notes in RunningScreen and ResultScreen) and
+// hand the runner back to Home, where the rest of the tour carries on. The
+// last beat is still START_RUN: the real button, for a real run.
+//
+// TRAINING_CLAIM, FINISH_RUN and CLAIM_CONFIRM are no longer on the tour. The
+// constants stay so a record persisted on one of them still normalises; see
+// resumePhase.
 export const CORE_ORDER = [
   PHASE.WELCOME,
   PHASE.MAP,
@@ -54,7 +67,9 @@ export const CORE_ORDER = [
   PHASE.TERRITORY,
   PHASE.CORE_LOOP,
   PHASE.TRAINING_RUN,
-  PHASE.TRAINING_CLAIM,
+  PHASE.ACTIVE_RUN,
+  PHASE.CLAIM_SELECT,
+  PHASE.FIRST_CLAIM_SUCCESS,
   PHASE.TRAINING_RIVAL,
   PHASE.TRAINING_CAPTURED,
   PHASE.TRAINING_CROSSROADS,
@@ -63,11 +78,6 @@ export const CORE_ORDER = [
   PHASE.TRAINING_PROGRESS,
   PHASE.TRAINING_DEFEND,
   PHASE.START_RUN,
-  PHASE.ACTIVE_RUN,
-  PHASE.FINISH_RUN,
-  PHASE.CLAIM_SELECT,
-  PHASE.CLAIM_CONFIRM,
-  PHASE.FIRST_CLAIM_SUCCESS,
   PHASE.COMPLETE,
 ];
 
@@ -97,15 +107,17 @@ export const RECORD_PHASES = new Set([
   PHASE.FIRST_CLAIM_SUCCESS,
 ]);
 
-// Where a tutorial interrupted mid-run should pick up again. Everything about
-// the world has already been taught by the time a run starts, so a runner who
-// killed the app halfway through their first run comes back to "start a run",
-// never to "this is your world" all over again.
+// Where a tutorial interrupted mid run should pick up again.
+//
+// The run branch is the PRACTICE run now, so an interrupted one starts over
+// from its own card: the simulated run it was attached to is gone, and the
+// next one plays the whole thing again. Once the claim has landed there is
+// nothing left of the practice to replay, so that beat carries on forward.
 export function resumePhase(phase) {
-  if (!phase || phaseIndex(phase) < 0) return PHASE.WELCOME;
+  if (!phase) return PHASE.WELCOME;
   if (phase === PHASE.COMPLETE) return PHASE.COMPLETE;
-  // Anything inside the run/claim branch rewinds to the top of that branch:
-  // the run it was attached to is gone, and the next one teaches it again.
-  if (RECORD_PHASES.has(phase)) return PHASE.START_RUN;
+  if (phase === PHASE.FIRST_CLAIM_SUCCESS) return PHASE.TRAINING_RIVAL;
+  if (RECORD_PHASES.has(phase) || phase === PHASE.TRAINING_CLAIM) return PHASE.TRAINING_RUN;
+  if (phaseIndex(phase) < 0) return PHASE.WELCOME;
   return phase;
 }

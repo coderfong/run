@@ -61,6 +61,12 @@ const ACTIVE_RUN_KEY = 'tr.activeRun';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The first-run practice plays itself (see the autopilot by tutorialRunPending).
+// How long the run screen is on show before it presses Start, and how long the
+// finished route is held before it presses Finish.
+const TUTORIAL_START_BEAT_MS = 900;
+const TUTORIAL_FINISH_BEAT_MS = 1400;
+
 // Helper function for border color (local version since theme import may not be available)
 function getNbInk() {
   return '#ffffff'; // Always use white for dark theme
@@ -328,6 +334,11 @@ export default function RunningScreen({ navigation, route }) {
   const tutorialSimRef = useRef(false);
   const tutorialSimTimerRef = useRef(null);
   const tutorialTraceRef = useRef(null);
+  // The practice run's autopilot (see the effect beside tutorialRunPending):
+  // whether it has already pressed Start on this screen, and the beat between
+  // the trace running out and it pressing Finish.
+  const tutorialAutoStartedRef = useRef(false);
+  const tutorialFinishTimerRef = useRef(null);
   // Adaptive-sampling bookkeeping.
   const gpsModeRef = useRef('high'); // 'high' | 'relaxed'
   const pendingModeRef = useRef({ mode: null, count: 0 });
@@ -498,6 +509,7 @@ export default function RunningScreen({ navigation, route }) {
       setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
       if (tutorialSimTimerRef.current) clearInterval(tutorialSimTimerRef.current);
+      if (tutorialFinishTimerRef.current) clearTimeout(tutorialFinishTimerRef.current);
     };
   }, []);
 
@@ -917,6 +929,13 @@ export default function RunningScreen({ navigation, route }) {
         if (upto >= points.length && tutorialSimTimerRef.current) {
           clearInterval(tutorialSimTimerRef.current);
           tutorialSimTimerRef.current = null;
+          // THE PRACTICE FINISHES ITSELF. A beat on the full route so the
+          // runner sees the whole loop, then the same Finish a real run
+          // takes, which carries it on to the claim.
+          tutorialFinishTimerRef.current = setTimeout(() => {
+            tutorialFinishTimerRef.current = null;
+            finishRun();
+          }, TUTORIAL_FINISH_BEAT_MS);
         }
       }, 320);
     } finally {
@@ -1526,6 +1545,20 @@ export default function RunningScreen({ navigation, route }) {
   // now here for the run beat", not the button that opened it.
   const { core: tutorialCore, phase: tutorialPhase } = useTutorialState();
   const tutorialRunPending = tutorialCore === CORE.RUNNING && tutorialPhase === PHASE.ACTIVE_RUN;
+  // THE PRACTICE STARTS ITSELF. The practice card's button is what brought the
+  // runner here, so pressing Start again would be a second button for the
+  // same decision. Once per visit, after a beat so the screen is seen first.
+  useEffect(() => {
+    if (!tutorialRunPending || isRunning || tutorialAutoStartedRef.current) return undefined;
+    const timer = setTimeout(() => {
+      tutorialAutoStartedRef.current = true;
+      startTutorialSimRun();
+    }, TUTORIAL_START_BEAT_MS);
+    return () => clearTimeout(timer);
+    // startTutorialSimRun is a plain function redeclared each render; the
+    // pending flag is what this effect is really keyed on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutorialRunPending, isRunning]);
   // The stats sheet's measured height, so the coach mark's spotlight can cover
   // the route and stop short of the numbers the runner is watching.
   const [panelH, setPanelH] = useState(0);

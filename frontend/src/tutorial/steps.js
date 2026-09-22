@@ -8,11 +8,13 @@
 //
 // WHAT THE CORE TUTORIAL TEACHES:
 //
-//   WORLD → TRAINING RUN → CLAIM → RIVAL → CAPTURE → CROSSROADS
-//   → CUSTOMISE → SHOP → PROGRESS → DEFEND → REAL RUN
+//   WORLD → GOAL → PRACTICE RUN (played on the real screens) → RIVAL
+//   → CAPTURE → CROSSROADS → CUSTOMISE → SHOP → PROGRESS → DEFEND → REAL RUN
 //
-// The training beats are simulated inside the coach card. They teach the
-// complete game without writing a route, territory, purchase or rival.
+// The practice run plays on the real run, claim, recap and share screens,
+// driven by an autopilot, and never reaches the network (run/tutorialRun.js).
+// The beats after it are simulated inside the coach card. Neither writes a
+// route, territory, purchase or rival.
 //
 // COPY RULE. Five to twelve words a line, two lines at most, and the words
 // that carry the idea wrapped in *asterisks* so they land in the game's
@@ -31,6 +33,13 @@ export const ACTIVE_RUN_MS = 3800;
 // whose `gate` is false shows NOTHING and waits — which is also how the
 // tutorial survives a runner wandering off to another tab mid lesson.
 const onMap = (facts) => facts.route === 'MapMain';
+
+// The run and claim screens are native modals, drawn above the root overlay.
+// A root card reached while one is still up (the tour moves on the moment the
+// practice claim has been celebrated, a beat before the autopilot closes the
+// modal) must wait for it to close rather than draw where nobody can see it.
+const RUN_ROUTES = new Set(['Record', 'Result', 'PlanAttack']);
+const offRun = (facts) => !RUN_ROUTES.has(facts.route);
 
 /**
  * @typedef {object} TutorialStep
@@ -157,33 +166,103 @@ export const STEPS = [
     dismiss: 'tap',
     skippable: true,
     kind: 'loop',
+    // THE GOAL, said as a goal. "Run. Claim. Defend." named three verbs and
+    // told a new runner nothing about what they were for. The ladder under
+    // it still draws the three, so the title is free to say why.
     copy: () => ({
-      title: 'Run. Claim. Defend.',
-      lines: ['Build your territory one run at a time.'],
+      title: 'Your goal: *own your city*.',
+      lines: [
+        'Every run you finish becomes *territory* on this map.',
+        'Take ground from rivals and hold yours to climb the ranks.',
+      ],
     }),
   },
 
   {
     phase: PHASE.TRAINING_RUN,
     host: 'root', target: null, interactive: false, dismiss: 'cta',
-    cta: 'START TRAINING RUN', skippable: true, kind: 'training', scene: 'run',
+    cta: 'START PRACTICE RUN', skippable: true, kind: 'training', scene: 'run',
+    // The button opens the REAL run screen: ACTIVE_RUN's onEnter. From there
+    // the practice plays itself all the way back to Home.
     copy: () => ({
       title: 'First, a practice run.',
-      lines: ['Distance traces a route and earns *claim power*.'],
+      lines: ["We'll run *5 km* for you. Watch what happens."],
     }),
   },
+
   {
-    phase: PHASE.TRAINING_CLAIM,
-    host: 'root', target: null, interactive: false, dismiss: 'cta',
-    cta: 'PLACE THE CLAIM', skippable: true, kind: 'training', scene: 'claim',
+    phase: PHASE.ACTIVE_RUN,
+    host: 'record',
+    target: TARGET.RUN_ROUTE,
+    interactive: false,
+    // Takes itself away. A runner mid stride must not have to tap through
+    // anything, and nothing here is worth interrupting a run for.
+    dismiss: 'auto',
+    autoMs: ACTIVE_RUN_MS,
+    skippable: false,
+    kind: 'card',
+    gate: (facts) => facts.running === true,
     copy: () => ({
-      title: 'Practice run complete!',
-      lines: ['Move your earned shape along the route, then *claim*.'],
+      title: 'Watch your *5 km* fly by.',
+      lines: ['Your route draws itself as you run. This one is practice.'],
+    }),
+    on: { [SIGNAL.RUN_FINISHED]: PHASE.CLAIM_SELECT },
+    // Reached from the practice card's button. The run screen sees this phase
+    // and starts the simulated run itself (RunningScreen's autopilot).
+    onEnter: (nav) => nav.goToRecord(),
+  },
+
+  {
+    phase: PHASE.CLAIM_SELECT,
+    host: 'record',
+    // The whole claim sheet, which holds the placement dial AND the claim
+    // button. Lighting the pair keeps both live, so a runner who is happy
+    // with where the land fell can simply claim it and skip ahead.
+    target: TARGET.CLAIM_SHEET,
+    interactive: true,
+    dismiss: 'action',
+    skippable: false,
+    kind: 'card',
+    gate: (facts) => facts.claimReady === true,
+    copy: () => ({
+      title: 'This is *Plan Attack*.',
+      lines: ['You choose where your shape lands. We will place this one.'],
+    }),
+    // The practice claim is placed by ResultScreen's autopilot; a runner who
+    // presses CLAIM HERE first simply gets there sooner. A practice run that
+    // somehow has nothing to claim moves the tour on rather than rewinding
+    // into a second practice.
+    on: {
+      [SIGNAL.CLAIM_PLACED]: PHASE.FIRST_CLAIM_SUCCESS,
+      [SIGNAL.CLAIM_UNAVAILABLE]: PHASE.TRAINING_RIVAL,
+    },
+  },
+
+  {
+    phase: PHASE.FIRST_CLAIM_SUCCESS,
+    host: 'record',
+    target: null,
+    interactive: false,
+    // Takes itself away: the practice carries on to the recap and the share
+    // page by itself, and a button here would be the one thing to press.
+    dismiss: 'auto',
+    autoMs: 3200,
+    skippable: false,
+    kind: 'payoff',
+    enterHaptic: 'success',
+    // WAITS FOR THE REAL CELEBRATION TO FINISH. PASER already plays a flyover,
+    // an encounter, a radial reveal and a victory beat when a claim lands;
+    // this is the sentence after all of that, not a card on top of it.
+    gate: (facts) => facts.claimCelebrated === true,
+    copy: () => ({
+      title: "IT'S YOURS!",
+      lines: ['Every real run claims territory just like this.'],
     }),
   },
   {
     phase: PHASE.TRAINING_RIVAL,
     host: 'root', target: null, interactive: false, dismiss: 'cta',
+    gate: offRun,
     cta: 'ATTACK', skippable: true, kind: 'training', scene: 'rival',
     copy: () => ({
       title: 'A rival owns this ground.',
@@ -261,123 +340,6 @@ export const STEPS = [
     copy: () => ({
       title: 'Ready?',
       lines: ['Tap here to *start your run*.'],
-    }),
-  },
-
-  {
-    phase: PHASE.ACTIVE_RUN,
-    host: 'record',
-    target: TARGET.RUN_ROUTE,
-    interactive: false,
-    // Takes itself away. A runner mid stride must not have to tap through
-    // anything, and nothing here is worth interrupting a run for.
-    dismiss: 'auto',
-    autoMs: ACTIVE_RUN_MS,
-    skippable: false,
-    kind: 'card',
-    gate: (facts) => facts.running === true,
-    copy: (facts) =>
-      facts.simulatedRun
-        ? {
-            title: 'Watch your *5 km* fly by.',
-            lines: ['This run is simulated, so you can see what happens.'],
-          }
-        : {
-            title: 'Your route appears as you run.',
-            lines: ["Just run normally. We'll handle the rest."],
-          },
-    on: { [SIGNAL.RUN_FINISHED]: PHASE.CLAIM_SELECT },
-  },
-
-  {
-    phase: PHASE.FINISH_RUN,
-    host: 'record',
-    target: TARGET.FINISH_RUN,
-    interactive: true,
-    dismiss: 'action',
-    skippable: false,
-    kind: 'card',
-    // Not the moment the run starts: "finish your run" over a run that has
-    // covered forty metres is telling somebody to stop before they have
-    // begun. It waits until the run has actually earned ground to place.
-    gate: (facts) => facts.running === true && facts.runClaimable === true,
-    // The control is a PRESS AND HOLD, so the copy says hold. Describing a
-    // button as something it is not is how a tutorial gets blamed for a
-    // control that does not work.
-    copy: (facts) => ({
-      title: 'Done running?',
-      lines: [
-        facts.simulatedRun
-          ? 'Hold *FINISH* — your 5 km already qualifies.'
-          : 'Hold *FINISH* to see what you can claim.',
-      ],
-    }),
-    on: { [SIGNAL.RUN_FINISHED]: PHASE.CLAIM_SELECT },
-  },
-
-  {
-    phase: PHASE.CLAIM_SELECT,
-    host: 'record',
-    // The whole claim sheet, which holds the placement dial AND the claim
-    // button. Lighting the pair keeps both live, so a runner who is happy
-    // with where the land fell can simply claim it and skip ahead.
-    target: TARGET.CLAIM_SHEET,
-    interactive: true,
-    dismiss: 'action',
-    skippable: false,
-    kind: 'card',
-    gate: (facts) => facts.claimReady === true,
-    copy: () => ({
-      title: 'This is *Plan Attack*.',
-      lines: ['Slide and turn your shape, then pick where to land.'],
-    }),
-    on: {
-      [SIGNAL.CLAIM_ADJUSTED]: PHASE.CLAIM_CONFIRM,
-      [SIGNAL.CLAIM_PLACED]: PHASE.FIRST_CLAIM_SUCCESS,
-      [SIGNAL.CLAIM_UNAVAILABLE]: PHASE.START_RUN,
-    },
-  },
-
-  {
-    phase: PHASE.CLAIM_CONFIRM,
-    host: 'record',
-    target: TARGET.CLAIM_BUTTON,
-    interactive: true,
-    dismiss: 'action',
-    skippable: false,
-    kind: 'card',
-    gate: (facts) => facts.claimReady === true,
-    copy: () => ({
-      title: 'Looks good?',
-      lines: ['*Claim it.*'],
-    }),
-    on: {
-      [SIGNAL.CLAIM_PLACED]: PHASE.FIRST_CLAIM_SUCCESS,
-      [SIGNAL.CLAIM_UNAVAILABLE]: PHASE.START_RUN,
-    },
-  },
-
-  {
-    phase: PHASE.FIRST_CLAIM_SUCCESS,
-    host: 'record',
-    target: null,
-    interactive: false,
-    dismiss: 'cta',
-    cta: 'LET ME AT IT',
-    skippable: false,
-    kind: 'payoff',
-    enterHaptic: 'success',
-    // WAITS FOR THE REAL CELEBRATION TO FINISH. PASER already plays a flyover,
-    // an encounter, a radial reveal and a victory beat when a claim lands;
-    // this is the sentence after all of that, not a card on top of it.
-    gate: (facts) => facts.claimCelebrated === true,
-    copy: (facts) => ({
-      title: "IT'S YOURS!",
-      lines: [
-        facts.simulatedRun
-          ? 'Every real run claims territory the same way.'
-          : 'Keep running to grow your territory.',
-      ],
     }),
   },
 ];

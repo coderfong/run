@@ -155,7 +155,8 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
         frame={frameVariant('box', `route:${id}`)}
         fill={surface}
         on={surface}
-        tint={withAlpha(color, 0.55)}
+        // Solid ink, the same edge as the stat tiles under it. A pale run
+        // tint here made the box read as a faint hairline beside them.
         weight={INK.thin}
         pose={framePose(`route:${id}`)}
         inset={false}
@@ -201,7 +202,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
                   points={svgPoints(ring)}
                   fill="none"
                   stroke={withAlpha(surface, 0.7)}
-                  strokeWidth={7.5}
+                  strokeWidth={3.5}
                   strokeLinejoin="round"
                 />
               ))}
@@ -226,8 +227,10 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
               // a smudge rather than as land somebody owns. Still translucent,
               // because seeing WHICH streets is the entire point of the map.
               fill={withAlpha(ink, mapUrl ? 0.34 : 0.22)}
+              // A fine edge: the wash is what says "owned", and a heavy
+              // outline read as a second frame drawn inside the map's own.
               stroke={ink}
-              strokeWidth={4}
+              strokeWidth={1.5}
               strokeLinejoin="round"
             />
           ))}
@@ -235,7 +238,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
             <Polyline
               points={svgPoints(projectedLine)}
               fill="none"
-              // Lighter than the territory outline so the route reads as the
+              // Softer ink than the territory's so the route reads as the
               // thing inside the land, not as a second border around it.
               stroke={filteredRings.length ? withAlpha(ink, 0.75) : ink}
               strokeWidth={filteredRings.length ? 2 : 2.5}

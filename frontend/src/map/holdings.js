@@ -42,7 +42,15 @@ import { pointInRing, ringCentroid } from '../components/territoryBoard';
 // can hold neighbouring pieces under two different badges — and the badge is
 // what colours the plot. Merging across it would paint one club's ground in
 // another's colour, which is a worse lie than the seam.
-function holdingKey(t) {
+//
+// THE VIEWER'S OWN LAND IS THE EXCEPTION. The board paints it in the viewer's
+// accent whatever badge each piece carries (landColor), so there is no second
+// colour for a merge to lie about. Keying it by badge anyway left anyone who
+// joined a club with a fan of pre-club and post-club pieces over the same
+// ground, each under its own copy of their face. `oneColourFor` is the user
+// whose land is drawn in one colour, and is only passed when that is true.
+function holdingKey(t, oneColourFor) {
+  if (oneColourFor != null && t.user_id === oneColourFor) return `${t.user_id}|`;
   return `${t.user_id}|${t.clan_tag || ''}`;
 }
 
@@ -164,12 +172,12 @@ function touchClusters(group) {
 // Returns rows in the SAME shape the payload uses, so every board helper
 // downstream — features, portraits, the legend, the intelligence layers —
 // keeps working on them unchanged and gets the merge for free.
-export function mergeTouchingLand(territories) {
+export function mergeTouchingLand(territories, { oneColourFor = null } = {}) {
   const rows = Array.isArray(territories) ? territories : [];
   const groups = new Map();
   for (const t of rows) {
     if (!t) continue;
-    const key = holdingKey(t);
+    const key = holdingKey(t, oneColourFor);
     const group = groups.get(key);
     if (group) group.push(t);
     else groups.set(key, [t]);

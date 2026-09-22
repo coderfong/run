@@ -154,3 +154,24 @@ describe('merging touching land', () => {
     expect(mergeTouchingLand(broken)).toHaveLength(2);
   });
 });
+
+// A runner who joined a club holds pieces from before and after it, under two
+// badges. Their own board paints all of it in their accent, so it must draw as
+// one holding with one face; anyone else's still splits on the badge.
+describe('the viewer\'s own land across club badges', () => {
+  const plots = () => [
+    land('a', 'me', sq(0, 0), { clan_tag: null }),
+    land('b', 'me', sq(1, 0), { clan_tag: 'RUN' }),
+  ];
+
+  it('merges when the viewer\'s land is drawn in one colour', () => {
+    const out = mergeTouchingLand(plots(), { oneColourFor: 'me' });
+    expect(out).toHaveLength(1);
+    expect(out[0].mergedFrom.sort()).toEqual(['a', 'b']);
+  });
+
+  it('still splits on the badge for everyone else', () => {
+    expect(mergeTouchingLand(plots())).toHaveLength(2);
+    expect(mergeTouchingLand(plots(), { oneColourFor: 'someone-else' })).toHaveLength(2);
+  });
+});

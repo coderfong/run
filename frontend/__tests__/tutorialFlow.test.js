@@ -311,7 +311,7 @@ describe('the tour', () => {
     expect(stepPhase()).toBe(PHASE.PLAYER);
   });
 
-  it('reaches the start of the run and waits there', () => {
+  it('reaches the practice run and waits for its button', () => {
     const { tree, nav } = boot({ tutorialPending: true });
     goRoute(tree, nav, 'MapMain');
     facts(tree, { playerLocated: true });
@@ -319,32 +319,21 @@ describe('the tour', () => {
     advance(tree); // map
     advance(tree); // player
     advance(tree); // territory
-    advance(tree); // core loop → training run
+    advance(tree); // goal → practice run
     expect(phase()).toBe(PHASE.TRAINING_RUN);
-    [
-      PHASE.TRAINING_CLAIM,
-      PHASE.TRAINING_RIVAL,
-      PHASE.TRAINING_CAPTURED,
-      PHASE.TRAINING_CROSSROADS,
-      PHASE.TRAINING_CUSTOMISE,
-      PHASE.TRAINING_SHOP,
-      PHASE.TRAINING_PROGRESS,
-      PHASE.TRAINING_DEFEND,
-      PHASE.START_RUN,
-    ].forEach((expected) => {
-      advance(tree);
-      expect(phase()).toBe(expected);
-    });
-    expect(phase()).toBe(PHASE.START_RUN);
-    // Nothing advances it but really opening the run screen.
-    expect(state.step.interactive).toBe(true);
-    expect(state.step.dismiss).toBe('action');
+    expect(stepPhase()).toBe(PHASE.TRAINING_RUN);
+    expect(state.step.cta).toBe('START PRACTICE RUN');
   });
 
-  it('teaches the complete game through safe simulated scenes', () => {
+  it('says what the goal is, not just three verbs', () => {
+    const { title, lines } = stepFor(PHASE.CORE_LOOP).copy({});
+    expect(title.toLowerCase()).toContain('goal');
+    expect(lines.join(' ').toLowerCase()).toContain('territory');
+  });
+
+  it('teaches the rest of the game through safe simulated scenes', () => {
     const expected = [
       [PHASE.TRAINING_RUN, 'run'],
-      [PHASE.TRAINING_CLAIM, 'claim'],
       [PHASE.TRAINING_RIVAL, 'rival'],
       [PHASE.TRAINING_CAPTURED, 'captured'],
       [PHASE.TRAINING_CROSSROADS, 'crossroads'],
@@ -364,25 +353,58 @@ describe('the tour', () => {
   });
 });
 
-describe('the run', () => {
-  function atStartRun() {
+// The practice run plays on the REAL run and claim screens. Its card's button
+// opens the run screen; the screens' own autopilots press Start, Finish and
+// Claim, and the tour hears about each exactly as it would from a runner.
+describe('the practice run', () => {
+  function atPractice() {
     const booted = boot({
       tutorialPending: false,
-      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.START_RUN, tips: {} },
+      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.TRAINING_RUN, tips: {} },
       runCount: 0,
     });
+    goRoute(booted.tree, booted.nav, 'MapMain');
+    return booted;
+  }
+  function running() {
+    const booted = atPractice();
+    booted.nav.navigate.mockClear();
+    advance(booted.tree); // START PRACTICE RUN
+    goRoute(booted.tree, booted.nav, 'Record');
+    act(() => {
+      mockRecording = true;
+    });
+    sync(booted.tree);
+    return booted;
+  }
+  function atClaim() {
+    const booted = running();
+    signal(booted.tree, SIGNAL.RUN_FINISHED);
+    act(() => {
+      mockRecording = false;
+    });
+    goRoute(booted.tree, booted.nav, 'Result');
     return booted;
   }
 
-  it('moves to the running coach mark when the run screen opens', () => {
-    const { tree, nav } = atStartRun();
-    expect(phase()).toBe(PHASE.START_RUN);
-    goRoute(tree, nav, 'Record');
+  it('opens the real run screen from the practice card', () => {
+    const { tree, nav } = atPractice();
+    nav.navigate.mockClear();
+    advance(tree);
+    expect(phase()).toBe(PHASE.ACTIVE_RUN);
+    expect(nav.navigate).toHaveBeenCalledWith('Record');
+  });
+
+  it('does not bounce back to its card before the run screen has opened', () => {
+    const { tree } = atPractice();
+    advance(tree);
+    // Still on the map for a moment while the modal presents.
     expect(phase()).toBe(PHASE.ACTIVE_RUN);
   });
 
-  it('holds the running coach mark back until GPS is actually recording', () => {
-    const { tree, nav } = atStartRun();
+  it('holds the running coach mark back until the run is really going', () => {
+    const { tree, nav } = atPractice();
+    advance(tree);
     goRoute(tree, nav, 'Record');
     expect(stepPhase()).toBeNull();
     act(() => {
@@ -392,125 +414,75 @@ describe('the run', () => {
     expect(stepPhase()).toBe(PHASE.ACTIVE_RUN);
   });
 
-  it('holds "hold FINISH" back until the run has earned ground', () => {
-    const { tree, nav } = atStartRun();
-    goRoute(tree, nav, 'Record');
-    act(() => {
-      mockRecording = true;
-    });
-    sync(tree);
-    advance(tree); // the running card takes itself away
-    expect(phase()).toBe(PHASE.FINISH_RUN);
-    expect(stepPhase()).toBeNull();
-
-    facts(tree, { runClaimable: true });
-    expect(stepPhase()).toBe(PHASE.FINISH_RUN);
-  });
-
-  it('follows a run finished straight from the running card', () => {
-    const { tree, nav } = atStartRun();
-    goRoute(tree, nav, 'Record');
-    act(() => {
-      mockRecording = true;
-    });
-    sync(tree);
+  it('follows the finished practice into the claim', () => {
+    const { tree } = running();
     signal(tree, SIGNAL.RUN_FINISHED);
     expect(phase()).toBe(PHASE.CLAIM_SELECT);
   });
 
-  it('REWINDS, BUT NOT TO THE BEGINNING, when a run is abandoned', () => {
-    const { tree, nav } = atStartRun();
-    goRoute(tree, nav, 'Record');
-    act(() => {
-      mockRecording = true;
-    });
-    sync(tree);
-    advance(tree);
-    expect(phase()).toBe(PHASE.FINISH_RUN);
-
-    // Closed the run screen without finishing.
-    act(() => {
-      mockRecording = false;
-    });
-    goRoute(tree, nav, 'HomeMain');
-    expect(phase()).toBe(PHASE.START_RUN);
-    // The world is not taught again.
-    expect(phase()).not.toBe(PHASE.WELCOME);
-  });
-});
-
-describe('the claim', () => {
-  // Walked into rather than booted into, because a stored claim phase is
-  // deliberately un-resumable: the run it belonged to is gone by the time the
-  // app is opened again (see `resumePhase`). This is the real path.
-  function atClaim() {
-    const booted = boot({
-      tutorialPending: false,
-      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.START_RUN, tips: {} },
-      runCount: 0,
-    });
-    goRoute(booted.tree, booted.nav, 'Record');
-    act(() => {
-      mockRecording = true;
-    });
-    sync(booted.tree);
-    signal(booted.tree, SIGNAL.RUN_FINISHED);
-    act(() => {
-      mockRecording = false;
-    });
-    goRoute(booted.tree, booted.nav, 'Result');
-    return booted;
-  }
-
-  it('waits for real options before teaching the chooser', () => {
+  it('waits for real options before explaining the chooser', () => {
     const { tree } = atClaim();
     expect(stepPhase()).toBeNull();
     facts(tree, { claimReady: true });
     expect(stepPhase()).toBe(PHASE.CLAIM_SELECT);
   });
 
-  it('moves on when the runner really uses the dial', () => {
-    const { tree } = atClaim();
-    facts(tree, { claimReady: true });
-    signal(tree, SIGNAL.CLAIM_ADJUSTED);
-    expect(phase()).toBe(PHASE.CLAIM_CONFIRM);
-    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_CLAIM_SELECTED);
-  });
-
-  it('lets somebody claim without moving anything first', () => {
+  it('holds "it is yours" until the whole celebration is over', () => {
     const { tree } = atClaim();
     facts(tree, { claimReady: true });
     signal(tree, SIGNAL.CLAIM_PLACED);
     expect(phase()).toBe(PHASE.FIRST_CLAIM_SUCCESS);
-  });
-
-  it('holds the payoff until the whole celebration is over', () => {
-    const { tree } = atClaim();
-    facts(tree, { claimReady: true });
-    signal(tree, SIGNAL.CLAIM_PLACED);
     expect(stepPhase()).toBeNull();
     facts(tree, { claimCelebrated: true });
     expect(stepPhase()).toBe(PHASE.FIRST_CLAIM_SUCCESS);
+    expect(state.step.dismiss).toBe('auto');
+    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_FIRST_CLAIM_COMPLETED);
   });
 
-  it('finishes, once, and reports it', () => {
-    const { tree } = atClaim();
+  it('carries on with the tour once the practice is back on Home', () => {
+    const { tree, nav } = atClaim();
     facts(tree, { claimReady: true });
     signal(tree, SIGNAL.CLAIM_PLACED);
     facts(tree, { claimCelebrated: true });
-    advance(tree);
-    expect(state.core).toBe(CORE.DONE);
-    expect(state.step).toBeNull();
-    const names = recentEvents().map((e) => e.name);
-    expect(names).toContain(EVENTS.TUTORIAL_FIRST_CLAIM_COMPLETED);
-    expect(names).toContain(EVENTS.TUTORIAL_COMPLETED);
+    advance(tree); // the card timing out
+    expect(phase()).toBe(PHASE.TRAINING_RIVAL);
+    // Not drawn over the claim modal, where nobody could see it...
+    expect(stepPhase()).toBeNull();
+    // ...but as soon as the autopilot has brought the runner Home.
+    goRoute(tree, nav, 'HomeMain');
+    expect(stepPhase()).toBe(PHASE.TRAINING_RIVAL);
   });
 
-  it('rewinds to the next run when this one has nothing to claim', () => {
+  it('moves the tour on when a practice has nothing to claim', () => {
     const { tree } = atClaim();
     signal(tree, SIGNAL.CLAIM_UNAVAILABLE);
-    expect(phase()).toBe(PHASE.START_RUN);
+    expect(phase()).toBe(PHASE.TRAINING_RIVAL);
     expect(state.core).toBe(CORE.RUNNING);
+  });
+
+  it('REWINDS TO ITS OWN CARD, not the beginning, when abandoned', () => {
+    const { tree, nav } = running();
+    act(() => {
+      mockRecording = false;
+    });
+    goRoute(tree, nav, 'HomeMain');
+    expect(phase()).toBe(PHASE.TRAINING_RUN);
+    expect(phase()).not.toBe(PHASE.WELCOME);
+  });
+});
+
+describe('the real run at the end', () => {
+  it('finishes the tour when the runner opens the run screen', () => {
+    const { tree, nav } = boot({
+      tutorialPending: false,
+      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.START_RUN, tips: {} },
+      runCount: 0,
+    });
+    expect(state.step.interactive).toBe(true);
+    expect(state.step.dismiss).toBe('action');
+    goRoute(tree, nav, 'Record');
+    expect(state.core).toBe(CORE.DONE);
+    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_COMPLETED);
   });
 });
 
@@ -549,13 +521,13 @@ describe('getting out', () => {
     expect(phase()).toBe(PHASE.PLAYER);
   });
 
-  it('resumes at the run, not the beginning, after being killed mid claim', () => {
+  it('resumes at the practice card, not the beginning, after being killed mid claim', () => {
     const { tree } = boot({
       tutorialPending: false,
-      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.CLAIM_CONFIRM, tips: {} },
+      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.CLAIM_SELECT, tips: {} },
       runCount: 0,
     });
-    expect(phase()).toBe(PHASE.START_RUN);
+    expect(phase()).toBe(PHASE.TRAINING_RUN);
     expect(tree).toBeTruthy();
   });
 });

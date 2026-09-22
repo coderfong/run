@@ -134,12 +134,16 @@ describe('watch screen layout', () => {
   // watchOS draws the time over the app. PASER is not in a NavigationStack,
   // so nothing is inset for it and anything at the top of a screen lands
   // underneath it: that is what put the GPS pill and RUN STATS on top of the
-  // clock. Reserved once, in the container every screen goes through.
+  // clock. Reserved once, in the container every screen goes through, and
+  // only the part the system's own safe area has not already taken: adding it
+  // on top of that doubled the gap and cut the run page off at the bottom.
   it('reserves the strip where watchOS draws the time', () => {
     expect(read('ResponsiveDesign.swift')).toMatch(/static var clockInset/);
-    expect(read('WatchDesign.swift')).toMatch(
-      /\.padding\(\.top, WatchLayout\.clockInset\)/
+    const container = read('WatchDesign.swift');
+    expect(container).toMatch(
+      /topInset = max\(0, WatchLayout\.clockInset - geo\.safeAreaInsets\.top\)/
     );
+    expect(container).toMatch(/\.padding\(\.top, topInset\)/);
   });
 
   // A pager draws its dots OVER its pages, so a page that does not say it is

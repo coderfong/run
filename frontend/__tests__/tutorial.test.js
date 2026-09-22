@@ -162,10 +162,24 @@ describe('progress transitions', () => {
 // ---------------------------------------------------------------------------
 
 describe('resumePhase', () => {
-  it('does not re-teach the world after a run is abandoned', () => {
+  // The run branch is the PRACTICE run now: an abandoned one plays again from
+  // its own card, and never re-teaches the world before it.
+  it('restarts an abandoned practice run from its own card', () => {
     RECORD_PHASES.forEach((phase) => {
-      expect(resumePhase(phase)).toBe(PHASE.START_RUN);
+      if (phase === PHASE.FIRST_CLAIM_SUCCESS) return;
+      expect(resumePhase(phase)).toBe(PHASE.TRAINING_RUN);
     });
+  });
+
+  // Once the practice claim has landed there is nothing left to replay.
+  it('carries on forward from a practice claim that already landed', () => {
+    expect(resumePhase(PHASE.FIRST_CLAIM_SUCCESS)).toBe(PHASE.TRAINING_RIVAL);
+  });
+
+  it('plays the practice run straight after the practice card', () => {
+    expect(nextPhase(PHASE.TRAINING_RUN)).toBe(PHASE.ACTIVE_RUN);
+    expect(nextPhase(PHASE.FIRST_CLAIM_SUCCESS)).toBe(PHASE.TRAINING_RIVAL);
+    expect(nextPhase(PHASE.START_RUN)).toBe(PHASE.COMPLETE);
   });
 
   it('picks up exactly where it was during the tour', () => {

@@ -96,6 +96,15 @@ const DevSequenceControls = __DEV__
 // comes last, immediately before Home.
 const STAGE = { CLAIM: 'claim', SUMMARY: 'summary', SHARE: 'share' };
 
+// How long the practice run's autopilot holds each beat before pressing on
+// (see "the practice run's autopilot"). The recap outlasts the tutorial's own
+// "it's yours" card (FIRST_CLAIM_SUCCESS, 3.2s) so the two never overlap.
+const AUTO_CLAIM_MS = 3000;
+const AUTO_PAYOFF_MS = 3000;
+const AUTO_STANDINGS_MS = 3500;
+const AUTO_RECAP_MS = 3800;
+const AUTO_SHARE_MS = 3500;
+
 export function mapRootResetState(center) {
   const focus = center
     ? { focus: { lat: center.latitude, lon: center.longitude } }
@@ -1452,6 +1461,60 @@ export default function ResultScreen({ navigation, route }) {
     Image.clearMemoryCache?.();
     setStage(STAGE.SHARE);
   };
+
+  // --- the practice run's autopilot ---------------------------------------
+  //
+  // The first-run practice (tutorialSim) plays itself from the run screen all
+  // the way back to Home: every beat a real run has, each held long enough to
+  // be seen, then pressed for the runner. It presses the SAME handlers the
+  // buttons do, so what is taught is exactly what a real run does. A runner
+  // who presses a button first simply moves it along sooner; the next beat's
+  // timer is keyed on the state that press produces.
+  //
+  // Latest handlers through a ref: they are plain functions redeclared every
+  // render, and a timer must press the current one.
+  const autopilot = useRef({});
+  autopilot.current = { placeClaim, endCelebration, goToShare, continueToLeaderboard: seq.continueToLeaderboard };
+  const autoStep = (active, ms, press) => {
+    if (!tutorialSim || !active) return undefined;
+    const timer = setTimeout(press, ms);
+    return () => clearTimeout(timer);
+  };
+  // Plan Attack: the shape is on the map, the coach mark has said what it is.
+  const claimShown = stage === STAGE.CLAIM && !captured && !claiming && canPlace && !!options && !!pose;
+  useEffect(
+    () => autoStep(claimShown, AUTO_CLAIM_MS, () => autopilot.current.placeClaim()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tutorialSim, claimShown]
+  );
+  // The payoff and the standings each wait for a tap in a real run.
+  useEffect(
+    () => autoStep(seq.showPayoff, AUTO_PAYOFF_MS, () => autopilot.current.continueToLeaderboard()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tutorialSim, seq.showPayoff]
+  );
+  useEffect(
+    () => autoStep(seq.showLeaderboard, AUTO_STANDINGS_MS, () => autopilot.current.endCelebration()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tutorialSim, seq.showLeaderboard]
+  );
+  // The recap, long enough for the "it's yours" card over it to finish, then on
+  // to the share page.
+  const recapShown = stage === STAGE.SUMMARY && captured && !crossedOpen;
+  useEffect(
+    () => autoStep(recapShown, AUTO_RECAP_MS, () => autopilot.current.goToShare()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tutorialSim, recapShown]
+  );
+  // The share page, then HOME, not back to whichever tab opened the run: the
+  // practice ends where the rest of the tour picks up.
+  useEffect(
+    () => autoStep(stage === STAGE.SHARE, AUTO_SHARE_MS, () => {
+      navigation.navigate('Tabs', { screen: 'Home' });
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tutorialSim, stage]
+  );
 
 
   // ---------------------------------------------------------------------

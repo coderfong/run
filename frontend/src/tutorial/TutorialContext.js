@@ -67,6 +67,10 @@ const RUN_ROUTES = new Set(['Record', 'Result', 'PlanAttack']);
 const MEASURE_RETRY_MS = 120;
 const MEASURE_ATTEMPTS = 12;
 
+// How long a run phase may wait for the run screen to open before the lesson
+// gives up on it and rewinds. Covers a modal presentation on a slow phone.
+const RUN_ROUTE_GRACE_MS = 5000;
+
 const TutorialApiContext = createContext(null);
 const TutorialStateContext = createContext(null);
 
@@ -82,8 +86,7 @@ const EMPTY_FACTS = {
   claimReady: false,
   claimCelebrated: false,
   // True once the tutorial's own run/claim segment has started — see
-  // RunningScreen's startTutorialSimRun. Lets ACTIVE_RUN and FINISH_RUN say
-  // plainly that this run is a demonstration rather than real GPS.
+  // RunningScreen's startTutorialSimRun.
   simulatedRun: false,
 };
 
@@ -164,6 +167,7 @@ export function TutorialProvider({ children, navigationRef }) {
   }, [record, profile.tutorialPending, profile.introDone, runCount, write, completeTutorial]);
 
   const phase = record?.phase || PHASE.IDLE;
+  const enteringRunRef = useRef(false);
   const active = coreActive(record);
   const step = active ? stepFor(phase) : null;
 
@@ -174,6 +178,10 @@ export function TutorialProvider({ children, navigationRef }) {
         track(EVENTS.TUTORIAL_COMPLETED, {});
         haptic.success();
       }
+      // Entering the run branch from the tour, as against waking up in it:
+      // only the first may wait for the run screen to open (see the rewind
+      // effect below).
+      enteringRunRef.current = RECORD_PHASES.has(to);
       write(advanced(record, to));
     },
     [record, write]
@@ -186,6 +194,13 @@ export function TutorialProvider({ children, navigationRef }) {
         const nav = navigationRef?.current || navigationRef;
         if (!nav?.isReady?.()) return;
         nav.navigate('Tabs', { screen: 'Map', params: { screen: 'MapMain' } });
+      },
+      // The practice run's way in: the same route the tab bar's run button
+      // opens, so the practice plays on the screen a real run uses.
+      goToRecord() {
+        const nav = navigationRef?.current || navigationRef;
+        if (!nav?.isReady?.()) return;
+        nav.navigate('Record');
       },
     }),
     [navigationRef]
@@ -279,11 +294,37 @@ export function TutorialProvider({ children, navigationRef }) {
   // run this lesson was attached to is gone: a discarded run, a refused
   // permission, a crash on the way back in. Nothing about the world needs
   // re-teaching, so it never rewinds further than this.
+  //
+  // ONLY ONCE THE RUN SCREEN HAS BEEN REACHED. The practice card now ENTERS a
+  // record phase from the map and navigates on the way in (ACTIVE_RUN's
+  // onEnter), so for a moment the phase is a run phase while the route is
+  // still the map — rewinding on that would bounce the practice straight back
+  // to its own card. A run screen that never arrives still rewinds, just
+  // after a grace period rather than instantly.
+  const reachedRunRef = useRef(false);
   useEffect(() => {
-    if (!active || !RECORD_PHASES.has(phase)) return;
-    if (!facts.route || RUN_ROUTES.has(facts.route)) return;
-    goTo(resumePhase(phase));
-    setFacts({ runClaimable: false, claimReady: false, claimCelebrated: false });
+    if (!active || !RECORD_PHASES.has(phase)) {
+      reachedRunRef.current = false;
+      return undefined;
+    }
+    if (RUN_ROUTES.has(facts.route)) {
+      reachedRunRef.current = true;
+      enteringRunRef.current = false;
+      return undefined;
+    }
+    if (!facts.route) return undefined;
+    const rewind = () => {
+      goTo(resumePhase(phase));
+      setFacts({ runClaimable: false, claimReady: false, claimCelebrated: false });
+    };
+    // Left the run screen, or woke up in a run phase with no run screen at
+    // all (the app was killed mid practice): nothing to wait for.
+    if (reachedRunRef.current || !enteringRunRef.current) {
+      rewind();
+      return undefined;
+    }
+    const timer = setTimeout(rewind, RUN_ROUTE_GRACE_MS);
+    return () => clearTimeout(timer);
   }, [active, phase, facts.route, goTo, setFacts]);
 
   // A step that has decided it does not apply — PLAYER with location refused —

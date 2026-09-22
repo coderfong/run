@@ -56,6 +56,13 @@ export const MARK_FEET = 1;
 // the box — the box centre put the runner a whole foot clear of wherever the
 // route actually ended, which reads as a mascot floating beside the line.
 const FOOT_IN_MARK = 0.67;
+
+// Twelve directions round a circle: enough copies that the outline's edge reads
+// as a round stroke rather than as an octagon at the widths the card asks for.
+const OUTLINE_DIRS = Array.from({ length: 12 }, (_, i) => {
+  const a = (i / 12) * Math.PI * 2;
+  return [Math.cos(a), Math.sin(a)];
+});
 export const MARK_FOOT = (1 - BODY_SCALE) / 2 + FOOT_IN_MARK * BODY_SCALE;
 
 /**
@@ -63,8 +70,18 @@ export const MARK_FOOT = (1 - BODY_SCALE) / 2 + FOOT_IN_MARK * BODY_SCALE;
  * @param {number}  props.size      width of the mark (it is square)
  * @param {string}  props.color     tint for the logo body
  * @param {boolean} props.flip      face the other way
+ * @param {string}  props.outline   ink drawn round the body, or null for none
+ * @param {number}  props.outlineWidth  how far that ink reaches past the body
  */
-export default function LogoRunner({ equipped, size = 120, color = '#FFFFFF', flip = false, style }) {
+export default function LogoRunner({
+  equipped,
+  size = 120,
+  color = '#FFFFFF',
+  flip = false,
+  outline = null,
+  outlineWidth = 0,
+  style,
+}) {
   // The mark is drawn smaller than the box and stood on its floor, so `size` is
   // the height from the soles up and the oversized head simply overhangs the
   // top. Nothing clips it — the box is `overflow: visible`.
@@ -89,6 +106,30 @@ export default function LogoRunner({ equipped, size = 120, color = '#FFFFFF', fl
         style,
       ]}
     >
+      {/* THE OUTLINE is the body stamped in ink a ring of times, each copy
+          nudged out by `outlineWidth`, under the tinted one. A white body on a
+          sticker has nothing behind it, so without this it vanishes over
+          anything pale, which is the same reason the route and the numbers
+          beside it are inked. A plain RN Image, like the body, so captureRef
+          draws every copy. */}
+      {outline && outlineWidth > 0
+        ? OUTLINE_DIRS.map(([dx, dy], i) => (
+            <Image
+              key={i}
+              source={MARK_BODY}
+              style={{
+                position: 'absolute',
+                left: bodyLeft + dx * outlineWidth,
+                top: bodyTop + dy * outlineWidth,
+                width: bodySize,
+                height: bodySize,
+                tintColor: outline,
+              }}
+              resizeMode="contain"
+              fadeDuration={0}
+            />
+          ))
+        : null}
       <Image
         source={MARK_BODY}
         style={{

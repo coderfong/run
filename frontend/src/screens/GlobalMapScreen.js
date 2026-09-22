@@ -10,7 +10,7 @@ import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
 import { BORDER_TIERS } from '../config/progression';
 import { BORDER_ART } from '../config/borderArt';
-import { MAP_FRAME_ART, rankColor } from '../config/mapFrameArt';
+import { MAP_FRAME_ART, MAP_FRAME_CREST, rankColor } from '../config/mapFrameArt';
 import { RANK_RANGES } from '../config/rankLadder';
 import PortraitBorder from '../components/PortraitBorder';
 
@@ -172,6 +172,16 @@ const SAT_MAX = 0.92; // hard opacity ceiling (never a flat wall of colour)
 function claimSaturation(reinforcements) {
   const reps = Math.max(0, reinforcements ?? 0);
   return 1 + SAT_GAIN * (1 - Math.exp(-reps / SAT_SCALE));
+}
+
+// How full the tapped card's strength bar is. Strength runs from the chip
+// floor (0.5) to the reinforcement ceiling (2.0), `strength_ceiling` in
+// backend/app/config.py, so that ceiling is a full bar. It used to fill at
+// `strength * 10`%, which put every plot on the map at 5 to 20% of the track.
+const STRENGTH_CEILING = 2.0;
+function strengthPct(strength) {
+  const s = Number(strength) || 1;
+  return Math.max(4, Math.min(100, (s / STRENGTH_CEILING) * 100));
 }
 
 // Build the whole-board GeoJSON once per data change. Each ring is a feature
@@ -592,7 +602,14 @@ export default function GlobalMapScreen({ route, navigation }) {
   // the features, the portraits, the legend and the intelligence layers all
   // get the merge without knowing about it, and so does the tapped-territory
   // card, which reads back the holding rather than one claim inside it.
-  const held = useMemo(() => mergeTouchingLand(rows), [rows]);
+  // Own land is one colour (the accent) whatever its club badge, so it merges
+  // across badges too. Not when the accent is the neutral one: landColor then
+  // falls through to the club colour and the badges really do differ.
+  const ownOneColour = !!accent && accent !== NEUTRAL.stroke;
+  const held = useMemo(
+    () => mergeTouchingLand(rows, { oneColourFor: ownOneColour ? user.id : null }),
+    [rows, ownOneColour, user.id]
+  );
   // Pulled back, EITHER board goes calm: muted fills, no borders, no contest
   // pulse, no layer outlines, until the camera is close enough for one plot to
   // be worth reading as a plot. Club view additionally narrows to club-held
@@ -951,6 +968,7 @@ export default function GlobalMapScreen({ route, navigation }) {
   // rank — and therefore no scope, which is what made it unreadable.
   const viewedTier = RANK_VIEWS[Math.max(0, Math.min(TOP_VIEW, activeTier))];
   const frameArt = MAP_FRAME_ART[viewedTier.key];
+  const frameCrest = MAP_FRAME_CREST[viewedTier.key] || 0;
   // What the frame is keyed on, and so what counts as a change of frame. The
   // board is part of it, so switching boards on the same tier still transitions
   // rather than silently swapping the land underneath an identical frame.
@@ -1194,7 +1212,13 @@ export default function GlobalMapScreen({ route, navigation }) {
               {frameArt ? (
                 <Image
                   source={frameArt}
-                  style={StyleSheet.absoluteFill}
+                  // A crested frame is lifted by its crest so the rail, not
+                  // the ornament, meets the top edge (MAP_FRAME_CREST). The
+                  // art grows by the same share, so the other three rails stay
+                  // exactly where they were.
+                  style={frameCrest
+                    ? [StyleSheet.absoluteFill, { top: `${(-100 * frameCrest) / (1 - frameCrest)}%` }]
+                    : StyleSheet.absoluteFill}
                   resizeMode="stretch"
                   fadeDuration={0}
                   accessible={false}
@@ -1455,26 +1479,29 @@ export default function GlobalMapScreen({ route, navigation }) {
           </View>
           <View style={styles.cardMain}>
             <View style={styles.cardHeader}>
-              <Text style={[type.bodyBold]} numberOfLines={1}>
+              <Text style={[type.bodyBold, styles.cardTitle]} numberOfLines={1}>
                 Captured by {selected.username}
                 {selected.user_id === user.id ? ' (you)' : ''}
               </Text>
-              {/* Strength bar and defenders badge */}
-              <View style={styles.cardStats}>
-                <View style={styles.strengthBarContainer}>
-                  <View style={[styles.strengthBar, { width: `${Math.min(100, (selected.strength || 1) * 10)}%`, backgroundColor: selectedColor }]} />
+              {selected.defenders > 0 && (
+                <View style={[styles.defendersBadge, { backgroundColor: selected.defenders > 3 ? '#22C55E' : '#EF4444' }]}>
+                  <Text style={styles.defendersText}>{selected.defenders}</Text>
                 </View>
-                {selected.defenders > 0 && (
-                  <View style={[styles.defendersBadge, { backgroundColor: selected.defenders > 3 ? '#22C55E' : '#EF4444' }]}>
-                    <Text style={styles.defendersText}>{selected.defenders}</Text>
-                  </View>
-                )}
-              </View>
+              )}
             </View>
             <Text style={[type.caption, { marginTop: 2 }]}>
               {(selected.area_m2 / 1e6).toFixed(selected.area_m2 >= 1e5 ? 2 : 3)} km², held since {shortDate(selected.created_at)}
               {selected.contested ? ', contested' : ''}
             </Text>
+            {/* Its own row, the card's full width. It used to sit beside the
+                title with `flex: 1` inside a row that had no width of its own,
+                so the track ran off the card's right edge. */}
+            <View style={styles.strengthRow}>
+              <Text style={[type.labelSm, { color: colors.textDim }]}>STRENGTH</Text>
+              <View style={styles.strengthBarContainer}>
+                <View style={[styles.strengthBar, { width: `${strengthPct(selected.strength)}%`, backgroundColor: selectedColor }]} />
+              </View>
+            </View>
           </View>
           <View style={styles.cardActions}>
             <Button
@@ -1887,7 +1914,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   cardRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
   cardMain: { flex: 1 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.sm },
-  cardStats: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  cardTitle: { flexShrink: 1 },
+  strengthRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginTop: space.sm },
   strengthBarContainer: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.cardAlt, overflow: 'hidden' },
   strengthBar: { height: '100%', borderRadius: 3 },
   defendersBadge: { minWidth: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },

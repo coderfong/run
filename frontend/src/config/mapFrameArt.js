@@ -33,6 +33,18 @@ export const MAP_FRAME_ART = {
   mythic: require('../../assets/borders/map/mythic.png'),
 };
 
+// How far down its own art a frame's TOP RAIL starts, as a share of the art's
+// height. Zero for every tier but one: mythic hangs a flame crest above its
+// rail, so its alpha box (what the installer crops to) is taller than the
+// frame, and stretched into the board the rail landed about 4% down the
+// screen with bare map above it. The board lifts that art by this much, so the
+// rail meets the top edge and the crest runs up off the glass. Measured on
+// mythic.png: the rail's first opaque row is 62 of 1570. Re-measure if
+// install-map-frames.py replaces the file.
+export const MAP_FRAME_CREST = {
+  mythic: 62 / 1570,
+};
+
 // The backing every one of these colours is drawn on: the name chip in the
 // map's view selector, and the scrim over a locked board. Both are a constant
 // near-black on purpose, so there is exactly one thing to be legible against.

@@ -25,8 +25,16 @@ struct WatchScreen<Content: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            let bottomInset = WatchLayout.floorInset + (inPager ? WatchLayout.pagerInset : 0)
-            let usableHeight = max(0, geo.size.height - WatchLayout.clockInset - bottomInset)
+            // Reserve only what the system has NOT already reserved. Whether
+            // watchOS keeps the clock strip out of this frame depends on where
+            // the screen sits (a pager page is handed the whole glass, a plain
+            // screen may not be), and adding the full strip on top of a safe
+            // area that already excludes it pushed every screen down by twice
+            // the clock and cut the bottom of the run page off on a 40mm.
+            let topInset = max(0, WatchLayout.clockInset - geo.safeAreaInsets.top)
+            let wantedBottom = WatchLayout.floorInset + (inPager ? WatchLayout.pagerInset : 0)
+            let bottomInset = max(0, wantedBottom - geo.safeAreaInsets.bottom)
+            let usableHeight = max(0, geo.size.height - topInset - bottomInset)
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: spacing) {
                     content()
@@ -37,7 +45,7 @@ struct WatchScreen<Content: View>: View {
                 // launch with its centred content pushed below the glass.
                 .frame(minHeight: centred ? usableHeight : 0, alignment: .center)
                 .padding(.horizontal, WatchLayout.gutter)
-                .padding(.top, WatchLayout.clockInset)
+                .padding(.top, topInset)
                 .padding(.bottom, bottomInset)
             }
         }
@@ -281,7 +289,9 @@ struct LargeMetric: View {
             
             HStack(alignment: .lastTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: WatchLayout.font(42, floor: 30), weight: .black, design: .rounded))
+                    // A step smaller on a compact watch, so the run page fits
+                    // the glass outright instead of leaning on a scroll.
+                    .font(.system(size: WatchLayout.font(WatchLayout.isCompact ? 36 : 42, floor: 30), weight: .black, design: .rounded))
                     .foregroundColor(color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

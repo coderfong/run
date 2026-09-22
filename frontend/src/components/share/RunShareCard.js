@@ -43,7 +43,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import LogoRunner, { MARK_FEET, MARK_FOOT } from '../character/LogoRunner';
 import TrailDecorations, { TRAIL_NONE } from './trailDecorations';
 import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
-import { NB, brand, fonts, nbTextOn, type, withAlpha } from '../../theme';
+import { NB, brand, fonts, nbTextOn, type } from '../../theme';
 import HardShadow from '../ui/HardShadow';
 
 // The canvas colour Instagram paints BEHIND the sticker, until the runner picks
@@ -610,8 +610,11 @@ export default function RunShareCard({
   // recorder that logged one point, or the Route chip switched off all end the
   // same way — and an empty column beside the numbers is just a card with half
   // its width missing, so the type takes the lot instead.
-  const drawable =
-    (path?.length || 0) >= 2 || (rings?.[0]?.length || 0) >= 3;
+  //
+  // THE ROUTE ONLY. The claimed ground used to be drawn under it, and on a
+  // sticker the two read as one knotted blob; the user took the ground off,
+  // so a run with rings but no path now has nothing to put here.
+  const drawable = (path?.length || 0) >= 2;
   const hasArt = showRoute && drawable;
   const splitCols = sideBySide && hasArt;
   const inner = width - padX * 2;
@@ -685,11 +688,9 @@ export default function RunShareCard({
   // side — so it scales with the box it is padding.
   const artPad = Math.max(8 * u, Math.min(26 * u, artW * 0.1));
   const shapes = useMemo(() => {
+    // The route alone, and framed on its own: the claimed ring is no longer
+    // drawn, so it must not widen the box the route is fitted into either.
     const groups = [];
-    const outer = (rings?.[0] || []).filter(
-      (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])
-    );
-    if (outer.length >= 3) groups.push({ points: outer, close: true, kind: 'territory' });
     const routePoints = (path || [])
       .map(lonLat)
       .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
@@ -702,9 +703,8 @@ export default function RunShareCard({
     }
     const projected = projectGroups(groups, artW, artH, artPad);
     return groups.map((g, i) => ({ ...g, ...(projected[i] || {}) })).filter((g) => g.d);
-  }, [rings, path, artW, artH, artPad]);
+  }, [path, artW, artH, artPad]);
 
-  const territory = shapes.find((s) => s.kind === 'territory');
   const route = shapes.find((s) => s.kind === 'route');
 
   // The runner is the PASER mark itself, wearing the player's head, and it runs
@@ -872,31 +872,6 @@ export default function RunShareCard({
         }}
       >
         <Svg width={artW} height={artH}>
-          {territory && (
-            <>
-              {/* The ground is the one thing on this card Strava has no
-                  equivalent for, and at 40% alpha it was the faintest mark on
-                  it — a wash the eye skipped straight over on the way to the
-                  route. It gets the same treatment as everything else here: an
-                  ink edge under a solid one, so the shape survives whatever it
-                  is laid over. The FILL stays translucent on purpose; that is
-                  the runner's own photo showing through their land. */}
-              <Path
-                d={territory.d}
-                fill="none"
-                stroke={tone.ink}
-                strokeWidth={9 * u}
-                strokeLinejoin="round"
-              />
-              <Path
-                d={territory.d}
-                fill={withAlpha(glow, 0.26)}
-                stroke={glow}
-                strokeWidth={4 * u}
-                strokeLinejoin="round"
-              />
-            </>
-          )}
           {route && (
             <>
               {/* The under-stroke is the route's own legibility: on a sticker
@@ -961,7 +936,17 @@ export default function RunShareCard({
           style={{ position: 'absolute', left: runner.left, top: runner.top }}
           pointerEvents="none"
         >
-          <LogoRunner equipped={equipped} size={runnerSize} color={tone.text} flip={flip} />
+          {/* Inked round the body as far as the route's under-stroke reaches
+              past the route, so the runner and the line it stands on wear
+              one outline. */}
+          <LogoRunner
+            equipped={equipped}
+            size={runnerSize}
+            color={tone.text}
+            flip={flip}
+            outline={tone.ink}
+            outlineWidth={((ROUTE_UNDER_W - ROUTE_W) / 2) * u}
+          />
         </View>
       )}
 

@@ -551,7 +551,11 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
   const bodyOn = editorReady;
 
   return (
-    <View style={[styles.screen, styles.fullScreen, { paddingTop: insets.top + space.sm }]}>
+    // Pinned to the WINDOW, not to whatever it is mounted in. `absoluteFill`
+    // alone takes the parent's size, and in ResultScreen that parent runs
+    // taller than the glass, so the one-screen layout below was solved against
+    // a phantom height and the Share to row landed under the bottom edge.
+    <View style={[styles.screen, styles.fullScreen, { width: screenW, height: screenH, paddingTop: insets.top + space.sm }]}>
         <View style={styles.head}>
           <Text style={styles.title}>Share your run</Text>
           <PressableScale
