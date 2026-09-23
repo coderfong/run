@@ -6,7 +6,7 @@
 //
 // Data is server-owned via /me/progression; claims persist in reward_claims.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from '../ui/image';
@@ -43,7 +43,7 @@ import { toast } from '../ui/toast';
 import { Arrival, Bar, Pulse, useArrival, useReduceMotion } from '../ui/motion';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
-import LootboxGamble from '../components/lootbox/LootboxGamble';
+import LootboxGamble, { warmLootReward } from '../components/lootbox/LootboxGamble';
 import { rollCosmetic } from '../config/lootboxRoll';
 
 // `rollCosmetic` moved to config/lootboxRoll.js when the daily mission
@@ -438,18 +438,24 @@ export default function ProgressionScreen({ navigation }) {
   // The item is granted in the same action that opens the box, before its
   // reveal begins. That lets the opening stay one modal all the way through
   // to Collect, and means dismissing the celebration can never lose the item.
+  //
+  // A ref as well as the state: two taps inside one frame both read `opening`
+  // as false, and each would open (and grant) a different box.
+  const openingRef = useRef(false);
   const openBox = async () => {
-    if (opening) return;
+    if (opening || openingRef.current) return;
+    openingRef.current = true;
     setOpening(true);
     try {
       const sequence = await api.openLootbox();
       const rarity = sequence.final_rarity || sequence.rarity;
       const roll = rollCosmetic(rarity, isUnlocked);
+      const reward = { kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label };
+      // Decodes while the grant is in flight, so the art is ready long before
+      // the chest opens.
+      warmLootReward(reward);
       await api.addUnlock(roll.item.id);
-      setGamble({
-        ...sequence,
-        reward: { kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label },
-      });
+      setGamble({ ...sequence, reward });
       refreshUnlocks?.();
       await load();
     } catch (e) {
@@ -463,6 +469,7 @@ export default function ProgressionScreen({ navigation }) {
         toast.error(e.message || 'Could not open lootbox');
       }
     } finally {
+      openingRef.current = false;
       setOpening(false);
     }
   };

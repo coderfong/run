@@ -27,7 +27,7 @@ import { PressableScale } from '../ui/motion';
 import { toast } from '../ui/toast';
 import CrossroadsIntro from './paserby/CrossroadsIntro';
 import LevelUpCelebration from './LevelUpCelebration';
-import LootboxGamble from './lootbox/LootboxGamble';
+import LootboxGamble, { warmLootReward } from './lootbox/LootboxGamble';
 import RankDownCeremony from './rank/RankDownCeremony';
 import RankUpCeremony from './rank/RankUpCeremony';
 import RewardReveal from './RewardReveal';
@@ -93,23 +93,34 @@ export default function DevCelebrationsPanel({ style }) {
   const label = RANK_TIERS[tier].label;
   const btn = { colors, type };
 
-  const showCosmetic = (rarity, fromLootbox = false) => {
+  // Nothing counts as owned here, so the pick is from the whole rarity.
+  const pickCosmetic = (rarity) => {
     let roll = null;
     try {
-      // Nothing counts as owned here, so the pick is from the whole rarity.
       roll = rollCosmetic(rarity, () => false);
     } catch (e) {
       // rollCosmetic throws when a rarity has no box-eligible items at all.
     }
     if (!roll?.item) {
       toast.error(`No ${rarity} item to show`);
-      return;
+      return null;
     }
-    setReveal({
-      rewards: [{ kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label }],
-      accent: RARITY_COLOR[rarity] || brand.pink,
-      fromLootbox,
-    });
+    return { kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label };
+  };
+
+  const showCosmetic = (rarity) => {
+    const reward = pickCosmetic(rarity);
+    if (reward) setReveal({ rewards: [reward], accent: RARITY_COLOR[rarity] || brand.pink });
+  };
+
+  // The item is picked and warmed BEFORE the chest mounts, exactly as the real
+  // callers do, so the chest and the item play as one scene.
+  const openDemoBox = (rarity) => {
+    const sequence = demoSequence(rarity);
+    const reward = pickCosmetic(sequence.final_rarity);
+    if (!reward) return;
+    warmLootReward(reward);
+    setGamble({ ...sequence, reward });
   };
 
   const armRealDrop = async () => {
@@ -173,7 +184,7 @@ export default function DevCelebrationsPanel({ style }) {
       <Text style={[type.caption, { color: colors.textDim, marginTop: space.sm }]}>Loot box</Text>
       <View style={styles.row}>
         {RARITIES.slice(0, 3).map((r) => (
-          <Btn key={r} label={`${r} box`} onPress={() => setGamble(demoSequence(r))} {...btn} />
+          <Btn key={r} label={`${r} box`} onPress={() => openDemoBox(r)} {...btn} />
         ))}
       </View>
 
@@ -206,17 +217,14 @@ export default function DevCelebrationsPanel({ style }) {
       <LootboxGamble
         visible={!!gamble}
         sequence={gamble}
-        onOpened={(rarity) => {
-          setGamble(null);
-          showCosmetic(rarity, true);
-        }}
+        reward={gamble?.reward}
+        onCollect={() => setGamble(null)}
         onClose={() => setGamble(null)}
       />
       <RewardReveal
         visible={!!reveal}
         rewards={reveal?.rewards}
         accent={reveal?.accent}
-        fromLootbox={!!reveal?.fromLootbox}
         equipped={equipped}
         onClose={() => setReveal(null)}
       />

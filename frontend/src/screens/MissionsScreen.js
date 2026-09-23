@@ -33,7 +33,7 @@ import { BackButton, Card, HardShadow, Row, Screen, Skeleton } from '../componen
 import { ProgressTrack } from '../components/ui/toon';
 import MissionCard from '../components/missions/MissionCard';
 import CoinFly from '../components/missions/CoinFly';
-import LootboxGamble from '../components/lootbox/LootboxGamble';
+import LootboxGamble, { warmLootReward } from '../components/lootbox/LootboxGamble';
 import { rollCosmetic } from '../config/lootboxRoll';
 import { toast } from '../ui/toast';
 import { CountUpText, Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
@@ -210,14 +210,13 @@ export default function MissionsScreen({ navigation }) {
       const sequence = await api.openLootbox();
       const rarity = sequence.final_rarity || sequence.rarity;
       const roll = rollCosmetic(rarity, isUnlocked);
+      const reward = { kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label };
+      warmLootReward(reward);
       await api.addUnlock(roll.item.id);
       invalidate('me:missions');
       invalidate('me:progression');
       refresh();
-      setGamble({
-        ...sequence,
-        reward: { kind: 'cosmetic', key: `${roll.slot}:${roll.item.id}`, label: roll.item.label },
-      });
+      setGamble({ ...sequence, reward });
       refreshUnlocks?.();
     } catch (e) {
       if (e.status === 409 || e.status === 403) refresh();
