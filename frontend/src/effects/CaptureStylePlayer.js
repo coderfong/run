@@ -291,6 +291,8 @@ function TravellingEffect({ step, from, to, size, playToken, onDone }) {
 
 function CaptureStylePlayer({
   style: styleId,
+  resolveStyle = resolveCaptureStyle,
+  buildPlan = buildCapturePlan,
   playToken = 0,
   bounds,
   claimPoint,
@@ -331,8 +333,11 @@ function CaptureStylePlayer({
   // The cast. Optional for the same reason, and absent by design in tests.
   cast,
 }) {
-  const captureStyle = resolveCaptureStyle(styleId);
-  const plan = useMemo(() => buildCapturePlan(captureStyle, reducedMotion), [captureStyle, reducedMotion]);
+  const captureStyle = resolveStyle(styleId);
+  const plan = useMemo(
+    () => buildPlan(captureStyle, reducedMotion),
+    [buildPlan, captureStyle, reducedMotion]
+  );
   // The authored timeline resolved against the people who are actually here.
   const timeline = useMemo(
     () => expandCast(plan.sequence, { defenderCount, seed: `${seed}|${captureStyle.id}` }),

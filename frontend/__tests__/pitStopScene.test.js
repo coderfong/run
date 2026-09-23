@@ -17,6 +17,7 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
 import PitStopScene from '../src/components/shop/PitStopScene';
+import { shopCoverLayout } from '../src/components/shop/WaterPointStage';
 import {
   PIT_STOP_CREW,
   PIT_STOP_LAYOUT as L,
@@ -178,6 +179,13 @@ describe('the station sign', () => {
 });
 
 describe('the scene itself', () => {
+  test('the portrait movie covers the full screenshot viewport after its top crop', () => {
+    const layout = shopCoverLayout({ width: 369, height: 800 }, 70);
+    expect(layout.renderHeight).toBeGreaterThanOrEqual(800);
+    expect(layout.renderWidth).toBeGreaterThan(369);
+    expect(layout.left).toBeLessThan(0);
+  });
+
   test('renders, takes no touches, and is hidden from screen readers', () => {
     let tree;
     act(() => {

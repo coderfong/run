@@ -2296,7 +2296,7 @@ export const DEV_CAPTURE_STYLES = Object.freeze([
       },
       territory: { transition: T.SHOCKWAVE, duration: 760 },
     }),
-    releaseApproved: false,
+    releaseApproved: true,
   }),
 
   // LIGHTNING ATTACK -- the production Lightning Conquest choreography
@@ -2343,7 +2343,7 @@ export const DEV_CAPTURE_STYLES = Object.freeze([
       },
       territory: { transition: T.ELECTRIFY, origin: S.TERRITORY_CENTER, duration: 720 },
     }),
-    releaseApproved: false,
+    releaseApproved: true,
   }),
 
   // GROUND SMASH -- the production Earth Crack choreography (JUMP -> SLAM at
@@ -2393,7 +2393,7 @@ export const DEV_CAPTURE_STYLES = Object.freeze([
       },
       territory: { transition: T.CRACK_GLOW, origin: S.CHARACTER_FEET, duration: 780 },
     }),
-    releaseApproved: false,
+    releaseApproved: true,
   }),
 
   // =========================================================================
@@ -2450,11 +2450,11 @@ export const DEV_CAPTURE_STYLES = Object.freeze([
       },
       territory: { transition: T.SHOCKWAVE, origin: S.TERRITORY_CENTER, duration: 740 },
     }),
-    releaseApproved: false,
+    releaseApproved: true,
   }),
 ]);
 
-export const DEFAULT_CAPTURE_STYLE_ID = 'meteor_claim';
+export const DEFAULT_CAPTURE_STYLE_ID = 'seedance_meteor_strike';
 
 // Old ids may exist in persisted dev replays and gallery deep links. Resolve
 // them to the closest surviving scene rather than keeping near-duplicates in
@@ -2521,8 +2521,11 @@ export function isSpriteOnlyCaptureStyle(item) {
   return !!item && !item.usesVectorEnvironment;
 }
 
+// Real captures use the action-based Seedance scenes exclusively. Legacy
+// sprite and Lottie styles remain available in the lab for comparison, but
+// they are never selected for a territory claim.
 export const PLAYABLE_CAPTURE_STYLES = Object.freeze(
-  CAPTURE_STYLES.filter(isReleaseApprovedCaptureStyle)
+  DEV_CAPTURE_STYLES.filter(isReleaseApprovedCaptureStyle)
 );
 
 function hashSeed(seed) {

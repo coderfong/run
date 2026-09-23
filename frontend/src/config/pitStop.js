@@ -52,6 +52,12 @@ export const SCENE = {
 
 export const SCENE_ASPECT = SCENE.width / SCENE.height; // ~1.03
 
+// The Seedance master keeps the sand foreground below the interactive stall.
+// Express its portrait height in scene units so movie and overlays share one
+// cover scale on every phone.
+export const SHOP_VIDEO = { width: 720, height: 1280 };
+export const SHOP_VIDEO_SCENE_HEIGHT = SCENE.width * SHOP_VIDEO.height / SHOP_VIDEO.width;
+
 // What the shop SHOWS of that box: everything below `top`, less whatever the
 // page's floating chrome covers. The sky above the canopy is cut so the stock
 // is on screen the moment the shop opens, but the shop runs the art up under

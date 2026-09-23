@@ -48,6 +48,25 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success', Warning: 'warning', Error: 'error' },
 }));
 
+jest.mock('expo-video', () => {
+  const React2 = require('react');
+  const { View } = require('react-native');
+  const player = {
+    loop: false,
+    muted: false,
+    currentTime: 0,
+    play: jest.fn(),
+    pause: jest.fn(),
+  };
+  return {
+    useVideoPlayer: (_source, setup) => {
+      setup?.(player);
+      return player;
+    },
+    VideoView: (props) => React2.createElement(View, props),
+  };
+});
+
 jest.mock('expo-location', () => ({
   getForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),

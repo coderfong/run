@@ -13,10 +13,12 @@ import Svg, { Path } from 'react-native-svg';
 import Animated from 'react-native-reanimated';
 
 import CaptureStylePlayer from '../effects/CaptureStylePlayer';
+import DefenseStylePlayer from '../effects/DefenseStylePlayer';
 import CaptureCast, { DEFENDER_SIZE } from '../effects/CaptureCast';
 import useCaptureStage from '../effects/useCaptureStage';
 import EffectPlayer from '../effects/EffectPlayer';
 import { CAPTURE_STYLES, DEV_CAPTURE_STYLES } from '../effects/captureStyles';
+import { DEV_DEFENSE_STYLES } from '../effects/defenseStyles';
 import { layoutDefenders } from '../effects/anchors';
 import { choreographySignature } from '../effects/choreography';
 import { EFFECT_CATEGORY_LABELS } from '../effects/effectCategories';
@@ -420,6 +422,68 @@ function CaptureStyleLab() {
   );
 }
 
+function DefenseStyleLab() {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  const { equipped } = useAvatar();
+  const [playToken, setPlayToken] = useState(1);
+  const [perspective, setPerspective] = useState('defender');
+  const [stage, setStage] = useState({ width: 320, height: 430 });
+  const defenseStage = useCaptureStage(false);
+  const castRef = useRef(null);
+  const center = useMemo(() => ({ x: stage.width / 2, y: stage.height * 0.57 }), [stage]);
+  const attackerPoint = useMemo(() => ({ x: stage.width * 0.2, y: stage.height * 0.57 }), [stage]);
+  const defenderRects = useMemo(() => [{
+    x: stage.width * 0.7 - DEFENDER_SIZE / 2,
+    y: stage.height * 0.57 - DEFENDER_SIZE / 2,
+    width: DEFENDER_SIZE,
+    height: DEFENDER_SIZE,
+  }], [stage]);
+  const replay = () => setPlayToken((value) => value + 1);
+  const localIsDefender = perspective === 'defender';
+
+  return (
+    <ScrollView contentContainerStyle={styles.lab}>
+      <Text style={[type.title, { color: colors.text }]}>Defense Styles</Text>
+      <Text style={[type.bodySm, { color: colors.textMuted }]}>One real owner defends against one failed attacker. Ownership never changes.</Text>
+      <View style={styles.chipRow}>
+        <Chip label="Defender perspective" active={localIsDefender} onPress={() => { setPerspective('defender'); replay(); }} />
+        <Chip label="Attacker perspective" active={!localIsDefender} onPress={() => { setPerspective('attacker'); replay(); }} />
+        <Chip label="Replay" active={false} onPress={replay} />
+      </View>
+      <PreviewBackground mode="map" style={styles.labStage}>
+        <Animated.View style={[StyleSheet.absoluteFill, defenseStage.style]} onLayout={(event) => setStage(event.nativeEvent.layout)}>
+          <CaptureCast
+            ref={castRef}
+            attacker={localIsDefender ? {} : equipped}
+            attackerPoint={attackerPoint}
+            defenders={[{ id: 'defense-owner', avatar: localIsDefender ? equipped : {} }]}
+            defenderRects={defenderRects}
+            bounds={stage}
+          />
+          <DefenseStylePlayer
+            style={DEV_DEFENSE_STYLES[0].id}
+            playToken={playToken}
+            bounds={stage}
+            claimPoint={center}
+            territoryRings={[]}
+            characterRect={{ x: attackerPoint.x - 40, y: attackerPoint.y - 40, width: 80, height: 80 }}
+            defenderRects={defenderRects}
+            defenderCount={1}
+            seed={`defense-lab:${perspective}`}
+            tint="#2DD4BF"
+            ink="#0C0C10"
+            stage={defenseStage}
+            cast={castRef}
+          />
+        </Animated.View>
+      </PreviewBackground>
+      <Text style={[type.bodySmBold, { color: colors.text }]}>Shield Counter</Text>
+      <Text style={[type.bodySm, { color: colors.textMuted }]}>Incoming hit, shield compression, reflected counter, attacker knockback, defender victory.</Text>
+    </ScrollView>
+  );
+}
+
 export default function AnimationGalleryScreen() {
   const { colors } = useTheme();
   const [section, setSection] = useState('library');
@@ -429,8 +493,9 @@ export default function AnimationGalleryScreen() {
       <View style={[styles.sectionTabs, { borderBottomColor: colors.border }] }>
         <Chip label="Animation Library" active={section === 'library'} onPress={() => setSection('library')} />
         <Chip label="Capture Styles" active={section === 'styles'} onPress={() => setSection('styles')} />
+        <Chip label="Defense Styles" active={section === 'defense'} onPress={() => setSection('defense')} />
       </View>
-      {section === 'library' ? <LibraryGallery /> : <CaptureStyleLab />}
+      {section === 'library' ? <LibraryGallery /> : section === 'styles' ? <CaptureStyleLab /> : <DefenseStyleLab />}
     </View>
   );
 }

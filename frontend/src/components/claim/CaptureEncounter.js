@@ -29,7 +29,7 @@ import Animated, {
 
 import { CAPTURE_LAYER } from '../../effects/layers';
 import { useTheme, useThemedStyles } from '../../theme';
-import GameLottie from '../GameLottie';
+import EffectPlayer from '../../effects/EffectPlayer';
 
 // The box the flourish is laid out in, centred on the contact point.
 const SCENE = { width: 224, height: 148 };
@@ -138,11 +138,12 @@ function CaptureEncounter({
       ]}
     >
       {impactFx > 0 ? (
-        <GameLottie
-          name="captureImpact"
+        <EffectPlayer
+          effect="seedance_brawl_clash"
           size={variant === 'chomp' ? 120 : 138}
-          trigger={impactFx}
-          style={styles.impactLottie}
+          playToken={impactFx}
+          reducedMotion={reducedMotion}
+          style={styles.impactEffect}
         />
       ) : null}
 
@@ -166,7 +167,7 @@ const makeStyles = () => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  impactLottie: { position: 'absolute', zIndex: 2 },
+  impactEffect: { position: 'absolute', zIndex: 2 },
   streaks: {
     position: 'absolute',
     left: SCENE.width / 2 - 74,

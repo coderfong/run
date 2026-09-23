@@ -40,7 +40,7 @@ const BUILTIN_LOTTIE_COUNT = 2;
 // docs/SEEDANCE_CAPTURE_ASSET_SPEC*.md), hand-added the same way the
 // Lotties are and for the same reason: the importer's manifest only knows
 // about the sprite-sheet package it curated.
-const BUILTIN_ANIMATED_IMAGE_COUNT = 9;
+const BUILTIN_ANIMATED_IMAGE_COUNT = 10;
 import { spriteFrameCoordinates } from '../src/effects/SpriteAnimation';
 
 const BOUNDS = { width: 390, height: 620 };
@@ -136,8 +136,14 @@ describe('all capture styles and territory scenarios', () => {
         .filter((step) => step.track === 'effect' && !step.optional)
         .forEach((step) => {
           const spec = getEffect(effectIdForCaptureStep(step));
-          expect(Math.max(spec.frameWidth, spec.frameHeight)).toBeGreaterThanOrEqual(64);
-          expect(spec.densityScales).toEqual([1, 2, 3]);
+          if (spec.type === 'sprite') {
+            expect(Math.max(spec.frameWidth, spec.frameHeight)).toBeGreaterThanOrEqual(64);
+            expect(spec.densityScales).toEqual([1, 2, 3]);
+          } else {
+            expect(spec.type).toBe('animated-image');
+            expect(spec.frameCount).toBeGreaterThan(0);
+            expect(spec.fps).toBeGreaterThan(0);
+          }
         });
     });
   });
@@ -271,29 +277,26 @@ describe('which capture animation a claim gets', () => {
     }
   });
 
-  // THE REGRESSION THIS REPLACES, worth stating plainly because the test that
-  // used to live here was asserting the bug.
-  //
-  // `PLAYABLE_CAPTURE_STYLES` also filtered on `usesVectorEnvironment`, holding
-  // back every scene that used a shadow, a crack, a rise, a sweep, a scanline,
-  // wind, a pull field or dust — on the reasoning that a capture should be
-  // drawn art or not ship. Thirty of the thirty-eight styles were excluded by
-  // that rule, and the eight that survived were exactly the ones with no
-  // environmental storytelling: pure sprite stacks. Every claim in the app
-  // therefore played one of eight animations that could only express themselves
-  // by layering more sprites, which is why captures read as "particles,
-  // characters moving, more particles, a flash, an explosion".
-  //
-  // The primitives are the causal language of the whole system: a shadow is how
-  // a scene says something is above you, cracks are how it says the ground
-  // broke, dust is how it says there was an aftermath. They cost no art, carry
-  // no licence and cannot fail to load. The whole pack ships.
-  test('the whole pack is playable, primitives included', () => {
-    expect(PLAYABLE_CAPTURE_STYLES.length).toBe(CAPTURE_STYLES.length);
-    expect(CAPTURE_STYLES.some((style) => style.usesVectorEnvironment)).toBe(true);
+  test('the live pool contains only action-based Seedance captures', () => {
+    expect(PLAYABLE_CAPTURE_STYLES.map((style) => style.id)).toEqual([
+      'seedance_meteor_strike',
+      'seedance_lightning_attack',
+      'seedance_ground_smash',
+      'seedance_comic_brawl',
+    ]);
+    PLAYABLE_CAPTURE_STYLES.forEach((style) => {
+      style.sequence.forEach((step) => {
+        const id = effectIdForCaptureStep(step);
+        if (!id) return;
+        const spec = getEffect(id);
+        expect(spec).toBeTruthy();
+        expect(spec.type).not.toBe('lottie');
+        expect(spec.tags).toContain('seedance');
+      });
+    });
   });
 
-  test('an unknown or legacy id still resolves to a real style', () => {
+  test('unknown ids resolve to the generated default while explicit lab ids remain available', () => {
     expect(resolveCaptureStyle('no-such-style').id).toBe(DEFAULT_CAPTURE_STYLE_ID);
     expect(resolveCaptureStyle('thunderstrike').id).toBe('lightning_conquest');
     expect(getCaptureStyle(DEFAULT_CAPTURE_STYLE_ID)).toBeTruthy();
@@ -314,17 +317,16 @@ describe('which capture animation a claim gets', () => {
   });
 });
 
-describe('DEV_CAPTURE_STYLES (unshipped prototypes)', () => {
-  test('every dev style is internally valid and excluded from production picks', () => {
+describe('Seedance capture styles', () => {
+  test('approved action sequences ship while experiments remain excluded', () => {
     DEV_CAPTURE_STYLES.forEach((style) => {
       expect(validateCaptureStyle(style)).toEqual([]);
-      expect(style.releaseApproved).toBe(false);
     });
-    // pickCaptureStyle()/PLAYABLE_CAPTURE_STYLES only ever read CAPTURE_STYLES
-    // -- a dev id must never be reachable through the real selection path.
-    const devIds = new Set(DEV_CAPTURE_STYLES.map((style) => style.id));
-    expect(PLAYABLE_CAPTURE_STYLES.some((style) => devIds.has(style.id))).toBe(false);
-    for (let i = 0; i < 200; i += 1) expect(devIds.has(pickCaptureStyle(`seed-${i}`))).toBe(false);
+    const playableIds = new Set(PLAYABLE_CAPTURE_STYLES.map((style) => style.id));
+    DEV_CAPTURE_STYLES.forEach((style) => {
+      expect(playableIds.has(style.id)).toBe(style.releaseApproved === true);
+    });
+    for (let i = 0; i < 200; i += 1) expect(playableIds.has(pickCaptureStyle(`seed-${i}`))).toBe(true);
   });
 
   test('a dev style still resolves through getCaptureStyle, same as a production one', () => {

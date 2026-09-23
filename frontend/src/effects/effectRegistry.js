@@ -186,6 +186,19 @@ const BUILTIN_ANIMATED_IMAGES = {
     releaseApproved: true,
     loop: false,
   },
+  seedance_defense_shield_counter: {
+    id: 'seedance_defense_shield_counter',
+    name: 'Seedance Defense Shield Counter',
+    type: EFFECT_TYPE.ANIMATED_IMAGE,
+    source: require('../../assets/animations/seedance-defense-shield-counter.webp'),
+    duration: 2458,
+    frameCount: 59,
+    fps: 24,
+    category: 'defense',
+    tags: ['defense', 'shield', 'counter', 'seedance', 'dev', 'paser-doodle'],
+    releaseApproved: true,
+    loop: false,
+  },
 };
 
 const BUILTIN_LOTTIES = {

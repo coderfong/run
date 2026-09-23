@@ -29,10 +29,27 @@ import NPCSpeechBubble from './NPCSpeechBubble';
 import { useShopDialogue } from './useShopDialogue';
 import { getShopStage, SHOP_STAGE } from './shopStateMachine';
 import { DIALOGUE_ANCHOR, PRODUCT_ANCHORS, RESTOCK_SIGN, SCENE, TRY_ON_MIRROR } from '../../config/shopStageLayout';
-import { SCENE_VIEW } from '../../config/pitStop';
+import { SCENE_VIEW, SHOP_VIDEO_SCENE_HEIGHT } from '../../config/pitStop';
 import { BODY_RATIO, HEADROOM } from '../character/CharacterRig';
 
 const RARITY_RANK = { common: 0, rare: 1, epic: 2, legendary: 3 };
+
+export function shopCoverLayout(viewport, headroom) {
+  const renderWidth = Math.max(
+    viewport.width,
+    Math.max(0, viewport.height - headroom + 1) * SCENE.width
+      / (SHOP_VIDEO_SCENE_HEIGHT - SCENE_VIEW.top)
+  );
+  const scale = renderWidth / SCENE.width;
+  const cropTop = Math.max(0, SCENE_VIEW.top - headroom / scale);
+  return {
+    renderWidth,
+    scale,
+    cropTop,
+    renderHeight: (SHOP_VIDEO_SCENE_HEIGHT - cropTop) * scale,
+    left: (viewport.width - renderWidth) / 2,
+  };
+}
 
 // A CREW anchor (PIT_STOP_LAYOUT.keeper/restocker/helper) stores `x` as the
 // character's CENTRE and no height — the same convention PitStopCrew's own
@@ -91,9 +108,8 @@ export default function WaterPointStage({
   active = true,
 }) {
   const window = useWindowDimensions();
-  const [width, setWidth] = useState(window.width);
-  const scale = width / SCENE.width;
-  const cropTop = Math.max(0, SCENE_VIEW.top - headroom / scale);
+  const [viewport, setViewport] = useState({ width: window.width, height: window.height });
+  const { renderWidth, renderHeight, scale, cropTop, left } = shopCoverLayout(viewport, headroom);
 
   const placements = useMemo(() => assignAnchors(items), [items]);
 
@@ -113,10 +129,16 @@ export default function WaterPointStage({
   const disabled = stage === SHOP_STAGE.BUYING;
 
   return (
-    <View
-      style={[styles.stage, { height: (SCENE.height - cropTop) * scale }]}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-    >
+    <View style={styles.stage} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left,
+          width: renderWidth,
+          height: renderHeight,
+        }}
+      >
       <PitStopScene
         selectedProductId={selectedId}
         selectedRarity={selected?.rarity || null}
@@ -124,6 +146,7 @@ export default function WaterPointStage({
         purchaseStatus={purchaseStatus}
         active={active}
         headroom={headroom}
+        viewportHeight={renderHeight}
       />
 
       {/* Everything below owns touches; nothing above this line does.
@@ -176,6 +199,7 @@ export default function WaterPointStage({
         <NPCSpeechBubble text={bubbles.friend?.text} tick={bubbles.friend?.tick} tone={bubbles.friend?.tone} anchor={DIALOGUE_ANCHOR.friend} scale={scale} cropTop={cropTop} />
         <NPCSpeechBubble text={bubbles.chill?.text} tick={bubbles.chill?.tick} tone={bubbles.chill?.tone} anchor={DIALOGUE_ANCHOR.chill} scale={scale} cropTop={cropTop} />
       </View>
+      </View>
     </View>
   );
 }
@@ -193,5 +217,5 @@ function CrewTapTarget({ frame, scale, cropTop, label, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  stage: { width: '100%', overflow: 'hidden', position: 'relative' },
+  stage: { width: '100%', flex: 1, overflow: 'hidden', position: 'relative' },
 });

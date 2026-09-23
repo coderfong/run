@@ -26,6 +26,7 @@
 
 import React, { memo, useEffect, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image } from '../../ui/image';
 import Animated, {
   Easing,
@@ -44,6 +45,7 @@ import {
   PIT_STOP_PLATES,
   SCENE,
   SCENE_VIEW,
+  SHOP_VIDEO_SCENE_HEIGHT,
 } from '../../config/pitStop';
 import { useReduceMotion } from '../../ui/motion';
 import {
@@ -106,6 +108,57 @@ const Plate = memo(function Plate({ source, scale }) {
       fadeDuration={0}
       pointerEvents="none"
     />
+  );
+});
+
+const videoBox = (scale) => ({
+  position: 'absolute',
+  left: 0,
+  top: 0,
+  width: SCENE.width * scale,
+  height: SHOP_VIDEO_SCENE_HEIGHT * scale,
+});
+
+const SHOP_BACKGROUND_VIDEO = require('../../../assets/video/shop-water-point-loop.mp4');
+const SHOP_BACKGROUND_STILL = require('../../../assets/art/src/pitstop-water-point.png');
+
+/** The loop is cropped from the same master as the plates, so every anchor stays registered. */
+const AnimatedEnvironment = memo(function AnimatedEnvironment({ scale, active, reduced }) {
+  const player = useVideoPlayer(SHOP_BACKGROUND_VIDEO, (instance) => {
+    instance.loop = true;
+    instance.muted = true;
+  });
+
+  useEffect(() => {
+    if (active && !reduced) {
+      player.play();
+      return;
+    }
+    player.pause();
+    player.currentTime = 0;
+  }, [active, player, reduced]);
+
+  return (
+    <>
+      <Image
+        source={SHOP_BACKGROUND_STILL}
+        style={videoBox(scale)}
+        resizeMode="stretch"
+        fadeDuration={0}
+        pointerEvents="none"
+      />
+      {!reduced ? (
+        <VideoView
+          player={player}
+          style={videoBox(scale)}
+          contentFit="fill"
+          nativeControls={false}
+          allowsFullscreen={false}
+          allowsPictureInPicture={false}
+          pointerEvents="none"
+        />
+      ) : null}
+    </>
   );
 });
 
@@ -284,10 +337,6 @@ const Spark = memo(function Spark({ p, spot, frame, scale, size, color, index, r
  * design, and three heads in front of it leave no strip wide enough for a
  * readable board.
  */
-const StaticEnvironment = memo(function StaticEnvironment({ scale }) {
-  return <Plate source={PIT_STOP_PLATES.backdrop()} scale={scale} />;
-});
-
 /**
  * The station's name, on a board across the canopy.
  *
@@ -374,6 +423,7 @@ const PitStopScene = memo(function PitStopScene({
   purchaseStatus = 'idle',
   active = true,
   headroom = 0,
+  viewportHeight,
 }) {
   const reduced = useReduceMotion();
   const window = useWindowDimensions();
@@ -407,7 +457,7 @@ const PitStopScene = memo(function PitStopScene({
 
   return (
     <View
-      style={[styles.scene, { height: (SCENE.height - cropTop) * scale }]}
+      style={[styles.scene, { height: viewportHeight || (SCENE.height - cropTop) * scale }]}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       pointerEvents="none"
       accessibilityElementsHidden
@@ -418,8 +468,8 @@ const PitStopScene = memo(function PitStopScene({
           what rises past its top edge. That is the whole crop: no frame is
           re-measured for it. */}
       <View style={stage(scale, cropTop)}>
-        {/* 01 the painted stall. */}
-        <StaticEnvironment scale={scale} />
+        {/* 01 fixed-camera Seedance environment; live crew stays above it. */}
+        <AnimatedEnvironment scale={scale} active={active} reduced={reduced} />
 
         {/* 02 hanging props, swinging off the canopy's lower edge in the two
             lanes the crew leaves clear. Both are BEHIND the crew, which is

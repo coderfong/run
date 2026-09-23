@@ -76,39 +76,10 @@ function countdown() {
 // place. 44% is 137pt there and 130pt on a 360, both of which still show the
 // drawing whole. The PRO card overrides it: its art is a 4:3 scene, not a
 // figure, and it is width-limited rather than height-limited.
-// Read as motion without new art: a small bob + lean loop on the same PNG.
-const AnimatedImage = Animated.createAnimatedComponent(Image);
-
-function RunningArt({ art, style }) {
-  const reduced = useReduceMotion();
-  const bob = useSharedValue(0);
-
-  useEffect(() => {
-    if (reduced) {
-      cancelAnimation(bob);
-      bob.value = 0;
-      return undefined;
-    }
-    // A jog's cadence, not a spring — reverse:true makes withRepeat yo-yo
-    // 0→1→0 forever, so this never settles the way a run-count-limited
-    // repeat would.
-    bob.value = withRepeat(withTiming(1, { duration: 220 }), -1, true);
-    return () => cancelAnimation(bob);
-  }, [reduced]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: -bob.value * 5 },
-      { rotate: `${(bob.value - 0.5) * 3}deg` },
-    ],
-  }));
-
-  return <AnimatedImage source={art} style={[style, animatedStyle]} resizeMode="contain" />;
-}
-
-function HeroCard({ width, bg, art, artWidth = '44%', eyebrow, title, sub, cta, onPress, onPressIn, runLoop = false }) {
+function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, title, sub, cta, onPress, onPressIn }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
+  const reduced = useReduceMotion();
   return (
     <PressableScale
       style={{ width }}
@@ -169,11 +140,12 @@ function HeroCard({ width, bg, art, artWidth = '44%', eyebrow, title, sub, cta, 
           </Framed>
         </View>
         {/* the transparent illustration, shown whole (contain) — no crop, no fade */}
-        {runLoop ? (
-          <RunningArt art={art} style={[styles.heroImg, { width: artWidth }]} />
-        ) : (
-          <Image source={art} style={[styles.heroImg, { width: artWidth }]} resizeMode="contain" />
-        )}
+        <Image
+          source={animatedArt && !reduced ? animatedArt : art}
+          style={[styles.heroImg, { width: artWidth }]}
+          resizeMode="contain"
+          autoplay={Boolean(animatedArt && !reduced)}
+        />
       </Framed>
     </PressableScale>
   );
@@ -220,6 +192,7 @@ function HeroCarousel({ navigation }) {
           width={cardW}
           bg={brand.teal}
           art={require('../../assets/art/card-solo.png')}
+          animatedArt={require('../../assets/animations/seedance-home-runner.webp')}
           /* The eyebrow gives the REASON, the title is the hook, the button is
              the verb. It used to read "START A RUN TODAY" over a button that
              said "Start a run", so the card said the same sentence twice in two
@@ -231,7 +204,6 @@ function HeroCarousel({ navigation }) {
           eyebrow="THERE'S LAND TO CLAIM"
           title="LET'S RUN"
           cta="Start a run"
-          runLoop
           onPressIn={() => preloadScreenImages('Record')}
           onPress={() => navigation.navigate('Record')}
         />
@@ -239,6 +211,7 @@ function HeroCarousel({ navigation }) {
           width={cardW}
           bg={brand.pink}
           art={require('../../assets/art/season-banner.png')}
+          animatedArt={require('../../assets/animations/seedance-home-celebration.webp')}
           eyebrow={`${SEASON_CITY} SEASON ${SEASON_NO}`}
           title="THE BOARD"
           sub={countdown()}
