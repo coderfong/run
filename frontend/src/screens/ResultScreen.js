@@ -766,7 +766,14 @@ export default function ResultScreen({ navigation, route }) {
   // screens. Only what is drawn: `localEstimate` below still works the raw
   // claims, because the payoff is counted per claim taken and a merged holding
   // is not one of those.
-  const heldBoard = useMemo(() => mergeTouchingLand(board), [board]);
+  //
+  // `oneColourFor: user.id`, same as GlobalMapScreen: this board ALSO paints
+  // the viewer's own land in one accent colour whatever badge each piece
+  // carries (see `landColor` below, `mine` short-circuits the badge), so
+  // grouping by badge here just left every pre-club/post-club (or otherwise
+  // re-badged) plot of the VIEWER'S OWN ground unmerged — a fan of identical
+  // self-portraits over what reads as one contiguous holding.
+  const heldBoard = useMemo(() => mergeTouchingLand(board, { oneColourFor: user.id }), [board, user.id]);
   const boardFC = useMemo(
     () => ({
       type: 'FeatureCollection',
@@ -2581,8 +2588,14 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   claimSheetInner: { paddingHorizontal: space.lg, paddingTop: space.sm },
   claimFooter: { flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 1 },
   claimCost: { alignSelf: 'flex-start', width: '100%' },
-  claimEnergy: { flex: 1, minWidth: 0 },
-  claimButtonWrap: { width: 132, flexShrink: 0 },
+  // `flex: 1` and a fixed `width: 132` were sized for a horizontal row (cost
+  // caption, meter, button, side by side) this footer used to be. Now that
+  // it's a column, `flex: 1` on the meter has nothing to share a row with —
+  // it grows to fill the SHEET's remaining height instead, which is the big
+  // empty gap between NEXT and the meter — and the button's leftover
+  // row-end width leaves it a narrow pill instead of the primary CTA it is.
+  claimEnergy: {},
+  claimButtonWrap: { width: '100%' },
   claimButton: { width: '100%' },
   mapMissing: {
     flex: 1,
