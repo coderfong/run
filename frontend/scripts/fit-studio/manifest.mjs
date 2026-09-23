@@ -18,6 +18,7 @@ const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 export const FRONTEND = path.resolve(HERE, '..', '..');
 const CONFIG = path.join(FRONTEND, 'src', 'config');
 const RIG_FILE = path.join(FRONTEND, 'src', 'components', 'character', 'CharacterRig.js');
+const HEADWEAR_FIT_FILE = path.join(CONFIG, 'headwearFit.json');
 
 const CATALOG_FILES = ['cosmetics.js', 'cosmeticsArt.js', 'outfitItems.js', 'hairSheetItems.js', 'curatedCosmetics.js'];
 
@@ -148,6 +149,10 @@ export async function buildManifest() {
 
   return {
     rig: readRig(),
+    // The same seat-line data src/config/headwearFit.js reads, so a hat's
+    // hair crop in the studio is computed by the identical function as the
+    // rig rather than approximated — see index.html's hairOcclusion().
+    fit: JSON.parse(fs.readFileSync(HEADWEAR_FIT_FILE, 'utf8')),
     slots,
     items,
     body: mod.BODY_IMG,

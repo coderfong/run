@@ -14,7 +14,9 @@ struct ReadyView: View {
 
     var body: some View {
         WatchScreen(spacing: WatchLayout.size(10)) {
-            StatusHeader(showGPS: true, gpsState: workout.gpsReady ? .ready : .searching)
+            // No GPS dot: the line under Start already says "Finding GPS", in
+            // yellow, for as long as that is true.
+            StatusHeader(showGPS: false, gpsState: .ready)
 
             PaserPortrait(size: WatchLayout.hero, motion: .idle)
 
@@ -134,16 +136,13 @@ struct PrimaryRunPage: View {
 
     var body: some View {
         WatchScreen(spacing: WatchLayout.size(12), inPager: true) {
-            // Everything in this row is pushed LEFT. The clock lives in the
-            // top right corner of every watch screen, and a GPS pill sitting
-            // under it reads as two badges fighting for the same corner.
+            // Pushed LEFT, away from the clock in the top right corner.
             HStack(spacing: WatchLayout.size(6)) {
                 PaserPortrait(
                     size: WatchLayout.size(26),
                     motion: .run(workout.cadenceHz),
                     ring: false
                 )
-                GPSIndicator(state: workout.gpsReady ? .ready : .weak)
                 Spacer()
             }
 
@@ -238,12 +237,32 @@ struct ControlsPage: View {
 struct HoldToFinishButton: View {
     let action: () -> Void
     @State private var progress: Double = 0
+    @GestureState private var pressing = false
+
+    /// How long the hold takes. Long enough that a brush does not end a run,
+    /// short enough to do mid-stride — 1.5s was a stand-still.
+    private static let hold: Double = 1.0
 
     /// It is the whole page now that Pause has gone, so it is sized off the
     /// screen rather than written down: a thumb on the move needs the target,
     /// and there is nothing left to share the room with.
     private var dial: CGFloat {
-        min(WatchLayout.screen.width * 0.42, WatchLayout.screen.height * 0.32).rounded()
+        min(WatchLayout.screen.width * 0.56, WatchLayout.screen.height * 0.44).rounded()
+    }
+
+    /// Only the dial takes the press, and it takes it SIMULTANEOUSLY with the
+    /// pager's swipe. It used to be an onLongPressGesture over the whole page,
+    /// which ate every drag that started anywhere on it, so the page could
+    /// barely be swiped away from. A drag now pages as usual and cancels the
+    /// hold once it moves past `maximumDistance` — which is loose enough that
+    /// a thumb wobbling on the move does not cancel it.
+    private var holdGesture: some Gesture {
+        LongPressGesture(minimumDuration: Self.hold, maximumDistance: 24)
+            .updating($pressing) { value, state, _ in state = value }
+            .onEnded { _ in
+                WKInterfaceDevice.current().play(.success)
+                action()
+            }
     }
 
     var body: some View {
@@ -264,22 +283,27 @@ struct HoldToFinishButton: View {
                     .font(.system(size: dial * 0.36, weight: .black))
                     .foregroundColor(PaserStyle.cream)
             }
+            .scaleEffect(pressing ? 0.95 : 1)
+            .animation(PaserMotion.press, value: pressing)
+            .contentShape(Circle())
+            .simultaneousGesture(holdGesture)
 
             Text("PRESS AND HOLD TO END")
                 .font(.system(size: WatchLayout.font(10), weight: .semibold, design: .rounded))
                 .foregroundColor(PaserStyle.muted)
                 .multilineTextAlignment(.center)
         }
-        .contentShape(Rectangle())
-        .onLongPressGesture(minimumDuration: 1.5, pressing: { pressing in
-            if pressing {
-                withAnimation(.linear(duration: 1.5)) { progress = 1.0 }
+        // The single argument overload: this app stays installable on
+        // watchOS 9.
+        .onChange(of: pressing) { isPressing in
+            if isPressing {
+                // A tick the moment the hold registers, so a runner not
+                // looking at the wrist knows to keep holding.
+                WKInterfaceDevice.current().play(.click)
+                withAnimation(.linear(duration: Self.hold)) { progress = 1.0 }
             } else {
                 withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
             }
-        }) {
-            WKInterfaceDevice.current().play(.success)
-            action()
         }
     }
 }

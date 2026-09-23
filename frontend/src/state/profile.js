@@ -116,13 +116,30 @@ export function ProfileProvider({ children }) {
     setProfile(next);
   };
 
+  // The DISK writes themselves also have to land in the order they were
+  // issued, not just compute the right value. `next` is always correct and
+  // cumulative (derived from `latest.current` synchronously, before any
+  // await), but without this queue each write kicks off its own independent
+  // `AsyncStorage.setItem` — and if an EARLIER write's promise happens to
+  // settle AFTER a later one's (the two writes from arming the tutorial and
+  // then clearing its pending flag, say, or that seeding running into a
+  // runner dismissing a contextual tip in the same first few seconds), the
+  // earlier, less-complete snapshot is the one left on disk. Chaining every
+  // persist onto the last one's promise makes them resolve strictly in issue
+  // order, so the final byte written is always the most recent `next`.
+  const writeQueue = useRef(Promise.resolve());
   const write = useCallback(
-    async (patch) => {
+    (patch) => {
       const next = { ...latest.current, ...patch };
       apply(next);
-      try {
-        await AsyncStorage.setItem(keyFor(user), JSON.stringify(next));
-      } catch {}
+      // Returned to the caller too: a flow that awaits its own write (the
+      // onboarding finish step, say) still gets "this is on disk now" —
+      // chaining preserves that per-call guarantee while also fixing the
+      // cross-call ordering.
+      const settled = writeQueue.current.then(() =>
+        AsyncStorage.setItem(keyFor(user), JSON.stringify(next)).catch(() => {})
+      );
+      writeQueue.current = settled;
       // Age is the one thing the SERVER has to know: it sets the floor on how
       // much of a young runner's route may ever be published, and it cannot
       // apply a floor for an age it was never told. Best-effort — a failure
@@ -131,7 +148,7 @@ export function ProfileProvider({ children }) {
       if (patch.birthday) {
         api.setBirthday(patch.birthday).catch(() => {});
       }
-      return next;
+      return settled.then(() => next);
     },
     [user?.username]
   );

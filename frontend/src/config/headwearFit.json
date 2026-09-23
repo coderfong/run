@@ -6,35 +6,45 @@
    "edgeInset": 0.03,
    "maxEdgeY": 0.45,
    "defaultEdgeY": 0.28,
-   "sideFall": 70
+   "sideFall": 70,
+   "crownWidth": 0.45,
+   "revealY": 0.75
   },
   "beanie": {
    "occlude": true,
    "edgeInset": 0.02,
    "maxEdgeY": 0.45,
    "defaultEdgeY": 0.28,
-   "sideFall": 70
+   "sideFall": 70,
+   "crownWidth": 0.75,
+   "revealY": 0.85
   },
   "wide_brim_hat": {
    "occlude": true,
    "edgeInset": 0.03,
    "maxEdgeY": 0.45,
    "defaultEdgeY": 0.28,
-   "sideFall": 70
+   "sideFall": 70,
+   "crownWidth": 0.5,
+   "revealY": 0.75
   },
   "helmet": {
    "occlude": true,
    "edgeInset": 0.02,
    "maxEdgeY": 0.45,
    "defaultEdgeY": 0.28,
-   "sideFall": 70
+   "sideFall": 70,
+   "crownWidth": 0.65,
+   "revealY": 0.8
   },
   "headwrap": {
    "occlude": true,
    "edgeInset": 0.02,
    "maxEdgeY": 0.45,
    "defaultEdgeY": 0.28,
-   "sideFall": 70
+   "sideFall": 70,
+   "crownWidth": 0.8,
+   "revealY": 0.85
   },
   "visor": {
    "occlude": false

@@ -338,7 +338,7 @@ export const ITEMS = {
     // --- PASER running cosmetics (2026-09-17) ---
   ],
   top: [
-    { id: 'daisydress', label: 'Daisy dress', img: require('../../assets/character/outfit/top4.png'), layout: { w: 0.9151, top: 0.3192, dx: 0.005 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
+    { id: 'daisydress', label: 'Daisy dress', img: require('../../assets/character/outfit/top4.png'), layout: { w: 0.8621, top: 0.3343, dx: 0.005 }, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
     { id: 'overshirt', label: 'Overshirt', img: require('../../assets/character/outfit/top6.png'), layout: { w: 0.9867, top: 0.2921, dx: -0.0083 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'sweater', label: 'Sweater', img: require('../../assets/character/outfit/top11.png'), layout: { w: 0.9651, top: 0.322, dx: 0.0033 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
     { id: 'singlet', label: 'Race singlet', img: require('../../assets/character/outfit/top12.png'), layout: { w: 0.6233, top: 0.3343, dx: -0.0033 }, rarity: 'common', unlock: free },
