@@ -26,6 +26,7 @@ import { useClan } from '../state/clan';
 import { Bar, Pop, ScreenIn, useOnScreen, useReduceMotion } from '../ui/motion';
 import { Button, Card, Pill, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
+import { RunnerBust, RunnerFigure } from '../components/identity/PlayerIdentity';
 import { landColor, ringCentroid } from '../components/territoryBoard';
 import { territoryRings } from '../components/claim/geometry';
 import GameMap, {
@@ -41,7 +42,7 @@ import MapProfileSheet from '../components/MapProfileSheet';
 import MapLayersSheet from '../components/map/MapLayersSheet';
 import TerritoryPlanner from '../components/map/TerritoryPlanner';
 import { EVENTS, track } from '../analytics';
-import { PHASE, TARGET, TutorialAnchor, useTutorial, useTutorialState } from '../tutorial';
+import { TARGET, TIP, TutorialAnchor, inFirstOnboarding, useTutorial, useTutorialTip } from '../tutorial';
 import { layerByKey, layerFeatureCollection } from '../map/intelligence';
 import { mergeTouchingLand } from '../map/holdings';
 import { boardPresentation, DETAIL_MIN_ZOOM } from '../map/presentation';
@@ -101,12 +102,6 @@ const CLUB_INK = '#F4F4F7';
 // UNDER a rail unless it is pushed in past this.
 const RAIL = 0.085;
 
-// The box the first-run tutorial lights around the runner's own dot, once the
-// camera has been flown to it. Generous rather than tight: the dot is 14pt and
-// a cutout traced round it would read as a smudge on the glass rather than as
-// a spotlight on somebody.
-const TUTORIAL_PLAYER_BOX = 92;
-
 // One compact menu holds every map action. It stays on the right edge where the
 // old tool rail lived, but opens wide enough for labels and the rank stepper so
 // the map never asks the runner to decode five unrelated floating icons.
@@ -135,14 +130,35 @@ const VIEW_SWITCH_SIZE = 118;
 // landColor already spends the viewer's accent there when they have one. The
 // ring used to branch on `mine` and take the accent directly, which now says a
 // different colour from the ground it is standing on.
-const LandPortrait = React.memo(function LandPortrait({ marker: m, bg, onSelect }) {
+//
+// ZOOM DECIDES THE MODE (components/identity/PlayerIdentity). Far out, a
+// circular portrait: anything bigger is unreadable and crowds the board. Close
+// in (`close`), there is room to show gear: other owners become a bust (hat to
+// hips, their top readable), and YOUR marker becomes your whole runner
+// standing on your plot, feet on the point. Still one rig per marker either
+// way, and still capped by selectPortraits, so closer is not heavier.
+const LandPortrait = React.memo(function LandPortrait({ marker: m, bg, onSelect, close = false }) {
   const onPress = useCallback(() => onSelect(m.userId), [onSelect, m.userId]);
+  if (close && m.mine) {
+    return (
+      <UserMarker point={m.at} onPress={onPress} anchor={FEET_ANCHOR}>
+        <RunnerFigure equipped={m.avatar} height={MAP_FIGURE_H} />
+      </UserMarker>
+    );
+  }
+  if (close) {
+    return (
+      <UserMarker point={m.at} onPress={onPress}>
+        <RunnerBust equipped={m.avatar} height={MAP_BUST_H} ring={m.ring} bg={bg} />
+      </UserMarker>
+    );
+  }
   return (
     <UserMarker point={m.at} onPress={onPress}>
       <CharacterBust equipped={m.avatar} size={m.mine ? 38 : 32} ring={m.ring} bg={bg} />
     </UserMarker>
   );
-}, (a, b) => a.marker.id === b.marker.id && a.marker.avatar === b.marker.avatar
+}, (a, b) => a.close === b.close && a.marker.id === b.marker.id && a.marker.avatar === b.marker.avatar
   && a.marker.userId === b.marker.userId && a.marker.mine === b.marker.mine
   && a.marker.ring === b.marker.ring && a.marker.at.latitude === b.marker.at.latitude
   && a.marker.at.longitude === b.marker.at.longitude
@@ -234,6 +250,12 @@ function toFeatures(territories, userId, playerAccent) {
 // they ride the board's own detail line rather than a second copy of the same
 // number that could drift away from it.
 const PORTRAIT_MIN_ZOOM = DETAIL_MIN_ZOOM;
+// Street level: close enough that a bust and a small whole runner read.
+const FIGURE_MIN_ZOOM = 15.5;
+const MAP_FIGURE_H = 58;
+const MAP_BUST_H = 42;
+// The whole runner stands ON its point rather than being centred over it.
+const FEET_ANCHOR = { x: 0.5, y: 1 };
 
 // How the contested outline breathes. The band is narrow on purpose, see the
 // note on HeatOutline.
@@ -405,10 +427,15 @@ export default function GlobalMapScreen({ route, navigation }) {
   // way CrossroadsScreen opens its own intro: gated on the profile flag
   // having loaded, so a not-yet-hydrated `false` never flashes the sheet at
   // someone who has already read it.
+  //
+  // FIRST ONBOARDING ONLY. A veteran (a reinstall, a new phone, an update that
+  // added this sheet) is not shown it unasked; it stays one tap away on the
+  // rank pill for anybody.
+  const firstOnboarding = inFirstOnboarding(profile.tutorial);
   useFocusEffect(
     useCallback(() => {
-      if (!profileLoading && !profile.rankGuideSeen) setRankInfoOpen(true);
-    }, [profileLoading, profile.rankGuideSeen])
+      if (!profileLoading && firstOnboarding && !profile.rankGuideSeen) setRankInfoOpen(true);
+    }, [profileLoading, firstOnboarding, profile.rankGuideSeen])
   );
 
   // --- Territory Planner -------------------------------------------------
@@ -538,7 +565,8 @@ export default function GlobalMapScreen({ route, navigation }) {
   const onViewportChange = useCallback(({ bounds, zoom: z }) => {
     const bbox = { minLon: bounds.sw[0], minLat: bounds.sw[1], maxLon: bounds.ne[0], maxLat: bounds.ne[1] };
     if (z != null) {
-      const crossedDetail = (zoomRef.current < PORTRAIT_MIN_ZOOM) !== (z < PORTRAIT_MIN_ZOOM);
+      const crossedDetail = (zoomRef.current < PORTRAIT_MIN_ZOOM) !== (z < PORTRAIT_MIN_ZOOM)
+        || (zoomRef.current < FIGURE_MIN_ZOOM) !== (z < FIGURE_MIN_ZOOM);
       zoomRef.current = z;
       // Only the visibility boundary needs a render during a pinch.
       if (crossedDetail) setZoom(z);
@@ -649,36 +677,14 @@ export default function GlobalMapScreen({ route, navigation }) {
     }
   }, [locState, list, user.id]);
 
-  // --- the first-run tutorial's three map beats ---------------------------
+  // --- first-visit tips ----------------------------------------------------
   //
-  // This screen OFFERS facts and a rectangle; it makes no decisions. Whether a
-  // coach mark is due, which one, and what it says all live in src/tutorial.
-  //
-  //   playerLocated  is there a dot to point at. With location refused the
-  //                  "that's you" step is skipped rather than pointing at an
-  //                  empty patch of map.
-  //   ownsLand       decides which true sentence the territory step says.
-  const { setFacts } = useTutorial();
-  const { phase: tutorialPhase } = useTutorialState();
-  const ownsLand = useMemo(
-    () => (list || []).some((t) => t.user_id === user.id),
-    [list, user.id]
-  );
-  useEffect(() => {
-    setFacts({
-      ownsLand,
-      playerLocated: locState === 'pending' ? null : !!myLoc,
-    });
-  }, [setFacts, ownsLand, myLoc, locState]);
-
-  // "That's you" points at the middle of the board, so the runner has to BE in
-  // the middle of the board. The camera is sent to them as the step opens —
-  // which is also what the screen does on its own the first time it loads, so
-  // this is nudging an existing behaviour rather than inventing one.
-  useEffect(() => {
-    if (tutorialPhase !== PHASE.PLAYER || !myLoc) return;
-    mapRef.current?.flyTo(myLoc, 15.5, 600);
-  }, [tutorialPhase, myLoc]);
+  // The map is not part of the core tutorial. The first time the runner opens
+  // it themselves they get ONE card; the camera does not move, nothing is
+  // selected for them. A second card waits until they tap somebody else's
+  // territory themselves.
+  const { requestTip } = useTutorial();
+  useTutorialTip(TIP.MAP, Array.isArray(list));
 
   // Owner portraits pinned to the centre of EVERY territory in view. Others'
   // avatars come from the API; the viewer's own uses the freshest local
@@ -755,7 +761,10 @@ export default function GlobalMapScreen({ route, navigation }) {
     const id = e?.features?.[0]?.properties?.territoryId;
     const t = held.find((x) => x.id === id);
     if (t) setSelected(t);
-  }, [held, planning]);
+    // Somebody else's land, tapped by the runner: the one moment "runners can
+    // take each other's land" is about what they are looking at.
+    if (t && t.user_id !== user.id) requestTip(TIP.MAP_TERRITORY);
+  }, [held, planning, requestTip, user.id]);
 
   // Same reasoning: GameMap's onPress prop must stay referentially stable.
   // In planning mode a tap DROPS A POINT instead of dismissing the card —
@@ -1089,7 +1098,13 @@ export default function GlobalMapScreen({ route, navigation }) {
             : null}
           {/* owner portrait in the middle of every territory in view */}
           {landPortraits.map((m) => (
-            <LandPortrait key={m.id} marker={m} bg={colors.card} onSelect={setProfileUserId} />
+            <LandPortrait
+              key={m.id}
+              marker={m}
+              bg={colors.card}
+              onSelect={setProfileUserId}
+              close={(zoom || 0) >= FIGURE_MIN_ZOOM}
+            />
           ))}
           {/* Keep location visible when pulled back without covering the land. */}
           {myLoc && (
@@ -1102,28 +1117,13 @@ export default function GlobalMapScreen({ route, navigation }) {
         {/* WHAT THE TUTORIAL LIGHTS UP, declared rather than measured.
             Mapbox draws the board and the runner's dot natively, and there is
             no React view around either that could be measured — so the screen
-            states the two rectangles it means and the tutorial measures those.
-            They paint nothing and take no touches.
-
-            The player box is the middle of the board on purpose: the camera is
-            flown to the runner as that step opens (see the effect above), so
-            the centre of the board IS where they are standing. */}
+            states the rectangle it means and a tip can measure that. It paints
+            nothing and takes no touches. The camera is never moved for a tip. */}
         <View
           pointerEvents="none"
           style={{ position: 'absolute', top: railTop, left: rail, right: rail, bottom: rail }}
         >
           <TutorialAnchor id={TARGET.MAP_BOARD} style={StyleSheet.absoluteFill} />
-          <TutorialAnchor
-            id={TARGET.MAP_PLAYER}
-            style={{
-              left: '50%',
-              top: '50%',
-              width: TUTORIAL_PLAYER_BOX,
-              height: TUTORIAL_PLAYER_BOX,
-              marginLeft: -TUTORIAL_PLAYER_BOX / 2,
-              marginTop: -TUTORIAL_PLAYER_BOX / 2,
-            }}
-          />
         </View>
 
         {/* LOCKED. Scouting a tier above your own covers the whole board, not

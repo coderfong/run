@@ -85,6 +85,7 @@ import { StyleSheet, Switch, Text } from 'react-native';
 import { NavigationContext } from '@react-navigation/native';
 
 import ProfileScreen from '../src/screens/ProfileScreen';
+import SettingsScreen from '../src/screens/SettingsScreen';
 import RankRail, { RAIL_H } from '../src/components/rank/RankRail';
 import { api } from '../src/api/client';
 
@@ -102,6 +103,18 @@ function mount() {
     tree = renderer.create(
       <NavigationContext.Provider value={navigation}>
         <ProfileScreen navigation={navigation} />
+      </NavigationContext.Provider>
+    );
+  });
+  return tree;
+}
+
+function mountSettings() {
+  let tree;
+  act(() => {
+    tree = renderer.create(
+      <NavigationContext.Provider value={navigation}>
+        <SettingsScreen navigation={navigation} />
       </NavigationContext.Provider>
     );
   });
@@ -192,22 +205,35 @@ describe('ProfileScreen', () => {
     }
     expect(t).toContain('PASER PRO');
 
-    // Notifications and Statistics are regular page content, while the three
-    // settings groups remain folded.
-    for (const heading of ['Notifications', 'Statistics', 'App customisation', 'Privacy', 'Account']) {
+    // Profile content stays on You; settings and run history do not.
+    for (const heading of ['Statistics', 'Your land', 'Running streak', 'Trophies']) {
       expect(t).toContain(heading);
     }
-    expect(t).toContain('Running streak');
-    expect(t).toContain('Recent runs');
-    for (const buried of ['Appearance', 'Runner colour', 'Sign out']) {
+    expect(t).not.toContain('Recent runs');
+    for (const buried of ['Notifications', 'App customisation', 'Privacy', 'Account', 'Appearance', 'Runner colour', 'Sign out']) {
       expect(t).not.toContain(buried);
     }
 
     act(() => tree.unmount());
   });
 
-  test('the remaining folded sections hold what their headings say, one at a time', async () => {
+  test('profile sections stay visible without settings or run history', async () => {
     const tree = mount();
+    await act(async () => {});
+
+    const t = texts(tree).join('|');
+    expect(t).toContain('See all');
+    expect(t).toContain('Fades in 5h');
+    expect(t).toContain('Running streak');
+    expect(t).toContain('Trophies');
+    expect(t).not.toContain('Recent runs');
+    expect(t).not.toContain('Notifications');
+
+    act(() => tree.unmount());
+  });
+
+  test('settings holds the moved groups, one at a time', async () => {
+    const tree = mountSettings();
     await act(async () => {});
 
     const open = async (heading) => {
@@ -217,14 +243,10 @@ describe('ProfileScreen', () => {
     };
 
     let t = texts(tree).join('|');
-    // Statistics are visible without opening a section.
-    expect(t).toContain('See all');
-    expect(t).toContain('Fades in 5h');
-    expect(t).toContain('Running streak');
-    expect(t).toContain('Trophies');
-    expect(t).toContain('Recent runs');
+    for (const heading of ['Settings', 'App customisation', 'Notifications', 'Privacy', 'Account']) {
+      expect(t).toContain(heading);
+    }
 
-    t = await open('App customisation');
     expect(t).toContain('Appearance');
     expect(t).toContain('Runner colour');
 
@@ -252,7 +274,9 @@ describe('ProfileScreen', () => {
   });
 
   test('one notification toggle controls every notification preference', async () => {
-    const tree = mount();
+    const tree = mountSettings();
+    await act(async () => {});
+    press(tree, 'Notifications');
     await act(async () => {});
     const toggle = tree.root.findAllByType(Switch).find(
       (node) => node.props.accessibilityLabel === 'Notifications toggle'
@@ -271,7 +295,7 @@ describe('ProfileScreen', () => {
   test('publish delay saves the selected value', async () => {
     api.privacy.mockImplementation(() => Promise.resolve({ route_trim_m: 0, publish_delay_h: 0 }));
     api.setPrivacy.mockImplementation((patch) => Promise.resolve({ route_trim_m: 0, publish_delay_h: patch.publish_delay_h }));
-    const tree = mount();
+    const tree = mountSettings();
     await act(async () => {});
     press(tree, 'Privacy');
     await act(async () => {});
@@ -293,7 +317,7 @@ describe('ProfileScreen', () => {
     const wrap = tree.root.findAll(
       (n) => String(n.props?.accessibilityLabel || '').includes('Open the rank ladder')
     )[0];
-    expect(StyleSheet.flatten(wrap.props.style).height).toBe(RAIL_H);
+    expect(StyleSheet.flatten(wrap.props.containerStyle).height).toBe(RAIL_H);
 
     act(() => tree.unmount());
   });
@@ -324,13 +348,15 @@ describe('ProfileScreen', () => {
     act(() => tree.unmount());
   });
 
-  test('survives a run list that is not a list', async () => {
-    // The list is rendered with `.slice`. An error body or a stale cache entry
-    // of another shape used to take the whole page down with it.
+  test('does not depend on the old profile run list', async () => {
+    // Recent runs moved off You; even a stale run-list payload should not
+    // affect the profile render path.
     mockRuns = { detail: 'nope' };
     const tree = mount();
     await act(async () => {});
-    expect(texts(tree).join('|')).toContain('Recent runs');
+    const t = texts(tree).join('|');
+    expect(t).toContain('Trophies');
+    expect(t).not.toContain('Recent runs');
     act(() => tree.unmount());
   });
 
@@ -346,7 +372,8 @@ describe('ProfileScreen', () => {
     expect(t).not.toContain('See all');
     expect(t).not.toContain('Fades in');
     expect(t).toContain('Running streak');
-    expect(t).toContain('Recent runs');
+    expect(t).toContain('Trophies');
+    expect(t).not.toContain('Recent runs');
     act(() => tree.unmount());
   });
 

@@ -1,37 +1,42 @@
 // What the APP tells the tutorial.
 //
 // The rule this file exists to enforce: the tutorial never decides that a run
-// started, that a claim landed or that options failed. It is told. Every one of
-// these is reported from the screen that already owns that state, at the point
-// where it already changes it, so the tutorial can only ever be a step behind
-// reality rather than a second opinion about it.
+// started, that a claim moved or that a claim landed. It is told, by the
+// screen that owns that state, at the moment the runner caused it. There is
+// no timer anywhere in the core tutorial that moves it on.
 //
 // TWO MECHANISMS, ONE JOB EACH.
 //
 //   SIGNALS (here)  discrete events that MOVE the tutorial on. Fire and forget,
 //                   and idempotent: a screen may report the same one twice (a
-//                   retry, a resumed run), and a signal that does not match the
-//                   phase the machine is in is dropped.
-//   FACTS (facts.js) continuous state that decides whether a step may SHOW. A
-//                   step whose fact is not true yet simply waits, invisibly.
-//
-// Everything that can be derived rather than reported IS derived — the current
-// route comes from the navigator and `running` comes from the recording state,
-// so the tab bar, the close button and a run started from the watch all
-// already work without knowing this file exists.
+//                   double tap, a retry), and a signal the current step does
+//                   not listen for is dropped.
+//   FACTS           continuous state that decides whether a step may SHOW
+//                   (the route, `claimStep`, `demoRouteDone`). A step whose
+//                   facts are not right yet simply waits, invisibly.
 
 export const SIGNAL = {
-  // The run ended and is being submitted. Reported by RunningScreen.finishRun.
+  // The runner pressed Start on the run screen and the demo run began.
+  RUN_STARTED: 'run-started',
+  // The demo route finished drawing itself: the Finish button can be shown.
+  // A component animation ending, which only REVEALS a control; the tutorial
+  // still waits for the runner to press it.
+  DEMO_ROUTE_DONE: 'demo-route-done',
+  // The run ended. Reported by RunningScreen.finishRun.
   RUN_FINISHED: 'run-finished',
 
-  // The runner moved or turned the claim: they have USED the chooser.
+  // The runner moved the claim along the route, meaningfully (not a tap that
+  // snapped back to where it started).
+  CLAIM_POSITION_CHANGED: 'claim-position-changed',
+  // The runner turned the claim.
+  CLAIM_ROTATION_CHANGED: 'claim-rotation-changed',
+  // Either of the two above. Kept for older call sites.
   CLAIM_ADJUSTED: 'claim-adjusted',
-  // The claim was accepted by the server.
+  // The claim was placed.
   CLAIM_PLACED: 'claim-placed',
-  // This run has nothing to claim, or the options never arrived. Not a failure
-  // of the tutorial: the lesson rewinds and waits for a run that earns ground.
+  // This run has nothing to claim, or the options never arrived.
   CLAIM_UNAVAILABLE: 'claim-unavailable',
 };
 
-/** Every value `signal()` will actually answer to — exported for tests. */
+/** Every value `signal()` will actually answer to. Exported for tests. */
 export const SIGNAL_NAMES = Object.freeze(Object.values(SIGNAL));

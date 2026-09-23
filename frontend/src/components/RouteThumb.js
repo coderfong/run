@@ -92,8 +92,11 @@ export const svgPoints = (points) => points
  * `large`   larger panoramic (THUMB_W x THUMB_H_LARGE) for prominent display
  * `style`   layout for the OUTER box (margin, flex) — sizing itself is
  *           measured, not styled; see the note below.
+ * `bare`    no drawn box of its own. For a map that sits flush inside a card
+ *           whose stroke is already its edge: a hand drawn frame inside that
+ *           read as a second card nested in the first.
  */
-export default function RouteThumb({ id, rings, path, color, compact = false, large = false, style }) {
+export default function RouteThumb({ id, rings, path, color, compact = false, large = false, bare = false, style }) {
   const styles = useThemedStyles(makeStyles);
   const { scheme } = useTheme();
   // A snapshot that never arrives (offline, a dead token, a 4xx from a URL we
@@ -142,6 +145,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
   const projectedRings = filteredRings.map(project);
   const projectedLine = line ? project(line) : null;
   const pixelHeight = boxWidth ? boxWidth * (boxH / THUMB_W) : null;
+  const Box = bare ? PlainBox : Framed;
   return (
     <View
       style={style}
@@ -151,7 +155,7 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
           is drawn on is the map inside it (white paper when there is none).
           `on` is that same surface, so the frame's own line is judged against
           what it actually sits on. */}
-      <Framed
+      <Box
         frame={frameVariant('box', `route:${id}`)}
         fill={surface}
         on={surface}
@@ -247,9 +251,16 @@ export default function RouteThumb({ id, rings, path, color, compact = false, la
             />
           )}
         </Svg>
-      </Framed>
+      </Box>
     </View>
   );
+}
+
+// The frameless box: the same measured size and clipped canvas, on the same
+// ground, with no ink of its own. Takes Framed's props and ignores the ones
+// that only mean something to a drawn edge.
+function PlainBox({ style, contentStyle, fill, children }) {
+  return <View style={[style, contentStyle, { backgroundColor: fill }]}>{children}</View>;
 }
 
 const makeStyles = () => StyleSheet.create({

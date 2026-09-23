@@ -100,6 +100,7 @@ export default function RivalDetailScreen({ route, navigation }) {
         <RivalCard
           rival={rival}
           myAvatar={equipped}
+          featured
           onTakeBack={() => navigation.navigate('Record')}
           onViewLand={
             rival.last_event?.lat != null

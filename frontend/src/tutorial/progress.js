@@ -20,7 +20,11 @@ import { PHASE, phaseIndex } from './phases';
 // their completed state and simply become eligible for whatever the new
 // version adds. Nothing here ever re-runs the core tutorial on an upgrade
 // without the runner asking for it.
-export const TUTORIAL_VERSION = 1;
+//
+// v2 (2026-09-23): the interactive core tutorial replaced the autopiloted v1
+// tour. A v1 record, finished or not, reads as taught: nobody is dropped back
+// into a tutorial after an update, and "Replay tutorial" plays the new one.
+export const TUTORIAL_VERSION = 2;
 
 export const CORE = {
   // Never armed. The state an existing account sits in.
@@ -36,11 +40,23 @@ export const CORE = {
 
 // Contextual tips, each shown once, none of them part of the core flow.
 export const TIP = {
+  MAP: 'map',
+  MAP_TERRITORY: 'map-territory',
+  MISSIONS: 'missions',
+  SHOP: 'shop',
   CLUB: 'club',
+  RIVALS: 'rivals',
+  RANK: 'rank',
+  SHARE: 'share',
+  FIRST_REAL_CLAIM: 'first-real-claim',
   LEADERBOARD: 'leaderboard',
   PROGRESSION: 'progression',
   DEFENSE: 'defense',
 };
+
+// The reasons decideCoreState arms a NEW account for. A replay ('replay') or a
+// migration is never one of them.
+const NEW_PLAYER_REASONS = new Set(['intro_just_finished', 'no_runs_yet']);
 
 export const EMPTY_PROGRESS = Object.freeze({
   version: TUTORIAL_VERSION,
@@ -51,6 +67,13 @@ export const EMPTY_PROGRESS = Object.freeze({
   // Why this account is (or is not) in the tutorial. Carried so a support
   // question can be answered without guessing; never shown to the runner.
   reason: null,
+  // STICKY: true once this account was armed as a genuinely NEW player (see
+  // decideCoreState). Never set by a replay or a migration, never cleared.
+  // It is the whole gate for everything that teaches: contextual tips and the
+  // one-time explainers only show to an account that is going through its
+  // first onboarding. A veteran on a new phone, after a reinstall or after an
+  // update that added a tip is never shown any of it.
+  firstOnboarding: false,
   tips: {},
 });
 
@@ -80,6 +103,8 @@ export function normalise(raw) {
       startedAt: raw.startedAt || null,
       completedAt: raw.completedAt || null,
       reason: `migrated_from_v${version}`,
+      // An older record is not a first onboarding under this tutorial.
+      firstOnboarding: false,
       tips,
     };
   }
@@ -101,8 +126,21 @@ export function normalise(raw) {
     startedAt: raw.startedAt || null,
     completedAt: raw.completedAt || null,
     reason: typeof raw.reason === 'string' ? raw.reason : null,
+    // Also true for a record armed before the flag existed: its reason
+    // already says it was armed as a new player.
+    firstOnboarding: raw.firstOnboarding === true || NEW_PLAYER_REASONS.has(raw.reason),
     tips,
   };
+}
+
+/**
+ * Is this account going through its FIRST onboarding? The one question every
+ * teaching surface asks before it shows itself: the core tutorial's tips and
+ * the one-time explainers (Crossroads, the ranked map). Reads a raw stored
+ * record as well as a normalised one; anything missing reads as NO.
+ */
+export function inFirstOnboarding(record) {
+  return !!(record && record.firstOnboarding === true);
 }
 
 /**

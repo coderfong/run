@@ -3,24 +3,34 @@
 //
 // TWO CONTEXTS, DELIBERATELY.
 //
-//   TutorialApi    stable callbacks only — register a target, report a signal,
+//   TutorialApi    stable callbacks only: register a target, report a signal,
 //                  publish a fact, skip, replay. Built once and never rebuilt,
-//                  so the dozen screens that offer a target or report an event
-//                  subscribe to something that never changes and therefore
-//                  never re-render because of the tutorial.
+//                  so the screens that offer a target or report an event never
+//                  re-render because the tutorial moved.
 //   TutorialState  the live phase, the measured rect, the active tip. Read by
-//                  the overlay and by nothing else.
+//                  the overlay and a handful of small consumers.
 //
-// That split is not tidiness. This provider sits above the whole signed-in
-// app, and a single context carrying `phase` would re-render every screen in
-// PASER each time a coach mark moved. (`children` arrives as a prop, so the
-// app below is reconciled and skipped when this component re-renders — only
-// consumers of the context that actually changed pay anything.)
+// WHAT IT NEVER DOES. It never navigates, scrolls, switches a tab or moves a
+// map to teach something, and it never advances on a timer. Every transition
+// is one of:
 //
-// WHAT IT NEVER DOES: drive gameplay. It reads the recording flag, it watches
-// which route is up, it is told when a run finished and when a claim landed.
-// The run and claim state machines do not know it exists beyond a handful of
-// one-line reports.
+//   * a SIGNAL from the screen that owns the state (the runner pressed Start,
+//     moved the claim, turned it, claimed it);
+//   * a FACT becoming true (the run screen is up, the chooser is on its angle
+//     step), checked by the step's `doneWhen`;
+//   * the runner pressing the explicit button on a card.
+//
+// The only navigation in this file happens INSIDE a handler for a button the
+// runner pressed: Skip (leave the demo), START EXPLORING (back to Home), Take
+// a real run, and Replay tutorial (Home, where it starts). Each one is the
+// direct result of that press, which is exactly what the runner expects.
+//
+// ROUTE AWARE. A step names the screens it belongs to and the real control it
+// points at. It draws only when that route is up AND that control has been
+// registered and measured; otherwise it draws nothing and waits. A demo step
+// whose screen has gone away (closed, Back, the app killed) rewinds to the one
+// step that can start a fresh demo, instead of pointing at a screen that is
+// not there.
 
 import React, {
   createContext,
@@ -32,13 +42,14 @@ import React, {
   useState,
 } from 'react';
 import { useWindowDimensions } from 'react-native';
+import { StackActions } from '@react-navigation/native';
 
 import { EVENTS, track } from '../analytics';
 import { useProfile } from '../state/profile';
 import { useRecording } from '../state/recording';
 import { useProEntitlement } from '../pro/ProProvider';
 import { haptic } from '../theme/haptics';
-import { PHASE, RECORD_PHASES, nextPhase, resumePhase } from './phases';
+import { DEMO_PHASES, PHASE, nextPhase, resumePhase } from './phases';
 import {
   CORE,
   TIP,
@@ -47,29 +58,36 @@ import {
   coreActive,
   decideCoreState,
   hasSeenTip,
+  inFirstOnboarding,
   normalise,
   skipped,
   tipSeen,
 } from './progress';
 import { SIGNAL } from './signals';
-import { stepFor } from './steps';
+import { resolveHost, stepFor } from './steps';
 import { tipFor } from './tips';
 
 // Routes that mean "the run/claim modal is up". A native fullScreenModal is
-// presented above the React root, so these are also the routes whose steps
+// presented above the React root, so these are also the routes whose cards
 // belong to the inner overlay host rather than the root one.
-const RUN_ROUTES = new Set(['Record', 'Result', 'PlanAttack']);
+export const RUN_ROUTES = new Set(['Record', 'Result', 'PlanAttack', 'RankProgression', 'RankLadder']);
 
-// Measuring a target that has not finished laying out yet. Twelve attempts at
-// 120ms covers a tab change, a modal presentation and a slow first paint;
-// past that the step gives up and shows its card centred with no spotlight,
-// which is a readable tutorial rather than a stuck one.
-const MEASURE_RETRY_MS = 120;
-const MEASURE_ATTEMPTS = 12;
+// Measuring a target that has not finished laying out yet. Quick attempts
+// first (a modal presenting, a first paint), then a slow poll for as long as
+// the step is waiting. A target that never measures means the step never
+// draws: better an invisible step than a card pointing at nothing.
+const MEASURE_FAST_MS = 120;
+const MEASURE_FAST_ATTEMPTS = 12;
+const MEASURE_SLOW_MS = 500;
 
-// How long a run phase may wait for the run screen to open before the lesson
-// gives up on it and rewinds. Covers a modal presentation on a slow phone.
-const RUN_ROUTE_GRACE_MS = 5000;
+// Which analytics event each real action reports.
+const ACTION_EVENTS = {
+  [PHASE.START_RUN]: EVENTS.TUTORIAL_STEP_START_RUN_COMPLETED,
+  [PHASE.FINISH_DEMO]: EVENTS.TUTORIAL_STEP_RUN_COMPLETED,
+  [PHASE.CLAIM_POSITION]: EVENTS.TUTORIAL_STEP_POSITION_COMPLETED,
+  [PHASE.CLAIM_ROTATE]: EVENTS.TUTORIAL_STEP_ROTATION_COMPLETED,
+  [PHASE.CLAIM_CONFIRM]: EVENTS.TUTORIAL_STEP_CLAIM_COMPLETED,
+};
 
 const TutorialApiContext = createContext(null);
 const TutorialStateContext = createContext(null);
@@ -79,15 +97,10 @@ const EMPTY_FACTS = {
   // run is recording.
   route: null,
   running: false,
-  // Published by the screens that know them.
-  playerLocated: null,
-  ownsLand: false,
-  runClaimable: false,
+  // Published by the claim screen.
   claimReady: false,
-  claimCelebrated: false,
-  // True once the tutorial's own run/claim segment has started — see
-  // RunningScreen's startTutorialSimRun.
-  simulatedRun: false,
+  claimStep: null,
+  demoClaimM2: 0,
 };
 
 export function TutorialProvider({ children, navigationRef }) {
@@ -96,7 +109,7 @@ export function TutorialProvider({ children, navigationRef }) {
   const { runCount } = useProEntitlement();
   const screen = useWindowDimensions();
 
-  // The persisted record, normalised. `null` until the profile has hydrated —
+  // The persisted record, normalised. `null` until the profile has hydrated:
   // nothing may be decided before then, or a not-yet-loaded `false` flashes
   // the welcome card at somebody who finished the tutorial months ago.
   const record = useMemo(
@@ -110,9 +123,8 @@ export function TutorialProvider({ children, navigationRef }) {
   const [measureTick, setMeasureTick] = useState(0);
 
   // --- target registry ----------------------------------------------------
-  // A Map of id → the host component's node. Refs, not state: registering a
-  // target must not render anything, and a screen mounting is not news until
-  // a step actually asks where that target is.
+  // id → the host component's node. Refs, not state: registering a target
+  // must not render anything.
   const targets = useRef(new Map());
   const bumpMeasure = useCallback(() => setMeasureTick((n) => n + 1), []);
 
@@ -121,8 +133,6 @@ export function TutorialProvider({ children, navigationRef }) {
       if (!id) return;
       if (node) targets.current.set(id, node);
       else targets.current.delete(id);
-      // Cheap: this only ever fires on mount, unmount and re-layout of a
-      // registered target, of which there are ten in the whole app.
       bumpMeasure();
     },
     [bumpMeasure]
@@ -150,16 +160,17 @@ export function TutorialProvider({ children, navigationRef }) {
       introDone: profile.introDone,
       runCount,
     });
-    // `runs_unknown` is not an answer yet — /me/stats is still in flight, and
+    // `runs_unknown` is not an answer yet: /me/stats is still in flight, and
     // this effect runs again when it lands.
     if (decision.reason === 'runs_unknown') return;
     seededRef.current = true;
     if (decision.core === CORE.RUNNING) {
-      write(armed(record, { reason: decision.reason }));
+      // Armed on evidence of a NEW account, so this is its first onboarding:
+      // the flag that later lets tips and explainers show (progress.js).
+      write({ ...armed(record, { reason: decision.reason }), firstOnboarding: true });
       track(EVENTS.TUTORIAL_STARTED, { reason: decision.reason });
-      // The pending flag has been HANDED OVER. Clearing it here is what stops
-      // it arming a second tutorial later: from this point the versioned
-      // record is the only thing that decides whether anything is shown.
+      // The pending flag has been HANDED OVER. From here the versioned record
+      // is the only thing that decides whether anything is shown.
       if (profile.tutorialPending) completeTutorial?.();
     } else {
       write({ ...record, core: CORE.IDLE, reason: decision.reason });
@@ -167,7 +178,6 @@ export function TutorialProvider({ children, navigationRef }) {
   }, [record, profile.tutorialPending, profile.introDone, runCount, write, completeTutorial]);
 
   const phase = record?.phase || PHASE.IDLE;
-  const enteringRunRef = useRef(false);
   const active = coreActive(record);
   const step = active ? stepFor(phase) : null;
 
@@ -178,33 +188,14 @@ export function TutorialProvider({ children, navigationRef }) {
         track(EVENTS.TUTORIAL_COMPLETED, {});
         haptic.success();
       }
-      // Entering the run branch from the tour, as against waking up in it:
-      // only the first may wait for the run screen to open (see the rewind
-      // effect below).
-      enteringRunRef.current = RECORD_PHASES.has(to);
       write(advanced(record, to));
     },
     [record, write]
   );
 
-  // --- navigation ---------------------------------------------------------
-  const navigate = useMemo(
-    () => ({
-      goToMap() {
-        const nav = navigationRef?.current || navigationRef;
-        if (!nav?.isReady?.()) return;
-        nav.navigate('Tabs', { screen: 'Map', params: { screen: 'MapMain' } });
-      },
-      // The practice run's way in: the same route the tab bar's run button
-      // opens, so the practice plays on the screen a real run uses.
-      goToRecord() {
-        const nav = navigationRef?.current || navigationRef;
-        if (!nav?.isReady?.()) return;
-        nav.navigate('Record');
-      },
-    }),
-    [navigationRef]
-  );
+  // --- the navigator ------------------------------------------------------
+  const navRef = useRef(null);
+  navRef.current = navigationRef?.current || navigationRef;
 
   // The current route, kept in facts so steps can gate on it declaratively.
   useEffect(() => {
@@ -222,17 +213,39 @@ export function TutorialProvider({ children, navigationRef }) {
     };
   }, [navigationRef]);
 
-  // Recording is derived, never reported: a run started from the watch, from
-  // Home or from the tab bar all arrive here the same way.
+  // Recording is derived, never reported.
   useEffect(() => {
     setFactsState((prev) => (prev.running === isRecording ? prev : { ...prev, running: isRecording }));
   }, [isRecording]);
 
+  // Leaving the demo is only ever the answer to a button the runner pressed:
+  // Skip, START EXPLORING. Navigating to the root Tabs route from inside the
+  // Record modal pops the modal, which unmounts the demo run and its claim.
+  const leaveDemo = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav?.isReady?.()) return;
+    const route = nav.getCurrentRoute?.()?.name;
+    if (!RUN_ROUTES.has(route)) return;
+    nav.navigate('Tabs', { screen: 'Home', params: { screen: 'HomeMain' } });
+  }, []);
+
+  // "Take a real run": a FRESH run screen. From inside the demo's modal the
+  // modal itself is replaced (so the demo does not wait underneath); from
+  // anywhere else the run screen is simply opened.
+  const openRealRun = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav?.isReady?.()) return;
+    const route = nav.getCurrentRoute?.()?.name;
+    const rootKey = nav.getRootState?.()?.key;
+    if (RUN_ROUTES.has(route) && rootKey && nav.dispatch) {
+      nav.dispatch({ ...StackActions.replace('Record'), target: rootKey });
+      return;
+    }
+    nav.navigate('Record');
+  }, []);
+
   // --- facts --------------------------------------------------------------
-  // Shallow merge that BAILS when nothing changed. Screens publish from
-  // effects whose dependencies re-evaluate on every render of a busy screen
-  // (the running one recomputes distance several times a second), so a naive
-  // setState here would be a render loop with extra steps.
+  // Shallow merge that BAILS when nothing changed.
   const setFacts = useCallback((patch) => {
     setFactsState((prev) => {
       let changed = false;
@@ -247,8 +260,6 @@ export function TutorialProvider({ children, navigationRef }) {
   }, []);
 
   // --- signals ------------------------------------------------------------
-  // Read the live phase from a ref so `signal` can be built once and still be
-  // correct. Screens hold on to it for the life of a run.
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   const activeRef = useRef(active);
@@ -258,108 +269,85 @@ export function TutorialProvider({ children, navigationRef }) {
 
   const signal = useCallback((name) => {
     if (!activeRef.current) return;
-    const current = stepFor(phaseRef.current);
+    const from = phaseRef.current;
+    const current = stepFor(from);
     const to = current?.on?.[name];
-    if (!to || to === phaseRef.current) return;
-
-    if (name === SIGNAL.RUN_FINISHED) {
-      track(EVENTS.TUTORIAL_FINISH_RUN_COMPLETED, { step: phaseRef.current });
-    } else if (name === SIGNAL.CLAIM_ADJUSTED) {
-      track(EVENTS.TUTORIAL_CLAIM_SELECTED, { step: phaseRef.current });
-    } else if (name === SIGNAL.CLAIM_PLACED) {
-      track(EVENTS.TUTORIAL_FIRST_CLAIM_COMPLETED, { step: phaseRef.current });
-    }
+    if (!to || to === from) return;
+    // Latch the move before the write lands, so a double report (a double
+    // tap, a retry) cannot carry the tutorial two steps.
+    phaseRef.current = to;
+    if (ACTION_EVENTS[from]) track(ACTION_EVENTS[from], {});
+    track(EVENTS.TUTORIAL_STEP_COMPLETED, { step: from });
     goToRef.current(to);
   }, []);
 
-  // --- the run branch, and getting out of it ------------------------------
-  // "Tap here to start your run" ends when the run screen is REALLY open.
-  // Derived from the navigator rather than reported by the button, because
-  // there are four ways in — the tab bar, Home's hero card, a notification and
-  // the watch — and the tutorial has no business knowing which one was used.
+  // --- ending a step on a fact -------------------------------------------
+  // START_RUN ends when the run screen is really up; CLAIM_NEXT when the
+  // chooser has really moved to its angle step. Both are the runner's own tap
+  // on the real control, observed rather than reported.
   useEffect(() => {
-    if (!active || phase !== PHASE.START_RUN) return;
-    // Only the recorder starts a run. Result and PlanAttack are also modal
-    // routes, but can still be mounted briefly after an unavailable claim
-    // rewinds the lesson; treating either as a fresh run skips the button and
-    // bounces straight back to ACTIVE_RUN.
-    if (facts.route !== 'Record') return;
-    track(EVENTS.TUTORIAL_START_RUN_COMPLETED, {});
-    track(EVENTS.TUTORIAL_STEP_COMPLETED, { step: PHASE.START_RUN });
-    goTo(nextPhase(PHASE.START_RUN));
-  }, [active, phase, facts.route, goTo]);
-
-
-  // Leaving the record modal without finishing rewinds to "start a run". The
-  // run this lesson was attached to is gone: a discarded run, a refused
-  // permission, a crash on the way back in. Nothing about the world needs
-  // re-teaching, so it never rewinds further than this.
-  //
-  // ONLY ONCE THE RUN SCREEN HAS BEEN REACHED. The practice card now ENTERS a
-  // record phase from the map and navigates on the way in (ACTIVE_RUN's
-  // onEnter), so for a moment the phase is a run phase while the route is
-  // still the map — rewinding on that would bounce the practice straight back
-  // to its own card. A run screen that never arrives still rewinds, just
-  // after a grace period rather than instantly.
-  const reachedRunRef = useRef(false);
-  useEffect(() => {
-    if (!active || !RECORD_PHASES.has(phase)) {
-      reachedRunRef.current = false;
-      return undefined;
-    }
-    if (RUN_ROUTES.has(facts.route)) {
-      reachedRunRef.current = true;
-      enteringRunRef.current = false;
-      return undefined;
-    }
-    if (!facts.route) return undefined;
-    const rewind = () => {
-      goTo(resumePhase(phase));
-      setFacts({ runClaimable: false, claimReady: false, claimCelebrated: false });
-    };
-    // Left the run screen, or woke up in a run phase with no run screen at
-    // all (the app was killed mid practice): nothing to wait for.
-    if (reachedRunRef.current || !enteringRunRef.current) {
-      rewind();
-      return undefined;
-    }
-    const timer = setTimeout(rewind, RUN_ROUTE_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [active, phase, facts.route, goTo, setFacts]);
-
-  // A step that has decided it does not apply — PLAYER with location refused —
-  // steps aside rather than waiting for a fact that will never arrive.
-  useEffect(() => {
-    if (!step?.skipWhen) return;
-    if (step.skipWhen(facts)) goTo(nextPhase(step.phase));
+    if (!step?.doneWhen || !step.doneWhen(facts)) return;
+    if (ACTION_EVENTS[step.phase]) track(ACTION_EVENTS[step.phase], {});
+    track(EVENTS.TUTORIAL_STEP_COMPLETED, { step: step.phase });
+    goTo(nextPhase(step.phase));
   }, [step, facts, goTo]);
 
-  // --- what is on screen --------------------------------------------------
-  const gatePassed = !step?.gate || step.gate(facts);
-  const stepVisible = !!step && gatePassed;
-  const targetId = stepVisible ? step.target : activeTip ? tipFor(activeTip)?.target : null;
-
-  // Measure, and keep trying for a little while. A target inside a screen that
-  // is still transitioning measures as nothing; one inside a modal that has
-  // not been presented yet is not registered at all.
+  // --- keeping the demo honest ---------------------------------------------
+  // The demo run and its claim exist only inside the run screen. If the
+  // runner leaves that screen (the close button, Back, a notification) the
+  // demo is gone, so the tutorial goes back to "tap LET'S RUN" rather than
+  // pointing at a screen that is no longer there. A claim step found on the
+  // run screen (Back from the claim) goes back to Start, which plays a new
+  // demo. Nothing here navigates.
   useEffect(() => {
-    if (!targetId) {
-      setRect(null);
-      return undefined;
+    if (!active || !DEMO_PHASES.has(phase) || !facts.route) return;
+    if (!RUN_ROUTES.has(facts.route)) {
+      goTo(PHASE.START_RUN);
+      setFacts({ claimReady: false, claimStep: null });
+      return;
     }
+    const want = stepFor(phase)?.route;
+    if (want && !want.includes(facts.route) && facts.route === 'Record') {
+      goTo(PHASE.RUN_START);
+      setFacts({ claimReady: false, claimStep: null });
+    }
+  }, [active, phase, facts.route, goTo, setFacts]);
+
+  // Picked up again after the app was closed. A demo phase has lost its demo
+  // and goes back to LET'S RUN; the payoff moves on to the defend card. Once
+  // per launch, the first time the record is readable.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (!record || resumedRef.current) return;
+    resumedRef.current = true;
+    if (!coreActive(record)) return;
+    const to = resumePhase(record.phase);
+    if (to !== record.phase) {
+      track(EVENTS.TUTORIAL_RESUMED, { from: record.phase, to });
+      goTo(to);
+    } else if (record.phase !== PHASE.WELCOME) {
+      track(EVENTS.TUTORIAL_RESUMED, { from: record.phase, to });
+    }
+  }, [record, goTo]);
+
+  // --- what is on screen --------------------------------------------------
+  const routeOk = !!step && (!step.route || step.route.includes(facts.route));
+  const gatePassed = routeOk && (!step.gate || step.gate(facts));
+  const tip = activeTip ? tipFor(activeTip) : null;
+  const targetId = gatePassed ? step.target : !step && tip ? tip.target : null;
+
+  // Measure, and keep trying for as long as the step is waiting. Each rect is
+  // tagged with the target it belongs to, so a rect measured for the previous
+  // step can never be used to place this one.
+  useEffect(() => {
+    if (!targetId) return undefined;
     let alive = true;
     let attempts = 0;
     let timer = null;
 
     const retry = () => {
       attempts += 1;
-      if (attempts >= MEASURE_ATTEMPTS) {
-        // Give up VISIBLY rather than silently: the card still shows, centred,
-        // with no spotlight and nothing blocked. See TutorialOverlay.
-        if (alive) setRect(null);
-        return;
-      }
-      timer = setTimeout(attempt, MEASURE_RETRY_MS);
+      timer = setTimeout(attempt, attempts < MEASURE_FAST_ATTEMPTS ? MEASURE_FAST_MS : MEASURE_SLOW_MS);
     };
 
     const attempt = () => {
@@ -371,8 +359,29 @@ export function TutorialProvider({ children, navigationRef }) {
       }
       node.measureInWindow((x, y, width, height) => {
         if (!alive) return;
+        // ON SCREEN, not merely laid out. A control scrolled below the fold
+        // (the Claim button on a small phone) measures fine but cannot be
+        // lit or pressed; the step waits until the runner scrolls it into
+        // view themselves (the claim sheet re-measures on scroll). Nothing is
+        // ever scrolled for them.
+        const visibleH = Math.min(y + height, screen.height) - Math.max(y, 0);
+        const onScreen = visibleH >= Math.min(height, 24) && x < screen.width && x + width > 0;
+        if (width > 0 && height > 0 && Number.isFinite(x) && Number.isFinite(y) && !onScreen) {
+          setRect((prev) => (prev && prev.id === targetId ? null : prev));
+          retry();
+          return;
+        }
         if (width > 0 && height > 0 && Number.isFinite(x) && Number.isFinite(y)) {
-          setRect({ x, y, width, height });
+          setRect((prev) =>
+            prev &&
+            prev.id === targetId &&
+            prev.x === x &&
+            prev.y === y &&
+            prev.width === width &&
+            prev.height === height
+              ? prev
+              : { id: targetId, x, y, width, height }
+          );
         } else {
           retry();
         }
@@ -386,123 +395,145 @@ export function TutorialProvider({ children, navigationRef }) {
     };
   }, [targetId, measureTick, screen.width, screen.height]);
 
-  // Re-measure on demand. A target inside a ScrollView (the claim button) does
-  // not fire onLayout when the list scrolls under it, so the one screen that
-  // has one calls this from onScroll.
+  // Re-measure on demand, for a target inside a ScrollView.
   const remeasure = useCallback(() => bumpMeasure(), [bumpMeasure]);
 
-  // --- step lifecycle -----------------------------------------------------
-  //
-  // TWO MOMENTS, NOT ONE. A step is ENTERED when the tour reaches it, and SEEN
-  // when it actually draws. For a gated step those are different moments: the
-  // map lesson is entered while the runner is still on Home, and seen once the
-  // map is up.
-  //
-  // `onEnter` is how a step GETS to where it belongs, so it has to run on the
-  // first of the two. It used to run on the second, which made it unreachable
-  // for the one step that needed it: PHASE.MAP asks to be taken to the map,
-  // but its own gate is already "am I on the map", so its `onEnter` could only
-  // ever fire once the answer was yes. Dead code, in other words, and the tour
-  // leaned on the WELCOME card navigating instead.
-  //
-  // WELCOME enters the moment the tutorial arms, which is the single worst
-  // moment to jump tabs: App.js mounts the tabs lazily and does not start
-  // preloading the other three until the app has been idle for ~1.5s, so the
-  // Map tab does not exist yet. The tab index moved and the pager did not —
-  // the tab bar lit Map, `getCurrentRoute()` reported MapMain, every map step
-  // unlocked, and the whole map lesson played over the Home screen with its
-  // spotlight on whatever Home happened to have in that spot.
-  //
-  // Entered here, the jump happens when the tour reaches the map step, which
-  // is after the runner has read the welcome card and pressed SHOW ME — which
-  // is what the comment on that step claimed all along.
-  const enteredRef = useRef(null);
-  useEffect(() => {
-    if (!step || enteredRef.current === step.phase) return;
-    enteredRef.current = step.phase;
-    step.onEnter?.(navigate);
-  }, [step, navigate]);
+  const targetRect = targetId && rect && rect.id === targetId ? rect : null;
+  // A step with a target draws only once that target is really measured.
+  const stepVisible = gatePassed && (!step.target || !!targetRect);
+  const tipVisible = !step && !!tip && (!tip.target || !!targetRect);
 
-  // The impression and the haptic stay on the second moment. They belong to
-  // the runner seeing the card, not to the tour reaching it — counting a step
-  // as viewed while it is still waiting behind its gate would report a lesson
-  // nobody was shown.
+  // The impression and the haptic belong to the runner SEEING the card.
   const seenRef = useRef(null);
   useEffect(() => {
-    if (!stepVisible || seenRef.current === step.phase) return;
+    if (!stepVisible) {
+      seenRef.current = null;
+      return;
+    }
+    if (seenRef.current === step.phase) return;
     seenRef.current = step.phase;
     track(EVENTS.TUTORIAL_STEP_VIEWED, { step: step.phase });
     if (step.enterHaptic) haptic[step.enterHaptic]?.();
   }, [stepVisible, step]);
 
-  // Reset the "already seen" mark when the step changes, so a rewound phase
-  // announces itself again the second time around.
-  useEffect(() => {
-    if (!stepVisible) seenRef.current = null;
-  }, [stepVisible]);
-
-  // A tap, a CTA, or an auto-dismissing card timing out. Never the way an
-  // ACTION step ends — those wait for the app to report the real thing.
+  // The card's own button. Only a `cta` step ends this way; an action step
+  // waits for the real control, and there is no tap anywhere to continue.
+  const ctaLatch = useRef(null);
   const advance = useCallback(() => {
-    if (!step) return;
+    if (!step || step.dismiss !== 'cta') return;
+    // One press per step, however fast the thumb.
+    if (ctaLatch.current === step.phase) return;
+    ctaLatch.current = step.phase;
     track(EVENTS.TUTORIAL_STEP_COMPLETED, { step: step.phase });
+    if (step.ctaAction === 'finish') {
+      goTo(PHASE.COMPLETE);
+      leaveDemo();
+      return;
+    }
     goTo(nextPhase(step.phase));
-  }, [step, goTo]);
+  }, [step, goTo, leaveDemo]);
+
+  // A new step may be pressed again.
+  useEffect(() => {
+    if (ctaLatch.current && ctaLatch.current !== phase) ctaLatch.current = null;
+  }, [phase]);
+
+  const secondary = useCallback(() => {
+    if (!step?.secondary) return;
+    if (step.secondary.action === 'realRun') {
+      track(EVENTS.TUTORIAL_STEP_COMPLETED, { step: step.phase, choice: 'real_run' });
+      goTo(PHASE.COMPLETE);
+      openRealRun();
+    }
+  }, [step, goTo, openRealRun]);
 
   const skip = useCallback(() => {
     if (!record) return;
     haptic.light();
     track(EVENTS.TUTORIAL_SKIPPED, { step: phase });
     write(skipped(record));
-  }, [record, phase, write]);
-
-  // Auto-dismissing steps (the one shown mid run). A timer, cleaned up, keyed
-  // on the step being visible — not a chain of timeouts firing into a screen
-  // that may already be gone.
-  useEffect(() => {
-    if (!stepVisible || step.dismiss !== 'auto') return undefined;
-    const timer = setTimeout(advance, step.autoMs || 3500);
-    return () => clearTimeout(timer);
-  }, [stepVisible, step, advance]);
+    setFacts({ claimReady: false, claimStep: null, demoClaimM2: 0 });
+    // Nothing of the demo may outlive the tutorial. Closing its modal is what
+    // unmounts the demo run and its claim; outside the modal this does nothing.
+    leaveDemo();
+  }, [record, phase, write, setFacts, leaveDemo]);
 
   // --- contextual tips ----------------------------------------------------
   const recordRef = useRef(record);
   recordRef.current = record;
+  // What "yes" does, for the one or two tips that offer a choice. Kept by the
+  // screen that asked; the tip never navigates on its own.
+  const tipAccept = useRef(new Map());
 
-  const requestTip = useCallback(
-    (key) => {
+  const requestTip = useCallback((key, opts) => {
+    const current = recordRef.current;
+    if (!current) return false;
+    // Only for an account going through its first onboarding, never during
+    // the core tutorial itself, and never twice.
+    if (!inFirstOnboarding(current)) return false;
+    if (coreActive(current) || hasSeenTip(current, key)) return false;
+    if (opts?.onAccept) tipAccept.current.set(key, opts.onAccept);
+    setActiveTip((prev) => prev || key);
+    return true;
+  }, []);
+
+  const activeTipRef = useRef(activeTip);
+  activeTipRef.current = activeTip;
+  const dismissTip = useCallback(
+    (accepted = false) => {
+      const key = activeTipRef.current;
+      if (!key) return;
+      activeTipRef.current = null;
       const current = recordRef.current;
-      if (!current) return;
-      // Never during the core tutorial, and never twice.
-      if (coreActive(current) || hasSeenTip(current, key)) return;
-      setActiveTip((prev) => prev || key);
+      if (current) write(tipSeen(current, key));
+      const onAccept = tipAccept.current.get(key);
+      tipAccept.current.delete(key);
+      setActiveTip(null);
+      if (accepted && onAccept) onAccept();
     },
-    []
+    [write]
   );
-
-  const dismissTip = useCallback(() => {
-    setActiveTip((prev) => {
-      if (!prev) return null;
-      const current = recordRef.current;
-      if (current) write(tipSeen(current, prev));
-      return null;
-    });
-  }, [write]);
 
   useEffect(() => {
     if (!activeTip) return;
     track(EVENTS.TUTORIAL_TIP_VIEWED, { tip: activeTip });
   }, [activeTip]);
 
+  // A tip that belonged to a screen that has closed goes with it.
+  const tipRouteRef = useRef(null);
+  useEffect(() => {
+    if (!activeTip) {
+      tipRouteRef.current = null;
+      return;
+    }
+    if (tipRouteRef.current == null) {
+      tipRouteRef.current = facts.route;
+      return;
+    }
+    if (facts.route && facts.route !== tipRouteRef.current) {
+      tipAccept.current.delete(activeTip);
+      setActiveTip(null);
+    }
+  }, [activeTip, facts.route]);
+
   // --- replay -------------------------------------------------------------
+  const isRecordingRef = useRef(isRecording);
+  isRecordingRef.current = isRecording;
+  // From Settings. Re-arms the core tutorial and brings the tips back; writes
+  // one key in the local profile and nothing else. Home is where it starts,
+  // so the runner is taken there: they asked for it, from a button.
   const replay = useCallback(() => {
+    if (isRecordingRef.current) return false;
     const current = recordRef.current || normalise(null);
-    // Tips come back too: "replay the tutorial" meaning only half of the
-    // teaching is a surprise nobody wants. Account data, runs, territory and
-    // progression are untouched — this writes one key in the local profile.
+    tipAccept.current.clear();
+    setActiveTip(null);
+    setFacts({ claimReady: false, claimStep: null, demoClaimM2: 0 });
     write({ ...armed(current, { reason: 'replay' }), tips: {} });
     track(EVENTS.TUTORIAL_STARTED, { reason: 'replay' });
-  }, [write]);
+    const nav = navRef.current;
+    if (nav?.isReady?.()) nav.navigate('Tabs', { screen: 'Home', params: { screen: 'HomeMain' } });
+    return true;
+  }, [write, setFacts]);
 
   // --- the two contexts ---------------------------------------------------
   const api = useMemo(
@@ -514,23 +545,32 @@ export function TutorialProvider({ children, navigationRef }) {
       requestTip,
       dismissTip,
       advance,
+      secondary,
       skip,
       replay,
     }),
-    [registerTarget, remeasure, setFacts, signal, requestTip, dismissTip, advance, skip, replay]
+    [registerTarget, remeasure, setFacts, signal, requestTip, dismissTip, advance, secondary, skip, replay]
   );
 
   const state = useMemo(
     () => ({
       loading: !record,
       core: record?.core || CORE.IDLE,
+      active,
       phase,
+      // The step, only once it may really draw: right route, gate open,
+      // target measured.
       step: stepVisible ? step : null,
-      tip: activeTip ? tipFor(activeTip) : null,
-      rect,
+      host: stepVisible
+        ? resolveHost(step, facts.route, RUN_ROUTES)
+        : tipVisible
+          ? resolveHost(tip, facts.route, RUN_ROUTES)
+          : null,
+      tip: tipVisible ? tip : null,
+      rect: targetRect,
       facts,
     }),
-    [record, phase, stepVisible, step, activeTip, rect, facts]
+    [record, active, phase, stepVisible, step, tipVisible, tip, targetRect, facts]
   );
 
   return (
@@ -547,18 +587,21 @@ const NOOP_API = {
   remeasure: () => {},
   setFacts: () => {},
   signal: () => {},
-  requestTip: () => {},
+  requestTip: () => false,
   dismissTip: () => {},
   advance: () => {},
+  secondary: () => {},
   skip: () => {},
-  replay: () => {},
+  replay: () => false,
 };
 
 const NOOP_STATE = {
   loading: true,
   core: CORE.IDLE,
+  active: false,
   phase: PHASE.IDLE,
   step: null,
+  host: null,
   tip: null,
   rect: null,
   facts: EMPTY_FACTS,
@@ -569,9 +612,14 @@ export function useTutorial() {
   return useContext(TutorialApiContext) || NOOP_API;
 }
 
-/** The live state. Read by the overlay; re-renders when the tutorial moves. */
+/** The live state. Re-renders when the tutorial moves. */
 export function useTutorialState() {
   return useContext(TutorialStateContext) || NOOP_STATE;
 }
 
-export { TIP };
+/** True while the core tutorial is running. Dev tools hide on this. */
+export function useTutorialActive() {
+  return useTutorialState().active;
+}
+
+export { TIP, SIGNAL };

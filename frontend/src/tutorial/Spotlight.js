@@ -39,6 +39,8 @@ const TRAVEL_MS = 260;
 // The breath. Deliberately small: the spotlight should look alive, not like a
 // warning light. The strong variant is for a step the runner has to act on.
 const PULSE_MS = 1500;
+// How many breaths, once, each time the light lands on a target.
+const PULSE_COUNT = 2;
 const PULSE_SOFT = 3;
 const PULSE_STRONG = 6;
 
@@ -98,16 +100,17 @@ export default function Spotlight({
       breath.value = 0;
       return undefined;
     }
+    // A PULSE, NOT A HEARTBEAT. Two breaths when the light lands on something
+    // and then it holds still: a ring that bounces for as long as a card is
+    // being read is the continuous motion the tutorial is meant to avoid.
+    breath.value = 0;
     breath.value = withRepeat(
-      withTiming(1, { duration: PULSE_MS, easing: Easing.inOut(Easing.sin) }),
-      -1,
+      withTiming(1, { duration: PULSE_MS / 2, easing: Easing.inOut(Easing.sin) }),
+      PULSE_COUNT * 2,
       true
     );
-    // An endless loop, so it is cancelled by hand. Reanimated 4 applies every
-    // animated frame as a commit of the whole tree; a forgotten loop here
-    // would cost the app frames for the rest of the session.
     return () => cancelAnimation(breath);
-  }, [reduced, breath]);
+  }, [reduced, breath, rect?.x, rect?.y, rect?.width, rect?.height]);
 
   // The inflation the breath applies, in points. Shared by the dim and the
   // ring so the two can never drift apart by a pixel.

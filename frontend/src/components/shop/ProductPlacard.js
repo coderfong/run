@@ -1,28 +1,35 @@
-// ProductPlacard — what the shopkeeper hands you once you have picked
-// something up: name, rarity, price, Buy. Docked to the bottom of the
-// SCREEN rather than placed inside the scene's own coordinate system — the
-// try-on mirror and the product itself already live at the counter, in the
-// painting; this is the one piece of the moment that is native UI by
-// necessity (it has to hold real text at a legible size on every phone), so
-// it sits where native UI belongs, close enough to the counter to read as
-// "the shopkeeper is showing you this" rather than "a detail page opened".
+// ProductPlacard: what you picked, docked to the bottom of the screen over
+// the storefront grid: your runner WEARING it, its name, rarity and price,
+// and Buy.
+//
+// THE TRY ON LIVES HERE. It used to be a standing mirror inside the scene,
+// labelled "Your PASER"; the scene is pure environment now, so the preview
+// sits next to the thing it previews. It is a render prop: the candidate
+// merged over your live outfit, nothing written.
 //
 // THE BUY BUTTON IS THE ONLY THING THAT SPENDS COINS. Selecting a product
-// never does — see ShopScreen's purchase flow, unchanged by this redesign.
+// never does; see ShopScreen's purchase flow.
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-import { PartThumb } from '../character/CharacterRig';
+import CharacterRig, { BODY_RATIO, HEADROOM } from '../character/CharacterRig';
 import AppIcon from '../AppIcon';
 import GameAnimation, { AnimationStack } from '../GameAnimation';
 import { RARITY_COLOR, RARITY_LABEL } from '../RewardArt';
-import { SLOT_LABEL } from './shopDialogue';
+import { SLOTS } from '../../config/cosmetics';
 import { Button, Card, Row } from '../ui';
-import { Reveal, useReduceMotion } from '../../ui/motion';
+import { Pop, Reveal, useReduceMotion } from '../../ui/motion';
 import { space, useTheme, useThemedType, withAlpha } from '../../theme';
 
 const FX_SIZE = 120;
+const SLOT_LABEL = Object.fromEntries(SLOTS.map((s) => [s.key, s.label]));
+
+// The try on window. The rig's `size` is its body WIDTH and it stands
+// BODY_RATIO * (1 + HEADROOM) times that tall, so the width is derived from
+// the window's height: whole runner, head to feet.
+const MIRROR = { w: 76, h: 124, pad: 6 };
+const RIG_SIZE = (MIRROR.h - MIRROR.pad) / (BODY_RATIO * (1 + HEADROOM));
 
 export default function ProductPlacard({
   item,
@@ -32,6 +39,7 @@ export default function ProductPlacard({
   pending,
   celebrating,
   purchaseTick,
+  equipped,
   onBuy,
   onClose,
   // The screen's own safe-area bottom inset. This dock is position:absolute
@@ -45,6 +53,11 @@ export default function ProductPlacard({
   const reduced = useReduceMotion();
   const tint = RARITY_COLOR[item.rarity] || colors.border;
   const rare = item.rarity && item.rarity !== 'common';
+
+  const worn = useMemo(
+    () => ({ ...(equipped || {}), [item.slot]: item.item_id }),
+    [equipped, item.slot, item.item_id]
+  );
 
   const status = item.owned ? 'Owned' : `${item.price} coins`;
   const short = !item.owned && !affordable && coins != null
@@ -67,11 +80,13 @@ export default function ProductPlacard({
         <View style={styles.row}>
           <View
             style={[
-              styles.chip,
-              { backgroundColor: withAlpha(tint, 0.18), borderColor: withAlpha(tint, 0.6) },
+              styles.mirror,
+              { backgroundColor: withAlpha(tint, 0.16), borderColor: withAlpha(tint, 0.7) },
             ]}
           >
-            <PartThumb slot={item.slot} item={cat} size={44} />
+            <Pop trigger={item.item_id} from={0.85} style={styles.rigWrap}>
+              <CharacterRig equipped={worn} size={RIG_SIZE} animate animateSwaps />
+            </Pop>
           </View>
 
           <View style={styles.info}>
@@ -151,14 +166,17 @@ const styles = StyleSheet.create({
     marginTop: -FX_SIZE / 2,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  chip: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
+  mirror: {
+    width: MIRROR.w,
+    height: MIRROR.h,
+    paddingBottom: MIRROR.pad,
+    borderRadius: 16,
     borderWidth: 2,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
   },
+  rigWrap: { alignItems: 'center' },
   info: { flex: 1, gap: 2 },
   rarityDot: { width: 8, height: 8, borderRadius: 4 },
   coinFx: { position: 'absolute', right: -4, top: -10 },

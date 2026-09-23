@@ -1,4 +1,5 @@
-// The first-run tutorial — coach marks that play over the real interface.
+// The first-run tutorial: coach marks over the real interface, advanced only
+// by the runner using the real controls. See phases.js for what it teaches.
 //
 //   TutorialProvider   the state machine, the target registry, persistence
 //   TutorialOverlay    what is drawn; mounted once per host (see its header)
@@ -9,7 +10,7 @@
 // Everything a screen needs is in this barrel. Screens should not reach past
 // it into the individual files.
 
-export { TutorialProvider, useTutorial, useTutorialState } from './TutorialContext';
+export { TutorialProvider, useTutorial, useTutorialActive, useTutorialState } from './TutorialContext';
 export { default as TutorialOverlay } from './TutorialOverlay';
 export {
   TutorialTarget,
@@ -18,7 +19,7 @@ export {
   useTutorialTip,
 } from './TutorialTarget';
 
-export { PHASE } from './phases';
+export { PHASE, STAGE, DEMO_RUN_PHASES } from './phases';
 export { SIGNAL } from './signals';
 export { TARGET } from './targets';
-export { TIP, CORE, coreActive } from './progress';
+export { TIP, CORE, coreActive, inFirstOnboarding } from './progress';

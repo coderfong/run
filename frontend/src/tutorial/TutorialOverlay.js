@@ -1,55 +1,54 @@
-// The coach mark itself: dim, hole, card, runner.
+// The coach mark itself: dim, hole, card, and (rarely) the runner.
 //
 // MOUNTED TWICE, AND IT HAS TO BE. `presentation: 'fullScreenModal'` presents a
 // real view controller ABOVE the React root on iOS, so an overlay sitting
-// beside the NavigationContainer — which is where every other host in this app
-// lives (RivalPopupHost, the toast, the offline banner) — is behind the run and
-// claim screens and cannot draw a single pixel on them. So there are two
-// hosts: `root`, next to the navigator, and `record`, inside the run/claim
-// modal. Each step names the one it belongs to, and the other renders nothing.
+// beside the NavigationContainer cannot draw on the run and claim screens. So
+// there are two hosts: `root`, next to the navigator, and `record`, inside the
+// run/claim modal. The provider resolves which one each step belongs to; the
+// other renders nothing.
 //
 // HOW A REAL BUTTON STAYS PRESSABLE. There is no view over the hole. The scrim
 // that blocks touches is four plain views laid AROUND the spotlight
 // (layout.js `blockerSlabs`), and the dim you can see is a separate SVG layer
-// with `pointerEvents="none"`. A press inside the hole therefore hits whatever
-// was already there — the actual record button, the actual hold to finish, the
-// actual claim. Nothing is duplicated, nothing is proxied, and the tutorial
-// cannot get out of step with what the control really does.
+// with `pointerEvents="none"`. A press inside the hole hits the actual LET'S
+// RUN card, the actual Start button, the actual slider. Nothing is duplicated.
+//
+// NOTHING HERE MOVES THE APP ON. The scrim swallows stray taps and does
+// nothing with them: the only ways on are the real control in the hole, or an
+// explicit button on the card.
 
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { brand, space, type } from '../theme';
-import { haptic, useReduceMotion } from '../ui/motion';
-import { PHASE, CORE_ORDER, phaseIndex } from './phases';
-import { CARD_ESTIMATE_H, blockerSlabs, placeCard, placeCoach, spotlightRect } from './layout';
+import { brand, space } from '../theme';
+import { useReduceMotion } from '../ui/motion';
+import { plainText } from './highlight';
+import { CARD_ESTIMATE_H, blockerSlabs, cardWidth, placeCard, placeCoach, spotlightRect } from './layout';
 import Coach, { COACH_HEIGHT, COACH_WIDTH } from './Coach';
-import SpeechCard from './SpeechCard';
+import SpeechCard, { TutorialBanner } from './SpeechCard';
 import Spotlight from './Spotlight';
 import { useTutorial, useTutorialState } from './TutorialContext';
 
-// The ring is teal and the card's emphasis is pink: the brand CTA colour stays
-// on the thing you press, and the light pointing at the screen is the app's
-// other accent so the two never read as the same instruction.
-const RING = brand.teal;
+// The pulse around the target is pink: it is the thing to press, and pink is
+// the colour of the thing to press everywhere in PASER.
 const ACCENT = brand.pink;
 
-// How much of the top of the screen an action step may never block. One row of
-// chrome plus the inset: the close button on the run screen, the back button
-// anywhere else. See `blockerSlabs`.
-const ESCAPE_STRIP = 52;
+// "Slightly" dimmed. The real screen has to stay readable around the hole:
+// the point is to show the runner where they are, not to hide it.
+const DIM_ACTION = 'rgba(0,0,0,0.5)';
+const DIM_CARD = 'rgba(0,0,0,0.58)';
 
-// The tour through the world, for the progress dots. The run and claim steps
-// are not counted: by then the runner is playing, and a progress bar over a
-// real game action reads as homework.
-const TOUR = CORE_ORDER.slice(0, phaseIndex(PHASE.START_RUN) + 1);
+// On the run and claim screens the close button in the top strip stays
+// pressable during an action step, so the runner can always leave the demo.
+// On Home nothing outside the hole is: the bell and the tabs are not what the
+// step is about.
+const ESCAPE_STRIP = 52;
 
 // --- host slots -------------------------------------------------------------
 // Two overlays with the same host name can be mounted at once if two modals
-// ever stack. Only the one mounted LAST draws, so a doubled scrim is not
-// something a future navigation change can reintroduce.
+// ever stack. Only the one mounted LAST draws.
 const slots = new Map();
 const watchers = new Set();
 let nextSlotId = 1;
@@ -96,88 +95,83 @@ function useIsFrontHost(host) {
 // --- the overlay ------------------------------------------------------------
 
 export default function TutorialOverlay({ host = 'root' }) {
-  const { step, tip, rect, facts } = useTutorialState();
-  const { advance, skip, dismissTip } = useTutorial();
+  const { step, tip, rect, host: activeHost } = useTutorialState();
+  const { facts } = useTutorialState();
+  const { advance, secondary, skip, dismissTip } = useTutorial();
   const insets = useSafeAreaInsets();
   const screen = useWindowDimensions();
   const reduced = useReduceMotion();
   const isFront = useIsFrontHost(host);
 
-  // The card measures itself so it can be placed against its real height. The
-  // estimate is only ever used for the first frame of an entrance that is
-  // fading in anyway.
   const [cardH, setCardH] = useState(CARD_ESTIMATE_H);
   const onCardLayout = useCallback((e) => {
     const next = Math.round(e.nativeEvent.layout.height);
     setCardH((prev) => (Math.abs(prev - next) > 1 ? next : prev));
   }, []);
 
-  // A tip belongs to the root host: they are all first-opens of a tab.
-  const showingStep = !!step && step.host === host;
-  const showingTip = !!tip && host === 'root' && !step;
-  const visible = isFront && (showingStep || showingTip);
+  const showingStep = !!step;
+  const showingTip = !step && !!tip;
+  const visible = isFront && activeHost === host && (showingStep || showingTip);
 
-  // Reset the measured height when the content changes, or a tall card leaves
-  // a short one placed as though it were still tall.
   const contentKey = showingStep ? step.phase : showingTip ? tip.key : null;
   useEffect(() => {
     setCardH(CARD_ESTIMATE_H);
   }, [contentKey]);
 
+  // Say it. VoiceOver reads the card as it arrives, instruction included.
+  const copy = showingStep ? step.copy(facts) : showingTip ? { title: tip.title, lines: tip.lines } : null;
+  const spoken = copy
+    ? [copy.ack, plainText(copy.title), ...(copy.lines || []).map(plainText), copy.action]
+        .filter(Boolean)
+        .join('. ')
+    : null;
+  useEffect(() => {
+    if (!visible || !spoken) return;
+    AccessibilityInfo.announceForAccessibility?.(spoken);
+    // Announce once per card, not on every re-render of the same one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, contentKey]);
+
   if (!visible) return null;
+
+  // --- the banner: one line while the demo route draws. No dim, no block.
+  if (showingStep && step.kind === 'banner') {
+    return (
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <TutorialBanner
+          title={copy.title}
+          accent={ACCENT}
+          onSkip={step.skippable ? skip : undefined}
+          reduced={reduced}
+          style={{
+            position: 'absolute',
+            top: insets.top + ESCAPE_STRIP + space.sm,
+            left: space.gutter,
+            right: space.gutter,
+          }}
+        />
+      </View>
+    );
+  }
 
   const interactive = showingStep ? step.interactive : false;
   const spot = spotlightRect(rect, screen);
   const card = placeCard({ rect: spot, screen, insets, height: cardH });
-  const coach = placeCoach({
-    rect: spot,
-    card,
-    screen,
-    insets,
-    width: COACH_WIDTH,
-    height: COACH_HEIGHT,
-  });
-
-  // The copy is a function of what is actually on screen: a runner who owns
-  // land is told which colour is theirs, one who owns none is told what the
-  // colours mean. Both sentences are true of the map behind the card.
-  const copy = showingStep ? step.copy(facts) : { title: tip.title, lines: tip.lines };
+  const coachWanted = showingStep && step.coach;
+  const coach = coachWanted
+    ? placeCoach({ rect: spot, card, screen, insets, width: COACH_WIDTH, height: COACH_HEIGHT })
+    : { visible: false };
   const kind = showingStep ? step.kind : 'card';
   const payoff = kind === 'payoff';
 
-  // Tap to continue, or tap to be told that is not the way on. An action step
-  // whose control could not be found blocks nothing, so its scrim is inert.
-  const onScrim = () => {
-    if (showingTip) {
-      haptic.light();
-      dismissTip();
-      return;
-    }
-    // CTA cards also advance from the surrounding screen. The button remains
-    // a clear visual invitation, but a player never has to hit that exact
-    // target to move through an informational or simulated lesson.
-    if (step.dismiss === 'tap' || step.dismiss === 'cta') {
-      haptic.light();
-      advance();
-    }
-  };
-
-  // An escape is offered whenever the step allows it, AND whenever an action
-  // step could not find its control — a card telling somebody to press
-  // something the tutorial cannot point at must never be the last word.
-  const canEscape = showingStep && (step.skippable || (step.interactive && !spot));
-
-  const tapToContinue = showingStep && (step.dismiss === 'tap' || step.dismiss === 'cta');
-  const progress = showingStep && TOUR.includes(step.phase)
-    ? { index: TOUR.indexOf(step.phase), total: TOUR.length }
-    : null;
+  const onCta = showingTip ? () => dismissTip(true) : advance;
+  const cta = showingStep
+    ? step.dismiss === 'cta' ? step.cta : undefined
+    : tip.cta || 'GOT IT';
 
   return (
     <Animated.View
       style={StyleSheet.absoluteFill}
-      // `box-none` so this container never takes a touch itself: everything is
-      // decided by the children below it, and a press that reaches none of
-      // them falls through to the real app.
       pointerEvents="box-none"
       entering={reduced ? undefined : FadeIn.duration(200)}
       exiting={reduced ? undefined : FadeOut.duration(140)}
@@ -186,56 +180,41 @@ export default function TutorialOverlay({ host = 'root' }) {
       <Spotlight
         rect={spot}
         screen={screen}
-        color={RING}
+        color={ACCENT}
         strong={interactive}
         reduced={reduced}
-        dim={payoff ? 'rgba(0,0,0,0.78)' : 'rgba(0,0,0,0.72)'}
+        dim={interactive ? DIM_ACTION : DIM_CARD}
       />
 
-      {/* FELT, not seen. An informational step is one pressable over the whole
-          window; an action step is four slabs with a gap where the real
-          control is. */}
-      {/* An action step with no measurable control blocks NOTHING: the step
-          still ends when the real action reports in, and in the meantime the
-          app stays completely usable. That is the whole answer to "what if the
-          target never mounts" — it degrades to an instruction, never a trap. */}
-      {interactive
-        ? spot
-          && blockerSlabs(spot, screen, { safeTop: insets.top + ESCAPE_STRIP }).map((slab, i) => (
+      {/* FELT, not seen. A card step blocks the whole screen and does nothing
+          with a stray tap; an action step blocks everything except the real
+          control in the hole. */}
+      {interactive ? (
+        blockerSlabs(spot, screen, { safeTop: host === 'record' ? insets.top + ESCAPE_STRIP : 0 }).map(
+          (slab, i) => (
             <Pressable
               key={`slab-${i}`}
               style={[styles.slab, slab]}
-              onPress={onScrim}
+              onPress={noop}
               accessible={false}
+              importantForAccessibility="no"
             />
-          ))
-        : (
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={onScrim}
-            accessibilityRole={tapToContinue || showingTip ? 'button' : 'none'}
-            accessibilityLabel={tapToContinue || showingTip ? 'Tap anywhere to continue' : undefined}
-          />
-        )}
-
-      {canEscape ? (
-        <View style={[styles.skip, { top: insets.top + space.sm }]}>
-          <Pressable
-            onPress={skip}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel="Skip the tutorial"
-          >
-            <Text style={styles.skipLabel}>Skip</Text>
-          </Pressable>
-        </View>
-      ) : null}
+          )
+        )
+      ) : (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={noop}
+          accessible={false}
+          importantForAccessibility="no"
+        />
+      )}
 
       {coach.visible ? (
         <Coach
           facing={coach.facing}
           width={coach.width}
-          celebrate={payoff}
+          celebrate={payoff || kind === 'loop'}
           reduced={reduced}
           style={[styles.coach, { left: coach.left, top: coach.top }]}
         />
@@ -245,28 +224,30 @@ export default function TutorialOverlay({ host = 'root' }) {
         key={contentKey}
         title={copy.title}
         lines={copy.lines}
+        ack={copy.ack}
+        action={copy.action}
         kind={kind}
-        scene={showingStep ? step.scene : undefined}
-        cta={showingStep && step.dismiss === 'cta' ? step.cta : undefined}
-        onPress={advance}
-        hint={tapToContinue ? 'Tap anywhere to continue' : showingTip ? 'Tap anywhere to continue' : undefined}
+        cta={cta}
+        onPress={onCta}
+        secondary={showingStep ? step.secondary?.label : tip.dismissLabel}
+        onSecondary={showingStep ? secondary : () => dismissTip(false)}
+        onSkip={showingStep && step.skippable ? skip : undefined}
+        stage={showingStep ? step.stage : undefined}
         accent={ACCENT}
-        progress={progress}
+        // An action step must leave VoiceOver free to reach the real control.
+        modal={!interactive}
         reduced={reduced}
         onLayout={onCardLayout}
-        style={[styles.card, { left: card.left, top: card.top, width: card.width }]}
+        style={[styles.card, { left: card.left, top: card.top, width: cardWidth(screen) }]}
       />
     </Animated.View>
   );
 }
 
+function noop() {}
+
 const styles = StyleSheet.create({
   slab: { position: 'absolute', backgroundColor: 'transparent' },
   card: { position: 'absolute' },
   coach: { position: 'absolute' },
-  skip: { position: 'absolute', right: space.gutter, zIndex: 2 },
-  skipLabel: {
-    ...type.labelSm,
-    color: 'rgba(255,255,255,0.86)',
-  },
 });

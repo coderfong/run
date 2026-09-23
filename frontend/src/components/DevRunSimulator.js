@@ -28,6 +28,7 @@ import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { useAuth } from '../auth/AuthContext';
+import { useTutorialActive } from '../tutorial/TutorialContext';
 import { SIM_PRESETS } from '../run/simulatedRun';
 import { radius, space, useTheme, useThemedType } from '../theme';
 
@@ -46,10 +47,14 @@ export default function DevRunSimulator({
   const { colors } = useTheme();
   const type = useThemedType();
   const { user } = useAuth();
+  const tutorialActive = useTutorialActive();
   const [scenario, setScenario] = useState('open');
 
   // Hooks first, then the gate — an early return above them changes the hook
   // order between an allowed and a disallowed account.
+  // Never while the first-run tutorial is on screen, whoever is holding the
+  // phone: a new runner's tutorial must look exactly like the real app.
+  if (tutorialActive) return null;
   if (!__DEV__ && !user?.dev_tools) return null;
 
   return (

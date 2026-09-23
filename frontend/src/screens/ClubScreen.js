@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from '../ui/image';
-import { ArrowRight, Camera, Users } from 'lucide-react-native';
+import { ArrowRight, Camera, Search, Users } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 
 import { api } from '../api/client';
@@ -93,7 +93,11 @@ function ClubIntroOverlay({ step, onNext, accent }) {
 // the member hub's "All clubs" tab, so there is ONE club browser in the app
 // rather than two that drift apart — joining a club used to take the directory
 // away with it, leaving no way back to the other clubs.
-function ClubSearch({ navigation, emptyBody = 'Be the first. Create a club and claim land together.' }) {
+function ClubSearch({
+  navigation,
+  emptyBody = 'Be the first. Create a club and claim land together.',
+  showHeading = false,
+}) {
   const { colors } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
@@ -111,16 +115,27 @@ function ClubSearch({ navigation, emptyBody = 'Be the first. Create a club and c
 
   return (
     <>
-      <Input
-        style={styles.input}
-        value={q}
-        onChangeText={setQ}
-        placeholder="Search by name or tag"
-        placeholderTextColor={colors.textDim}
-        autoCapitalize="none"
-      />
+      {showHeading ? (
+        <View style={styles.searchHeader}>
+          <Text style={type.heading}>Find a club</Text>
+          <Text style={[type.caption, styles.searchHelper]}>Search clubs by name or tag</Text>
+        </View>
+      ) : null}
 
-      <View style={{ marginTop: space.md }}>
+      <View style={styles.searchInputWrap}>
+        <Search size={18} color={colors.textMuted} strokeWidth={2.4} />
+        <Input
+          style={styles.searchInput}
+          value={q}
+          onChangeText={setQ}
+          placeholder="Search by name or tag"
+          placeholderTextColor={colors.textDim}
+          autoCapitalize="none"
+          accessibilityLabel="Search clubs by name or tag"
+        />
+      </View>
+
+      <View style={styles.results}>
         {searching ? (
           <Skeleton width="100%" height={64} style={{ borderRadius: 16 }} />
         ) : results.length === 0 ? (
@@ -132,29 +147,36 @@ function ClubSearch({ navigation, emptyBody = 'Be the first. Create a club and c
           />
         ) : (
           results.map((c) => (
-            // Dealt a drawn box off the club's own id, so a directory of them
-            // is a stack of hand-drawn cards rather than one card repeated —
-            // the same rule the feed's frames follow.
             <Card
               key={c.id}
               frame={frameVariant('box', `club:${c.id}`)}
               framePose={framePose(`club:${c.id}`)}
-              frameTint={c.color.stroke}
+              frameTint={colors.text}
               onPress={() => navigation.navigate('ClubDetail', { clanId: c.id })}
-              style={{ marginBottom: space.sm }}
+              style={styles.clubCard}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${c.name}, ${c.member_count} members`}
             >
-              <Row between>
-                <Row gap={12}>
-                  <ClubAvatar photoUrl={c.photo_url} badgeIcon={c.badge_icon} color={c.color} />
-                  <View>
-                    <Text style={type.bodyBold}>[{c.tag}] {c.name}</Text>
-                    <Text style={type.caption}>
+              <View style={[styles.clubAccent, { backgroundColor: c.color.stroke }]} />
+              <Row between style={styles.clubRow}>
+                <Row gap={space.md} style={styles.clubIdentity}>
+                  <ClubAvatar
+                    photoUrl={c.photo_url}
+                    badgeIcon={c.badge_icon}
+                    color={c.color}
+                    style={styles.clubAvatar}
+                  />
+                  <View style={styles.clubCopy}>
+                    <Text style={type.bodyBold} numberOfLines={1}>[{c.tag}] {c.name}</Text>
+                    <Text style={[type.caption, styles.clubMeta]} numberOfLines={1}>
                       {c.member_count} members{c.league ? `, ${LEAGUE_LABEL[c.league]} league` : ''}
                       {c.privacy !== 'open' ? ', invite only' : ''}
                     </Text>
                   </View>
                 </Row>
-                <Text style={[type.statSm, { color: c.color.stroke }]}>{(c.season_area_m2 / 1e6).toFixed(1)}</Text>
+                <Text style={[type.statSm, styles.clubScore, { color: c.color.stroke }]}>
+                  {(c.season_area_m2 / 1e6).toFixed(1)}
+                </Text>
               </Row>
             </Card>
           ))
@@ -197,24 +219,41 @@ function Directory({ navigation }) {
           whole page: for somebody with no club, joining or starting one is the
           only thing this screen is for. */}
       <TutorialTarget id={TARGET.CLUB_MAIN}>
-        <Button title="Create a club" variant="gradient" icon={<AppIcon name="invite" size={20} />} onPress={() => navigation.navigate('ClubCreate')} />
+        <Button
+          title="Create a club"
+          variant="gradient"
+          icon={<AppIcon name="add" size={20} />}
+          onPress={() => navigation.navigate('ClubCreate')}
+          style={styles.createButton}
+        />
       </TutorialTarget>
 
-      {/* the Join button matches the input height and centres with it */}
-      <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.md, alignItems: 'center' }}>
-        <Input
-          style={[styles.input, { flex: 1, height: 48 }]}
-          value={code}
-          onChangeText={setCode}
-          placeholder="Have an invite code?"
-          placeholderTextColor={colors.textDim}
-          autoCapitalize="none"
-        />
-        <Button title="Join" variant="gradient" size="sm" full={false} onPress={joinCode} icon={<ArrowRight size={16} color="#fff" />} style={{ height: 48, justifyContent: 'center' }} />
+      <View style={styles.inviteGroup}>
+        <Text style={[type.captionMedium, styles.inviteLabel]}>Have an invite code?</Text>
+        {/* the Join button matches the input height and centres with it */}
+        <View style={styles.inviteRow}>
+          <Input
+            style={[styles.input, styles.inviteInput]}
+            value={code}
+            onChangeText={setCode}
+            placeholder="Enter invite code"
+            placeholderTextColor={colors.textDim}
+            autoCapitalize="none"
+            accessibilityLabel="Enter invite code"
+          />
+          <Button
+            title="Join"
+            variant="outline"
+            size="sm"
+            full={false}
+            onPress={joinCode}
+            icon={<ArrowRight size={16} color="#ec4899" />}
+            style={styles.joinButton}
+          />
+        </View>
       </View>
 
-      <SectionHeader title="Find a club" style={{ marginTop: space.xl, marginBottom: space.md }} />
-      <ClubSearch navigation={navigation} />
+      <ClubSearch navigation={navigation} showHeading />
     </Screen>
   );
 }
@@ -734,14 +773,55 @@ export default function ClubScreen({ navigation }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // title and crew sit together on the left rather than pushed to opposite edges
-  dirHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm },
-  dirCrewWrap: { flex: 1, maxWidth: 190, aspectRatio: 2.57 },
+  dirHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm, marginBottom: space.lg },
+  dirCrewWrap: { flex: 1, maxWidth: 170, aspectRatio: 2.57 },
   dirCrew: { width: '100%', height: '100%' },
   input: {
     ...type.body, backgroundColor: colors.card,
     paddingHorizontal: space.md, paddingVertical: 12,
     ...nbField(scheme, { on: colors.card }),
   },
+  createButton: { marginTop: space.xs },
+  inviteGroup: { marginTop: space.xl },
+  inviteLabel: { color: colors.textMuted, marginBottom: space.sm },
+  inviteRow: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
+  inviteInput: { flex: 1, height: 48 },
+  joinButton: { height: 48, minWidth: 88, justifyContent: 'center', paddingHorizontal: space.lg },
+  searchHeader: { marginTop: space.xxl, marginBottom: space.sm },
+  searchHelper: { color: colors.textMuted, marginTop: 2 },
+  searchInputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    backgroundColor: colors.card,
+    paddingLeft: space.md,
+    ...nbField(scheme, { on: colors.card }),
+  },
+  searchInput: {
+    ...type.body,
+    flex: 1,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingRight: space.md,
+    color: colors.text,
+    borderWidth: 0,
+  },
+  results: { marginTop: space.lg },
+  clubCard: { marginBottom: space.md, overflow: 'hidden' },
+  clubAccent: {
+    position: 'absolute',
+    left: 0,
+    top: space.md,
+    bottom: space.md,
+    width: 5,
+    borderRadius: 3,
+  },
+  clubRow: { alignItems: 'center', paddingLeft: space.xs },
+  clubIdentity: { flex: 1, minWidth: 0, paddingRight: space.sm },
+  clubAvatar: { borderWidth: 2, borderColor: colors.text },
+  clubCopy: { flex: 1, minWidth: 0 },
+  clubMeta: { color: colors.textMuted, marginTop: 2 },
+  clubScore: { flexShrink: 0, minWidth: 42, textAlign: 'right' },
   crestEdit: {
     position: 'absolute', right: -4, bottom: -4,
     width: 24, height: 24, borderRadius: 12,

@@ -76,14 +76,16 @@ export function xpSteps(fromXp, toXp) {
   return out;
 }
 
-function withDurations(steps) {
+// `totalMs` is overridable for a screen that has less time to give the bar
+// than the result card does (the claim payoff runs its whole sequence in ~2s).
+export function withDurations(steps, totalMs = TOTAL_MS) {
   // Zero-width passes still have to be seen — a run that lands exactly on a
   // boundary crosses it, and a step of no duration would swallow the level-up.
   const covered = steps.map((s) => Math.max(0.02, s.to - s.from));
   const total = covered.reduce((a, b) => a + b, 0) || 1;
   return steps.map((s, i) => ({
     ...s,
-    ms: Math.max(MIN_STEP_MS, Math.round((TOTAL_MS * covered[i]) / total)),
+    ms: Math.max(MIN_STEP_MS, Math.round((totalMs * covered[i]) / total)),
   }));
 }
 

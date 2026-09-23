@@ -219,8 +219,9 @@ export const GAME_ANIMATIONS = {
   //
   // Two small ONE-SHOT reactions (not scenery — unlike the props above,
   // neither should loop forever) generated via Seedance for the shop
-  // redesign: a sparkle flourish for the try-on mirror (TryOnMirror.js) and
-  // a water-droplet splash for the restock sign (RestockSign.js).
+  // redesign: a sparkle flourish and a water-droplet splash. Their shop
+  // hosts (the scene's try-on mirror and hanging restock sign) were retired
+  // 2026-09-23 when the stock moved into the storefront panel.
   //
   // KEYED WITH A PLAIN THRESHOLD, NOT THE CONNECTIVITY TEST the round-2 shop
   // assets above use. That test exists for content where the background AND

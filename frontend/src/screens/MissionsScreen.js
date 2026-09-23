@@ -38,6 +38,7 @@ import { rollCosmetic } from '../config/lootboxRoll';
 import { toast } from '../ui/toast';
 import { CountUpText, Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
 import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
+import { TIP, useTutorialTip } from '../tutorial';
 
 // The user's board art: wood frame, carved "Daily Missions" title, and a torn
 // parchment sheet. It owns the screen chrome now; mission UI is laid over the
@@ -123,6 +124,8 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
 }
 
 export default function MissionsScreen({ navigation }) {
+  // One card, the first time this screen is opened. See src/tutorial/tips.js.
+  useTutorialTip(TIP.MISSIONS);
   const { colors } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();

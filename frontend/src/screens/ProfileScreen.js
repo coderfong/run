@@ -1,27 +1,19 @@
-// You — who your runner is, and everything you can change about the app.
+// You — who your runner is and how your PASER game is going.
 //
 // TWO HALVES, and the split is the whole layout. The top is the runner: the
 // scene, the portrait, the name, the rank rail, the two things you do with a
 // runner, and the six numbers that say how the game is going. All of it open,
 // all of it the reason anybody taps You.
 //
-// Statistics and the single notification control stay visible. App
-// customisation, Privacy and Account remain folded, one open at a time.
-// This page carried all of that as one continuous column and it was most of
-// the page by height: the stat wall was followed by a land card, a streak
-// calendar, a trophy shelf, eight runs and then every preference in the app,
-// so the profile read as a settings screen with a picture on top.
-//
-// A closed section does not render its children at all, which is also why the
-// fold is worth having beyond the tidiness: each settings block runs its own
-// query and its own switches.
+// Settings live on their own screen behind the top-right gear. The profile
+// stops at the identity/progression surfaces: stats, land, streak and trophies.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Linking, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ChevronRight, Lock } from 'lucide-react-native';
+import { ChevronRight, Settings } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
 import { Image } from '../ui/image';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
@@ -31,35 +23,25 @@ import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
 import { useAccent } from '../hooks/useAccent';
-import { useSettings, TRAIL_GLOW_COLORS } from '../state/settings';
-import { CharacterBust } from '../components/character/CharacterRig';
-import PortraitBorder from '../components/PortraitBorder';
+import { RunnerFigure } from '../components/identity/PlayerIdentity';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
 import StreakCalendar from '../components/StreakCalendar';
-import PrivacySettings from '../components/PrivacySettings';
-import HealthSyncSettings from '../components/HealthSyncSettings';
-import RecoveryEmail from '../components/RecoveryEmail';
 import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
-import { brand, nbField, radius, space, toon, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
-import { COPY as PASERBY_COPY } from '../config/paserby';
-import { Screen, Card, Row, Button, Framed, Input, SectionHeader, Skeleton, OutlinedText, AccordionSection } from '../components/ui';
-import ThemeToggle from '../components/ThemeToggle';
+import { brand, radius, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { Screen, Card, Row, Button, Framed, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import RankRail from '../components/rank/RankRail';
 import YourLandCard from '../components/territory/YourLandCard';
 import { standingFrom } from '../config/rankLadder';
 import { useProEntitlement } from '../pro/ProProvider';
 import DevProPanel from '../components/DevProPanel';
 import DevCelebrationsPanel from '../components/DevCelebrationsPanel';
-import DevCrossroadsSeed from '../components/DevCrossroadsSeed';
 import SharedStatTile from '../components/StatTile';
 import { art } from '../config/onboardingArt';
 import GameAnimation from '../components/GameAnimation';
-import { toast } from '../ui/toast';
 import { itemPreviewSources } from '../config/cosmetics';
 import { preloadImages } from '../utils/imagePreload';
 import { preloadScreenImagesAfterInteractions } from '../config/screenAssets';
-import { shortDate } from '../utils/time';
-import { TARGET, TIP, TutorialTarget, useTutorial, useTutorialTip } from '../tutorial';
+import { TARGET, TIP, TutorialTarget, useTutorialTip } from '../tutorial';
 
 // Trophy shelf — derived from live stats; earned trophies glow in the accent.
 // The shelf is PASER's own sticker art, not line icons. It used to be four
@@ -77,17 +59,6 @@ const TROPHIES = [
   { key: 'ten_zones', label: '10 zones', icon: 'award', earned: (s) => (s.territory_count || 0) >= 10 },
   { key: 'streak7', label: 'Week streak', icon: 'streak', earned: (s) => (s.current_streak_days || 0) >= 7 },
 ];
-
-const NOTIF_KEYS = [
-  'stolen', 'defended', 'captured', 'clan_goal', 'kudos',
-  'pasers', 'paserby', 'season', 'recap', 'reminder',
-];
-
-const USERNAME_RE = /^[a-z0-9_]{3,32}$/;
-// Hosted on the bido-frontend site (Next.js /privacy route), now on the
-// gameablestudios.com domain.
-const PRIVACY_POLICY_URL = 'https://www.gameablestudios.com/privacy';
-const SUPPORT_URL = 'https://www.gameablestudios.com/support';
 
 // The PRO gold, shared with the first-run step's wordmark and the pass's own
 // gold track, so the three places it is sold read as one thing.
@@ -113,20 +84,15 @@ export default function ProfileScreen({ navigation }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
-  const { user, signOut, updateUsername, deleteAccount } = useAuth();
+  const { user } = useAuth();
   const { equipped } = useAvatar();
-  const { trailGlow, setTrailGlow } = useSettings();
-  // The runner colour picker below is exactly this: club colour unless a
-  // fixed one is chosen. This page's own frames used to hardcode the club
-  // colour, which is why only whichever swatch happened to match the club's
-  // colour ever looked like it did anything.
   const accent = useAccent();
 
   // The scene behind the runner — daytime kerb in light mode, lamp-lit night
   // street in dark. SceneBackdrop sizes itself to whichever art is showing and
   // to the window rather than to this header, so the whole scene is visible in
   // both themes; the header only needs the height to reserve room for it.
-  const { height: sceneH } = useSceneBackdrop({ variant: 'profile' });
+  const { height: sceneH, standAt } = useSceneBackdrop({ variant: 'profile' });
 
   // The scene runs all the way up under the status bar. The page opts out of
   // Screen's top inset and the header takes it instead, as sky above the art —
@@ -135,6 +101,25 @@ export default function ProfileScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const skyTop = insets.top + space.md;
 
+  // THE WHOLE RUNNER IS THE HEADER. This used to be a head in a rank ring,
+  // which showed rank well and hid most of what a player had put on: the top
+  // was a collar, and bottoms, shoes and most accessories were not drawn at
+  // all. Now the full outfit stands on the pavement of the scene, and rank is
+  // stated beside it by the crest on the rank rail (see
+  // components/identity/PlayerIdentity for the rule).
+  //
+  // Sized off the window so shoes and bottoms are big enough to read without
+  // pushing the stat wall off a small phone: 170pt on an SE, ~220 on a 6.1".
+  const { height: winH } = useWindowDimensions();
+  const runnerH = Math.round(Math.max(170, Math.min(250, winH * 0.26)));
+  // The runner's box starts right under the status bar strip and its feet
+  // land on the pavement, so the sky above the art is whatever makes the two
+  // meet. On a phone where the runner is shorter than the room above the
+  // pavement, the runner is pushed down instead.
+  const feetOnScene = (standAt ?? 0.85) * sceneH;
+  const sky = Math.max(skyTop, skyTop + runnerH - feetOnScene);
+  const runnerTop = sky + feetOnScene - runnerH;
+
   // The name and its level badge sit at the very bottom of the header, and the
   // portrait frame above them is taller than the art's own shape — so the badge
   // hung off the bottom edge of the scene. Measuring the name row and growing
@@ -142,7 +127,7 @@ export default function ProfileScreen({ navigation }) {
   // width, portrait tier or text size; `bleed` adds the height as more road
   // rather than cropping into the trees.
   const [nameBottom, setNameBottom] = useState(0);
-  const headerH = Math.max(sceneH + skyTop, nameBottom ? nameBottom + space.sm : 0);
+  const headerH = Math.max(sceneH + sky, nameBottom ? nameBottom + space.sm : 0);
 
   // Everything the page shows is served from the cache on the first render and
   // corrected behind it, so returning to You never rebuilds itself from six
@@ -152,10 +137,6 @@ export default function ProfileScreen({ navigation }) {
   // "Everything you've earned lives here", said once, and not until there is
   // something earned on screen to say it about.
   useTutorialTip(TIP.PROGRESSION, stats != null);
-  // Replaying the tutorial deliberately, from the one place in the app where
-  // preferences live. It writes a single key in the local profile: no account
-  // data, no runs, no territory and no progression is touched.
-  const { replay: replayTutorial } = useTutorial();
   // The ladder's tier thresholds, for the numbers under the rank rail. Cached
   // hard: it counts every rated player, and a threshold that moved between two
   // openings of this page would read as noise rather than as a ladder. The
@@ -168,50 +149,18 @@ export default function ProfileScreen({ navigation }) {
     () => (ladder?.tiers || []).map((t) => t.floor),
     [ladder]
   );
-  // `select` is a GUARD, not a transform: the list is rendered with
-  // `runs.slice`, and a payload that is not a list (an error body, a cache
-  // entry written by an older shape) throws mid render. A throw here is not a
-  // missing run list — it is the whole You page replaced by the tab's error
-  // boundary, which is a page of settings and stats lost to one bad response.
-  const { data: runs } = useQuery('me:runs', api.meRuns, {
-    fallback: [],
-    select: (d) => (Array.isArray(d) ? d : []),
-  });
-  // The wall and the run list fill in independently of each other, so each
-  // keeps its own latch — one of them arriving must not fade the other.
+  // The stat wall fills in behind cached content.
   const statsArriving = useArrival(!stats);
-  const runsArriving = useArrival(!runs);
   const { data: runDays } = useQuery('me:run-days', api.runDays, {
     fallback: { days: [] },
     select: (d) => d.days || [],
   });
-  const { data: prefs, setData: setPrefs } = useQuery('me:notif-prefs', api.getNotifPrefs);
   const { data: paserInfo } = useQuery('pasers', api.pasers);
-  // Shares the 'me:paserby' key with Home's Crossroads badge, so the switch is
-  // drawn from cache on the first render and both stay in step.
-  const { data: paserby, setData: setPaserby } = useQuery('me:paserby', api.paserby, {
-    fallback: { enabled: true, unseen: 0, total: 0 },
-  });
   // The pass query that used to live here is gone. It existed for exactly two
   // things: deciding whether to show the PRO poster, and reloading after a
   // purchase made from it. Both now come from the entitlement itself, which
   // this screen already has, so keeping it would be a request per visit to
   // /me/progression for a number nothing on the page reads.
-
-
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(user?.username || '');
-  const [busy, setBusy] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleteDraft, setDeleteDraft] = useState('');
-  const [deleting, setDeleting] = useState(false);
-  // Which settings section is showing, or null for none — ONE at a time.
-  // Plain state, not a stored preference: the You tab stays
-  // mounted for the life of the app, so a section left open is still open
-  // when you come back to it, and nobody has ever wanted a settings section
-  // to reopen itself after a cold start.
-  const [section, setSection] = useState(null);
-  const toggleSection = (key) => setSection((open) => (open === key ? null : key));
   const { isPro, canShowPro, isLoading: proLoading, openPaywall } = useProEntitlement();
 
   useEffect(() => {
@@ -231,61 +180,9 @@ export default function ProfileScreen({ navigation }) {
       'RankLadder',
     ]);
   }, [scheme]);
-
-
-
-  const notificationsOn = prefs ? NOTIF_KEYS.every((key) => prefs[key] !== false) : true;
-  const toggleNotifications = async () => {
-    const enabled = !notificationsOn;
-    const next = { ...prefs };
-    NOTIF_KEYS.forEach((key) => { next[key] = enabled; });
-    setPrefs(next);
-    try { await api.setNotifPrefs(next); } catch { setPrefs(prefs); }
-  };
-
-  const togglePaserby = async () => {
-    const next = !(paserby?.enabled !== false);
-    setPaserby({ ...(paserby || {}), enabled: next });
-    try {
-      const out = await api.setPaserby(next);
-      setPaserby(out);
-    } catch {
-      setPaserby({ ...(paserby || {}), enabled: !next });
-      toast.error('Could not change that setting');
-    }
-  };
-
-  const saveUsername = async () => {
-    const u = draft.trim().toLowerCase();
-    if (!USERNAME_RE.test(u)) return toast.error('Usernames are 3 to 32 characters: letters, numbers, underscore.');
-    setBusy(true);
-    try {
-      await updateUsername(u);
-      toast.success('Username updated');
-      setEditing(false);
-    } catch (e) {
-      toast.error(e.message || 'Could not rename');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // Drives the medal beside the Trophies heading — it replays when the count
   // moves, so earning one is the thing that makes it spin.
   const earnedTrophies = stats ? TROPHIES.filter(({ earned }) => earned(stats)).length : 0;
-
-  const deleteMatches = deleteDraft.trim().toLowerCase() === user?.username;
-  const doDelete = async () => {
-    if (!deleteMatches) return;
-    setDeleting(true);
-    try {
-      await deleteAccount();
-      toast.success('Account deleted');
-    } catch (e) {
-      toast.error(e.message || 'Could not delete account');
-      setDeleting(false);
-    }
-  };
 
   return (
     <Screen scroll edges={[]} contentStyle={{ paddingBottom: space.xxl }}>
@@ -296,7 +193,7 @@ export default function ProfileScreen({ navigation }) {
       {/* What the You tip lights: the runner, their rank and their level, all
           in one box. */}
       <TutorialTarget id={TARGET.YOU_MAIN}>
-      <Reveal style={[styles.header, { minHeight: headerH, paddingTop: skyTop + space.lg }]}>
+      <Reveal style={[styles.header, { minHeight: headerH, paddingTop: runnerTop }]}>
         {/* Wind through the scene. A no-op when the leaf art is not in the
             build, so this line is safe whatever the asset selection says. It
             stops itself when You is not the tab in front; this page used to
@@ -305,22 +202,27 @@ export default function ProfileScreen({ navigation }) {
         <SceneBackdrop
           variant="profile"
           minHeight={headerH}
-          skyAbove={skyTop}
+          skyAbove={sky}
           bleed
           ambient="leaves"
         />
-        {/* Bust must FILL the border's hole (both 104) and sit on an opaque
-            disc — at 96 with a translucent backdrop, the banner behind it
-            showed through the 8px gap. Same pairing as ProgressionScreen.
-            Border comes from RANK (territorial standing), not level. */}
+        <TouchableOpacity
+          style={[styles.settingsButton, { top: skyTop + space.sm, backgroundColor: colors.card, borderColor: toon.ink }]}
+          onPress={() => navigation.navigate('Settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          hitSlop={8}
+        >
+          <Settings size={22} color={toon.ink} strokeWidth={2.75} />
+        </TouchableOpacity>
+        {/* The full outfit, head to shoes, standing on the pavement. No ring
+            round it: rank is the crest on the rail below. Tap to dress. */}
         <PressableScale
           onPress={() => navigation.navigate('AvatarStudio')}
           accessibilityRole="button"
           accessibilityLabel="Your runner, tap to customize"
         >
-          <PortraitBorder borderKey={stats?.rank_key || 'wood'} size={104}>
-            <CharacterBust equipped={equipped} size={104} bg={colors.cardAlt} />
-          </PortraitBorder>
+          <RunnerFigure equipped={equipped} height={runnerH} width={runnerH * 0.7} animate />
         </PressableScale>
 
         {/* Name, then level, both under the portrait and centred on it. They
@@ -368,6 +270,7 @@ export default function ProfileScreen({ navigation }) {
           <RankRail
             standing={standingFrom(stats)}
             floors={rankFloors}
+            crest
             onPress={() => navigation.navigate('RankLadder')}
             style={styles.rankRail}
           />
@@ -462,437 +365,58 @@ export default function ProfileScreen({ navigation }) {
           not otherwise need and ignored the dev entitlement override. Held
           back only while entitlement is still loading, so a subscriber never
           sees their own subscription advertised for a frame. */}
-      {false && canShowPro && !isPro && !proLoading ? (
-        <Reveal delay={110}>
-          <PressableScale
-            onPress={() => { haptic.light(); openPaywall('profile'); }}
-            accessibilityRole="button"
-            accessibilityLabel="Paser Pro. Planning, stats and styles. Tap to explore"
-          >
-            <Framed
-              frame={frameVariant('featured', 'pro:you')}
-              tint={toon.ink}
-              fill={GOLD}
-              weight={INK.bold}
-              pose={framePose('pro:you')}
-              inset={false}
-              style={styles.proCard}
-              contentStyle={styles.proCardContent}
-            >
-              <View style={styles.proCopy}>
-                <Text style={[type.labelSm, styles.proEyebrow]}>PASER PRO</Text>
-                {/* One line, always. "GO PRO" is comfortable in this column,
-                    but the column is a fraction of the screen and the screen
-                    can be a small phone at a large text size. */}
-                <Text
-                  style={[type.display, styles.proTitle]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.6}
-                >
-                  GO PRO
-                </Text>
-                {/* WAS "Twice the rewards." That is a promise about POWER, and
-                    PRO does not sell power — see the contract at the top of
-                    config/pro.js and entitlements.py. Three words for the three
-                    things it does sell; the full list lives on the paywall,
-                    which is where somebody who taps this is going anyway. */}
-                <Text style={[type.bodySm, styles.proSub]}>
-                  Planning. Stats. Style.
-                </Text>
-                <Framed
-                  frame={frameVariant('chip', 'Explore PRO')}
-                  tint={toon.ink}
-                  fill="#ffffff"
-                  weight={INK.thin}
-                  pose={framePose('Explore PRO')}
-                  inset={false}
-                  style={styles.proBtn}
-                  contentStyle={styles.proBtnContent}
-                >
-                  <Row gap={2}>
-                    <Text style={[type.buttonSm, { color: toon.ink }]}>Explore PRO</Text>
-                    <ChevronRight size={14} color={toon.ink} strokeWidth={3} />
-                  </Row>
-                </Framed>
-              </View>
-              {/* `contain`, and bled into the frame's padding on three sides so
-                  the crew stands as tall as the card allows. A cut-out has no
-                  edges to crop, so there is nothing for `cover` to do here but
-                  cut somebody's head off at a narrow width. */}
-              <Image
-                source={art('proCrew')}
-                style={styles.proArt}
-                resizeMode="contain"
-                accessible={false}
-              />
-            </Framed>
-          </PressableScale>
-        </Reveal>
-      ) : null}
-
-      {/* EVERYTHING ELSE ON YOU IS FOLDED AWAY.
-          The rest of this page used to be one column: the land card, the
-          streak, the trophies, the run history, and then eight blocks of
-          settings, all open, all at once. Reaching the bottom of your own
-          profile meant scrolling past every preference in the app, and the
-          numbers you came for were buried somewhere in the middle of it.
-          Five headings, one open at a time, is the same page with the
-          scrolling taken out. */}
+      {/* The profile now stops at profile content: land, consistency and earned
+          trophies. Settings live behind the gear, and run history remains on
+          the app's history/detail surfaces instead of stretching this page. */}
       <View style={styles.sections}>
-        <SectionHeader title="Statistics" style={{ marginBottom: space.md }} />
-        <View>
-            {/* Your land: what is happening to the ground the stat wall counts.
-                The plots about to fade, what held, what was lost; the full list is
-                one tap away. Hides itself if the endpoint is not there. */}
-            <YourLandCard navigation={navigation} accent={accent} nested />
+        <SectionHeader framed={false} title="Statistics" style={{ marginBottom: space.md }} />
 
-            {/* running streak calendar */}
-            <Reveal delay={150}>
-            <SectionHeader
-              title="Running streak"
-              action={(stats?.current_streak_days || 0) >= 2 ? `${stats.current_streak_days} day streak 🔥` : undefined}
-              framed={false}
-              style={{ marginTop: space.md, marginBottom: space.md }}
-            />
-            <Card>
-              <StreakCalendar runDays={runDays || []} accent={accent} />
-            </Card>
-            </Reveal>
+        <YourLandCard navigation={navigation} accent={accent} nested />
 
-            {/* trophies. The medal rides BESIDE the heading — as its own centred
-                block it was 88pt of mostly-empty air between the title and the
-                shelf, which read as a gap in the page rather than as a flourish.
-                It replays whenever the count of earned trophies changes. */}
-            <Reveal delay={180}>
-            <SectionHeader
-              title="Trophies"
-              accessory={
-                earnedTrophies ? (
-                  <GameAnimation name="medal" size={TROPHY_MEDAL} trigger={earnedTrophies} />
-                ) : null
-              }
-              framed={false}
-              style={{ marginTop: space.md, marginBottom: space.md }}
-            />
-            <View style={styles.trophyRow}>
-              {TROPHIES.map(({ key, label, icon, earned }) => {
-                const got = stats ? earned(stats) : false;
-                return (
-                  <Card
-                    key={key}
-                    padded={false}
-                    style={styles.trophy}
-                    fill={got ? '#FFF2C6' : colors.card}
-                  >
-                    <View style={styles.trophyContent}>
-                      <AppIcon name={icon} size={30} opacity={got ? 1 : 0.6} />
-                      <Text style={[type.caption, { marginTop: 6, textAlign: 'center', color: got ? '#292015' : colors.textMuted }]}>
-                        {label}
-                      </Text>
-                    </View>
-                  </Card>
-                );
-              })}
-            </View>
-            </Reveal>
+        <Reveal delay={150}>
+          <SectionHeader
+            title="Running streak"
+            action={(stats?.current_streak_days || 0) >= 2 ? `${stats.current_streak_days} day streak` : undefined}
+            framed={false}
+            style={{ marginTop: space.xl, marginBottom: space.md }}
+          />
+          <Card>
+            <StreakCalendar runDays={runDays || []} accent={accent} />
+          </Card>
+        </Reveal>
 
-            {/* recent runs */}
-            <SectionHeader framed={false} title="Recent runs" style={{ marginTop: space.md, marginBottom: space.md }} />
-            <Card padded={false}>
-              {!runs ? (
-                <View style={{ padding: space.lg }}>
-                  <Skeleton width="100%" height={16} />
-                </View>
-              ) : runs.length === 0 ? (
-                <Text style={[type.caption, { padding: space.lg }]}>No runs yet.</Text>
-              ) : (
-                <Arrival active={runsArriving}>
-                {runs.slice(0, 8).map((r, i) => (
-                  <TouchableOpacity
-                    key={r.run_id}
-                    style={[styles.runRow, i > 0 && styles.runDivider]}
-                    onPress={() => navigation.navigate('RunDetail', { runId: r.run_id })}
-                    accessibilityRole="button"
-                    accessibilityLabel="Open run detail"
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={type.bodyBold}>{shortDate(r.created_at)}</Text>
-                      <Text style={type.caption}>
-                        {km(r.distance_m)} km, {r.closed_loop ? `${km2(r.area_m2)} km² claimed` : 'not claimed'}
-                      </Text>
-                    </View>
-                    {r.closed_loop && <View style={[styles.claimDot, { backgroundColor: accent }]} />}
-                  </TouchableOpacity>
-                ))}
-                </Arrival>
-              )}
-            </Card>
-        </View>
-
-        <AccordionSection
-          title="App customisation"
-          subtitle="Theme, runner colour and the tutorial"
-          open={section === 'customisation'}
-          onToggle={() => toggleSection('customisation')}
-        >
-            {/* THE WAY BACK INTO THE TUTORIAL. It belongs here rather than in
-                Account because it is a preference about the app, not an
-                operation on the account: it rewrites one key in the local
-                profile and nothing else. Runs, territory, level, rank and
-                cosmetics are all untouched, which is why it can sit next to
-                the theme switch without a confirmation. */}
-            <SectionHeader title="Help" framed={false} style={{ marginTop: space.md, marginBottom: space.md }} />
-            <Card>
-              <Text style={type.labelSm}>Tutorial</Text>
-              <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
-                Play the first run walkthrough again. Nothing you have earned is affected.
-              </Text>
-              <Button
-                title="Replay tutorial"
-                variant="secondary"
-                size="sm"
-                full={false}
-                onPress={() => {
-                  replayTutorial();
-                  // The tutorial opens on Home, and the runner is on the You
-                  // page: send them where it starts rather than leaving the
-                  // first card to arrive over the settings they just changed.
-                  // 'Home' is not on this stack, so it bubbles to the tabs.
-                  navigation.navigate('Home');
-                }}
-              />
-            </Card>
-
-            {/* appearance */}
-            <SectionHeader title="Appearance" framed={false} style={{ marginTop: space.xl, marginBottom: space.md }} />
-            <Card>
-              <Text style={type.labelSm}>Theme</Text>
-              <Text style={[type.caption, { marginTop: 2, marginBottom: space.md }]}>
-                Follow your device, or force light or dark.
-              </Text>
-              <ThemeToggle />
-            </Card>
-
-            {/* Player colour — trail, own-land outline and colourable game chrome. */}
-            <Card style={{ marginTop: space.md }}>
-              <Text style={type.labelSm}>Runner colour</Text>
-              <Text style={[type.caption, { marginTop: 2 }]}>
-                Colours your trail, map outline and this page's frames. Club follows your club colour.
-              </Text>
-              <View style={styles.swatchRow}>
-                {TRAIL_GLOW_COLORS.map(({ key, label, value, pro }) => {
-                  const swatch = value || accent;
-                  const selected = trailGlow === key;
-                  // Locked only when PRO is actually sellable and this account is not
-                  // on it. A build with the store off shows the whole palette; a
-                  // subscriber wears any of it. A free runner who chose a PRO colour
-                  // before it was gated keeps it — this only blocks NEW selections.
-                  const locked = pro && canShowPro && !isPro;
-                  return (
-                    <PressableScale
-                      key={key}
-                      onPress={() => {
-                        haptic.light();
-                        if (locked) { openPaywall('cosmetics'); return; }
-                        setTrailGlow(key);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        locked ? `Trail glow ${label}, PASER PRO, tap to unlock` : `Trail glow ${label}`
-                      }
-                      accessibilityState={{ selected }}
-                      style={styles.swatchItem}
-                    >
-                      <View
-                        style={[
-                          styles.swatch,
-                          { backgroundColor: swatch, shadowColor: swatch },
-                          selected && styles.swatchSelected,
-                        ]}
-                      >
-                        {locked ? (
-                          <View style={styles.swatchLock}>
-                            <Lock size={13} color={GOLD} strokeWidth={2.5} />
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text
-                        style={[
-                          type.caption,
-                          { color: locked ? GOLD : selected ? colors.text : colors.textDim },
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </PressableScale>
-                  );
-                })}
-              </View>
-            </Card>
-        </AccordionSection>
-
-        <SectionHeader title="Notifications" style={{ marginTop: space.xl, marginBottom: space.md }} />
-        <Card>
-          <View style={styles.toggleRowInner}>
-            <View style={{ flex: 1, paddingRight: space.md }}>
-              <Text style={type.body}>Notifications</Text>
-              <Text style={type.caption}>Allow PASER alerts outside the app.</Text>
-            </View>
-            <Switch
-              value={notificationsOn}
-              onValueChange={toggleNotifications}
-              trackColor={{ true: accent }}
-              disabled={!prefs}
-              accessibilityLabel="Notifications toggle"
-            />
-          </View>
-        </Card>
-
-        <AccordionSection
-          title="Privacy"
-          subtitle="Routes, crossed paths and Apple Health"
-          open={section === 'privacy'}
-          onToggle={() => toggleSection('privacy')}
-        >
-            {/* route privacy — what other people see of your runs */}
-            <PrivacySettings nested />
-
-            {/* crossed paths — the PASERBY switch. It lives in Settings as well as
-                on the Crossroads screen itself: somebody looking for the way out
-                looks here first. Turning it off stops new encounters being made AND
-                deletes the trace samples the matcher would have used. */}
-            <SectionHeader framed={false} title="Crossed paths" style={{ marginTop: space.md, marginBottom: space.md }} />
-            <Card>
-              <View style={styles.toggleRowInner}>
-                <View style={{ flex: 1, paddingRight: space.md }}>
-                  <Text style={type.body}>{PASERBY_COPY.setting}</Text>
-                  <Text style={type.caption}>{PASERBY_COPY.settingHint}</Text>
-                </View>
-                <Switch
-                  value={paserby ? paserby.enabled !== false : true}
-                  onValueChange={togglePaserby}
-                  trackColor={{ true: accent }}
-                  disabled={!paserby}
-                />
-              </View>
-              {paserby?.total ? (
-                <Button
-                  title={`Crossroads (${paserby.total})`}
-                  variant="secondary"
-                  size="sm"
-                  full={false}
-                  onPress={() => navigation.navigate('Crossroads')}
-                  style={{ marginTop: space.md, alignSelf: 'flex-start' }}
-                />
-              ) : null}
-              {/* Dev only (see the gate inside): seeds real crossings against
-                  throwaway bots and opens the plaza, so Crossroads can be looked at
-                  without crossing anyone's path. Hidden in release for every account
-                  the server has not named. */}
-              <DevCrossroadsSeed onOpen={() => navigation.navigate('Crossroads')} />
-            </Card>
-
-            {/* apple health — renders nothing where there is no health store */}
-            <HealthSyncSettings nested />
-        </AccordionSection>
-
-        <AccordionSection
-          title="Account"
-          subtitle="Username, recovery, sign out"
-          open={section === 'account'}
-          onToggle={() => toggleSection('account')}
-          last
-        >
-            {/* Your name. No heading over it: the section this is inside is called
-                Account and the card's own label says Username, so a third word for
-                the same thing was only ever there because the page had no sections
-                to put it in. */}
-            <Card>
-              <Text style={type.labelSm}>Username</Text>
-              {editing ? (
-                <>
-                  <Input
-                    value={draft}
-                    onChangeText={setDraft}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    maxLength={32}
-                    style={styles.input}
-                    placeholderTextColor={colors.textDim}
-                  />
-                  <View style={styles.btnRow}>
-                    <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => { setEditing(false); setDraft(user?.username || ''); }} />
-                    <Button title="Save" size="sm" full={false} loading={busy} onPress={saveUsername} accent={accent} />
+        <Reveal delay={180}>
+          <SectionHeader
+            title="Trophies"
+            accessory={
+              earnedTrophies ? (
+                <GameAnimation name="medal" size={TROPHY_MEDAL} trigger={earnedTrophies} />
+              ) : null
+            }
+            framed={false}
+            style={{ marginTop: space.xl, marginBottom: space.md }}
+          />
+          <View style={styles.trophyRow}>
+            {TROPHIES.map(({ key, label, icon, earned }) => {
+              const got = stats ? earned(stats) : false;
+              return (
+                <Card
+                  key={key}
+                  padded={false}
+                  style={styles.trophy}
+                  fill={got ? '#FFF2C6' : colors.card}
+                >
+                  <View style={styles.trophyContent}>
+                    <AppIcon name={icon} size={30} opacity={got ? 1 : 0.6} />
+                    <Text style={[type.captionMedium, { marginTop: 6, textAlign: 'center', color: got ? '#292015' : colors.textMuted }]}>
+                      {label}
+                    </Text>
                   </View>
-                </>
-              ) : (
-                <View style={styles.settingRow}>
-                  <Text style={type.bodyBold}>{user?.username}</Text>
-                  <Button title="Change" variant="secondary" size="sm" full={false} onPress={() => setEditing(true)} />
-                </View>
-              )}
-            </Card>
-
-            {/* the way back in if the password goes. Sits above privacy rather than
-                down by Sign out because an account with no recovery email is a
-                problem to fix, not a preference to browse. */}
-            <RecoveryEmail nested />
-
-            <Button title="Sign out" variant="secondary" onPress={signOut} style={{ marginTop: space.xl }} />
-
-            {!confirmingDelete ? (
-              <Button
-                title="Delete account"
-                variant="destructive"
-                onPress={() => { setConfirmingDelete(true); setDeleteDraft(''); }}
-                // No `backgroundColor` here. The soft red used to be painted on the
-                // button's own root as a way of toning the destructive red down, and
-                // with a hand-drawn frame on top that rectangle showed all round the
-                // wobble — a pale red box with a darker red box inside it, which is
-                // what "two shades of red" was. The frame's paper is the fill now,
-                // and it is the only one.
-                style={{ marginTop: space.md }}
-              />
-            ) : (
-              <Card style={{ marginTop: space.md }} accent={colors.danger}>
-                <Text style={[type.heading, { color: colors.danger, marginBottom: space.sm }]}>Delete this account?</Text>
-                <Text style={[type.bodySm, { color: colors.textMuted, lineHeight: 19 }]}>
-                  This permanently removes your runs and territories. It cannot be undone. Type{' '}
-                  <Text style={[type.bodySmBold]}>{user?.username}</Text> to confirm.
-                </Text>
-                <Input
-                  value={deleteDraft}
-                  onChangeText={setDeleteDraft}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholder={user?.username}
-                  placeholderTextColor={colors.textDim}
-                  style={styles.input}
-                  accessibilityLabel="Type your username to confirm deletion"
-                />
-                <View style={styles.btnRow}>
-                  <Button title="Cancel" variant="secondary" size="sm" full={false} onPress={() => setConfirmingDelete(false)} />
-                  <Button title="Delete forever" variant="destructive" size="sm" full={false} disabled={!deleteMatches} loading={deleting} onPress={doDelete} />
-                </View>
-              </Card>
-            )}
-
-            <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(PRIVACY_POLICY_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Privacy policy">
-              <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Privacy Policy</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.link} onPress={() => Linking.openURL(SUPPORT_URL).catch(() => {})} accessibilityRole="link" accessibilityLabel="Support">
-              <Text style={[type.bodyMedium, { color: colors.textMuted, textDecorationLine: 'underline' }]}>Support</Text>
-            </TouchableOpacity>
-            <Text style={styles.legal}>Pixel effects by Will Tice</Text>
-            <Text style={[styles.legal, { marginTop: space.xs }]}>Additional VFX by Pixel VFX Studio, RiaKare and Luis Zuno</Text>
-            {/* The first run plays against a CraftPix landscape. Their free licence
-                allows commercial use and asks for a credit where one is practical;
-                this is where every other pack in the app is credited, so it costs a
-                line and removes a content rights question at review. */}
-            <Text style={[styles.legal, { marginTop: space.xs }]}>Pixel landscapes by CraftPix.net</Text>
-        </AccordionSection>
-
+                </Card>
+              );
+            })}
+          </View>
+        </Reveal>
       </View>
 
       {/* PASER PRO belongs after the profile content, not between the runner and settings. */}
@@ -971,6 +495,17 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // screen so its scene can, and the padding that clears the status bar is
   // applied inline where the inset is known.
   header: { alignItems: 'center', marginBottom: space.md },
+  settingsButton: {
+    position: 'absolute',
+    right: space.gutter,
+    zIndex: 3,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   wall: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   // The fade wrapper sits BETWEEN the wall and its tiles, so it has to carry
@@ -1046,47 +581,5 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   trophyRow: { flexDirection: 'row', gap: space.sm },
   trophy: { flex: 1, paddingVertical: space.md, alignItems: 'center', justifyContent: 'center', minHeight: 80 },
   trophyContent: { alignItems: 'center', justifyContent: 'center', flex: 1 },
-
-  runRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
-  runDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
-  claimDot: { width: 8, height: 8, borderRadius: 4 },
-  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
-  toggleRowInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-
-  input: {
-    ...type.body,
-    backgroundColor: colors.bgElevated,
-    paddingHorizontal: space.md,
-    paddingVertical: 12,
-    marginVertical: space.sm,
-    ...nbField(scheme, { on: colors.bgElevated }),
-  },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: space.sm },
-  // `space-between` on a single row worked for the original six, but ten
-  // swatches (plus a label under each) in that width just overlapped. Wraps
-  // instead, spaced evenly regardless of how many colours the list grows to.
-  swatchRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, marginTop: space.md },
-  swatchItem: { alignItems: 'center', gap: 6, width: 56 },
-  swatch: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  swatchSelected: { borderWidth: 3, borderColor: colors.text, transform: [{ scale: 1.12 }] },
-  // A gold padlock over a PASER PRO colour, on a scrim dark enough to read on
-  // any swatch. Rounds to match the 34px circle it sits on.
-  swatchLock: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 17,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  btnRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm, marginTop: space.sm },
-
-  link: { marginTop: space.xl, alignItems: 'center' },
   legal: { ...type.caption, color: colors.textDim, marginTop: space.md, textAlign: 'center' },
 });

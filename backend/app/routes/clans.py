@@ -144,7 +144,10 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
                 """
                 SELECT cm.user_id::text, u.username, cm.role, cm.joined_at,
                        COALESCE(cw.distance_m, 0), COALESCE(cw.claims, 0),
-                       COALESCE(member_area.area_m2, 0)
+                       COALESCE(member_area.area_m2, 0),
+                       -- Identity, so the club page can stand its leader and
+                       -- top member as their whole runner.
+                       u.avatar, COALESCE(u.solo_elo, 1000)
                 FROM clan_members cm
                 JOIN users u ON u.id = cm.user_id
                 LEFT JOIN clan_week_goals g ON g.clan_id = cm.clan_id AND g.week_start = :ws
@@ -171,6 +174,8 @@ def _clan_out(db: Session, clan_id: str, viewer_id, full=False) -> schemas.ClanO
                 user_id=r[0], username=r[1], role=r[2], joined_at=r[3],
                 week_distance_m=float(r[4]), week_claims=int(r[5]),
                 area_m2=float(r[6]),
+                avatar=r[7],
+                rank_key=elo.key_for(r[8]),
             )
             for r in sorted(rows, key=lambda r: (role_rank.get(r[2], 3), -float(r[6])))
         ]

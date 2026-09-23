@@ -21,12 +21,15 @@ import { useClan } from '../state/clan';
 import { radius, space, useTheme, useThemedStyles, useThemedType } from '../theme';
 import { Screen, Card, Row, Button, Pill, SectionHeader, Skeleton, StatValue } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
+import PlayerIdentity, { RankCrest, RunnerFigure } from '../components/identity/PlayerIdentity';
 import RankCard from '../components/rank/RankCard';
 import { standingFrom } from '../config/rankLadder';
 import { toast } from '../ui/toast';
 import { Arrival, Bar, Reveal, staggerDelay, useArrival } from '../ui/motion';
 
 const km2 = (m) => (m / 1e6).toFixed(2);
+// A featured member's full body runner.
+const FEATURED_H = 120;
 const km = (m) => (m / 1000).toFixed(1);
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
 
@@ -60,6 +63,14 @@ export default function ClubDetailScreen({ route, navigation }) {
 
   const accent = clan.color.stroke;
   const leader = clan.members.find((m) => m.role === 'leader');
+  // The member holding the most of the club's land. Featured beside the leader
+  // as a whole runner unless it IS the leader.
+  const top = clan.members.reduce((best, m) => (!best || m.area_m2 > best.area_m2 ? m : best), null);
+  const mvp = top && top.area_m2 > 0 && top.user_id !== leader?.user_id ? top : null;
+  // A server from before members carried their loadout sends no `avatar` key
+  // at all; that keeps the old icon layout rather than a stranger in default
+  // clothes.
+  const hasLooks = (m) => !!m && 'avatar' in m;
 
   // Club XP → level (same curve as a player: level = floor(sqrt(xp/100))).
   const clubXp = clan.xp || 0;
@@ -180,7 +191,36 @@ export default function ClubDetailScreen({ route, navigation }) {
         </Row>
 
         {/* leader */}
-        {leader && (
+        {leader && hasLooks(leader) ? (
+          <>
+            <SectionHeader
+              title={mvp ? 'Leader and top runner' : 'Leader'}
+              style={{ marginTop: space.xl, marginBottom: space.md }}
+            />
+            {/* The featured members stand as their whole runner: a club is
+                the people in it, and this is where you see who they are. */}
+            <Card>
+              <Row style={styles.featured}>
+                {[{ m: leader, tag: 'Leader', icon: 'crown' }, mvp ? { m: mvp, tag: 'Top runner', icon: 'trophy' } : null]
+                  .filter(Boolean)
+                  .map(({ m, tag, icon }) => (
+                    <View key={m.user_id} style={styles.featuredMember}>
+                      <View style={styles.featuredRunner}>
+                        <RunnerFigure equipped={m.avatar} height={FEATURED_H} accessibilityLabel={`${m.username}'s runner`} />
+                        {m.rank_key ? <RankCrest tierKey={m.rank_key} size={24} style={styles.featuredCrest} /> : null}
+                      </View>
+                      <Row gap={4}>
+                        <AppIcon name={icon} size={16} />
+                        <Text style={[type.captionMedium, { color: accent }]}>{tag}</Text>
+                      </Row>
+                      <Text style={type.bodyBold} numberOfLines={1}>{m.username}</Text>
+                      <Text style={type.caption} numberOfLines={1}>{`${km2(m.area_m2)} km², ${m.week_claims} claims this week`}</Text>
+                    </View>
+                  ))}
+              </Row>
+            </Card>
+          </>
+        ) : leader ? (
           <>
             <SectionHeader title="Leader" style={{ marginTop: space.xl, marginBottom: space.md }} />
             <Card>
@@ -195,7 +235,7 @@ export default function ClubDetailScreen({ route, navigation }) {
               </Row>
             </Card>
           </>
-        )}
+        ) : null}
 
         {/* roster */}
         <SectionHeader title={`Members (${clan.member_count})`} style={{ marginTop: space.xl, marginBottom: space.md }} />
@@ -204,6 +244,11 @@ export default function ClubDetailScreen({ route, navigation }) {
             <Reveal key={m.user_id} delay={staggerDelay(i)}>
               <View style={[styles.memberRow, i > 0 && styles.divider]}>
                 <Row gap={8} style={{ flex: 1 }}>
+                  {/* Portrait with its rank ring: a roster is a list, and a
+                      list gets the smallest mode (see identity/PlayerIdentity). */}
+                  {hasLooks(m) ? (
+                    <PlayerIdentity mode="portrait" equipped={m.avatar} rankKey={m.rank_key} size={32} bg={colors.cardAlt} />
+                  ) : null}
                   <Text style={type.bodyBold}>{m.username}</Text>
                   {m.role !== 'member' ? <Pill label={m.role} color={accent} /> : null}
                 </Row>
@@ -245,6 +290,10 @@ const makeStyles = (colors) => StyleSheet.create({
   action: { alignSelf: 'stretch', marginTop: space.md },
   xpTrack: { height: 8, borderRadius: 4, backgroundColor: colors.cardAlt, overflow: 'hidden', marginTop: space.sm },
   xpFill: { height: '100%', borderRadius: 4 },
+  featured: { justifyContent: 'space-around', alignItems: 'flex-end' },
+  featuredMember: { flex: 1, alignItems: 'center', gap: 2 },
+  featuredRunner: { alignItems: 'center', justifyContent: 'flex-end', marginBottom: space.xs },
+  featuredCrest: { position: 'absolute', right: -8, bottom: -2 },
   leaderAvatar: {
     width: 44, height: 44, borderRadius: 22, borderWidth: 2,
     alignItems: 'center', justifyContent: 'center',

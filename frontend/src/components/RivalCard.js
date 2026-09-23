@@ -17,6 +17,12 @@ import { Framed, ToonButton, ToonCard, ToonGhostButton } from './ui';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import { useAvatar } from '../state/avatar';
+import { RankCrest, RunnerFigure } from './identity/PlayerIdentity';
+
+// The featured card (the rivalry's own page) stands both runners whole, face to
+// face: recognising somebody by what they run in is half of what a rivalry is.
+// The list keeps the portraits, which is what keeps a list of rivals cheap.
+const FEATURED_H = 132;
 import { sinceServer } from '../utils/time';
 
 // Territory uses one unit throughout the app. Small claims receive a third
@@ -74,9 +80,37 @@ function VersusBar({ mine, theirs }) {
   );
 }
 
-function Side({ label, avatar, rankKey, area, times, align = 'left' }) {
+function Side({ label, avatar, rankKey, area, times, align = 'left', featured = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
+  if (featured) {
+    return (
+      <View style={styles.featuredSide}>
+        <View style={styles.featuredRunner}>
+          <RunnerFigure
+            equipped={avatar}
+            height={FEATURED_H}
+            // Not mirrored to "face" each other: a flip would put a side
+            // ponytail or a one shoulder bag on the wrong side of their
+            // outfit, and the point here is to show it as they wear it.
+            accessibilityLabel={`${label}'s runner`}
+          />
+          <RankCrest
+            tierKey={rankKey || 'wood'}
+            size={26}
+            style={[styles.featuredCrest, align === 'right' ? { right: -6 } : { left: -6 }]}
+          />
+        </View>
+        <Text style={[toonType.sub, { fontSize: 15, color: colors.text }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[type.caption, { marginTop: 1, textAlign: 'center' }]} numberOfLines={1}>
+          {fmtArea(area)}
+          {times ? `, ${times === 1 ? 'once' : `${times} times`}` : ''}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View style={[styles.side, align === 'right' && { flexDirection: 'row-reverse' }]}>
       {/* No fixed clipping box around the bust — the frame is wider than the
@@ -108,6 +142,7 @@ export default function RivalCard({
   onViewLand,
   onPress,
   compact = false,
+  featured = false,
   style,
 }) {
   const { colors } = useTheme();
@@ -150,6 +185,7 @@ export default function RivalCard({
             rankKey={myRankKey}
             area={compact ? rival.your_land_m2 : rival.you_took_m2}
             times={compact ? 0 : rival.you_took_times}
+            featured={featured}
           />
           <Text style={[type.caption, styles.vs]}>vs</Text>
           <Side
@@ -159,6 +195,7 @@ export default function RivalCard({
             area={compact ? rival.their_land_m2 : rival.they_took_m2}
             times={compact ? 0 : rival.they_took_times}
             align="right"
+            featured={featured}
           />
         </View>
 
@@ -202,6 +239,9 @@ const styles = StyleSheet.create({
   sides: { flexDirection: 'row', alignItems: 'center', marginTop: space.md, gap: space.sm },
   side: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   vs: { textTransform: 'uppercase', letterSpacing: 1 },
+  featuredSide: { flex: 1, alignItems: 'center' },
+  featuredRunner: { alignItems: 'center', justifyContent: 'flex-end', marginBottom: space.xs },
+  featuredCrest: { position: 'absolute', bottom: -2 },
 
   bar: {
     flexDirection: 'row',

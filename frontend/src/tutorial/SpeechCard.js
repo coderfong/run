@@ -1,34 +1,41 @@
 // What the runner reads.
 //
-// A cream panel in one of the app's hand-drawn frames, sitting on the dimmed
-// screen with the runner standing on its top edge. Cream rather than themed,
-// deliberately: the scrim behind it is dark in BOTH schemes, so a card that
-// followed the theme would be a dark card on a dark screen half the time.
-// This is the one surface in PASER that is allowed to ignore the palette,
-// because what it sits on is not the page.
+// A cream panel in one of the app's hand-drawn frames. Cream rather than
+// themed, deliberately: the scrim behind it is dark in BOTH schemes, so a card
+// that followed the theme would be a dark card on a dark screen half the time.
 //
-// FOUR PRESENTATIONS, one component:
-//   card    the ordinary coach mark
-//   loop    RUN → CLAIM → DEFEND, the one moment the tutorial gets to be big
-//   payoff  the first claim landing
-//   training a safe illustrated simulation of the rest of the game
+// SMALL ON PURPOSE. A title, one or two short sentences, and at most one
+// instruction. The tutorial layer must never be busier than the screen it is
+// explaining, so pink is kept for three things only: the highlighted keyword,
+// the pulse around the target, and the primary button.
 //
-// The copy comes in with *asterisks* round the words that carry the idea; they
-// come out in PASER pink. See highlight.js.
+// PRESENTATIONS:
+//   card     an anchored callout next to the real control
+//   welcome  the first card: the four lines of the game
+//   payoff   the demo claim landing
+//   loop     "you're ready": RUN CLAIM DEFEND CLIMB
+//   banner   one line across the top while the demo route draws
+//
+// Every way on is an explicit button: SHOW ME, GOT IT, START EXPLORING, or the
+// real control the card points at. There is no "tap anywhere to continue".
 
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { NB, brand, fonts, space, type } from '../theme';
 import { Framed, ToonButton } from '../components/ui';
 import { framePose } from '../ui/frameRegistry';
+import { STAGES } from './phases';
 import { parseHighlights, plainText } from './highlight';
 
-// The three beats of the game, spelled out once. Not copy that changes: this
-// IS the loop, and if it ever reads differently here than it plays, the game
-// has moved and this is the thing that should have been updated.
-const LOOP_BEATS = ['RUN', 'CLAIM', 'DEFEND'];
+// The four verbs of the game, spelled once.
+const LOOP_BEATS = ['RUN', 'CLAIM', 'DEFEND', 'CLIMB'];
+
+// A button pressed within this long of its card appearing was meant for the
+// card before it. Swallowing it is what stops a fast double tap from carrying
+// the runner through two cards at once.
+const PRESS_GUARD_MS = 350;
 
 function Copy({ text, style, accent }) {
   const runs = parseHighlights(text);
@@ -46,122 +53,181 @@ function Copy({ text, style, accent }) {
   );
 }
 
-function LoopLadder({ accent }) {
+// RUN → CLAIM → DEFEND → READY. Subtle: small caps, the current stage in ink
+// and underlined (so it reads without colour), the rest faded.
+function StageStrip({ stage, accent }) {
+  const at = STAGES.indexOf(stage);
+  if (at < 0) return null;
   return (
-    <View style={styles.ladder} accessibilityLabel="Run, then claim, then defend">
-      {LOOP_BEATS.map((beat, i) => (
-        <View key={beat} style={styles.ladderRow}>
-          <Text style={[styles.ladderWord, { color: i === 0 ? accent : NB.ink }]}>{beat}</Text>
-          {i < LOOP_BEATS.length - 1 ? <Text style={styles.ladderArrow}>↓</Text> : null}
-        </View>
+    <View
+      style={styles.stages}
+      accessible
+      accessibilityLabel={`Step ${at + 1} of ${STAGES.length}: ${stage.toLowerCase()}`}
+    >
+      {STAGES.map((s, i) => (
+        <React.Fragment key={s}>
+          {i > 0 ? <Text style={styles.stageArrow}>→</Text> : null}
+          <View style={[styles.stageItem, i === at && { borderBottomColor: accent }]}>
+            <Text style={[styles.stageWord, i === at && styles.stageWordOn, i < at && styles.stageWordDone]}>
+              {s}
+            </Text>
+          </View>
+        </React.Fragment>
       ))}
     </View>
   );
 }
 
-const TRAINING_SCENES = {
-  run: { icon: '🏃', track: '● ━━ ● ━━ ●', stat: '2.40 km   14:32   0.18 km²' },
-  claim: { icon: '📍', track: '○ ━━ ◉ ━━ ○', stat: 'CLAIM READY   0.18 km²' },
-  rival: { icon: '⚔️', track: 'YOU  ▶  RIVAL LAND', stat: 'POWER 82   VS   64' },
-  captured: { icon: '🚨', track: 'YOUR LAND  ▶  RIVAL LAND', stat: 'CAPTURED   RUN TO RESPOND' },
-  crossroads: { icon: '🤝', track: 'YOUR ROUTE  ✕  THEIR ROUTE', stat: 'NEW CROSSROADS ENCOUNTER' },
-  customise: { icon: '👕', track: '🧢   👕   👟   ✨', stat: 'EQUIP YOUR LOOK AND EFFECTS' },
-  shop: { icon: '🛒', track: 'EARN  ▶  UNLOCK  ▶  EQUIP', stat: 'COSMETICS ONLY   NO POWER' },
-  progress: { icon: '🏆', track: 'MISSIONS   RANK   CLUBS', stat: 'RUNS BUILD YOUR SEASON' },
-  defend: { icon: '🛡️', track: 'RUN  ▶  CLAIM  ▶  DEFEND', stat: 'YOUR CITY CHANGES WITH YOU' },
-};
-
-function TrainingScene({ scene, accent }) {
-  const item = TRAINING_SCENES[scene];
-  if (!item) return null;
+function LoopRow({ accent }) {
   return (
-    <View style={styles.training} accessibilityLabel={`${item.track}. ${item.stat}`}>
-      <Text style={styles.trainingIcon}>{item.icon}</Text>
-      <Text style={[styles.trainingTrack, { color: accent }]}>{item.track}</Text>
-      <View style={styles.trainingMeter}>
-        <View style={[styles.trainingMeterFill, { backgroundColor: accent }]} />
-      </View>
-      <Text style={styles.trainingStat}>{item.stat}</Text>
+    <View style={styles.loop} accessibilityLabel="Run. Claim. Defend. Climb.">
+      {LOOP_BEATS.map((beat, i) => (
+        <Text key={beat} style={[styles.loopWord, i === 0 && { color: accent }]}>
+          {beat}.
+        </Text>
+      ))}
     </View>
+  );
+}
+
+export function TutorialBanner({ title, accent = brand.pink, onSkip, style, reduced }) {
+  return (
+    <Animated.View
+      style={[styles.banner, style]}
+      entering={reduced ? undefined : FadeIn.duration(180)}
+      pointerEvents="box-none"
+      accessibilityLiveRegion="polite"
+    >
+      <Copy text={title} accent={accent} style={styles.bannerTitle} />
+      {onSkip ? (
+        <Pressable
+          onPress={onSkip}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Skip tutorial"
+        >
+          <Text style={styles.bannerSkip}>Skip tutorial</Text>
+        </Pressable>
+      ) : null}
+    </Animated.View>
   );
 }
 
 export default function SpeechCard({
   title,
   lines = [],
+  ack,
+  action,
   kind = 'card',
-  scene,
   cta,
   onPress,
-  hint,
+  secondary,
+  onSecondary,
+  onSkip,
+  stage,
   accent = brand.pink,
-  progress,
+  modal = true,
   onLayout,
   style,
   reduced = false,
 }) {
+  const shownAt = useRef(Date.now());
+  const guarded = useCallback(
+    (fn) => () => {
+      if (!fn || Date.now() - shownAt.current < PRESS_GUARD_MS) return;
+      fn();
+    },
+    []
+  );
+
   const payoff = kind === 'payoff';
+  const welcome = kind === 'welcome';
   return (
     <Animated.View
       style={style}
       onLayout={onLayout}
-      // Small and quick: 0.94 up to 1 with the fade, which reads as the card
-      // arriving rather than as it being inflated.
       entering={reduced ? undefined : FadeIn.duration(190)}
-      accessibilityViewIsModal
+      // Only a card that blocks the screen traps VoiceOver. An action step's
+      // card must let VoiceOver reach the real control it is pointing at.
+      accessibilityViewIsModal={modal}
     >
       <Framed
         frame="panel"
         fill={NB.paper}
         pose={framePose(`tutorial-${kind}`)}
         inset={space.sm}
-        contentStyle={styles.body}
+        contentStyle={[styles.body, kind === 'card' && styles.bodyCompact]}
       >
-        {progress ? (
-          <View style={styles.dots}>
-            {Array.from({ length: progress.total }, (_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i === progress.index && [styles.dotOn, { backgroundColor: accent }],
-                ]}
-              />
-            ))}
-          </View>
-        ) : null}
+        {stage ? <StageStrip stage={stage} accent={accent} /> : null}
+
+        {ack ? <Text style={styles.ack}>{ack}</Text> : null}
 
         <Copy
           text={title}
           accent={accent}
-          style={[payoff ? styles.payoffTitle : styles.title, payoff && { color: accent }]}
+          style={[
+            payoff ? styles.payoffTitle : welcome ? styles.welcomeTitle : styles.title,
+          ]}
         />
 
-        {kind === 'loop' ? <LoopLadder accent={accent} /> : null}
-        {kind === 'training' ? <TrainingScene scene={scene} accent={accent} /> : null}
+        {kind === 'loop' ? <LoopRow accent={accent} /> : null}
 
         {lines.map((line) => (
-          <Copy key={line} text={line} accent={accent} style={styles.line} />
+          <Copy
+            key={line}
+            text={line}
+            accent={accent}
+            style={[styles.line, welcome && styles.welcomeLine, payoff && styles.payoffLine]}
+          />
         ))}
+
+        {action ? (
+          <View style={styles.actionRow} accessibilityRole="text">
+            <View style={[styles.actionDot, { backgroundColor: accent }]} />
+            <Text style={styles.action}>{action}</Text>
+          </View>
+        ) : null}
 
         {cta ? (
           <ToonButton
             title={cta}
-            onPress={onPress}
+            onPress={guarded(onPress)}
             size="sm"
             fill={{ color: accent, border: NB.ink }}
             containerStyle={styles.cta}
+            accessibilityLabel={cta}
           />
         ) : null}
 
-        {/* Only where a tap is the way on. An action step says what to press in
-            its copy, and a second instruction under it competes with the
-            first. */}
-        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+        {secondary ? (
+          <Pressable
+            onPress={guarded(onSecondary)}
+            hitSlop={8}
+            style={styles.secondary}
+            accessibilityRole="button"
+            accessibilityLabel={secondary}
+          >
+            <Text style={styles.secondaryLabel}>{secondary}</Text>
+          </Pressable>
+        ) : null}
+
+        {onSkip ? (
+          <Pressable
+            onPress={onSkip}
+            hitSlop={8}
+            style={styles.skip}
+            accessibilityRole="button"
+            accessibilityLabel="Skip tutorial"
+          >
+            <Text style={styles.skipLabel}>Skip tutorial</Text>
+          </Pressable>
+        ) : null}
       </Framed>
     </Animated.View>
   );
 }
+
+const INK_FADED = 'rgba(12,12,16,0.45)';
 
 const styles = StyleSheet.create({
   body: {
@@ -169,82 +235,60 @@ const styles = StyleSheet.create({
     paddingVertical: space.lg,
     gap: space.sm,
   },
+  bodyCompact: {
+    paddingVertical: space.md,
+    gap: 6,
+  },
 
-  title: {
-    ...type.title,
-    color: NB.ink,
-    // The token bakes in the dark palette's text colour and this card is
-    // cream, so the colour is restated on every text style in this file.
-  },
-  payoffTitle: {
-    ...type.display,
-    color: NB.ink,
-  },
+  stages: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
+  stageItem: { borderBottomWidth: 2, borderBottomColor: 'transparent', paddingBottom: 1 },
+  stageWord: { ...type.caption, fontSize: 10, letterSpacing: 0.8, color: INK_FADED },
+  stageWordOn: { color: NB.ink, fontFamily: fonts.bold },
+  stageWordDone: { color: 'rgba(12,12,16,0.7)' },
+  stageArrow: { ...type.caption, fontSize: 10, color: INK_FADED },
+
+  ack: { ...type.bodySmBold, color: NB.ink },
+
+  // Every text style restates the ink: the tokens bake in the dark palette's
+  // text colour and this card is cream.
+  title: { ...type.title, color: NB.ink },
+  welcomeTitle: { ...type.display, color: NB.ink },
+  payoffTitle: { ...type.display, color: NB.ink },
   line: {
     ...type.bodyMedium,
     fontSize: 15,
     lineHeight: 21,
     color: NB.ink,
   },
+  welcomeLine: { fontFamily: fonts.bold, fontSize: 17, lineHeight: 23 },
+  payoffLine: { fontSize: 16 },
 
-  ladder: { alignItems: 'center', paddingVertical: space.xs, gap: 2 },
-  ladderRow: { alignItems: 'center' },
-  ladderWord: {
-    fontFamily: fonts.hero,
-    fontSize: 30,
-    lineHeight: 34,
-    letterSpacing: 0.5,
-    color: NB.ink,
-  },
-  ladderArrow: {
-    fontFamily: fonts.bold,
-    fontSize: 16,
-    lineHeight: 18,
-    color: 'rgba(12,12,16,0.45)',
-  },
-  training: {
-    alignItems: 'center',
-    gap: 7,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.xs,
-    borderRadius: 12,
-    backgroundColor: 'rgba(12,12,16,0.06)',
-  },
-  trainingIcon: { fontSize: 31, lineHeight: 38 },
-  trainingTrack: {
-    fontFamily: fonts.bold,
-    fontSize: 14,
-    lineHeight: 19,
-    textAlign: 'center',
-  },
-  trainingMeter: {
-    width: '88%',
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(12,12,16,0.14)',
-  },
-  trainingMeterFill: { width: '72%', height: '100%', borderRadius: 4 },
-  trainingStat: {
-    ...type.labelSm,
-    color: 'rgba(12,12,16,0.62)',
-    textAlign: 'center',
-  },
+  loop: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: space.xs },
+  loopWord: { fontFamily: fonts.hero, fontSize: 20, lineHeight: 26, color: NB.ink },
+
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  actionDot: { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: NB.ink },
+  action: { ...type.bodySmBold, fontSize: 14, color: NB.ink, letterSpacing: 0.3 },
 
   cta: { alignSelf: 'stretch', marginTop: space.xs },
-  hint: {
-    ...type.caption,
-    color: 'rgba(12,12,16,0.5)',
-    textAlign: 'center',
-    marginTop: space.xs,
-  },
+  secondary: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10 },
+  secondaryLabel: { ...type.bodySmBold, color: NB.ink, textDecorationLine: 'underline' },
+  // Visually secondary, but a real, labelled button with a full hit area.
+  skip: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10, minHeight: 32, justifyContent: 'center' },
+  skipLabel: { ...type.caption, color: 'rgba(12,12,16,0.6)', textDecorationLine: 'underline' },
 
-  dots: { flexDirection: 'row', gap: 5, alignSelf: 'flex-start', marginBottom: 2 },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(12,12,16,0.2)',
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+    backgroundColor: NB.paper,
+    borderWidth: 2.5,
+    borderColor: NB.ink,
+    borderRadius: 16,
+    paddingHorizontal: space.md,
+    paddingVertical: 10,
   },
-  dotOn: { width: 16 },
+  bannerTitle: { ...type.bodySmBold, fontSize: 15, color: NB.ink, flexShrink: 1 },
+  bannerSkip: { ...type.caption, color: 'rgba(12,12,16,0.6)', textDecorationLine: 'underline' },
 });

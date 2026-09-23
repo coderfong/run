@@ -218,7 +218,11 @@ describe('trying it on', () => {
     const tree = await mountShop();
     await act(async () => { byLabel(tree, 'Cap, common').props.onPress(); });
     const rig = tree.root.findAllByType(CharacterRig)[0];
-    const mirror = StyleSheet.flatten(rig.parent.props.style);
+    // The window is the nearest ancestor with a set height (the rig sits in
+    // a Pop inside it).
+    let node = rig.parent;
+    while (node && StyleSheet.flatten(node.props?.style)?.height == null) node = node.parent;
+    const mirror = StyleSheet.flatten(node.props.style);
     const tall = rig.props.size * BODY_RATIO * (1 + HEADROOM);
     expect(tall + mirror.paddingBottom).toBeLessThanOrEqual(mirror.height);
     expect(rig.props.size).toBeLessThanOrEqual(mirror.width);
@@ -244,5 +248,32 @@ describe('trying it on', () => {
 
     await act(async () => { byLabel(tree, ', common, 80 coins').props.onPress(); });
     expect(texts(tree)).not.toContain('short');
+  });
+});
+
+describe('the storefront panel', () => {
+  test('owned and equipped read as words, not just colour', async () => {
+    // `stripetee` is the equipped top in the mocked avatar.
+    jest.spyOn(api, 'shop').mockResolvedValue({
+      ...SHOP,
+      items: [
+        ...SHOP.items.map((i) => (i.item_id === 'wayfarer' ? { ...i, owned: true } : i)),
+        { item_id: 'stripetee', slot: 'top', rarity: 'common', price: 60, owned: true },
+      ],
+    });
+    const tree = await mountShop();
+    const labels = labelsFor(tree, ', common,').concat(labelsFor(tree, ', rare,'));
+    expect(labels.some((l) => l.endsWith(', equipped'))).toBe(true);
+    expect(labels.some((l) => l.endsWith(', owned'))).toBe(true);
+    expect(texts(tree)).toContain('Equipped');
+    expect(texts(tree)).toContain('Owned');
+  });
+
+  test('one restock clock, in the panel, and no board over the scene', async () => {
+    const tree = await mountShop();
+    const t = texts(tree);
+    expect(t).toMatch(/Fresh stock in \d+m \d+s|Fresh stock in \d+h \d+m \d+s/);
+    expect(t).not.toContain('NEXT DROP');
+    expect(t).not.toContain('YOUR PASER');
   });
 });

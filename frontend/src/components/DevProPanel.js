@@ -21,6 +21,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { recentEvents } from '../analytics';
 import { useAuth } from '../auth/AuthContext';
+import { useTutorialActive } from '../tutorial/TutorialContext';
 import { GOLD } from '../config/pro';
 import { PRO_CONTEXTS } from '../config/proContexts';
 import { FREE_PLANNER_PREVIEWS } from '../config/proExposure';
@@ -48,6 +49,7 @@ function Btn({ label, on, onPress, colors, type }) {
 
 export default function DevProPanel({ style }) {
   const { user } = useAuth();
+  const tutorialActive = useTutorialActive();
   const { colors } = useTheme();
   const type = useThemedType();
   const {
@@ -65,6 +67,9 @@ export default function DevProPanel({ style }) {
   const [, bump] = useState(0);
   const refresh = () => bump((n) => n + 1);
 
+  // Never while the first-run tutorial is on screen, whoever is holding the
+  // phone: a new runner's tutorial must look exactly like the real app.
+  if (tutorialActive) return null;
   if (!__DEV__ && !user?.dev_tools) return null;
 
   const snap = exposureSnapshot();

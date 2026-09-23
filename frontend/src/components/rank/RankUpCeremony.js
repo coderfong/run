@@ -47,7 +47,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import RankBadge, { RankPlaque } from './RankBadge';
+import { RankPlaque } from './RankBadge';
+import { RankCrest, RunnerFigure } from '../identity/PlayerIdentity';
 import RankWorld from './RankWorld';
 import { tierAt } from '../../config/rankLadder';
 import { Confetti, haptic, useReduceMotion } from '../../ui/motion';
@@ -66,6 +67,13 @@ const LAND_MS = 620;
 // phone up.
 const BADGE = 150;
 const BADGE_OF_HEIGHT = 0.18;
+// THE PROMOTED RUNNER IS SHOWN WHOLE. The badge used to be the runner's head in
+// the tier's frame; a promotion is the biggest flex the game has, so the whole
+// outfit stands in the light now, a little taller than the badge was, and the
+// rank is the crest at their side. The crest is what TURNS at the glare, the
+// same trick the frame used to do.
+const HERO_OF_BADGE = 1.3;
+const CREST_OF_BADGE = 0.42;
 
 // Kept clear under the stage for "Tap to continue". The stage centres in the
 // room above it rather than on the whole page.
@@ -239,14 +247,21 @@ export default function RankUpCeremony({ visible, from, to, topPercent, equipped
           <RankWorld tierKey={newTier.key} ink={newTier.ink} width={width} style={worldStyle} />
 
           <Animated.View style={[styles.badge, badgeStyle]}>
-            <RankBadge
-              tierKey={shownTier.key}
-              equipped={equipped}
-              size={badgeSize}
-              division={shown.division}
-              color={shownTier.color}
-              showStars={landed || reduced}
-            />
+            <View style={styles.hero}>
+              <RunnerFigure
+                equipped={equipped}
+                height={Math.round(badgeSize * HERO_OF_BADGE)}
+                pose={landed ? 'celebrate' : 'neutral'}
+                poseDelay={120}
+                accessibilityLabel="Your runner"
+              />
+              <RankCrest
+                tierKey={shownTier.key}
+                division={shown.division}
+                size={Math.round(badgeSize * CREST_OF_BADGE)}
+                style={styles.heroCrest}
+              />
+            </View>
           </Animated.View>
 
           {/* Everything under the badge arrives only once the light is gone —
@@ -290,6 +305,10 @@ const styles = StyleSheet.create({
   shaft: { alignItems: 'center', justifyContent: 'center' },
   stage: { alignItems: 'center', justifyContent: 'center' },
   badge: { marginTop: space.sm },
+  hero: { alignItems: 'center', justifyContent: 'flex-end' },
+  // At the runner's feet, off to the left, overlapping the figure's box
+  // rather than the figure: the outfit stays unobstructed.
+  heroCrest: { position: 'absolute', left: -space.xl, bottom: -space.xs },
 
   settled: { alignItems: 'center', marginTop: space.xl },
   percentile: {

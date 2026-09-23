@@ -34,6 +34,34 @@ import { preloadImages } from '../utils/imagePreload';
 // referenced the retired SVG catalog, so v2 starts fresh (studio shows once).
 const keyFor = (user) => `avatar:v2:${user?.id || user?.user_id || user?.username || 'anon'}`;
 
+// How long launch may wait on /me for a device with no saved runner. It only
+// happens on a fresh install or a new phone, never on an ordinary launch.
+const SERVER_AVATAR_WAIT_MS = 6000;
+
+/**
+ * The loadout the SERVER holds for this account. `known` is false when the
+ * question could not be answered (offline, a cold server, a backend from
+ * before /me carried `avatar`), which callers must read as "do not know",
+ * never as "has none".
+ */
+export async function serverAvatar(user, fetchMe = () => api.me()) {
+  if (user && Object.prototype.hasOwnProperty.call(user, 'avatar')) {
+    return { known: true, avatar: user.avatar || null };
+  }
+  try {
+    const me = await Promise.race([
+      fetchMe(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), SERVER_AVATAR_WAIT_MS)),
+    ]);
+    if (me && Object.prototype.hasOwnProperty.call(me, 'avatar')) {
+      return { known: true, avatar: me.avatar || null };
+    }
+  } catch {
+    // Unknown, below.
+  }
+  return { known: false, avatar: null };
+}
+
 const AvatarContext = createContext({
   equipped: DEFAULT_EQUIPPED,
   rankKey: 'wood',
@@ -85,8 +113,27 @@ export function AvatarProvider({ children }) {
           // avatar before it was stored server-side.
           api.setAvatar(loaded).catch(() => {});
         } else {
-          setEquipped(DEFAULT_EQUIPPED);
-          setNeedsSetup(true);
+          // NOTHING ON THIS DEVICE IS NOT "NEVER MADE A RUNNER". A reinstall,
+          // a new phone or a cleared app all land here, and this used to send
+          // every one of those veterans back through the character intro. The
+          // server keeps the loadout (`users.avatar`, returned on /me), so it
+          // decides: a saved runner is adopted and kept on the device again;
+          // only a server that CONFIRMS there is none asks for setup. If the
+          // server cannot be asked, nothing is shown: a brand new account
+          // gets the whole intro from sign up anyway (needsOnboarding), and a
+          // runner can always dress in the studio.
+          const server = await serverAvatar(user);
+          if (!alive) return;
+          if (server.known && server.avatar) {
+            const restored = { ...DEFAULT_EQUIPPED, ...server.avatar };
+            nextEquipped = restored;
+            setEquipped(restored);
+            setNeedsSetup(false);
+            AsyncStorage.setItem(keyFor(user), JSON.stringify(restored)).catch(() => {});
+          } else {
+            setEquipped(DEFAULT_EQUIPPED);
+            setNeedsSetup(server.known);
+          }
         }
         // RootNavigator already waits for this provider, so the saved runner
         // gets decoded here and its layers do not pop in separately on Home,

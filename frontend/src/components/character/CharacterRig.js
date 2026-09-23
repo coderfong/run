@@ -26,6 +26,7 @@ import Animated, {
 
 import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
 import { getHairOcclusion } from '../../config/headwearFit';
+import INK_BOUNDS from '../../config/itemInkBounds.json';
 import { useOnScreen, useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
 
@@ -380,6 +381,126 @@ function Feet({ item, equipped, bodyW, bodyH, back = false, captureSafe = false,
       })}
     </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// figureBounds — how far a loadout's DRAWING actually reaches.
+//
+// The rig's layout box is the body plus HEADROOM, and that box is a lie about
+// the figure in three directions: the tallest hats start 0.24 of a body height
+// ABOVE the body (HEADROOM is 0.14, sized for hair), a split shoe hangs a few
+// points past the soles, and wings run to nearly twice the body's width. A
+// caller that fits "the runner" into a box by the layout box alone crops the
+// hat, the shoes or the wings off — which is fine for a circular portrait,
+// which crops on purpose, and wrong anywhere the point is the whole outfit.
+//
+// So this runs the SAME placement maths as `Layer` and `Feet`, over what the
+// loadout actually wears, and returns the union in body units:
+//   up    how far above the body's top edge, as a fraction of body HEIGHT
+//   down  how far below the body's top edge the lowest ink sits, same units
+//   half  half the widest extent from the centre line, as a fraction of body
+//         WIDTH
+// Measured ink boxes (itemInkBounds.json) tighten a layer where one exists;
+// otherwise the image's own canvas is used, which only errs roomy.
+//
+// FLOORED at a standard envelope, so almost every runner comes out at exactly
+// the same scale in the same box: a podium of three people in t shirts should
+// not stand at three heights because one of them has a shoe with a longer
+// canvas. Only a loadout that genuinely reaches past the envelope (a top hat,
+// wings) is given more room, and that is the contain rule doing its job.
+// ---------------------------------------------------------------------------
+
+export const FIGURE_ENVELOPE = { up: HEADROOM, down: 1.035, half: 0.6 };
+
+const BODY_W_OVER_H = 248 / 640;
+
+function inkBox(slot, item) {
+  const box = item && INK_BOUNDS[`${slot}:${item.id}`];
+  return Array.isArray(box) && box.length === 4 ? box : [0, 0, 1, 1];
+}
+
+// One placed layer's reach, in the units described above.
+function layerReach(img, slot, fit, layout, ink) {
+  if (!img) return null;
+  const base = LAYOUT[fit || slot];
+  if (!base) return null;
+  const spec = layout ? { ...base, ...layout } : base;
+  const src = RNImage.resolveAssetSource(img);
+  if (!src?.width || !src?.height) return null;
+  const w = spec.w; // of body width
+  let h = w * BODY_W_OVER_H * (src.height / src.width); // of body height
+  let wEff = w;
+  if (spec.maxH != null && h > spec.maxH) {
+    h = spec.maxH;
+    wEff = (h / BODY_W_OVER_H) * (src.width / src.height);
+  }
+  let top = spec.cy != null ? spec.cy - h / 2 : spec.top;
+  if (slot === 'hair') top += HAIR_LIFT;
+  const cx = spec.dx || 0;
+  const [x0, y0, x1, y1] = ink;
+  return {
+    top: top + y0 * h,
+    bottom: top + y1 * h,
+    left: cx - wEff / 2 + x0 * wEff,
+    right: cx - wEff / 2 + x1 * wEff,
+  };
+}
+
+const boundsCache = new WeakMap();
+
+export function figureBounds(equippedProp) {
+  const equipped = equippedProp || DEFAULT_EQUIPPED;
+  const cached = boundsCache.get(equipped);
+  if (cached) return cached;
+
+  let up = FIGURE_ENVELOPE.up;
+  let down = FIGURE_ENVELOPE.down;
+  let half = FIGURE_ENVELOPE.half;
+  const take = (r) => {
+    if (!r) return;
+    up = Math.max(up, -r.top);
+    down = Math.max(down, r.bottom);
+    half = Math.max(half, Math.abs(r.left), Math.abs(r.right));
+  };
+
+  const it = {
+    hair: getItem('hair', equipped.hair),
+    headwear: getItem('headwear', equipped.headwear || 'none'),
+    glasses: getItem('glasses', equipped.glasses || 'none'),
+    top: getItem('top', equipped.top),
+    bottom: getItem('bottom', equipped.bottom),
+    footwear: getItem('footwear', equipped.footwear || 'none'),
+    accessory: getItem('accessory', equipped.accessory || 'none'),
+  };
+  const occ = getHairOcclusion(it.headwear, it.hair);
+  if (!occ?.hide) take(layerReach(itemImage('hair', it.hair, equipped), 'hair', null, it.hair.layout, inkBox('hair', it.hair)));
+  take(layerReach(itemImage('headwear', it.headwear, equipped), 'headwear', null, it.headwear.layout, inkBox('headwear', it.headwear)));
+  take(layerReach(itemImage('glasses', it.glasses, equipped), 'glasses', null, it.glasses.layout, inkBox('glasses', it.glasses)));
+  take(layerReach(itemImage('top', it.top, equipped), 'top', it.top.fit, it.top.layout, inkBox('top', it.top)));
+  if (!it.top.hidesBottom) {
+    take(layerReach(itemImage('bottom', it.bottom, equipped), 'bottom', null, it.bottom.layout, inkBox('bottom', it.bottom)));
+  }
+  take(layerReach(itemImage('accessory', it.accessory, equipped), 'accessory', null, it.accessory.layout, inkBox('accessory', it.accessory)));
+
+  const shoe = it.footwear;
+  if (shoe?.feet) {
+    ['l', 'r'].forEach((side) => {
+      const spec = shoe.feet[side];
+      const img = side === 'l' ? shoe.footL : shoe.footR;
+      if (!spec || !img) return;
+      const src = RNImage.resolveAssetSource(img);
+      if (!src?.width || !src?.height) return;
+      const h = spec.w * BODY_W_OVER_H * (src.height / src.width);
+      down = Math.max(down, spec.top + h);
+      half = Math.max(half, Math.abs(spec.dx || 0) + spec.w / 2);
+    });
+  } else if (shoe?.id !== 'none') {
+    take(layerReach(itemWornImage('footwear', shoe, equipped), 'footwear', null, shoe?.layout, inkBox('footwear', shoe)));
+  }
+
+  const out = { up, down, half };
+  if (equippedProp && typeof equippedProp === 'object') boundsCache.set(equippedProp, out);
+  return out;
 }
 
 // Memoized: a rig re-assembles up to 8 layers (LAYOUT + getItem lookups) on

@@ -54,18 +54,19 @@ import { haptic, PressableScale } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { landCaptureAlert } from '../components/LandCaptureAlert';
 import { RunEventOverlay, RunStartOverlay } from '../components/run/RunGameplayFx';
-import { CORE, PHASE, SIGNAL, TARGET, TutorialAnchor, useTutorial, useTutorialState, useTutorialTarget } from '../tutorial';
+import { DEMO_RUN_PHASES, SIGNAL, TARGET, useTutorial, useTutorialState, useTutorialTarget } from '../tutorial';
 
 // In-progress run persisted here so an OS kill / crash can't lose a run.
 const ACTIVE_RUN_KEY = 'tr.activeRun';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// The first-run practice plays itself (see the autopilot by tutorialRunPending).
-// How long the run screen is on show before it presses Start, and how long the
-// finished route is held before it presses Finish.
-const TUTORIAL_START_BEAT_MS = 900;
-const TUTORIAL_FINISH_BEAT_MS = 1400;
+// The tutorial's demo run: how many frames the demo route is drawn in, and how
+// far apart. About four seconds, which is long enough to see a route become a
+// loop and short enough that nobody waits for it. Nothing about the tutorial
+// advances when it ends: the Finish button appears, and waits for a press.
+const DEMO_FRAMES = 20;
+const DEMO_FRAME_MS = 200;
 
 // Helper function for border color (local version since theme import may not be available)
 function getNbInk() {
@@ -334,11 +335,19 @@ export default function RunningScreen({ navigation, route }) {
   const tutorialSimRef = useRef(false);
   const tutorialSimTimerRef = useRef(null);
   const tutorialTraceRef = useRef(null);
-  // The practice run's autopilot (see the effect beside tutorialRunPending):
-  // whether it has already pressed Start on this screen, and the beat between
-  // the trace running out and it pressing Finish.
-  const tutorialAutoStartedRef = useRef(false);
-  const tutorialFinishTimerRef = useRef(null);
+  // The first-run tutorial. This screen offers two targets (Start, and the
+  // demo's Finish) and reports three events (the runner pressed Start, the
+  // demo route finished drawing, the runner pressed Finish). It never starts
+  // or finishes anything on the tutorial's behalf.
+  const { signal: tutorialSignal } = useTutorial();
+  const { active: tutorialActive, phase: tutorialPhase } = useTutorialState();
+  // While the tutorial is on one of its run steps, Start starts the DEMO, not
+  // a real run: nothing reaches the network, the watch or HealthKit.
+  const tutorialDemo = tutorialActive && DEMO_RUN_PHASES.has(tutorialPhase);
+  const startTarget = useTutorialTarget(TARGET.RUN_START);
+  const finishTarget = useTutorialTarget(TARGET.FINISH_RUN);
+  // The demo route has finished drawing: show "Finish demo run".
+  const [demoRouteDone, setDemoRouteDone] = useState(false);
   // Adaptive-sampling bookkeeping.
   const gpsModeRef = useRef('high'); // 'high' | 'relaxed'
   const pendingModeRef = useRef({ mode: null, count: 0 });
@@ -509,7 +518,6 @@ export default function RunningScreen({ navigation, route }) {
       setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
       if (tutorialSimTimerRef.current) clearInterval(tutorialSimTimerRef.current);
-      if (tutorialFinishTimerRef.current) clearTimeout(tutorialFinishTimerRef.current);
     };
   }, []);
 
@@ -858,19 +866,25 @@ export default function RunningScreen({ navigation, route }) {
     }
   }
 
-  // TUTORIAL ONLY — see run/tutorialRun.js. Plays the same countdown as a
-  // real start, then a fabricated 5 km trace back over a few real seconds
-  // instead of the ~30 minutes it claims to have taken. Nothing here reaches
-  // the network: the map draws the trail exactly as it would for a real run,
-  // but the run, the claim and everything after it are invented on the
-  // device — see ResultScreen's own `tutorialSim` branches.
+  // TUTORIAL ONLY, see run/tutorialRun.js. Pressed by the RUNNER, on the real
+  // Start button, while the tutorial is on its run step. Plays the same
+  // countdown as a real start, then draws a made up route over about four
+  // seconds. Nothing here reaches the network, persists a run, or writes to
+  // HealthKit: the run, the claim and everything after it are invented on the
+  // device (see ResultScreen's own `tutorialSim` branches).
+  //
+  // When the route has drawn itself the demo does NOT finish: it shows the
+  // Finish demo run button and waits for the runner to press it.
   async function startTutorialSimRun() {
-    if (startingRef.current) return;
+    if (startingRef.current || isRunningRef.current) return;
     startingRef.current = true;
     setStarting(true);
+    // The press IS the event. The countdown below is its feedback.
+    tutorialSignal(SIGNAL.RUN_STARTED);
     try {
       haptic.light();
       setAfterRun(null);
+      setDemoRouteDone(false);
       setStartCountdown(3);
       await wait(520);
       setStartCountdown(2);
@@ -881,12 +895,13 @@ export default function RunningScreen({ navigation, route }) {
       haptic.success();
 
       tutorialSimRef.current = true;
-      setTutorialFacts({ simulatedRun: true });
       const trace = buildTutorialTrace({
         origin: currentLocation || pathRef.current[0] || FALLBACK_ORIGIN,
         seed: Math.floor(Math.random() * 1e9),
       });
       tutorialTraceRef.current = trace;
+      // Never persisted: `persistActiveRun` is only reached from the real GPS
+      // watcher, which the demo never starts.
       runRef.current = { id: `tutorial-${trace.startedAtMs}` };
       pauseWindowsRef.current = [];
       bgHeldRef.current = false;
@@ -906,17 +921,13 @@ export default function RunningScreen({ navigation, route }) {
       lastTierRef.current = RUN_TIER.UNQUALIFIED;
       startedAtRef.current = Date.now();
 
-      // The fabricated trace, replayed over ~11 real seconds. Distance and
-      // elapsed time advance TOGETHER off the trace's own fraction, so the
-      // pace stat reads correctly even though the clock is visibly racing —
-      // a runner watching the map fill in this fast already knows this is a
-      // demonstration, not real GPS.
+      // Distance and elapsed time advance TOGETHER off the trace's own
+      // fraction, so the pace reads correctly even though the clock races.
       const points = trace.points;
-      const frames = 36;
       let frame = 0;
       tutorialSimTimerRef.current = setInterval(() => {
         frame += 1;
-        const upto = Math.max(2, Math.min(points.length, Math.round((frame / frames) * points.length)));
+        const upto = Math.max(2, Math.min(points.length, Math.round((frame / DEMO_FRAMES) * points.length)));
         const slice = points.slice(0, upto);
         pathRef.current = slice;
         setPath(slice);
@@ -929,21 +940,39 @@ export default function RunningScreen({ navigation, route }) {
         if (upto >= points.length && tutorialSimTimerRef.current) {
           clearInterval(tutorialSimTimerRef.current);
           tutorialSimTimerRef.current = null;
-          // THE PRACTICE FINISHES ITSELF. A beat on the full route so the
-          // runner sees the whole loop, then the same Finish a real run
-          // takes, which carries it on to the claim.
-          tutorialFinishTimerRef.current = setTimeout(() => {
-            tutorialFinishTimerRef.current = null;
-            finishRun();
-          }, TUTORIAL_FINISH_BEAT_MS);
+          setDemoRouteDone(true);
+          tutorialSignal(SIGNAL.DEMO_ROUTE_DONE);
         }
-      }, 320);
+      }, DEMO_FRAME_MS);
     } finally {
       setTimeout(() => setStartCountdown(null), 620);
       setStarting(false);
       startingRef.current = false;
     }
   }
+
+  // The tutorial was skipped (or ended) with a demo still on screen. Nothing
+  // of it may outlive the tutorial, so it is dropped here, silently.
+  useEffect(() => {
+    if (tutorialDemo || !tutorialSimRef.current) return;
+    if (tutorialSimTimerRef.current) {
+      clearInterval(tutorialSimTimerRef.current);
+      tutorialSimTimerRef.current = null;
+    }
+    tutorialSimRef.current = false;
+    runRef.current = null;
+    pathRef.current = [];
+    setPath([]);
+    setDistance(0);
+    distanceMRef.current = 0;
+    setElapsedS(0);
+    setDemoRouteDone(false);
+    setIsRunning(false);
+    isRunningRef.current = false;
+    setRecording(false);
+    // setRecording is stable; the demo flag is what this is keyed on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutorialDemo]);
 
   // ---- adaptive GPS sampling ---------------------------------------------
   // High accuracy + tight interval while pace is changing or a loop closure
@@ -1239,7 +1268,7 @@ export default function RunningScreen({ navigation, route }) {
       }
       setPaused(false);
       setLocked(false);
-      tutorialSignal(SIGNAL.RUN_FINISHED);
+      setDemoRouteDone(false);
       setIsRunning(false);
       isRunningRef.current = false;
       setRecording(false);
@@ -1258,6 +1287,9 @@ export default function RunningScreen({ navigation, route }) {
       tutorialSimRef.current = false;
       finishingRef.current = false;
       navigation.navigate('Result', { result, run: result, path: finalPath, tutorialSim: true });
+      // Reported AFTER the claim screen has been asked for, so the tutorial's
+      // claim step is never live for a moment over the run screen.
+      tutorialSignal(SIGNAL.RUN_FINISHED);
       return;
     }
 
@@ -1267,10 +1299,7 @@ export default function RunningScreen({ navigation, route }) {
     pausedRef.current = false;
     setPaused(false);
     setLocked(false);
-    // The run is over: the tutorial's "hold FINISH" step ends here, at the
-    // same moment the run itself does. One line, no branching, and the run
-    // does not wait for it.
-    tutorialSignal(SIGNAL.RUN_FINISHED);
+    // A REAL run never moves the tutorial: only the demo's finish does (above).
     stopWatchingLocation();
     stopPedometer();
     stopVehicleWatch();
@@ -1530,47 +1559,6 @@ export default function RunningScreen({ navigation, route }) {
   // Rough energy estimate: ~1.036 kcal per kg per km at a 70 kg default.
   const caloriesKcal = 1.036 * T.defaultWeightKg * (distance / 1000);
 
-  // --- the first-run tutorial ---------------------------------------------
-  //
-  // Two facts and one report, and nothing else. `runClaimable` is what holds
-  // the "hold FINISH" coach mark back until the run has actually earned ground
-  // — telling somebody to stop at forty metres is telling them to stop before
-  // they have started. The run's own state machine is untouched: the report
-  // rides along inside finishRun, where the run already ends.
-  const { setFacts: setTutorialFacts, signal: tutorialSignal } = useTutorial();
-  const finishTarget = useTutorialTarget(TARGET.FINISH_RUN);
-  // The tutorial is on this screen, waiting for its own Start press — see
-  // steps.js PHASE.START_RUN, whose onEnter never fires: the tab bar button
-  // is real navigation, and the tutorial phase itself is what says "we are
-  // now here for the run beat", not the button that opened it.
-  const { core: tutorialCore, phase: tutorialPhase } = useTutorialState();
-  const tutorialRunPending = tutorialCore === CORE.RUNNING && tutorialPhase === PHASE.ACTIVE_RUN;
-  // THE PRACTICE STARTS ITSELF. The practice card's button is what brought the
-  // runner here, so pressing Start again would be a second button for the
-  // same decision. Once per visit, after a beat so the screen is seen first.
-  useEffect(() => {
-    if (!tutorialRunPending || isRunning || tutorialAutoStartedRef.current) return undefined;
-    const timer = setTimeout(() => {
-      tutorialAutoStartedRef.current = true;
-      startTutorialSimRun();
-    }, TUTORIAL_START_BEAT_MS);
-    return () => clearTimeout(timer);
-    // startTutorialSimRun is a plain function redeclared each render; the
-    // pending flag is what this effect is really keyed on.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tutorialRunPending, isRunning]);
-  // The stats sheet's measured height, so the coach mark's spotlight can cover
-  // the route and stop short of the numbers the runner is watching.
-  const [panelH, setPanelH] = useState(0);
-  const onPanelLayout = useCallback((e) => {
-    const next = Math.round(e.nativeEvent.layout.height);
-    setPanelH((prev) => (Math.abs(prev - next) > 1 ? next : prev));
-  }, []);
-
-  useEffect(() => {
-    setTutorialFacts({ runClaimable: currentTier === RUN_TIER.CLAIMABLE });
-  }, [setTutorialFacts, currentTier]);
-
   // The run as the wrist sees it (src/watch, docs/APPLE_WATCH.md). The watch's
   // buttons go through the same functions as the ones on this screen, and
   // useWatchRun lets each through only in the phase it makes sense in.
@@ -1608,8 +1596,9 @@ export default function RunningScreen({ navigation, route }) {
     { start: startRun, pause: pauseRun, resume: resumeFromPause, finish: finishRun }
   );
 
-  // Location denied: a way forward, not a dead end.
-  if (permDenied) {
+  // Location denied: a way forward, not a dead end. Not for the tutorial's
+  // demo, which needs no location at all: it runs a made up route.
+  if (permDenied && !tutorialDemo) {
     return (
       <View style={[styles.container, styles.deniedWrap]}>
         <Text style={styles.deniedTitle}>Location is off</Text>
@@ -1816,17 +1805,7 @@ export default function RunningScreen({ navigation, route }) {
         </Pressable>
       ) : null}
 
-      {/* The route, for the one coach mark shown mid run. Declared rather than
-          measured: Mapbox draws the trail natively and there is no React view
-          around it. It stops short of the stats sheet below, because the
-          numbers are the thing a runner is actually looking at and a spotlight
-          must not sit on them. */}
-      <TutorialAnchor
-        id={TARGET.RUN_ROUTE}
-        style={{ top: space.sm, left: space.md, right: space.md, bottom: panelH + space.sm }}
-      />
-
-      <View style={styles.panel} onLayout={onPanelLayout}>
+      <View style={styles.panel}>
         {/* hero distance + supporting stats (PACER layout) */}
         <View style={styles.heroRow}>
           <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -1864,25 +1843,47 @@ export default function RunningScreen({ navigation, route }) {
         {!isRunning ? (
           <>
             {/* The app's game CTA (framed, outlined label, hard drop), painted in
-                the run's accent — the same way the claim button wears the clan
-                colour. Replaces a flat pill so the screen you start a run from
-                reads as neo-brutalist like the rest of the game. */}
-            <ToonButton
-              title='Start run'
-              onPress={tutorialRunPending ? startTutorialSimRun : startRun}
-              disabled={starting}
-              accessibilityLabel="Start run"
-              fill={{ color: accent, border: toon.ink }}
-              style={{ alignSelf: 'stretch' }}
-            />
+                the run's accent. In the tutorial this very button is the one
+                the coach mark lights: pressed, it starts the demo instead of a
+                real run. */}
+            <View {...startTarget} collapsable={false}>
+              <ToonButton
+                title='Start run'
+                onPress={tutorialDemo ? startTutorialSimRun : startRun}
+                disabled={starting}
+                accessibilityLabel={tutorialDemo ? 'Start demo run' : 'Start run'}
+                fill={{ color: accent, border: toon.ink }}
+                style={{ alignSelf: 'stretch' }}
+              />
+            </View>
             {/* Renders nothing unless the SERVER says this account may have
-                it (dev_tools on /me), or we're on a dev build. */}
-            <DevRunSimulator
-              onSimulate={simulateRun}
-              onRivalTake={simulateRivalTake}
-              busy={simulating}
-            />
+                it (dev_tools on /me), or we're on a dev build. Never while the
+                tutorial is running: see DevRunSimulator. */}
+            {!tutorialActive ? (
+              <DevRunSimulator
+                onSimulate={simulateRun}
+                onRivalTake={simulateRivalTake}
+                busy={simulating}
+              />
+            ) : null}
           </>
+        ) : tutorialSimRef.current ? (
+          // THE DEMO'S ONE CONTROL. No pause, no lock and no hold: a tap
+          // button that appears when the demo route has finished drawing, and
+          // waits for the runner. It calls the same finishRun a real run does.
+          demoRouteDone ? (
+            <View {...finishTarget} collapsable={false}>
+              <ToonButton
+                title="Finish demo run"
+                onPress={finishRun}
+                accessibilityLabel="Finish demo run"
+                fill={{ color: accent, border: toon.ink }}
+                style={{ alignSelf: 'stretch' }}
+              />
+            </View>
+          ) : (
+            <View style={styles.demoSpacer} />
+          )
         ) : (
           <View style={styles.controlsRow}>
             <PressableScale
@@ -1897,9 +1898,7 @@ export default function RunningScreen({ navigation, route }) {
               <AppIcon name={paused ? 'play' : 'pause'} size={26} />
             </PressableScale>
 
-            {/* The tutorial lights THIS control and lets the press through to
-                it — there is no tutorial copy of the finish button. */}
-            <View style={{ flex: 1 }} {...finishTarget} collapsable={false}>
+            <View style={{ flex: 1 }}>
               <HoldToFinishButton onFinish={finishRun} />
             </View>
 
@@ -1953,6 +1952,9 @@ function Metric({ label, value, accent }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: D.bg },
+  // Holds the controls' height while the demo route draws, so the panel does
+  // not jump when Finish demo run appears.
+  demoSpacer: { height: 56 },
   map: { flex: 1 },
   
   // LEVEL 1: Player marker - most prominent element

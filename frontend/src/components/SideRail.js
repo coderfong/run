@@ -39,7 +39,7 @@
 
 import { Lock } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -81,8 +81,8 @@ const CROSSROADS_PER_PT = 5.59;
 const CROSSROADS_TRACKING = 0.2 * 10;
 const CAPTION_GUTTER = 10;
 
-export function captionFor(screenWidth) {
-  const slot = (screenWidth - space.gutter * 2) / 5;
+export function captionFor(screenWidth, count = 5) {
+  const slot = (screenWidth - space.gutter * 2) / count;
   const fits = (slot - CAPTION_GUTTER - CROSSROADS_TRACKING) / CROSSROADS_PER_PT;
   return Math.max(9, Math.min(11, Math.round(fits * 2) / 2));
 }
@@ -91,7 +91,7 @@ export function captionFor(screenWidth) {
 // grew to five: five 64pt tiles do not fit across a 320pt phone. Sized by the
 // caller rather than by a media query here, so the rail stays the one place
 // that knows how many tiles it has.
-function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size, captionSize, locked = false }) {
+function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size, captionSize, locked = false, quiet = false }) {
   const src = art(artKey);
   const { colors } = useTheme();
   const type = useThemedType();
@@ -147,7 +147,7 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
           <Framed
             frame={frameVariant('chip', label)}
             tint={toon.ink}
-            fill={tint[1]}
+            fill={quiet ? colors.card : tint[1]}
             weight={INK.thin}
             pose={framePose(`rail:${label}`)}
             inset={false}
@@ -191,7 +191,32 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
   );
 }
 
-export default function SideRail({ navigation, onOpenShop, style, inline = false, firstRunComplete = true }) {
+export function SecondaryShortcut({ label, badge, locked, onPress }) {
+  const { colors } = useTheme();
+  const type = useThemedType();
+  return (
+    <Pressable
+      onPress={() => { if (!locked) { haptic.light(); onPress?.(); } }}
+      disabled={locked}
+      style={({ pressed }) => [
+        styles.secondaryShortcut,
+        {
+          borderColor: colors.border,
+          backgroundColor: pressed ? colors.cardAlt : 'transparent',
+          opacity: locked ? 0.5 : 1,
+        },
+      ]}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: locked }}
+      accessibilityLabel={`${label}${locked ? ', locked. Complete your first run to unlock' : ''}${badge ? `, ${badge}` : ''}`}
+    >
+      <Text style={[type.captionMedium, { color: colors.text, fontSize: 11 }]} numberOfLines={1}>{label}</Text>
+      {badge ? <Text style={[type.captionMedium, styles.secondaryBadge]} numberOfLines={1}>{badge}</Text> : null}
+    </Pressable>
+  );
+}
+
+export default function SideRail({ navigation, onOpenShop, style, inline = false, firstRunComplete = true, primaryOnly = false }) {
   const [claimable, setClaimable] = useState(0);
   // Today's missions, for the badge. Same rule as the pass tile: the number is
   // what is WAITING TO BE COLLECTED, not how many missions exist — a badge
@@ -229,14 +254,15 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
     }, [])
   );
 
-  // Five across, so the inline tiles come down a few points.
-  const size = inline ? 58 : undefined;
+  const primaryCount = primaryOnly ? 3 : 5;
+  const size = inline ? (primaryOnly ? 72 : 58) : undefined;
   // Measured here, once, and handed to all five — see captionFor.
   const { width } = useWindowDimensions();
-  const captionSize = inline ? captionFor(width) : undefined;
+  const captionSize = inline ? captionFor(width, primaryCount) : undefined;
 
   return (
-    <View style={[inline ? styles.inlineRail : styles.rail, style]} pointerEvents="box-none">
+    <View style={style} pointerEvents="box-none">
+      <View style={inline ? styles.inlineRail : styles.rail} pointerEvents="box-none">
       {/* Missions first: it is the only tile whose contents change every day,
           so it is the one worth looking at on the way past.
           GREEN, though the clipboard master is drawn on yellow: the pass tile
@@ -254,6 +280,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         inline={inline}
         size={size}
         captionSize={captionSize}
+        quiet={primaryOnly}
       />
       <RailTile
         icon="award"
@@ -264,6 +291,7 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         inline={inline}
         size={size}
         captionSize={captionSize}
+        quiet={primaryOnly}
       />
       <RailTile
         icon="energy"
@@ -274,7 +302,10 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         inline={inline}
         size={size}
         captionSize={captionSize}
+        quiet={primaryOnly}
       />
+      {!primaryOnly ? (
+        <>
       <RailTile
         icon="steal"
         artKey="railRivals"
@@ -304,6 +335,24 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
         size={size}
         captionSize={captionSize}
       />
+        </>
+      ) : null}
+      </View>
+      {primaryOnly ? (
+        <View style={styles.secondaryRow}>
+          <SecondaryShortcut
+            label="Rivals"
+            locked={!firstRunComplete}
+            onPress={() => navigation.navigate('Rivals')}
+          />
+          <SecondaryShortcut
+            label="Crossroads"
+            locked={!firstRunComplete}
+            badge={badgeLabel(paserby?.unseen)}
+            onPress={() => navigation.navigate('Crossroads')}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -313,7 +362,7 @@ const styles = StyleSheet.create({
   // `flex-start` on the cross axis, not `center`: with a caption under every
   // tile the slots are the same height anyway, and centring would float a
   // badged tile's row against an unbadged one the moment one of them wraps.
-  inlineRail: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-around' },
+  inlineRail: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-around', gap: space.sm },
   slot: { alignItems: 'center', width: 62 },
   // The press area is the tile and its word together, so it is the column that
   // centres them rather than the slot.
@@ -386,5 +435,28 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  secondaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: space.sm,
+    marginTop: space.md,
+  },
+  secondaryShortcut: {
+    minHeight: 34,
+    paddingHorizontal: space.md,
+    borderWidth: 1,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  secondaryBadge: {
+    color: '#fff',
+    backgroundColor: '#ef4444',
+    borderRadius: 8,
+    overflow: 'hidden',
+    paddingHorizontal: 5,
+    fontSize: 10,
   },
 });

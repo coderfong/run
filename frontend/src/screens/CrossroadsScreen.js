@@ -82,6 +82,7 @@ import { COPY, encounterSubtitle, familiarityLabel } from '../config/paserby';
 import { art, ART_BG } from '../config/onboardingArt';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
+import { inFirstOnboarding } from '../tutorial';
 import { PressableScale, haptic, useReduceMotion } from '../ui/motion';
 import { toast } from '../ui/toast';
 import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
@@ -378,7 +379,9 @@ export default function CrossroadsScreen({ navigation }) {
   // `profileLoading` matters: the flag is read from disk, and rendering before
   // it lands would flash the card at somebody who has already read it.
   const { profile, loading: profileLoading, completeCrossroadsIntro } = useProfile();
-  const introUp = focused && !profileLoading && !profile.crossroadsIntroSeen;
+  // First onboarding only: a veteran arriving here after a reinstall, a new
+  // phone or the update that added the plaza is not stopped by it.
+  const introUp = focused && !profileLoading && inFirstOnboarding(profile.tutorial) && !profile.crossroadsIntroSeen;
   // Your own runner, standing at the front of the square (see `You`).
   const { equipped } = useAvatar();
 

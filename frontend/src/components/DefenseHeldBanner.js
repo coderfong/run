@@ -26,8 +26,11 @@ import { useAvatar } from '../state/avatar';
 import CaptureCast from '../effects/CaptureCast';
 import DefenseStylePlayer from '../effects/DefenseStylePlayer';
 import useCaptureStage from '../effects/useCaptureStage';
+import { RunnerFigure } from './identity/PlayerIdentity';
 
 const DWELL_MS = 6000;
+// The defender's full body runner on the payoff card.
+const HERO_H = 92;
 const DUPLICATE_TTL_MS = 45_000;
 
 // A hold, not an alarm — the app's own green.
@@ -164,11 +167,18 @@ export function DefenseHeldBanner({ onOpen }) {
           accessibilityLabel={`Your defense held. ${alert.body}`}
           style={[styles.card, { backgroundColor: HOLD_GREEN, borderColor: ink }]}
         >
-          <View style={styles.badge}>
-            <ShieldCheck size={22} color={ink} strokeWidth={3} />
+          {/* The defender, whole, in the outfit they held the line in. A win is
+              a flex moment, so the payoff shows the runner rather than an
+              icon; the shield rides at their feet. */}
+          <View style={styles.hero}>
+            <RunnerFigure equipped={equipped} height={HERO_H} pose="celebrate" poseDelay={250} />
+            <View style={[styles.shield, { backgroundColor: HOLD_GREEN, borderColor: ink }]}>
+              <ShieldCheck size={16} color={ink} strokeWidth={3} />
+            </View>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[type.labelSm, { color: ink }]}>DEFENSE HELD</Text>
+            <Text style={[type.title, { color: ink }]} numberOfLines={1}>STILL YOURS</Text>
             <Text style={[type.bodySm, { color: ink }]} numberOfLines={2}>
               {alert.body}
             </Text>
@@ -199,7 +209,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: space.sm,
   },
-  badge: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  hero: { height: HERO_H, justifyContent: 'flex-end' },
+  shield: {
+    position: 'absolute',
+    right: -8,
+    bottom: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   dismiss: { alignSelf: 'center', paddingTop: space.sm, paddingHorizontal: space.md },
   defenseScene: { flex: 1, backgroundColor: 'rgba(12,12,16,0.92)', overflow: 'hidden' },
 });

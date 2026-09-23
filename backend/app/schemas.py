@@ -583,6 +583,10 @@ class LeaderboardEntry(BaseModel):
     rank_points: Optional[int] = None
     rank_key: Optional[str] = None
     rank_label: Optional[str] = None
+    # The runner's loadout, so the podium can draw the top three as their
+    # whole outfit. Nullable like everywhere else: a runner who never opened
+    # the studio has none. Older clients ignore it.
+    avatar: Optional[dict] = None
     # Explicit names for the new rating system. rank_* remains populated as a
     # compatibility alias for builds that shipped before Elo.
     solo_elo: int = 1000
@@ -1411,6 +1415,10 @@ class ClanMemberOut(BaseModel):
     week_distance_m: float = 0.0
     week_claims: int = 0
     area_m2: float = 0.0
+    # Nullable like every avatar: a member who never opened the studio has
+    # none. Older clients ignore both.
+    avatar: Optional[dict] = None
+    rank_key: Optional[str] = None
 
 
 class WeekGoalOut(BaseModel):

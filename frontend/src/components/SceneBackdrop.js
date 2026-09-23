@@ -48,6 +48,14 @@ const SKY_FADE = 28;
 // on flat tarmac, so a box taller than the art reads as a longer road.
 const GROUND = { light: '#5B5A5B', dark: '#0C121D' };
 
+// Where a character's soles land on the PROFILE scene, as a fraction of the
+// scene's height: the middle of the pavement, between the grass line and the
+// kerb. Measured off the art (day pavement runs 0.81 to 0.88 of its 553px,
+// night 0.66 to 0.75 of its 430px). The night art is wider than the day shape
+// the header asks for, so `cover` fits it by HEIGHT and these fractions hold
+// at any window width. Re-measure if either banner is repainted.
+const PROFILE_STAND = { light: 0.85, dark: 0.71 };
+
 // The day scene's own shape is the house shape — read off the art so it can't
 // drift if the banner is regenerated.
 const DAY_SRC = art('profileBanner');
@@ -78,6 +86,8 @@ export function useSceneBackdrop({ aspect = DAY_ASPECT, minHeight = 0, variant =
     width,
     height,
     sceneHeight,
+    // Null on scenes nobody has measured a pavement for.
+    standAt: variant === 'profile' ? (PROFILE_STAND[scheme] ?? PROFILE_STAND.dark) : null,
     sky: SKY[scheme] || SKY.dark,
     clear: SKY_CLEAR[scheme] || SKY_CLEAR.dark,
     ground: GROUND[scheme] || GROUND.dark,

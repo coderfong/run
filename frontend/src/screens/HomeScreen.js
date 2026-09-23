@@ -53,6 +53,7 @@ import { GOLD } from '../config/pro';
 import { HOME_AUTO_PROMPT_DELAY_MS } from '../config/proExposure';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { useProEntitlement } from '../pro/ProProvider';
+import { TARGET, useTutorialState, useTutorialTarget } from '../tutorial';
 
 // Season window (matches the seeded Season 1; Phase-next: read from the API).
 const SEASON_NO = '01';
@@ -76,11 +77,12 @@ function countdown() {
 // place. 44% is 137pt there and 130pt on a 360, both of which still show the
 // drawing whole. The PRO card overrides it: its art is a 4:3 scene, not a
 // figure, and it is width-limited rather than height-limited.
-function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, title, sub, cta, onPress, onPressIn }) {
+function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, title, sub, cta, primary = false, onPress, onPressIn, tutorialTarget }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const reduced = useReduceMotion();
   return (
+    <View {...tutorialTarget} collapsable={false} style={{ width }}>
     <PressableScale
       style={{ width }}
       onPressIn={onPressIn}
@@ -126,18 +128,15 @@ function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, titl
             </Text>
             {sub ? <Text style={[type.bodySm, styles.heroSub]}>{sub}</Text> : null}
           </View>
-          <Framed
-            frame={frameVariant('chip', cta)}
-            tint={toon.ink}
-            fill="#ffffff"
-            weight={INK.thin}
-            pose={framePose(cta)}
-            inset={false}
-            style={styles.heroBtn}
-            contentStyle={styles.heroBtnContent}
-          >
-            <Text style={[type.buttonSm, { color: '#141414' }]}>{cta}</Text>
-          </Framed>
+          {primary ? (
+            <Text style={[type.display, styles.heroRunCta]} numberOfLines={1}>
+              {cta} ->
+            </Text>
+          ) : (
+            <Text style={[type.buttonSm, styles.heroTextCta]} numberOfLines={1}>
+              {cta} ->
+            </Text>
+          )}
         </View>
         {/* the transparent illustration, shown whole (contain) — no crop, no fade */}
         <Image
@@ -148,12 +147,16 @@ function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, titl
         />
       </Framed>
     </PressableScale>
+    </View>
   );
 }
 
 // Swipeable hero: start a run, leaderboards, then PRO when available.
-function HeroCarousel({ navigation }) {
+function HeroCarousel({ navigation, locked = false }) {
   const styles = useThemedStyles(makeStyles);
+  // The first-run tutorial lights THIS card and waits for the runner to tap
+  // it. The card's own onPress opens the run screen; nothing is proxied.
+  const startTarget = useTutorialTarget(TARGET.HOME_START_RUN);
   const { width } = useWindowDimensions();
   const cardW = width - space.gutter * 2;
   const [page, setPage] = useState(0);
@@ -184,6 +187,9 @@ function HeroCarousel({ navigation }) {
       <ScrollView
         horizontal
         pagingEnabled
+        // Held on the LET'S RUN card while the tutorial is pointing at it: a
+        // swipe inside the spotlight must not carry the card out of it.
+        scrollEnabled={!locked}
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onEnd}
         decelerationRate="fast"
@@ -204,8 +210,10 @@ function HeroCarousel({ navigation }) {
           eyebrow="THERE'S LAND TO CLAIM"
           title="LET'S RUN"
           cta="Start a run"
+          primary
           onPressIn={() => preloadScreenImages('Record')}
           onPress={() => navigation.navigate('Record')}
+          tutorialTarget={startTarget}
         />
         <HeroCard
           width={cardW}
@@ -215,7 +223,7 @@ function HeroCarousel({ navigation }) {
           eyebrow={`${SEASON_CITY} SEASON ${SEASON_NO}`}
           title="THE BOARD"
           sub={countdown()}
-          cta="See the standings"
+          cta="Standings"
           onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season')}
         />
@@ -228,7 +236,7 @@ function HeroCarousel({ navigation }) {
             eyebrow="UPGRADE"
             title="GO PRO"
             sub="Strategy, insights and exclusive styles"
-            cta="See the plans"
+            cta="Plans"
             onPress={() => {
               track(EVENTS.TEASER_TAP, { source: 'home', context: 'home', feature: 'home_hero' });
               openPaywall('home');
@@ -236,11 +244,13 @@ function HeroCarousel({ navigation }) {
           />
         ) : null}
       </ScrollView>
-      <View style={styles.dots}>
-        {Array.from({ length: pages }, (_, i) => (
-          <View key={i} style={[styles.dot, i === page ? styles.dotOn : styles.dotOff]} />
-        ))}
-      </View>
+      {pages > 1 ? (
+        <View style={styles.dots}>
+          {Array.from({ length: pages }, (_, i) => (
+            <View key={i} style={[styles.dot, i === page ? styles.dotOn : styles.dotOff]} />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -397,7 +407,7 @@ function sameRow(a, b) {
   );
 }
 
-function FeedList({ navigation, header }) {
+function FeedList({ navigation, header, locked = false }) {
   const styles = useThemedStyles(makeStyles);
   const accent = useAccent();
   const reduce = useReduceMotion();
@@ -546,6 +556,8 @@ function FeedList({ navigation, header }) {
 
   return (
     <FlatList
+      // Still while the tutorial points at the hero card above the feed.
+      scrollEnabled={!locked}
       initialNumToRender={4}
       maxToRenderPerBatch={3}
       windowSize={5}
@@ -588,6 +600,12 @@ function FeedList({ navigation, header }) {
 
 export default function HomeScreen({ navigation }) {
   const { colors, scheme } = useTheme();
+  // While the core tutorial is running Home stays exactly where it is: no
+  // scrolling the hero card away from its spotlight, and no PRO prompt
+  // arriving on top of the lesson.
+  const { active: tutorialActive, step: tutorialStep } = useTutorialState();
+  const tutorialHoldsHome = !!tutorialStep && tutorialStep.target === TARGET.HOME_START_RUN;
+  const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   // The wordmark is a sticker: a fill with a hard outline around it. In light
   // mode the old fixed white fill left only the black outline to carry the
@@ -700,13 +718,13 @@ export default function HomeScreen({ navigation }) {
   // effect re-runs on its own when it arrives.
   useFocusEffect(
     useCallback(() => {
-      if (promptedRef.current || runCount == null) return undefined;
+      if (promptedRef.current || runCount == null || tutorialActive) return undefined;
       const timer = setTimeout(() => {
         promptedRef.current = true;
         openPaywall('home', { automatic: true });
       }, HOME_AUTO_PROMPT_DELAY_MS);
       return () => clearTimeout(timer);
-    }, [openPaywall, runCount])
+    }, [openPaywall, runCount, tutorialActive])
   );
 
   const feedHeader = (
@@ -762,17 +780,22 @@ export default function HomeScreen({ navigation }) {
         />
       )}
 
-      <HeroCarousel navigation={navigation} />
+      <HeroCarousel navigation={navigation} locked={tutorialHoldsHome} />
 
       {/* These shortcuts replace the redundant Feed/Leaderboard switch and
           scroll away with the season card instead of covering run cards. */}
       <SideRail
         inline
+        primaryOnly
         firstRunComplete={runCount > 0}
         navigation={navigation}
         onOpenShop={() => navigation.navigate('Shop')}
         style={styles.shortcutRow}
       />
+
+      <View style={styles.activityHeading}>
+        <Text style={[type.heading, styles.activityTitle]}>Friends are claiming territory</Text>
+      </View>
     </View>
   );
 
@@ -788,7 +811,7 @@ export default function HomeScreen({ navigation }) {
           `paddingTop` up here would push the painting's sky down by the notch
           and leave a bare strip of pager colour above it. */}
       <View style={{ flex: 1, paddingTop: insets.top }}>
-        <FeedList navigation={navigation} header={feedHeader} />
+        <FeedList navigation={navigation} header={feedHeader} locked={tutorialHoldsHome} />
       </View>
       {IAP_ENABLED ? (
         <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={reloadEnergy} />
@@ -805,7 +828,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   list: { backgroundColor: 'transparent' },
   feedHeader: { paddingHorizontal: space.gutter, paddingTop: space.sm },
   feedRow: { paddingHorizontal: space.gutter },
-  shortcutRow: { marginTop: space.lg, marginBottom: space.md },
+  shortcutRow: { marginTop: space.xl, marginBottom: space.xl },
   // Clear of the hero below it, plus the room the card's own drop falls into.
   pendingClaim: { marginBottom: space.md + NB.offset },
   header: {
@@ -814,7 +837,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     justifyContent: 'space-between',
     // A minimum gap, not just space-between: the energy meter grows to fill
     // whatever is left, so on a full bar it ran right up against the wordmark.
-    gap: space.md,
+    gap: space.sm,
     marginBottom: space.md,
   },
   // Paired with the outline flip in HomeScreen: ink on light, white on dark.
@@ -834,8 +857,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // on narrow screens.
   headerEnergy: { flex: 1, minWidth: 0 },
   bell: {
-    width: 52,
-    height: 52,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -859,9 +882,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // the tighter padding buys back the text column that the wider art costs.
   // The hero panels are saturated brand colour in BOTH themes, so they take a
   // hard ink outline either way (unlike neutral cards — see toonSurface).
-  hero: {
-    height: 190,
-  },
+  hero: { height: 188 },
   heroContent: {
     flex: 1,
     flexDirection: 'row',
@@ -874,7 +895,7 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   heroText: { flex: 1, justifyContent: 'space-between', paddingRight: space.sm, alignItems: 'flex-start', paddingTop: space.sm },
   // bleed to the card edges (negative margins cancel the card padding) so the
   // illustration is as large as possible.
-  heroImg: { height: 190, marginVertical: -space.md, marginRight: -space.md },
+  heroImg: { height: 188, marginVertical: -space.md, marginRight: -space.md },
   heroEyebrow: { color: '#141414', opacity: 0.75 },
   // 26/34 rather than the token's 30/40. With the art box at 44% the text
   // column comes out 178pt on a 375pt phone and 170pt on a 360 (the art's own
@@ -884,16 +905,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // title at the size it was asked for and the three of them match, which is
   // the whole reason the titles are short. lineHeight stays at the token's
   // 1.3x: Poppins Black clips at tighter leading.
-  heroTitle: { color: '#141414', fontSize: 26, lineHeight: 34, marginTop: 2 },
+  heroTitle: { color: '#141414', fontSize: 28, lineHeight: 36, marginTop: 2 },
   heroSub: { color: '#141414', opacity: 0.72, marginTop: 4 },
-  heroBtn: {
-    alignSelf: 'flex-start',
-    marginTop: space.xs,
-  },
-  heroBtnContent: {
-    paddingHorizontal: space.md,
-    paddingVertical: 8,
-  },
+  heroRunCta: { color: '#141414', fontSize: 26, lineHeight: 34, marginTop: space.xs },
+  heroTextCta: { color: '#141414', marginTop: space.sm },
   // Pagination as flat blocks with an edge, per the reference system sheet —
   // the current page is a long pink bar, the others are small hollow squares.
   // They were a pink lozenge next to two dots in `colors.border`, which on the
@@ -901,8 +916,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // SQUARE, not round. These sit directly under the hero, which is the most
   // hand-drawn thing on the screen, and a hard-edged row of blocks under a
   // wobbly ink box is the contrast the whole style runs on.
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: space.md },
-  dot: { height: 8, borderRadius: 0, borderWidth: 1.5, borderColor: nbInk(scheme, colors.bg) },
-  dotOn: { width: 22, backgroundColor: brand.pink },
-  dotOff: { width: 8, backgroundColor: 'transparent' },
+  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: space.sm },
+  dot: { height: 6, borderRadius: 0, borderWidth: 1, borderColor: nbInk(scheme, colors.bg), opacity: 0.55 },
+  dotOn: { width: 16, backgroundColor: brand.pink },
+  dotOff: { width: 6, backgroundColor: 'transparent' },
+  activityHeading: { marginTop: space.xs, marginBottom: space.md },
+  activityTitle: { color: colors.text },
 });

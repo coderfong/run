@@ -24,7 +24,7 @@
 // Card with a width can never fail this way again.
 
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
@@ -32,8 +32,7 @@ import { useQuery } from '../hooks/useQuery';
 import { radius, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Card, Row, Button, Framed, Pill, OutlinedText, SectionHeader, Skeleton, EmptyState } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
-import { CharacterBust } from '../components/character/CharacterRig';
-import PortraitBorder from '../components/PortraitBorder';
+import { RankCrest, RunnerFigure } from '../components/identity/PlayerIdentity';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
 import StatTile from '../components/StatTile';
 import { Arrival, PressableScale, Reveal, useArrival } from '../ui/motion';
@@ -55,13 +54,22 @@ export default function RunnerProfileScreen({ navigation, route }) {
   // The roadside scene behind the portrait: daytime kerb in light, the lamp-lit
   // street in dark. It sizes itself to the window rather than to this header,
   // so the header only needs the height to reserve room for it.
-  const { height: sceneH } = useSceneBackdrop({ variant: 'profile' });
+  const { height: sceneH, standAt } = useSceneBackdrop({ variant: 'profile' });
+  // Their WHOLE runner stands on the pavement, the same as your own You page:
+  // this is where you go to look at somebody, so it shows what they wear, head
+  // to shoes. Sky is added above the art for exactly the room the figure
+  // needs, so its feet land on the pavement at any window size.
+  const { height: winH } = useWindowDimensions();
+  const runnerH = Math.round(Math.max(150, Math.min(220, winH * 0.23)));
+  const feetOnScene = (standAt ?? 0.85) * sceneH;
+  const sky = Math.max(0, space.lg + runnerH - feetOnScene);
+  const runnerTop = sky + feetOnScene - runnerH;
   // The name is the lowest thing standing ON the scene, so the hero panel has
   // to be at least tall enough to hold it — measured rather than guessed, the
   // same way the You tab sizes its own header. `bleed` fills anything the art
   // does not reach with road, so a taller box reads as a longer road.
   const [nameBottom, setNameBottom] = useState(0);
-  const heroH = Math.max(sceneH, nameBottom ? nameBottom + space.md : 0);
+  const heroH = Math.max(sceneH + sky, nameBottom ? nameBottom + space.md : 0);
   // Cached per runner, so tapping back into someone you just looked at draws
   // their profile at once. The key changes with the runner, and useQuery
   // re-seeds on a key change — the previous runner's stats never linger.
@@ -247,19 +255,21 @@ export default function RunnerProfileScreen({ navigation, route }) {
           weight={INK.bold}
           pose={framePose(`runner:${userId}`)}
           inset={false}
-          contentStyle={[styles.heroInner, { height: heroH }]}
+          contentStyle={[styles.heroInner, { height: heroH, paddingTop: runnerTop }]}
         >
           {/* The same scene the You tab stands on, with the same wind through
               it — this page is that page for somebody else, and it read as a
               different app entirely without it. `bleed` fills any box taller
               than the art with road rather than cropping into the trees. */}
-          <SceneBackdrop variant="profile" minHeight={heroH} bleed ambient="leaves" />
-          {/* Border comes from RANK (territorial standing), not level — same
-              rule as your own profile. The bust fills the frame's opening, on
-              an opaque disc: at anything less the scene shows through the gap. */}
-          <PortraitBorder borderKey={p.rank_key || 'wood'} size={104}>
-            <CharacterBust equipped={p.avatar} size={104} ring={accent} bg={colors.cardAlt} />
-          </PortraitBorder>
+          <SceneBackdrop variant="profile" minHeight={heroH} skyAbove={sky} bleed ambient="leaves" />
+          {/* The whole runner. Rank is NOT a ring round them any more: it is
+              the crest under their name (components/identity says why). */}
+          <RunnerFigure
+            equipped={p.avatar}
+            height={runnerH}
+            width={runnerH * 0.7}
+            accessibilityLabel={`${p.username}'s runner`}
+          />
           {/* On the scene, so it takes the game treatment — white with an ink
               outline — rather than the palette's body colour, which is
               near-black in light mode and vanishes into the hedge. */}
@@ -273,6 +283,17 @@ export default function RunnerProfileScreen({ navigation, route }) {
             <OutlinedText style={[type.title, { color: '#fff' }]} outline={toon.ink} width={2.5}>
               {p.username}
             </OutlinedText>
+            {/* Tier and points, no division numeral: this payload carries the
+                tier but not where inside it they stand, and a guessed "I"
+                would be wrong two times in three. */}
+            <RankCrest
+              tierKey={p.rank_key || 'wood'}
+              size={28}
+              label
+              points={p.solo_elo}
+              labelStyle={styles.crestLabel}
+              style={styles.crest}
+            />
           </View>
         </Framed>
 
@@ -351,10 +372,13 @@ const makeStyles = (colors, _scheme, type) => StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
     borderRadius: radius.md,
-    paddingTop: space.lg,
     paddingHorizontal: space.lg,
   },
   nameRow: { alignItems: 'center', marginTop: space.sm },
+  crest: { marginTop: 4 },
+  // On the scene, like the name: white with a dark shadow so it holds on the
+  // pale day pavement and the night road alike.
+  crestLabel: { textShadowColor: toon.ink, textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } },
   // Centred and wrapping: a clan tag, a level, a paser count and a relationship
   // is four chips, and four chips do not fit on one line of a small phone.
   pills: { flexWrap: 'wrap', justifyContent: 'center', rowGap: 8, marginTop: space.md },

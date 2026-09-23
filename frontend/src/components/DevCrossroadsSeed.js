@@ -25,6 +25,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
 import { useAuth } from '../auth/AuthContext';
+import { useTutorialActive } from '../tutorial/TutorialContext';
 import { useAvatar } from '../state/avatar';
 import { randomEquipped } from '../config/cosmetics';
 import { radius, space, useTheme, useThemedType } from '../theme';
@@ -37,6 +38,7 @@ const COUNTS = [8, 24, 48];
 
 export default function DevCrossroadsSeed({ onOpen, style }) {
   const { user } = useAuth();
+  const tutorialActive = useTutorialActive();
   const { colors } = useTheme();
   const type = useThemedType();
   const { unlockCtx } = useAvatar();
@@ -45,6 +47,9 @@ export default function DevCrossroadsSeed({ onOpen, style }) {
 
   // Hooks first, then the gate — an early return above them would change the
   // hook order between an allowed and a disallowed account.
+  // Never while the first-run tutorial is on screen, whoever is holding the
+  // phone: a new runner's tutorial must look exactly like the real app.
+  if (tutorialActive) return null;
   if (!__DEV__ && !user?.dev_tools) return null;
 
   // Fresh Crossroads data supersedes whatever these caches hold, so drop them

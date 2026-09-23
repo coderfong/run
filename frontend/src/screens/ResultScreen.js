@@ -22,7 +22,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Dimensions, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, { useSharedValue, withSpring, useAnimatedStyle } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,7 +31,6 @@ import GameMap, { MAP_READY, TerritoryFill, TerritoryLayer, Trail, UserMarker } 
 import { CharacterBust } from '../components/character/CharacterRig';
 import { buildBoardFeatures, buildLandPortraits, estimateClaimsInRing } from '../components/territoryBoard';
 import { mergeTouchingLand } from '../map/holdings';
-import EnergyMeter from '../components/EnergyMeter';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import ClaimPayoff from '../components/ClaimPayoff';
 import GameAnimation from '../components/GameAnimation';
@@ -44,8 +43,8 @@ import useCaptureStage from '../effects/useCaptureStage';
 import { buildTerritoryAnchorModel, layoutDefenders, resolveRevealOrigin } from '../effects/anchors';
 import { CAPTURE_LAYER } from '../effects/layers';
 import ChooseAttack, { ChooseAttackPending } from '../components/claim/ChooseAttack';
-import TwoStepClaimFlow, { CLAIM_STEPS } from '../components/claim/TwoStepClaimFlow';
-import { SIGNAL, TARGET, useTutorial, useTutorialTarget } from '../tutorial';
+import TwoStepClaimFlow, { CLAIM_STEPS, ClaimSummary, claimCtaLabel } from '../components/claim/TwoStepClaimFlow';
+import { SIGNAL, TARGET, TIP, useTutorial, useTutorialTarget } from '../tutorial';
 import CutsceneBackdrop from '../components/claim/CutsceneBackdrop';
 import { CLAIM_PHASE, atOrAfter } from '../components/claim/phases';
 import { makePlacer, normaliseDeg } from '../components/claim/placement';
@@ -76,13 +75,12 @@ import { preloadScreenImages } from '../config/screenAssets';
 import { preloadImages } from '../utils/imagePreload';
 import { RUN_TIER } from '../config/economy';
 import { claimTimeLeft } from '../utils/claimWindow';
-import { NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, runTuning, shadow, space, toon, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
-import { Framed, HardShadow, OutlinedText, ToonButton } from '../components/ui';
-import { INK, framePose, frameVariant } from '../ui/frameRegistry';
+import { NB, brand, nbAccents, nbInk, nbRadius, nbTextOn, radius, readableInk, runTuning, shadow, space, toon, toonType, useTheme, useThemedStyles, useThemedType, withAlpha } from '../theme';
+import { reportText } from '../components/report/reportText';
+import { HardShadow, OutlinedText, ToonButton } from '../components/ui';
 import { useClan } from '../state/clan';
 import { useSettings } from '../state/settings';
 import { Confetti, CountUpText, Pop, Reveal, haptic, PressableScale } from '../ui/motion';
-import PaserMark from '../components/PaserMark';
 import AppIcon from '../components/AppIcon';
 import { toast } from '../ui/toast';
 import { rivalPopup } from '../components/RivalPopup';
@@ -95,15 +93,6 @@ const DevSequenceControls = __DEV__
 // takes the whole screen; the recap scrolls; sharing is outward-facing and
 // comes last, immediately before Home.
 const STAGE = { CLAIM: 'claim', SUMMARY: 'summary', SHARE: 'share' };
-
-// How long the practice run's autopilot holds each beat before pressing on
-// (see "the practice run's autopilot"). The recap outlasts the tutorial's own
-// "it's yours" card (FIRST_CLAIM_SUCCESS, 3.2s) so the two never overlap.
-const AUTO_CLAIM_MS = 3000;
-const AUTO_PAYOFF_MS = 3000;
-const AUTO_STANDINGS_MS = 3500;
-const AUTO_RECAP_MS = 3800;
-const AUTO_SHARE_MS = 3500;
 
 export function mapRootResetState(center) {
   const focus = center
@@ -155,12 +144,6 @@ function fmtCoins(n) {
 // finished travelling (XpProgress starts at 420 and runs for ~900), so the two
 // rewards are read one after the other rather than competing.
 const COINS_DELAY = 1180;
-
-// How long the first-run tutorial will wait for the claim chooser before it
-// decides this run cannot teach the claim. The options request is one round
-// trip against a backend that can be cold (see the note on warmUp in App.js),
-// so this is generous — it is the point at which the sheet has given up too.
-const CLAIM_TEACHABLE_MS = 20000;
 
 // Total climb, from the altitude stored on each fix. GPS altitude is noisy by
 // several metres even standing still, so only rises past a threshold count —
@@ -334,7 +317,12 @@ function Splits({ splits, accent, bare, frosted }) {
     <View style={bare ? undefined : styles.section}>
       {!bare && <Text style={styles.sectionTitle}>Splits</Text>}
       {splits.map((s) => (
-        <View key={s.km} style={styles.splitRow}>
+        <View
+          key={s.km}
+          style={styles.splitRow}
+          accessible={!frosted}
+          accessibilityLabel={frosted ? undefined : `Kilometre ${s.km}, ${paceStr(s.seconds)}`}
+        >
           <Text style={styles.splitKm}>{s.km} km</Text>
           <View style={styles.splitBarTrack}>
             <View style={[styles.splitBar, { width: `${Math.max(12, (s.seconds / slowest) * 100)}%`, backgroundColor: accent }]} />
@@ -374,7 +362,7 @@ export default function ResultScreen({ navigation, route }) {
   // free for everyone, and a subscriber sees their own numbers. These are a
   // richer READ of the run, never a lever on it, so gating them stays inside
   // the depth-not-power line in config/pro.js.
-  const { isPro: hasPro, canShowPro } = useProEntitlement();
+  const { isPro: hasPro, canShowPro, runCount } = useProEntitlement();
   const advancedStatsLocked = canShowPro && !hasPro;
   const team = trailGlowColor
     ? { fill: withAlpha(trailGlowColor, 0.2), stroke: trailGlowColor, glow: trailGlowColor }
@@ -390,15 +378,19 @@ export default function ResultScreen({ navigation, route }) {
   // declaration throws (see scripts/check-tdz.mjs for the time that shipped).
   //
   // The claim steps sit ON TOP of the real claim system: they light the real
-  // dial and the real button, they end when those are really used, and there
-  // is no tutorial-only claim anywhere in this file.
+  // slider, the real Choose angle button, the real dial and the real Claim
+  // button, and each one ends when the runner has really used that control.
+  // Nothing in this file presses anything for the runner.
   const {
     setFacts: setTutorialFacts,
     signal: tutorialSignal,
     remeasure: remeasureTutorial,
+    requestTip,
   } = useTutorial();
-  const claimSheetTarget = useTutorialTarget(TARGET.CLAIM_SHEET);
   const claimButtonTarget = useTutorialTarget(TARGET.CLAIM_BUTTON);
+  // The pose the chooser opened on. "The runner moved the claim" means moved
+  // AWAY from this, not merely touched.
+  const seedPose = useRef(null);
 
   const path = route.params.path || [];
 
@@ -474,25 +466,20 @@ export default function ResultScreen({ navigation, route }) {
   // finished run, before `options` had arrived to short-circuit the `??`.
   const [energyStatus, setEnergyStatus] = useState(null);
   const [shopOpen, setShopOpen] = useState(false);
+  // The anchored Continue bar's measured height, so the recap can scroll its
+  // last card clear of it. A guess until the first layout.
+  const [footerH, setFooterH] = useState(96);
   
-  // Track claim step and pose for map visualization
+  // Which step of the claim the runner is on: choose where, then choose the
+  // angle. Owned here, not by the chooser, because the map's callout and the
+  // Claim footer (which only appears on the angle step) both follow it.
   const [claimStep, setClaimStep] = useState(CLAIM_STEPS.PLACE);
-  const [claimPoseForMap, setClaimPoseForMap] = useState(pose);
-  
-  // Animation for placement handle on first appearance
-  const handleAnimOffset = useSharedValue(0);
-  const handleAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: handleAnimOffset.value }],
-  }));
-  
-  // Animate handle when step changes to PLACE
-  useEffect(() => {
-    if (claimStep === CLAIM_STEPS.PLACE) {
-      handleAnimOffset.value = withSpring(15, { damping: 15 }, () => {
-        handleAnimOffset.value = withSpring(0, { damping: 15 });
-      });
-    }
-  }, [claimStep]);
+  // A short spotlight on the proposed claim each time a step opens: the
+  // outline thickens and the fill lifts, then settles, and a one line
+  // callout says what the controls below will do to it. It is how the runner
+  // learns THIS shape is the thing they are moving.
+  const [claimSpotlight, setClaimSpotlight] = useState(false);
+  const [claimCallout, setClaimCallout] = useState(null);
 
   // The claim lands on the map before it lands in a card: camera flight,
   // capture encounter, the polygon wiping outward from the middle of the
@@ -719,6 +706,39 @@ export default function ResultScreen({ navigation, route }) {
   // more: a rigid stamp turns about its own centre, so every pose is on the
   // run by construction.
   const moveBlocked = preview?.available === false;
+  // Why the Claim button is off, in words, whenever it is off for a reason
+  // the runner can do something about. A grey button with no sentence next
+  // to it was one of the things testers could not read.
+  const claimCta = claimCtaLabel(preview, claimArea);
+  const claimBlockedReason = moveBlocked
+    ? (preview?.unavailable_reason || 'This claim is not available right now.')
+    : null;
+  const claimShortOfEnergy =
+    moveBlocked && typeof preview?.energy_cost === 'number' &&
+    typeof preview?.energy_before === 'number' && preview.energy_before < preview.energy_cost;
+
+  // Each time a step opens: spotlight the shape, and say what the controls do
+  // to it. The callout goes as soon as a control is touched, because by then
+  // the map is showing the answer.
+  useEffect(() => {
+    if (!canChoose) return undefined;
+    setClaimSpotlight(!reducedMotion);
+    // The tutorial's own card is saying this during the demo. One voice.
+    if (tutorialSim) return undefined;
+    setClaimCallout(
+      claimStep === CLAIM_STEPS.ROTATE ? 'Rotate this to set its angle' : 'Move this along your run'
+    );
+    const lift = setTimeout(() => setClaimSpotlight(false), 900);
+    const hide = setTimeout(() => setClaimCallout(null), 3200);
+    return () => { clearTimeout(lift); clearTimeout(hide); };
+  }, [canChoose, claimStep, reducedMotion, tutorialSim]);
+  useEffect(() => {
+    if (claimControlActive) setClaimCallout(null);
+  }, [claimControlActive]);
+  const changeClaimStep = useCallback((next) => {
+    setClaimControlActive(false);
+    setClaimStep(next);
+  }, []);
   // `captured` flips the instant the claim returns, which would tear the map
   // out from under the animation — so the CLAIM STAGE is what stays mounted
   // through the sequence, and only `endCelebration` moves off it. There is no
@@ -798,7 +818,9 @@ export default function ResultScreen({ navigation, route }) {
   useEffect(() => {
     if (!canPlace) return;
     if (tutorialSim) {
-      setEnergyStatus({ energy: 40, energy_max: 40 });
+      // The demo spends no energy and shows no meter: a made up 40/40 next to
+      // the runner's real balance would be a lie about their account.
+      setEnergyStatus(null);
       return;
     }
     let alive = true;
@@ -826,6 +848,7 @@ export default function ResultScreen({ navigation, route }) {
       const seed = o.placements[0];
       const start = { t: seed.t, deg: normaliseDeg(seed.rotation_deg) };
       setPose(start);
+      seedPose.current = start;
       previewPose.current = start;
       setPreview(seed);
       return;
@@ -841,6 +864,7 @@ export default function ResultScreen({ navigation, route }) {
           o.placements[Math.min(Math.max(o.default_index || 0, 0), o.placements.length - 1)];
         const start = { t: seed?.t ?? o.base_t ?? 0.5, deg: normaliseDeg(seed?.rotation_deg) };
         setPose(start);
+        seedPose.current = start;
         previewPose.current = start;
         setPreview(seed || null);
       })
@@ -900,11 +924,19 @@ export default function ResultScreen({ navigation, route }) {
   const onPose = useCallback(
     (next, { commit } = {}) => {
       setPose(next);
-      // The runner has USED the chooser. That is what ends the tutorial's
-      // "choose where you want to claim" step: not a Next button, the real
-      // dial. Only on commit, so a drag reports once rather than per frame.
+      // The runner has USED the chooser: the tutorial's slide and turn steps
+      // end here, on the real controls. Only on commit (a drag reports once,
+      // on release) and only for a MEANINGFUL change from where the claim
+      // opened, so a tap that snaps back to the resting notch is not "moved".
       if (commit) {
-        tutorialSignal(SIGNAL.CLAIM_ADJUSTED);
+        const seed = seedPose.current;
+        if (seed && Math.abs(next.t - seed.t) >= 0.03) {
+          tutorialSignal(SIGNAL.CLAIM_POSITION_CHANGED);
+        }
+        if (seed) {
+          const turned = Math.abs(((normaliseDeg(next.deg) - normaliseDeg(seed.deg) + 540) % 360) - 180);
+          if (turned >= 5) tutorialSignal(SIGNAL.CLAIM_ROTATION_CHANGED);
+        }
         requestPreview(next);
       }
     },
@@ -1102,14 +1134,18 @@ export default function ResultScreen({ navigation, route }) {
   // recap tells land that lapsed from land the server never shaped.
   const claimExpiry = claimTimeLeft(result.claim_expires_at);
   const heroCaption = captured
-    ? (wonGround ? 'new ground' : 'no new ground, this one reinforced')
+    ? (wonGround ? 'New ground' : 'No new ground, this one reinforced')
     : canPlace
-    ? 'ground waiting to be claimed'
+    ? 'Ground waiting to be claimed'
     : claimArea > 0 && claimExpiry.expired
-    ? 'the land from this run expired'
+    ? 'The land from this run expired'
     : claimArea > 0
-    ? 'this run earned ground, but the server sent no shape for it'
-    : 'run a little further to earn a claim';
+    ? 'This run earned ground, but the server sent no shape for it'
+    : 'Run a little further to earn a claim';
+  // The hero number wears the clan's colour whenever it can be READ on the
+  // card; a pale clan glow on cream falls back to ink rather than letting the
+  // most important number on the screen go faint.
+  const heroInk = readableInk(colors.card, { prefer: team.glow, min: 3 });
   // Celebrate the finish once, on mount. Not on a later visit to place the
   // land: nothing has just finished, and the claim has its own celebration.
   const [showConfetti, setShowConfetti] = useState(!deferred);
@@ -1188,36 +1224,34 @@ export default function ResultScreen({ navigation, route }) {
 
   // --- what the tutorial is allowed to say, and when ----------------------
   //
-  // `claimReady`      there are real controls on screen to be taught. Not the
-  //                   moment the screen opens: the shape has to have arrived.
-  // `claimCelebrated` the WHOLE celebration is over — flyover, encounter,
-  //                   reveal, victory, payoff, standings — and the recap is
-  //                   what is on screen. The "it's yours" card waits for this
-  //                   so it can never land on top of the cutscene, and waits
-  //                   for crossed paths to close too, for the same reason.
+  // `claimReady`   there are real controls on screen to be taught.
+  // `claimStep`    which of the chooser's two steps is up. The tutorial's
+  //                "Tap CHOOSE ANGLE" step ends when this becomes `rotate`,
+  //                which only the runner's own press can do.
+  // `demoClaimM2`  the size the demo claim's payoff card quotes.
   useEffect(() => {
     setTutorialFacts({
       claimReady: canPlace && !!options && !!pose,
-      claimCelebrated: captured && stage === STAGE.SUMMARY && !crossedOpen,
+      claimStep: canChoose ? claimStep : null,
+      demoClaimM2: tutorialSim ? claimArea : 0,
     });
-  }, [setTutorialFacts, canPlace, options, pose, captured, stage, crossedOpen]);
+  }, [setTutorialFacts, canPlace, canChoose, options, pose, claimStep, tutorialSim, claimArea]);
 
-  // NOTHING TO CLAIM, or the shape never arrived. Either way this run cannot
-  // teach the claim, so the tutorial rewinds to "start a run" and waits for
-  // one that can. It never gets stuck pointing at a sheet that is not there.
+  // A real run's claim with no options to teach it moves nothing; kept as a
+  // report so a future step can listen for it.
   useEffect(() => {
-    if (captured || deferred) return undefined;
-    if (claimArea <= 0) {
-      tutorialSignal(SIGNAL.CLAIM_UNAVAILABLE);
-      return undefined;
-    }
-    // A slow options request is not a failure. This is the outside edge of
-    // "it is coming": past it, the sheet is showing its fallback and there is
-    // no chooser to teach.
-    if (options) return undefined;
-    const timer = setTimeout(() => tutorialSignal(SIGNAL.CLAIM_UNAVAILABLE), CLAIM_TEACHABLE_MS);
-    return () => clearTimeout(timer);
-  }, [captured, deferred, claimArea, options, tutorialSignal]);
+    if (captured || deferred || claimArea > 0) return;
+    tutorialSignal(SIGNAL.CLAIM_UNAVAILABLE);
+  }, [captured, deferred, claimArea, tutorialSignal]);
+
+  // FIRST REAL CLAIM. One card, the first time a runner who has just been
+  // through onboarding places real land, and never again. Not for anyone with
+  // a history of runs, and never for the demo.
+  useEffect(() => {
+    if (tutorialSim || deferred || !canChoose) return;
+    if (runCount == null || runCount > 1) return;
+    requestTip(TIP.FIRST_REAL_CLAIM);
+  }, [tutorialSim, deferred, canChoose, runCount, requestTip]);
 
   // DEMOTION, the other way round: a failed claim that costs enough points to
   // cross a floor. Same server flag, same reasoning as `rank_up` above.
@@ -1294,8 +1328,8 @@ export default function ResultScreen({ navigation, route }) {
         reinforced_m2: out.reinforced_m2 || 0,
         claim_rings: out.claim_rings?.length ? out.claim_rings : null,
       });
-      // The claim landed. The tutorial's payoff waits on the celebration
-      // below finishing, not on this line — see `claimCelebrated`.
+      // The claim landed: the tutorial's CLAIM step ends on the runner's own
+      // press of the real button.
       tutorialSignal(SIGNAL.CLAIM_PLACED);
       if (out.energy_max) setEnergyStatus((s) => ({ ...(s || {}), energy: out.energy, energy_max: out.energy_max }));
       // Land changed hands: territory, energy, rivalries, club totals and every
@@ -1308,6 +1342,11 @@ export default function ResultScreen({ navigation, route }) {
         // ...and this run's own page, which offers the claim while it waits.
         invalidate(`run:${result.run_id}`);
       }
+      // THE DEMO STOPS HERE. Its payoff is one card from the tutorial over the
+      // land it just drew; the flyover, the capture, the standings, the rank
+      // ladder and the share sheet are all left for the runner's first real
+      // run, where they mean something.
+      if (tutorialSim) return;
       // The payoff carries the celebration now — no toast on top of it. It is
       // held here but only shown when the sequence reaches its payoff phase.
       setPayoff({ ...out, center });
@@ -1355,17 +1394,27 @@ export default function ResultScreen({ navigation, route }) {
     rivalPopup.show({ victims: payoff?.victims, myAvatar: equipped });
   };
 
+  // The payoff's side trip. It used to navigate to the Home tab with the
+  // payoff Modal still up, which closed the whole run modal underneath it and
+  // lost everything still owed: the standings, the level and rank ceremonies,
+  // crossed paths. Now the celebration is ended the way the standings end it
+  // (so the ceremonies queued behind it can play) and the detail is pushed on
+  // the run stack, so its back button returns to this recap.
+  //
+  // Only the claim is passed. `claim.xp` is already the running total; the
+  // run's total used to be added on top of it, which doubled the bar.
   const goToRankProgression = () => {
+    seq.complete();
+    setStage(STAGE.SUMMARY);
+    const params = { claim: payoff };
+    if (navigation.getState?.()?.routeNames?.includes('RankProgression')) {
+      navigation.navigate('RankProgression', params);
+      return;
+    }
+    // Reopened later this screen sits at the root, which has no such route.
     navigation.navigate('Tabs', {
       screen: 'Home',
-      params: {
-        screen: 'RankProgression',
-        params: { 
-          claim: payoff,
-          runXpTotal: xpTotal,
-          runXpGained: xpGained,
-        },
-      },
+      params: { screen: 'RankProgression', params },
     });
   };
 
@@ -1462,60 +1511,17 @@ export default function ResultScreen({ navigation, route }) {
     setStage(STAGE.SHARE);
   };
 
-  // --- the practice run's autopilot ---------------------------------------
-  //
-  // The first-run practice (tutorialSim) plays itself from the run screen all
-  // the way back to Home: every beat a real run has, each held long enough to
-  // be seen, then pressed for the runner. It presses the SAME handlers the
-  // buttons do, so what is taught is exactly what a real run does. A runner
-  // who presses a button first simply moves it along sooner; the next beat's
-  // timer is keyed on the state that press produces.
-  //
-  // Latest handlers through a ref: they are plain functions redeclared every
-  // render, and a timer must press the current one.
-  const autopilot = useRef({});
-  autopilot.current = { placeClaim, endCelebration, goToShare, continueToLeaderboard: seq.continueToLeaderboard };
-  const autoStep = (active, ms, press) => {
-    if (!tutorialSim || !active) return undefined;
-    const timer = setTimeout(press, ms);
-    return () => clearTimeout(timer);
-  };
-  // Plan Attack: the shape is on the map, the coach mark has said what it is.
-  const claimShown = stage === STAGE.CLAIM && !captured && !claiming && canPlace && !!options && !!pose;
-  useEffect(
-    () => autoStep(claimShown, AUTO_CLAIM_MS, () => autopilot.current.placeClaim()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tutorialSim, claimShown]
-  );
-  // The payoff and the standings each wait for a tap in a real run.
-  useEffect(
-    () => autoStep(seq.showPayoff, AUTO_PAYOFF_MS, () => autopilot.current.continueToLeaderboard()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tutorialSim, seq.showPayoff]
-  );
-  useEffect(
-    () => autoStep(seq.showLeaderboard, AUTO_STANDINGS_MS, () => autopilot.current.endCelebration()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tutorialSim, seq.showLeaderboard]
-  );
-  // The recap, long enough for the "it's yours" card over it to finish, then on
-  // to the share page.
-  const recapShown = stage === STAGE.SUMMARY && captured && !crossedOpen;
-  useEffect(
-    () => autoStep(recapShown, AUTO_RECAP_MS, () => autopilot.current.goToShare()),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tutorialSim, recapShown]
-  );
-  // The share page, then HOME, not back to whichever tab opened the run: the
-  // practice ends where the rest of the tour picks up.
-  useEffect(
-    () => autoStep(stage === STAGE.SHARE, AUTO_SHARE_MS, () => {
-      navigation.navigate('Tabs', { screen: 'Home' });
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tutorialSim, stage]
-  );
-
+  // SHARING, TAUGHT ONCE, AND NEVER FORCED. The first real run's recap asks
+  // whether the runner wants to share it: yes opens the share card, not now
+  // leaves them on the recap. The demo never reaches here.
+  const goToShareRef = useRef(goToShare);
+  goToShareRef.current = goToShare;
+  const onRecap = stage === STAGE.SUMMARY && !crossedOpen;
+  useEffect(() => {
+    if (!onRecap || tutorialSim || deferred) return;
+    if (runCount == null || runCount > 1) return;
+    requestTip(TIP.SHARE, { onAccept: () => goToShareRef.current() });
+  }, [onRecap, tutorialSim, deferred, runCount, requestTip]);
 
   // ---------------------------------------------------------------------
   // STAGE 1 — the claim.
@@ -1554,14 +1560,20 @@ export default function ResultScreen({ navigation, route }) {
               {/* LEVEL 4: RELEVANT ENEMY TERRITORY */}
               {/* LEVEL 3: MY EXISTING TERRITORY */}
               
-              {/* LEVEL 2: CANDIDATE CLAIM FILL + OUTLINE */}
+              {/* LEVEL 2: CANDIDATE CLAIM FILL + OUTLINE. Drawn heavier than
+                  any held land around it, and heavier still while a control
+                  is in the runner's hand or a step has just opened, so it is
+                  never in doubt which shape the controls move. */}
               {claimPoints && canPlace && (
                 <TerritoryFill
                   id="r-claim"
                   points={claimPoints}
                   fillColor={team.stroke}
                   strokeColor={team.glow}
-                  fillOpacity={0.22}
+                  fillOpacity={claimSpotlight || claimControlActive ? 0.42 : 0.3}
+                  strokeWidth={claimSpotlight || claimControlActive ? 5 : 3.5}
+                  glowWidth={claimSpotlight ? 16 : 9}
+                  styleTransitionMs={reducedMotion ? 0 : 320}
                   glow
                 />
               )}
@@ -1584,44 +1596,17 @@ export default function ResultScreen({ navigation, route }) {
                 glowColor={trailGlowColor || team.stroke}
               />
               
-              {/* Placement handle visualization for Step 1 */}
-              {claimStep === CLAIM_STEPS.PLACE && canPlace && replayTrail.length > 0 && (
-                <UserMarker 
-                  point={replayTrail[Math.floor((claimPoseForMap?.t || 0.5) * (replayTrail.length - 1))]}
-                >
-                  <Animated.View style={[styles.placementHandle, handleAnimatedStyle]}>
-                    <View style={[styles.handleOuter, { borderColor: team.glow }]} />
-                    <View style={[styles.handleInner, { backgroundColor: team.glow }]} />
-                    <Text style={styles.handleIcon}>↔</Text>
-                  </Animated.View>
-                </UserMarker>
-              )}
-              
-              {/* Rotation ring visualization for Step 2 */}
-              {claimStep === CLAIM_STEPS.ROTATE && center && (
-                <UserMarker point={center}>
-                  <View style={styles.rotationRing}>
-                    <View style={[styles.rotationCircle, { borderColor: team.glow }]} />
-                    <View style={[
-                      styles.rotationIndicator,
-                      { 
-                        borderColor: team.glow,
-                        transform: [{ rotate: `${claimPoseForMap?.deg || 0}deg` }]
-                      }
-                    ]}>
-                      <View style={styles.rotationArrow} />
-                    </View>
-                    <Text style={styles.rotationIcon}>↻</Text>
-                  </View>
-                </UserMarker>
-              )}
+              {/* No handle or ring is drawn ON the map any more. Both looked
+                  like things to grab and neither was: every tester tried to
+                  drag them. The controls live in the sheet, and the map only
+                  answers them. */}
               {/* The permanent territory, switched on as the reveal lands.
                   DO NOT fade this in. It appears UNDER the reveal canvas,
                   which is drawing the same polygon at the same 0.42 fill, and
                   the handoff is invisible precisely because both are at full
                   strength when the overlay is pulled 260ms later. Easing this
                   one up makes the territory dip as the overlay clears. */}
-              {seq.showPermanentTerritory && claimedPoints && (
+              {(seq.showPermanentTerritory || tutorialSim) && claimedPoints && (
                 <TerritoryFill
                   id="r-final"
                   points={claimedPoints}
@@ -1642,6 +1627,21 @@ export default function ResultScreen({ navigation, route }) {
               {center && (
                 <UserMarker point={center}>
                   <CharacterBust equipped={equipped} size={36} ring={team.glow} bg={colors.cardAlt} />
+                </UserMarker>
+              )}
+              {/* What the controls below do to this shape, said once as each
+                  step opens. Anchored by its bottom edge a portrait's height
+                  above the claim's centre, so it points at the shape without
+                  covering the runner's face. */}
+              {canChoose && claimCallout && center && !seq.isRunning && (
+                <UserMarker point={center} anchor={{ x: 0.5, y: 1 }}>
+                  <View style={styles.mapCallout} pointerEvents="none">
+                    <View style={[styles.mapCalloutBubble, { borderColor: toon.ink }]}>
+                      <Text style={styles.mapCalloutText}>{claimCallout}</Text>
+                    </View>
+                    <View style={[styles.mapCalloutTail, { borderTopColor: toon.ink }]} />
+                    <View style={{ height: 30 }} />
+                  </View>
                 </UserMarker>
               )}
             </GameMap>
@@ -1816,21 +1816,10 @@ export default function ResultScreen({ navigation, route }) {
             />
             <View style={styles.claimHeadRow} pointerEvents="box-none">
               <View pointerEvents="none" style={{ flex: 1 }}>
-                <Framed
-                  frame={frameVariant('heading', 'place-your-territory')}
-                  tint={team.stroke}
-                  fill={withAlpha(colors.card, 0.96)}
-                  weight={INK.thin}
-                  pose={framePose('place-your-territory')}
-                  inset={false}
-                  style={styles.stepFrame}
-                  contentStyle={styles.stepChip}
-                >
-                  <View style={[styles.stepDot, { backgroundColor: team.stroke }]} />
-                  <Text style={[styles.stepChipText, { color: team.stroke }]}>
-                    {!canPlace ? 'GROUND TAKEN' : 'PICK A SPOT'}
-                  </Text>
-                </Framed>
+                {/* ONE name for the whole screen. The chip, the headline and
+                    the step used to be three different phrasings of the same
+                    thing ("Pick a spot", "Drop your land", "Place"); the steps
+                    below now say what to do, so this only says what it is. */}
                 <OutlinedText
                   style={[toonType.headline, styles.placeTitle]}
                   outline={toon.ink}
@@ -1838,33 +1827,23 @@ export default function ResultScreen({ navigation, route }) {
                   align="left"
                   containerStyle={{ alignSelf: 'flex-start' }}
                 >
-                  {!canPlace ? 'Territory claimed' : 'Drop your land!'}
+                  {!canPlace ? 'Territory claimed' : 'Claim your land'}
                 </OutlinedText>
               </View>
               {/* The way out, for a runner who does not want to plan right
-                  now. It was a muted "Later" in body text, floating over a
-                  busy map, which read as a caption rather than a control, so
-                  it wears the chip every other tap target here wears. Gone
-                  while a claim is in flight or playing: that land is already
-                  on its way. */}
-              {canPlace && !seq.isRunning && !claiming && (
+                  now. A TEXT button: it is the third thing on this screen,
+                  after the step's own action and Claim, and as a white chip it
+                  was competing with both. Gone while a claim is in flight or
+                  playing: that land is already on its way. */}
+              {canPlace && !seq.isRunning && !claiming && !tutorialSim && (
                 <PressableScale
                   onPress={planLater}
                   accessibilityRole="button"
                   accessibilityLabel="Plan your attack later"
-                  hitSlop={10}
+                  hitSlop={12}
+                  style={styles.laterLink}
                 >
-                  <Framed
-                    frame={frameVariant('chip', 'plan-later')}
-                    tint={toon.ink}
-                    fill="#ffffff"
-                    weight={INK.thin}
-                    pose={framePose('plan-later')}
-                    inset={false}
-                    contentStyle={styles.laterChip}
-                  >
-                    <Text style={styles.laterText}>Plan later</Text>
-                  </Framed>
+                  <Text style={styles.laterText}>Plan later</Text>
                 </PressableScale>
               )}
             </View>
@@ -1874,7 +1853,7 @@ export default function ResultScreen({ navigation, route }) {
               // below already say by being there, and the two coloured numbers
               // made a short line read as three different things.
               <Text style={styles.placeHint} pointerEvents="none">
-                {(result.distance_m / 1000).toFixed(2)} km  →  {formatArea(claimArea)} of land
+                Your {(result.distance_m / 1000).toFixed(2)} km run earned {formatArea(claimArea)} of land
               </Text>
             )}
           </View>
@@ -1888,11 +1867,7 @@ export default function ResultScreen({ navigation, route }) {
             claim": the dial AND the button, so a runner happy with where the
             land fell can simply claim it rather than being made to drag
             something first. */}
-        <View
-          style={[styles.claimSheet, { maxHeight: winHeight * 0.56 }]}
-          {...claimSheetTarget}
-          collapsable={false}
-        >
+        <View style={[styles.claimSheet, { maxHeight: winHeight * (tutorialSim ? 0.7 : 0.6) }]}>
           <ScrollView
             scrollEnabled={!claimControlActive}
             contentContainerStyle={[
@@ -1906,7 +1881,7 @@ export default function ResultScreen({ navigation, route }) {
             onScroll={remeasureTutorial}
             scrollEventThrottle={64}
           >
-            {__DEV__ && payoff && (
+            {__DEV__ && payoff && !tutorialSim && (
               <DevSequenceControls sequence={seq} fallbackAvatar={equipped} />
             )}
 
@@ -1928,12 +1903,18 @@ export default function ResultScreen({ navigation, route }) {
                     placement={preview}
                     stale={previewStale}
                     team={team}
+                    ring={claimRing}
+                    step={claimStep}
+                    onStepChange={changeClaimStep}
                     onInteractionChange={setClaimControlActive}
                     disabled={claiming || seq.isRunning}
-                    onStepChange={(step, currentPose) => {
-                      setClaimStep(step);
-                      setClaimPoseForMap(currentPose);
-                    }}
+                    // The demo has the tutorial's own cards; two voices
+                    // teaching one control is one too many.
+                    coach={!tutorialSim}
+                    // The demo: register the controls as tutorial targets,
+                    // play the one-off gesture hints, and hold the runner on
+                    // the step the tutorial is teaching.
+                    tutorial={tutorialSim}
                   />
                 )}
 
@@ -1964,41 +1945,61 @@ export default function ResultScreen({ navigation, route }) {
                   </View>
                 )}
 
-                {/* Energy gates claiming — tap the meter to refill. It is the
-                    ONLY place the price appears now. It used to be on the
-                    button as well, which made every decision on this screen
-                    read as a purchase; the decision is about ground, and what
-                    it costs is a fact about the account, not about the move. */}
-                <View style={styles.claimFooter}>
-                  <View style={styles.claimCost}>
-                    <Text style={type.caption}>
-                      {preview?.energy_cost ? `Costs ${preview.energy_cost} energy` : ''}
-                    </Text>
-                  </View>
-                  {energyStatus && (
-                    <EnergyMeter
-                      compact
-                      style={styles.claimEnergy}
-                      status={energyStatus}
-                      onPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
+                {/* The decision, in the order it is made: what you get, what
+                    it costs, the button. Only on the angle step (or when there
+                    is no chooser at all to step through): the first step's
+                    one job is "where", and a Claim button beside it made
+                    testers claim before they had seen the angle existed. */}
+                {(!canChoose || claimStep === CLAIM_STEPS.ROTATE) && (
+                  <View style={styles.claimFooter}>
+                    <ClaimSummary
+                      placement={preview}
+                      stale={canChoose && previewStale}
+                      accent={team.glow}
+                      earnedM2={claimArea}
+                      energyStatus={energyStatus}
+                      onEnergyPress={IAP_ENABLED ? () => setShopOpen(true) : undefined}
+                      // The demo shows only what it would gain: no energy
+                      // line, no meter, and the Claim button in view.
+                      compact={tutorialSim}
                     />
-                  )}
 
-                {/* "Looks good? Claim it." lights THIS button and lets the
-                    press through to it. */}
-                <View {...claimButtonTarget} collapsable={false}>
-                  <ToonButton
-                    title={claiming ? 'Claiming…' : 'CLAIM HERE'}
-                    onPress={placeClaim}
-                    loading={claiming}
-                    disabled={claiming || seq.isRunning || moveBlocked}
-                    size="sm"
-                    containerStyle={styles.claimButtonWrap}
-                    style={styles.claimButton}
-                    fill={{ color: team.glow, colors: [team.glow, team.glow, team.glow], border: toon.ink }}
-                  />
-                </View>
-                </View>
+                    {claimBlockedReason && (
+                      <View style={styles.claimBlocked} accessibilityLiveRegion="polite">
+                        <Text style={[styles.claimBlockedText, { color: colors.danger }]}>
+                          {claimBlockedReason}
+                        </Text>
+                        {claimShortOfEnergy && IAP_ENABLED && (
+                          <PressableScale
+                            onPress={() => setShopOpen(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Get more energy"
+                            hitSlop={8}
+                          >
+                            <Text style={styles.claimBlockedAction}>Get energy</Text>
+                          </PressableScale>
+                        )}
+                      </View>
+                    )}
+
+                    {/* "Looks good? Claim it." lights THIS button and lets the
+                        press through to it. PASER pink whatever the runner's
+                        clan colour: in a grey blue clan the old clan filled
+                        button looked switched off when it was not. */}
+                    <View {...claimButtonTarget} collapsable={false}>
+                      <ToonButton
+                        title={claiming ? 'Claiming…' : claimCta.title}
+                        accessibilityLabel={claiming ? 'Claiming' : claimCta.spoken}
+                        onPress={placeClaim}
+                        loading={claiming}
+                        disabled={claiming || seq.isRunning || moveBlocked}
+                        size="sm"
+                        containerStyle={styles.claimButtonWrap}
+                        fill={moveBlocked ? { color: colors.textDim, border: toon.ink } : undefined}
+                      />
+                    </View>
+                  </View>
+                )}
               </>
             )}
           </ScrollView>
@@ -2008,18 +2009,21 @@ export default function ResultScreen({ navigation, route }) {
           <BuyEnergySheet visible={shopOpen} onClose={() => setShopOpen(false)} onPurchased={refreshEnergy} />
         ) : null}
 
-        {/* the payoff: who you took it from, the XP, the level bar. Opens on
-            the sequence's payoff phase — after the victory beat, not straight
-            off the territory handoff. Its one action carries on INTO the
-            standings (continueToLeaderboard), which is where the celebration
-            ends; `onClose` is left for the Android back gesture. */}
+        {/* the payoff: the ground won, who it was taken from, the XP and the
+            level bar. Opens on the sequence's payoff phase — after the victory
+            beat, not straight off the territory handoff. Continue carries on
+            INTO the standings (continueToLeaderboard), which is where the
+            celebration ends; rank detail is a side link; `onClose` is left for
+            the Android back gesture. Its XP bar is what cues the full screen
+            level up, once the payoff and standings have closed. */}
         <ClaimPayoff
           visible={seq.showPayoff}
           claim={payoff}
           myAvatar={equipped}
           onClose={endCelebration}
-          onViewLeaderboard={seq.continueToLeaderboard}
+          onContinue={seq.continueToLeaderboard}
           onViewRankProgression={goToRankProgression}
+          onLevelUp={onLevelUp}
         />
 
         {/* the standings, arriving behind a character-led wipe */}
@@ -2063,7 +2067,7 @@ export default function ResultScreen({ navigation, route }) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + space.md, paddingBottom: insets.bottom + space.xxl }]}
+      contentContainerStyle={[styles.scroll, { paddingTop: insets.top + space.md, paddingBottom: footerH + space.lg }]}
     >
 
       {/* An activity that earned nothing has to SAY so — a result screen that
@@ -2125,75 +2129,95 @@ export default function ResultScreen({ navigation, route }) {
         </Reveal>
       )}
 
-      {/* the shareable card */}
-      <Reveal delay={canPlace ? 140 : 0}>
+      {/* A. THE RESULT. One card answers "what did this run do": the map, the
+          ground it won, the run in four numbers, and what it paid, in that
+          order and in falling weight. The ground is the only big number; the
+          stats are one quiet grid; the coins are a chip, not a second hero.
+          The "+0.38 km², now Solo holds more" line and the PASER watermark
+          that used to close the card went: the first repeated the hero, and
+          sharing has its own card now (RunShareSheet), so this one no longer
+          needs to sign itself. */}
       {/* Accent on the clan's own colour, per the rule in theme/nb.js: on dark
           the drop is the one place the palette shouts, and if a clan colour
           and an accent ever meet, the clan wins. */}
+      <Reveal delay={canPlace ? 140 : 0}>
       <HardShadow radius={nbRadius.sm} accent={team.glow} style={styles.cardShadow}>
       <View style={styles.card}>
+        {/* Flush with the card's own edges, so the card's stroke IS the map's
+            frame. It used to be a hand drawn box inside the padded card, which
+            read as a second card nested in the first. */}
         {hasRouteData({ rings, path: routeLonLat }) && (
-          <View style={styles.polyWrapLarge}>
-            <RouteThumb id={result.run_id} rings={rings} path={routeLonLat} color={team.glow} large />
+          <View
+            style={styles.heroMap}
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={captured ? 'Map of your run and the ground it claimed' : 'Map of your run'}
+          >
+            <RouteThumb id={result.run_id} rings={rings} path={routeLonLat} color={team.glow} large bare />
           </View>
         )}
 
-        <View style={styles.heroRow}>
-          <CountUpText value={heroAreaM2} format={km2} style={[styles.heroArea, { color: team.glow }]} />
-          <Text style={styles.heroUnit}> km²</Text>
-        </View>
-        <Text style={[styles.heroCaption, captured && wonGround && styles.heroCaptionStrong]}>
-          {heroCaption}
-        </Text>
-        {/* The other half of the claim, said out loud rather than folded into
-            the number above it. Ground the runner already held does not move a
-            border, but it is not nothing either: it stacks the strength of
-            that land and buys it more time before it decays. */}
-        {captured && reinforcedM2 >= 1 && (
-          <Text style={styles.heroSub}>
-            plus {formatArea(reinforcedM2)} of your own land reinforced
-          </Text>
-        )}
+        <View style={styles.cardBody}>
+          <View
+            style={styles.heroBlock}
+            accessible
+            accessibilityLabel={`${formatArea(heroAreaM2)}, ${heroCaption}`}
+          >
+            <View style={styles.heroRow}>
+              <CountUpText value={heroAreaM2} format={km2} style={[styles.heroArea, { color: heroInk }]} />
+              <Text style={styles.heroUnit}> km²</Text>
+            </View>
+            <Text style={[styles.heroCaption, captured && wonGround && styles.heroCaptionStrong]}>
+              {heroCaption}
+            </Text>
+            {/* The other halves of the claim, as footnotes to the headline and
+                never as second headlines. Ground the runner already held does
+                not move a border, but it stacks strength and buys time; ground
+                taken off a rival is the one fact the number alone cannot say. */}
+            {captured && reinforcedM2 >= 1 && (
+              <Text style={styles.heroSub}>
+                plus {formatArea(reinforcedM2)} of your own land reinforced
+              </Text>
+            )}
+            {stolen > 0 && (
+              <Text style={styles.heroSub}>
+                {formatArea(stolen)} taken{claim.stolen_from ? ` from ${claim.stolen_from}` : ' from rivals'}
+              </Text>
+            )}
+          </View>
 
-        <View style={styles.quietRow}>
-          <QuietStat label="Distance" value={(result.distance_m / 1000).toFixed(2)} unit="km" />
-          <QuietStat label="Pace" value={formatPace(result.distance_m, result.duration_s)} />
-          <QuietStat label="Duration" value={formatDuration(result.duration_s)} />
-          <QuietStat label="Calories" value={String(caloriesKcal)} unit="kcal" />
-        </View>
+          {/* The run, in one grid. Same label, value and unit style in every
+              cell, and a hairline above rather than a full weight rule: this
+              is the second thing on the card, not a new section. */}
+          <View style={styles.quietRow}>
+            <QuietStat label="Distance" value={(result.distance_m / 1000).toFixed(2)} unit="km" />
+            <QuietStat label="Pace" value={formatPace(result.distance_m, result.duration_s)} />
+            <QuietStat label="Duration" value={formatDuration(result.duration_s)} />
+            <QuietStat label="Calories" value={String(caloriesKcal)} unit="kcal" />
+          </View>
 
-        {/* XP progression moved to dedicated RankProgressionScreen */}
-        {/* Coins and other rewards can stay here */}
-
-        {/* What the run paid, under the bar it just moved — coins used to sit
-            above the whole card as a receipt with nothing to attach to. */}
-        {coinsGained > 0 && (
-          <Reveal from="up" delay={COINS_DELAY} style={styles.earnRow}>
-            {/* THE PAYOUT, as a coin arriving rather than a line of text.
-                This was a bare "+47 coins" that faded up with everything else
-                on the card, which is the wrong shape for the one number on
-                this screen that is spendable — a reward that reads exactly
-                like a statistic is not a reward. It is a struck block now: a
-                spinning coin, the number counting into it, and the whole thing
-                popping in on a spring once the XP bar has come to rest. */}
-            <Pop trigger={result.run_id} delay={COINS_DELAY}>
-              <HardShadow
-                offset={NB.offset}
-                accent={nbAccents.yellow}
-                radius={nbRadius.sm}
-                style={styles.earnDrop}
-              >
-                <View style={styles.earnChip}>
-                  {/* THE COIN, ON INK. It was a gold coin spinning directly on
-                      the block's gold fill, which is the one background it
-                      cannot be seen against — at 26pt it read as a pale dot
-                      and the payout looked like a plain yellow label. The well
-                      is the darkest thing on the card, so the coin is now the
-                      first thing the eye lands on. */}
-                  <View style={styles.earnCoin}>
-                    <GameAnimation name="coinSpin" size={34} trigger={result.run_id} />
-                  </View>
-                  <View style={styles.earnAmount}>
+          {/* THE PAYOUT: a coin arriving on a struck yellow chip, counting up
+              once the card has settled. Chip sized, not hero sized: it used to
+              be the second biggest block on the card and read as a stray yellow
+              button competing with the ground. The coin still spins on its ink
+              well, because gold on gold was the one ground it vanished on. */}
+          {coinsGained > 0 && (
+            <Reveal from="up" delay={COINS_DELAY} style={styles.earnRow}>
+              <Pop trigger={result.run_id} delay={COINS_DELAY}>
+                <HardShadow
+                  offset={NB.offsetSm}
+                  accent={nbAccents.yellow}
+                  radius={nbRadius.pill}
+                  style={styles.earnDrop}
+                >
+                  <View
+                    style={styles.earnChip}
+                    accessible
+                    accessibilityLabel={`${coinsGained} coins earned`}
+                  >
+                    <View style={styles.earnCoin}>
+                      <GameAnimation name="coinSpin" size={24} trigger={result.run_id} />
+                    </View>
                     <CountUpText
                       value={coinsGained}
                       from={0}
@@ -2203,32 +2227,13 @@ export default function ResultScreen({ navigation, route }) {
                     />
                     <Text style={styles.earnUnit}>coins</Text>
                   </View>
-                </View>
-              </HardShadow>
-            </Pop>
-            {(result.coins_capped || result.energy_capped) && (
-              <Text style={styles.earnCapped}>daily cap reached</Text>
-            )}
-          </Reveal>
-        )}
-
-        {(captured || stolen > 0) && (
-          <View style={styles.deltaRow}>
-            {stolen > 0 ? (
-              <Text style={[styles.deltaText, { color: team.glow }]}>
-                Stole {formatArea(stolen)}{claim.stolen_from ? ` from ${claim.stolen_from}` : ''}
-              </Text>
-            ) : (
-              <Text style={[styles.deltaText, { color: team.glow }]}>
-                +{formatArea(heroAreaM2)}, now {label} holds more
-              </Text>
-            )}
-          </View>
-        )}
-
-        <View style={styles.watermark}>
-          <PaserMark size={18} color={colors.textDim} />
-          <Text style={styles.watermarkText}>PASER</Text>
+                </HardShadow>
+              </Pop>
+              {(result.coins_capped || result.energy_capped) && (
+                <Text style={styles.earnCapped}>Daily cap reached</Text>
+              )}
+            </Reveal>
+          )}
         </View>
       </View>
       </HardShadow>
@@ -2278,9 +2283,10 @@ export default function ResultScreen({ navigation, route }) {
         </Reveal>
       )}
 
-      {/* What the claim actually achieved, and where it leaves you on the
-          board. Above the splits because it is about the GAME; the splits are
-          about the run. Renders nothing when no ground was claimed. */}
+      {/* B. THE TERRITORY REPORT: what the run did to the map beyond the
+          number above. `hideClaimSummary` keeps the hero's own figures out of
+          it, so it leads with the standing instead of repeating the ground.
+          Renders nothing when no ground was claimed. */}
       <Reveal delay={270}>
         {/* The only place the automatic PRO prompt is armed. See the prop's
             own note in TerritoryInsights — and it still has to get past the
@@ -2293,7 +2299,10 @@ export default function ResultScreen({ navigation, route }) {
         />
       </Reveal>
 
-      {/* Combined PRO section for all advanced insights - splits and other stats */}
+      {/* C. SPLITS, and the four numbers derived from them, as one calm card:
+          the bars first, then the same stat grid the result card uses. Behind
+          PRO; unlocked, it used to render loose on the page with no card at
+          all, which is why it read as detached from the rest of the story. */}
       {(splits.length > 0 || advancedStats.length > 0) && (
         <Reveal delay={300}>
           <ProLockedSection
@@ -2322,35 +2331,42 @@ export default function ResultScreen({ navigation, route }) {
                 )}
               </View>
             }
-            style={{ marginTop: space.xl }}
+            style={styles.sectionCard}
           >
-            <View>
-              {splits.length > 0 && (
-                <Splits splits={splits} accent={team.glow} />
-              )}
-              {advancedStats.length > 0 && (
-                <View style={[styles.quietRow, styles.quietRowTight]}>
-                  {advancedStats.map((s) => (
-                    <QuietStat key={s.label} label={s.label} value={s.value} unit={s.unit} />
-                  ))}
-                </View>
-              )}
-            </View>
+            <HardShadow radius={nbRadius.sm} style={[styles.cardShadow, styles.sectionCard]}>
+              <View style={styles.plainCard}>
+                <Text style={styles.cardTitle} accessibilityRole="header">
+                  {splits.length > 0 ? 'Splits' : 'Run details'}
+                </Text>
+                {splits.length > 0 && (
+                  <Splits splits={splits} accent={team.glow} bare />
+                )}
+                {advancedStats.length > 0 && (
+                  <View style={[styles.quietRow, splits.length === 0 && styles.quietRowFirst]}>
+                    {advancedStats.map((s) => (
+                      <QuietStat key={s.label} label={s.label} value={s.value} unit={s.unit} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            </HardShadow>
           </ProLockedSection>
         </Reveal>
       )}
 
-      {/* One way on, because sharing is the NEXT STAGE rather than a button
-          half way down this page. The escape hatch is on the share screen
-          itself, which goes straight Home — so nobody is trapped into
-          posting, but everybody is offered it once. */}
-      {/* The same button the claim stage ends on, rather than a second CTA
-          shape. It was a pink GRADIENT pill with a soft glow behind it — a
-          gradient and a blur, which are the two devices this style has none
-          of, on the last thing the runner touches before their card goes out.
-          ToonButton is the flat fill, ink frame and hard drop everything else
-          on the page now wears. */}
-      <Reveal delay={380} style={styles.actions}>
+    </ScrollView>
+
+    {/* D. CONTINUE, anchored. The one way on, so it sits on the screen's own
+        floor rather than at the end of a long scroll, where it read as an
+        afterthought. The scroll reserves its height so nothing ends up
+        underneath it. Sharing is the NEXT STAGE rather than a button half way
+        down this page; the escape hatch is on the share screen, which goes
+        straight Home. */}
+    <View
+      style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}
+      onLayout={(e) => setFooterH(Math.round(e.nativeEvent.layout.height))}
+    >
+      <Reveal delay={380}>
         <ToonButton
           title="Continue"
           onPress={goToShare}
@@ -2358,8 +2374,7 @@ export default function ResultScreen({ navigation, route }) {
           accessibilityLabel="Continue to sharing"
         />
       </Reveal>
-
-    </ScrollView>
+    </View>
 
     {/* STAGE 3 — the outward-facing card, story shaped and built for Instagram
         rather than cropped out of this screen. The last thing before Home: its
@@ -2448,9 +2463,16 @@ export default function ResultScreen({ navigation, route }) {
   );
 }
 
-const makeStyles = (colors, scheme, type) => StyleSheet.create({
+const makeStyles = (colors, scheme, type) => {
+  // One type scale for all three recap cards; see report/reportText.js.
+  const R = reportText(type, colors);
+  const hairline = withAlpha(nbInk(scheme, colors.card), 0.14);
+  return StyleSheet.create({
   scroll: { padding: space.lg, paddingBottom: space.xxl, width: '100%', maxWidth: 640, alignSelf: 'center' },
-  territoryReport: { marginTop: space.xl, marginRight: NB.offset },
+  // The three cards share one rhythm: the same gap between each, so the page
+  // reads as result, then report, then splits, not as boxes of random height.
+  territoryReport: { marginTop: space.lg, marginRight: NB.offset },
+  sectionCard: { marginTop: space.lg },
 
   // A notice, not a card: the stroke goes all the way round at the thin
   // weight, so it reads as a boxed aside rather than as another panel
@@ -2472,13 +2494,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // card's content instead of left-aligned like a floating receipt.
   earnRow: {
     flexDirection: 'row',
-    // Stretched, or the card's own centring shrinks this to its content and
-    // `flexWrap` has no width to wrap against.
     alignSelf: 'stretch',
     alignItems: 'center',
-    justifyContent: 'center',
-    // The block got wider, and the cap note sits beside it. On a narrow phone
-    // the two together are wider than the card, so let the note drop under
+    // The cap note sits beside the chip, and drops under it on a narrow phone
     // rather than squeezing the payout.
     flexWrap: 'wrap',
     gap: space.md,
@@ -2493,44 +2511,35 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // area the payout was the smallest number in the card it was supposed to be
   // the payoff of; it is the second-largest now, and it is the only one on an
   // inverted ground.
+  // A reward chip: the deck's yellow, a thin ink stroke and a small drop.
+  // Big enough to read as money, small enough that the ground stays the hero.
   earnChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
+    gap: space.sm,
     backgroundColor: nbAccents.yellow,
-    borderWidth: NB.stroke,
+    borderWidth: NB.strokeThin,
     borderColor: NB.ink,
-    borderRadius: nbRadius.sm,
-    paddingLeft: 7,
-    paddingRight: space.lg,
-    paddingVertical: 7,
+    borderRadius: nbRadius.pill,
+    paddingLeft: 4,
+    paddingRight: space.md,
+    paddingVertical: 4,
   },
-  // Reserve for the drop, symmetric so the block stays optically centred in a
-  // card that centres its contents.
-  earnDrop: { marginBottom: NB.offset, marginLeft: NB.offset, marginRight: NB.offset },
+  earnDrop: { marginBottom: NB.offsetSm, marginRight: NB.offsetSm },
   // The dark well the coin spins in. A circle, because a coin in a rounded
   // rectangle reads as a token in a slot.
   earnCoin: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: NB.ink,
     overflow: 'hidden',
   },
-  // Number over unit, so the unit does not push the amount off centre and the
-  // amount gets the full height of the block.
-  earnAmount: { alignItems: 'flex-start' },
-  earnItem: { ...type.stat, color: nbTextOn(nbAccents.yellow) },
-  earnUnit: {
-    ...type.labelSm,
-    color: nbTextOn(nbAccents.yellow),
-    letterSpacing: 1.2,
-    opacity: 0.8,
-    marginTop: -2,
-  },
-  earnCapped: { ...type.caption, color: colors.textDim },
+  earnItem: { ...R.statValue, color: nbTextOn(nbAccents.yellow) },
+  earnUnit: { ...type.bodySmBold, color: nbTextOn(nbAccents.yellow) },
+  earnCapped: { ...R.body },
 
   // The claim card is the centrepiece of the whole post-run screen, so it wears
   // the game's own surface (ink outline, hard shadow, outlined display type)
@@ -2550,10 +2559,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     paddingBottom: space.lg,
   },
   claimHeadRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
-  // "Plan later": the chip every tap target in this style wears, white with
-  // an ink edge, so it reads as a control over any map, not as a caption.
-  laterChip: { paddingHorizontal: space.md, paddingVertical: 7 },
-  laterText: { ...type.buttonSm, color: '#141414' },
+  // "Plan later": tertiary, so plain underlined text. It sits on the header
+  // gradient, which is the theme's own background, so theme ink reads on it.
+  laterLink: { paddingVertical: 6, paddingLeft: space.sm },
+  laterText: { ...type.bodySmBold, color: colors.textMuted, textDecorationLine: 'underline' },
   // ...and the way back, on the recap: the land still waiting, and a button
   // to the map. A full stroke like the recap card under it, because it is a
   // thing to act on rather than an aside.
@@ -2579,10 +2588,11 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderTopColor: toon.ink,
   },
   claimSheetInner: { paddingHorizontal: space.lg, paddingTop: space.sm },
-  claimFooter: { flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 1 },
-  claimCost: { alignSelf: 'flex-start', width: '100%' },
-  claimEnergy: { flex: 1, minWidth: 0 },
-  claimButtonWrap: { width: 132, flexShrink: 0 },
+  claimFooter: { gap: 10, marginTop: space.sm },
+  claimBlocked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
+  claimBlockedText: { ...type.bodySmBold, flex: 1 },
+  claimBlockedAction: { ...type.bodySmBold, color: brand.pink, textDecorationLine: 'underline' },
+  claimButtonWrap: { alignSelf: 'stretch' },
   claimButton: { width: '100%' },
   mapMissing: {
     flex: 1,
@@ -2592,16 +2602,6 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     backgroundColor: colors.cardAlt,
   },
   mapMissingText: { ...type.bodySm, color: colors.textMuted, textAlign: 'center' },
-  stepFrame: { alignSelf: 'flex-start', marginBottom: space.sm },
-  stepChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    paddingHorizontal: space.md,
-    paddingVertical: 4,
-  },
-  stepDot: { width: 7, height: 7, borderRadius: 4 },
-  stepChipText: { ...type.captionMedium, letterSpacing: 0.8 },
   // White fill plus the fixed ink outline remains readable over both the light
   // street map and the dark map. Theme text in light mode was black-on-black
   // once OutlinedText added its ink stroke, which produced the blob seen on
@@ -2642,66 +2642,77 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // radius, flat fill: the three decisions in theme/nb.js, applied to the
   // surface that most needed them. The drop is a real offset block behind it,
   // painted by HardShadow at the call site so Android gets it too.
+  // One strong stroke per card, and nothing boxed inside it: the map runs
+  // flush to the stroke, and the sections below are divided by space and a
+  // single hairline, not by frames of their own.
   card: {
     backgroundColor: colors.card,
     borderRadius: nbRadius.sm,
     borderWidth: NB.stroke,
     borderColor: nbInk(scheme, colors.card),
-    padding: space.lg,
-    alignItems: 'center',
+    overflow: 'hidden',
   },
+  cardBody: { padding: space.lg, paddingTop: space.md },
+  heroMap: {
+    borderBottomWidth: NB.strokeThin,
+    borderBottomColor: nbInk(scheme, colors.card),
+  },
+  heroBlock: { alignItems: 'center' },
+  // The secondary cards (splits): same stroke and padding as the report.
+  plainCard: {
+    backgroundColor: colors.card,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.stroke,
+    borderColor: nbInk(scheme, colors.card),
+    padding: space.lg,
+  },
+  cardTitle: { ...R.cardTitle, marginBottom: space.md },
   // Room for the block to fall into. The shadow is inset out of the wrapper by
   // its own offset, so without this it lands under whatever is below it.
   cardShadow: { marginBottom: NB.offset, marginRight: NB.offset },
-  polyWrap: { alignSelf: 'stretch', marginBottom: space.sm },
-  polyWrapLarge: { alignSelf: 'stretch', marginBottom: space.md, minHeight: 180 },
-  heroRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: space.sm },
-  heroArea: { ...type.statHero },
-  heroUnit: { ...type.statMd, color: colors.textMuted, marginBottom: 6 },
-  heroCaption: { ...type.caption, color: colors.textDim, marginTop: 2, textAlign: 'center' },
-  // "new ground" specifically — the other captions are full sentences, where
-  // this weight would read as shouting.
-  heroCaptionStrong: { ...type.bodySmBold, color: colors.text },
-  // The reinforcement line under it: a footnote to the headline, never a
-  // second headline.
-  heroSub: { ...type.caption, color: colors.textDim, marginTop: 3, textAlign: 'center' },
-  // The rule between the headline and the numbers is a real line now. A
-  // hairline inside a 3pt box is the one weight that reads as an accident.
+  heroRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  heroArea: { ...R.heroValue },
+  heroUnit: { ...R.heroUnit, marginBottom: 6 },
+  // The sentence captions (no claim, expired...) stay quiet; "New ground"
+  // itself is the hero's name and reads at body weight in full ink.
+  heroCaption: { ...R.body, marginTop: 2, textAlign: 'center' },
+  heroCaptionStrong: { ...R.heroLabel },
+  heroSub: { ...R.body, marginTop: 3, textAlign: 'center' },
+  // The run's four numbers, and the four derived ones on the splits card: one
+  // 2x2 grid, one label style, one value style, one unit style.
   quietRow: {
     flexDirection: 'row', flexWrap: 'wrap', alignSelf: 'stretch',
     rowGap: space.md,
     marginTop: space.lg,
     paddingTop: space.md,
-    borderTopWidth: NB.strokeThin,
-    borderTopColor: nbInk(scheme, colors.card),
+    borderTopWidth: 1.5,
+    borderTopColor: hairline,
   },
-  // Keep the advanced metrics on the same two-column grid and row rhythm.
   quietRowTight: { marginTop: space.md, paddingTop: 0, borderTopWidth: 0 },
-  quietStat: { width: '50%', minWidth: 0, paddingHorizontal: space.xs, alignItems: 'flex-start' },
-  quietLabel: { ...type.labelSm, color: colors.textDim, marginBottom: 4 },
+  // Stats with nothing above them (a run with no splits) need no rule.
+  quietRowFirst: { marginTop: 0, paddingTop: 0, borderTopWidth: 0 },
+  quietStat: { width: '50%', minWidth: 0, paddingRight: space.sm, alignItems: 'flex-start' },
+  quietLabel: { ...R.statLabel, marginBottom: 3 },
   quietValueRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', maxWidth: '100%' },
-  quietValue: { ...type.statSm, color: colors.text, flexShrink: 1 },
-  quietUnit: { ...type.caption, color: colors.textDim, marginLeft: 2, marginBottom: 1 },
-  deltaRow: { marginTop: space.md },
-  deltaText: { ...type.bodySmBold, textAlign: 'center' },
-  watermark: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: space.md },
-  watermarkText: { ...type.labelSm, color: colors.textDim, letterSpacing: 2 },
+  quietValue: { ...R.statValue, flexShrink: 1 },
+  quietUnit: { ...R.statUnit, marginLeft: 3 },
 
   section: { marginTop: space.xl },
-  sectionTitle: { ...type.label, color: colors.textMuted, marginBottom: space.md },
-  splitRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginBottom: space.sm },
-  splitKm: { ...type.statSm, color: colors.text, width: 52 },
+  sectionTitle: { ...R.sectionLabel, marginBottom: space.md },
+  // Calm bars: no stroke round each track, a thin wash for the track and the
+  // clan colour for the pace. Secondary information, so nothing here competes
+  // with the ground above.
+  splitRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: 5 },
+  splitKm: { ...R.statUnit, color: colors.textMuted, width: 36 },
   splitBarTrack: {
     flex: 1,
-    height: 12,
+    height: 8,
     borderRadius: nbRadius.pill,
-    backgroundColor: colors.cardAlt,
-    borderWidth: NB.strokeThin,
-    borderColor: nbInk(scheme, colors.cardAlt),
+    backgroundColor: hairline,
     overflow: 'hidden',
   },
-  splitBar: { height: '100%' },
-  splitPace: { ...type.statSm, color: colors.textMuted, width: 52, textAlign: 'right' },
+  splitBar: { height: '100%', borderRadius: nbRadius.pill },
+  splitPace: { ...R.statValue, fontSize: 15, width: 48, textAlign: 'right' },
 
   prWrap: { gap: space.sm },
   prHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.xs },
@@ -2731,77 +2742,38 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
 
   // `shareBtn` / `shareBtnText` were here — the gradient pill's own padding
   // and label colour. ToonButton brings both, so they went with it.
-  actions: { marginTop: space.xl, gap: space.md },
+  // The anchored Continue bar: the page's own ground behind it and one
+  // hairline above, so content scrolling under it has an edge to pass.
+  footer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: space.md,
+    paddingHorizontal: space.lg,
+    backgroundColor: colors.bg,
+    borderTopWidth: 1.5,
+    borderTopColor: withAlpha(nbInk(scheme, colors.bg), 0.14),
+  },
 
-  // Claim step visualization styles
-  placementHandle: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  handleOuter: {
-    position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 3,
-    opacity: 0.8,
-  },
-  handleInner: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-  },
-  handleIcon: {
-    position: 'absolute',
-    bottom: -8,
-    fontSize: 10,
-    fontWeight: '500',
-    color: colors.textMuted,
-  },
-  
-  rotationRing: {
-    width: 88,
-    height: 88,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  rotationCircle: {
-    position: 'absolute',
-    width: 88,
-    height: 88,
-    borderRadius: 44,
+  // What the controls do to the shape, floated over the map as a step opens.
+  mapCallout: { alignItems: 'center' },
+  mapCalloutBubble: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 2,
-    opacity: 0.6,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  rotationIndicator: {
-    position: 'absolute',
-    width: 88,
-    height: 88,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rotationArrow: {
-    position: 'absolute',
-    top: 4,
+  mapCalloutText: { ...type.bodySmBold, color: '#141414' },
+  mapCalloutTail: {
     width: 0,
     height: 0,
     borderLeftWidth: 6,
     borderRightWidth: 6,
-    borderTopWidth: 10,
+    borderTopWidth: 8,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: '#ffffff',
-  },
-  rotationIcon: {
-    position: 'absolute',
-    right: -10,
-    top: '50%',
-    marginTop: -12,
-    fontSize: 20,
-    color: colors.textMuted,
   },
 });
+};

@@ -21,11 +21,14 @@ describe('tester feedback regressions', () => {
     expect(step).not.toContain("label: 'Woman'");
   });
 
-  test('the tutorial states the objective and separates safety from fair play', () => {
-    const tutorial = read('src/onboarding/TutorialOverlay.js');
-    expect(tutorial).toContain('Run outside, claim the ground you cover');
-    expect(tutorial).toContain('This is about safety: stop at crossings.');
-    expect(tutorial).not.toContain('Runs are checked for fair play.');
+  // The v1 overlay this used to read (src/onboarding/TutorialOverlay.js) was
+  // never imported and was deleted with the 2026-09-23 tutorial rebuild. The
+  // live tutorial is src/tutorial/steps.js: it opens on the objective and
+  // never talks about anti cheat.
+  test('the tutorial states the objective and never talks about fair play', () => {
+    const tutorial = read('src/tutorial/steps.js');
+    expect(tutorial).toContain("'Run in the real world.', 'Claim the map.', 'Defend your land.', 'Climb the ranks.'");
+    expect(tutorial).not.toContain('fair play');
   });
 
   test('the long-running run marker has no permanent animation loops', () => {

@@ -1,83 +1,77 @@
 // The one enumeration of where the first-run tutorial is.
 //
-// Deliberately the same shape as components/claim/phases.js: an object of
-// named phases plus an ORDER array, so "have we reached this beat" is one
-// comparison rather than a pile of booleans spread over four screens.
+// THE TUTORIAL FOLLOWS THE RUNNER. Every phase names the one thing the runner
+// does next and the real event that says they did it. Nothing in the core
+// tutorial navigates, scrolls, switches a tab, moves a map or presses a button
+// on a timer: the runner taps the real control and the app moves because they
+// tapped it. See signals.js for the events the screens report back.
 //
-// THE TUTORIAL FOLLOWS THE APP, NOT THE OTHER WAY AROUND. Nothing here drives
-// gameplay. Each phase says what is being taught and what real event ends it;
-// the run and claim state machines are untouched and remain the source of
-// truth. See signals.js for the events the app reports back.
+// WHAT IT TEACHES, AND ONLY THIS (about 30 seconds):
+//
+//   RUN     WELCOME → START_RUN (tap LET'S RUN on Home) → RUN_START (tap
+//           Start run) → DEMO_RUN (a four second demo route) → FINISH_DEMO
+//           (tap Finish demo run)
+//   CLAIM   CLAIM_POSITION (slide) → CLAIM_NEXT (tap Choose angle) →
+//           CLAIM_ROTATE (turn) → CLAIM_CONFIRM (tap Claim) → CLAIM_SUCCESS
+//   DEFEND  DEFEND → RANK
+//   READY   READY → COMPLETE
+//
+// Everything else (the map, missions, the shop, clubs, rivals, the rank
+// ladder, sharing) is a one card contextual tip, shown the first time the
+// runner opens it. See tips.js.
 
 export const PHASE = {
   // Nothing on screen. Either the tutorial is done, or it has not been armed.
   IDLE: 'idle',
 
-  // --- the world, taught on the map ---------------------------------------
+  // --- RUN ------------------------------------------------------------------
   WELCOME: 'welcome',
-  MAP: 'map',
-  PLAYER: 'player',
-  TERRITORY: 'territory',
-  CORE_LOOP: 'core-loop',
-
-  // --- a safe training run -----------------------------------------------
-  // These beats are an illustrated simulation. They never call the run,
-  // claim, shop or social APIs, so learning cannot change the player's real
-  // route, land, currency or relationships.
-  TRAINING_RUN: 'training-run',
-  TRAINING_CLAIM: 'training-claim',
-  TRAINING_RIVAL: 'training-rival',
-  TRAINING_CAPTURED: 'training-captured',
-  TRAINING_CROSSROADS: 'training-crossroads',
-  TRAINING_CUSTOMISE: 'training-customise',
-  TRAINING_SHOP: 'training-shop',
-  TRAINING_PROGRESS: 'training-progress',
-  TRAINING_DEFEND: 'training-defend',
-
-  // --- the loop, taught by doing it ---------------------------------------
   START_RUN: 'start-run',
-  ACTIVE_RUN: 'active-run',
-  FINISH_RUN: 'finish-run',
-  CLAIM_SELECT: 'claim-select',
+  RUN_START: 'run-start',
+  DEMO_RUN: 'demo-run',
+  FINISH_DEMO: 'finish-demo',
+
+  // --- CLAIM ----------------------------------------------------------------
+  CLAIM_POSITION: 'claim-position',
+  CLAIM_NEXT: 'claim-next',
+  CLAIM_ROTATE: 'claim-rotate',
   CLAIM_CONFIRM: 'claim-confirm',
-  FIRST_CLAIM_SUCCESS: 'first-claim-success',
+  CLAIM_SUCCESS: 'claim-success',
+
+  // --- DEFEND ---------------------------------------------------------------
+  DEFEND: 'defend',
+  RANK: 'rank',
+
+  // --- READY ----------------------------------------------------------------
+  READY: 'ready',
 
   COMPLETE: 'complete',
 };
 
-// Order matters for "have we reached / passed this beat" questions, and for
-// `nextPhase`, which is what a tap on an informational card does.
-//
-// THE PRACTICE RUN IS PLAYED, NOT DRAWN. It used to be two illustrated cards
-// (a fake progress bar, a fake claim) near the start and the real run branch
-// at the very end, which meant the runner was told about the run screen long
-// before they saw it. Now the practice card opens the real run screen, and the
-// run, the claim, the celebration, the recap and the share page all play
-// themselves (see the autopilot notes in RunningScreen and ResultScreen) and
-// hand the runner back to Home, where the rest of the tour carries on. The
-// last beat is still START_RUN: the real button, for a real run.
-//
-// TRAINING_CLAIM, FINISH_RUN and CLAIM_CONFIRM are no longer on the tour. The
-// constants stay so a record persisted on one of them still normalises; see
-// resumePhase.
+// The four conceptual stages the progress strip shows. Never more: a strip of
+// fourteen dots tells a new runner this is going to take a while.
+export const STAGE = {
+  RUN: 'RUN',
+  CLAIM: 'CLAIM',
+  DEFEND: 'DEFEND',
+  READY: 'READY',
+};
+export const STAGES = [STAGE.RUN, STAGE.CLAIM, STAGE.DEFEND, STAGE.READY];
+
 export const CORE_ORDER = [
   PHASE.WELCOME,
-  PHASE.MAP,
-  PHASE.PLAYER,
-  PHASE.TERRITORY,
-  PHASE.CORE_LOOP,
-  PHASE.TRAINING_RUN,
-  PHASE.ACTIVE_RUN,
-  PHASE.CLAIM_SELECT,
-  PHASE.FIRST_CLAIM_SUCCESS,
-  PHASE.TRAINING_RIVAL,
-  PHASE.TRAINING_CAPTURED,
-  PHASE.TRAINING_CROSSROADS,
-  PHASE.TRAINING_CUSTOMISE,
-  PHASE.TRAINING_SHOP,
-  PHASE.TRAINING_PROGRESS,
-  PHASE.TRAINING_DEFEND,
   PHASE.START_RUN,
+  PHASE.RUN_START,
+  PHASE.DEMO_RUN,
+  PHASE.FINISH_DEMO,
+  PHASE.CLAIM_POSITION,
+  PHASE.CLAIM_NEXT,
+  PHASE.CLAIM_ROTATE,
+  PHASE.CLAIM_CONFIRM,
+  PHASE.CLAIM_SUCCESS,
+  PHASE.DEFEND,
+  PHASE.RANK,
+  PHASE.READY,
   PHASE.COMPLETE,
 ];
 
@@ -95,29 +89,40 @@ export function nextPhase(phase) {
   return CORE_ORDER[i + 1];
 }
 
-// The phases that live inside the Record / claim modals rather than over the
-// tab bar. A native fullScreenModal is presented ABOVE the React root, so an
-// overlay mounted beside the navigator cannot draw on top of these — see
-// TutorialOverlay's `host`.
-export const RECORD_PHASES = new Set([
-  PHASE.ACTIVE_RUN,
-  PHASE.FINISH_RUN,
-  PHASE.CLAIM_SELECT,
+// The phases that only make sense while the demo run or its claim is on
+// screen. They live inside the Record modal, and they are attached to a demo
+// run that exists only in that screen's memory: if the modal goes away (the
+// runner closed it, Back, the app was killed) the demo is gone and these
+// phases have nothing left to point at.
+export const DEMO_PHASES = new Set([
+  PHASE.RUN_START,
+  PHASE.DEMO_RUN,
+  PHASE.FINISH_DEMO,
+  PHASE.CLAIM_POSITION,
+  PHASE.CLAIM_NEXT,
+  PHASE.CLAIM_ROTATE,
   PHASE.CLAIM_CONFIRM,
-  PHASE.FIRST_CLAIM_SUCCESS,
 ]);
 
-// Where a tutorial interrupted mid run should pick up again.
+// Kept for older imports. Same set: every demo phase is a Record phase.
+export const RECORD_PHASES = DEMO_PHASES;
+
+// The demo phases the RUN screen owns (the run screen reads these to decide
+// that its Start button starts the demo rather than a real run).
+export const DEMO_RUN_PHASES = new Set([PHASE.RUN_START, PHASE.DEMO_RUN, PHASE.FINISH_DEMO]);
+
+// Where a tutorial interrupted mid demo should pick up again.
 //
-// The run branch is the PRACTICE run now, so an interrupted one starts over
-// from its own card: the simulated run it was attached to is gone, and the
-// next one plays the whole thing again. Once the claim has landed there is
-// nothing left of the practice to replay, so that beat carries on forward.
+// The demo run and its claim live only in the run screen's memory, so a demo
+// phase that wakes up without that screen goes back to the one step that can
+// start a fresh demo: tap LET'S RUN on Home. Once the demo claim has landed
+// there is nothing left to replay, so the payoff carries on forward to the
+// defend card, which is drawn wherever the runner is.
 export function resumePhase(phase) {
   if (!phase) return PHASE.WELCOME;
   if (phase === PHASE.COMPLETE) return PHASE.COMPLETE;
-  if (phase === PHASE.FIRST_CLAIM_SUCCESS) return PHASE.TRAINING_RIVAL;
-  if (RECORD_PHASES.has(phase) || phase === PHASE.TRAINING_CLAIM) return PHASE.TRAINING_RUN;
+  if (phase === PHASE.CLAIM_SUCCESS) return PHASE.DEFEND;
+  if (DEMO_PHASES.has(phase)) return PHASE.START_RUN;
   if (phaseIndex(phase) < 0) return PHASE.WELCOME;
   return phase;
 }

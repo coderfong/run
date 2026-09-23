@@ -14,7 +14,7 @@
  * app.
  */
 
-import { PHASE, CORE_ORDER, RECORD_PHASES, nextPhase, resumePhase } from '../src/tutorial/phases';
+import { PHASE, CORE_ORDER, DEMO_PHASES, STAGES, nextPhase, resumePhase } from '../src/tutorial/phases';
 import {
   CORE,
   TIP,
@@ -118,6 +118,11 @@ describe('normalise', () => {
   });
 
   it('treats a record from an older tutorial as already taught', () => {
+    // Including a v1 tour somebody was half way through: an update never drops
+    // them into a tutorial, and Replay plays the new one.
+    const mid = normalise({ version: 1, core: CORE.RUNNING, phase: 'training-rival', tips: {} });
+    expect(mid.core).toBe(CORE.DONE);
+    expect(coreActive(mid)).toBe(false);
     const out = normalise({ version: 0, core: CORE.DONE, tips: { club: true } });
     expect(out.core).toBe(CORE.DONE);
     expect(out.version).toBe(TUTORIAL_VERSION);
@@ -162,29 +167,24 @@ describe('progress transitions', () => {
 // ---------------------------------------------------------------------------
 
 describe('resumePhase', () => {
-  // The run branch is the PRACTICE run now: an abandoned one plays again from
-  // its own card, and never re-teaches the world before it.
-  it('restarts an abandoned practice run from its own card', () => {
-    RECORD_PHASES.forEach((phase) => {
-      if (phase === PHASE.FIRST_CLAIM_SUCCESS) return;
-      expect(resumePhase(phase)).toBe(PHASE.TRAINING_RUN);
+  // The demo lives only in the run screen's memory: a demo step woken up
+  // without it goes back to the one step that can start a fresh demo.
+  it('sends every demo step back to LET\'S RUN', () => {
+    DEMO_PHASES.forEach((phase) => {
+      expect(resumePhase(phase)).toBe(PHASE.START_RUN);
     });
   });
 
-  // Once the practice claim has landed there is nothing left to replay.
-  it('carries on forward from a practice claim that already landed', () => {
-    expect(resumePhase(PHASE.FIRST_CLAIM_SUCCESS)).toBe(PHASE.TRAINING_RIVAL);
+  it('carries on forward from a demo claim that already landed', () => {
+    expect(resumePhase(PHASE.CLAIM_SUCCESS)).toBe(PHASE.DEFEND);
   });
 
-  it('plays the practice run straight after the practice card', () => {
-    expect(nextPhase(PHASE.TRAINING_RUN)).toBe(PHASE.ACTIVE_RUN);
-    expect(nextPhase(PHASE.FIRST_CLAIM_SUCCESS)).toBe(PHASE.TRAINING_RIVAL);
-    expect(nextPhase(PHASE.START_RUN)).toBe(PHASE.COMPLETE);
-  });
-
-  it('picks up exactly where it was during the tour', () => {
-    expect(resumePhase(PHASE.TERRITORY)).toBe(PHASE.TERRITORY);
-    expect(resumePhase(PHASE.CORE_LOOP)).toBe(PHASE.CORE_LOOP);
+  it('picks up exactly where it was on the cards that need no screen', () => {
+    expect(resumePhase(PHASE.WELCOME)).toBe(PHASE.WELCOME);
+    expect(resumePhase(PHASE.START_RUN)).toBe(PHASE.START_RUN);
+    expect(resumePhase(PHASE.DEFEND)).toBe(PHASE.DEFEND);
+    expect(resumePhase(PHASE.RANK)).toBe(PHASE.RANK);
+    expect(resumePhase(PHASE.READY)).toBe(PHASE.READY);
   });
 
   it('stays finished once finished', () => {
@@ -492,8 +492,8 @@ describe('parseHighlights', () => {
 
 const FACT_SHAPES = [
   {},
-  { ownsLand: true, route: 'MapMain', running: true, claimReady: true },
-  { ownsLand: false, route: 'HomeMain', playerLocated: false },
+  { route: 'Result', running: false, claimReady: true, claimStep: 'place', demoClaimM2: 375000 },
+  { route: 'HomeMain', running: true, claimReady: false, demoClaimM2: 0 },
 ];
 
 function everyLine() {
@@ -502,10 +502,17 @@ function everyLine() {
     FACT_SHAPES.forEach((facts) => {
       const copy = step.copy(facts);
       lines.push(copy.title, ...copy.lines);
+      if (copy.action) lines.push(copy.action);
+      if (copy.ack) lines.push(copy.ack);
     });
     if (step.cta) lines.push(step.cta);
+    if (step.secondary) lines.push(step.secondary.label);
   });
-  Object.values(TIPS).forEach((tip) => lines.push(tip.title, ...tip.lines));
+  Object.values(TIPS).forEach((tip) => {
+    lines.push(tip.title, ...tip.lines);
+    if (tip.cta) lines.push(tip.cta);
+    if (tip.dismissLabel) lines.push(tip.dismissLabel);
+  });
   return lines;
 }
 
@@ -515,9 +522,53 @@ describe('the step config', () => {
     expect(phases).toEqual(CORE_ORDER.filter((p) => p !== PHASE.COMPLETE));
   });
 
-  it('puts the run and claim steps in the modal host, and nothing else there', () => {
+  it('puts the demo steps in the modal host, and nothing else there', () => {
     STEPS.forEach((step) => {
-      expect(step.host).toBe(RECORD_PHASES.has(step.phase) ? 'record' : 'root');
+      if (DEMO_PHASES.has(step.phase)) expect(step.host).toBe('record');
+      else expect(step.host).not.toBe('record');
+    });
+  });
+
+  it('names the screen every targeted step belongs to', () => {
+    STEPS.filter((s) => s.target).forEach((step) => {
+      expect(Array.isArray(step.route)).toBe(true);
+      expect(step.route.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('shows at most four stages, and every step is in one', () => {
+    expect(STAGES).toEqual(['RUN', 'CLAIM', 'DEFEND', 'READY']);
+    STEPS.forEach((step) => expect(STAGES).toContain(step.stage));
+  });
+
+  it('stands the runner on three cards at most', () => {
+    const withCoach = STEPS.filter((s) => s.coach).map((s) => s.phase);
+    expect(withCoach).toEqual([PHASE.WELCOME, PHASE.CLAIM_SUCCESS, PHASE.READY]);
+  });
+
+  it('never advances on a timer', () => {
+    STEPS.forEach((step) => {
+      expect(step.dismiss).not.toBe('auto');
+      expect(step.dismiss).not.toBe('tap');
+      expect(step.autoMs).toBeUndefined();
+      expect(step.onEnter).toBeUndefined();
+    });
+  });
+
+  it('makes the runner press the real control for every action', () => {
+    const actions = STEPS.filter((s) => s.dismiss === 'action').map((s) => s.phase);
+    expect(actions).toEqual([
+      PHASE.START_RUN,
+      PHASE.RUN_START,
+      PHASE.FINISH_DEMO,
+      PHASE.CLAIM_POSITION,
+      PHASE.CLAIM_NEXT,
+      PHASE.CLAIM_ROTATE,
+      PHASE.CLAIM_CONFIRM,
+    ]);
+    STEPS.filter((s) => s.dismiss === 'action').forEach((step) => {
+      expect(step.interactive).toBe(true);
+      expect(step.target).toBeTruthy();
     });
   });
 
@@ -539,12 +590,10 @@ describe('the step config', () => {
     });
   });
 
-  it('gives every action step a real signal to end on', () => {
-    STEPS.filter((s) => s.dismiss === 'action').forEach((step) => {
-      // START_RUN is ended by the navigator reaching the record modal, which
-      // is derived rather than signalled; everything else names its signals.
-      if (step.phase === PHASE.START_RUN) return;
-      expect(Object.keys(step.on || {}).length).toBeGreaterThan(0);
+  it('gives every action step a real event to end on', () => {
+    STEPS.filter((s) => s.dismiss === 'action' || s.dismiss === 'none').forEach((step) => {
+      const signals = Object.keys(step.on || {}).length;
+      expect(signals > 0 || typeof step.doneWhen === 'function').toBe(true);
     });
   });
 
@@ -555,10 +604,8 @@ describe('the step config', () => {
     });
   });
 
-  it('gives every auto step a duration', () => {
-    STEPS.filter((s) => s.dismiss === 'auto').forEach((step) => {
-      expect(step.autoMs).toBeGreaterThan(1000);
-    });
+  it('never says tap anywhere', () => {
+    everyLine().forEach((line) => expect(line.toLowerCase()).not.toContain('anywhere'));
   });
 
   it('is reachable: stepFor answers for every phase in the order', () => {
@@ -592,14 +639,25 @@ describe('the copy', () => {
         expect(typeof copy.title).toBe('string');
         expect(copy.title.length).toBeGreaterThan(0);
         expect(Array.isArray(copy.lines)).toBe(true);
-        expect(copy.lines.length).toBeLessThanOrEqual(2);
+        // The welcome card is the four lines of the game; every other card
+        // is a title and at most two short sentences.
+        expect(copy.lines.length).toBeLessThanOrEqual(step.kind === 'welcome' ? 4 : 2);
       });
     });
   });
 
-  it('gives the territory step a true sentence whether or not there is land', () => {
-    const step = stepFor(PHASE.TERRITORY);
-    expect(step.copy({ ownsLand: true }).title).not.toBe(step.copy({ ownsLand: false }).title);
+  it('quotes the demo claim the way the Claim button does', () => {
+    const step = stepFor(PHASE.CLAIM_SUCCESS);
+    expect(step.copy({ demoClaimM2: 375000 }).lines[0]).toContain('0.38 km²');
+  });
+
+  it('only uses the four core words, not the rest of the game\'s vocabulary', () => {
+    const core = STEPS.map((step) => {
+      const c = step.copy({ demoClaimM2: 375000 });
+      return [c.title, ...c.lines, c.action, c.ack].filter(Boolean).join(' ');
+    }).join(' ').toLowerCase();
+    ['attack', 'capture', 'drop', 'ground taken', 'land shape', 'crossroads', 'club', 'shop', 'mission', 'share', 'rival']
+      .forEach((word) => expect(core).not.toContain(word));
   });
 });
 

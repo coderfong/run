@@ -143,7 +143,7 @@ def rank_leaderboard(
             SELECT u.id::text, u.username, COALESCE(u.solo_elo, 1000),
                    COALESCE(u.solo_elo_matches,0), COALESCE(u.solo_elo_wins,0),
                    COALESCE(u.solo_elo_losses,0), COALESCE(u.solo_elo_draws,0),
-                   c.tag, c.color_key
+                   c.tag, c.color_key, u.avatar
             FROM users u
             LEFT JOIN clan_members cm ON cm.user_id = u.id
             LEFT JOIN clans c ON c.id = cm.clan_id
@@ -172,6 +172,7 @@ def rank_leaderboard(
             solo_elo=rating,
             elo_matches=int(r[3] or 0), elo_wins=int(r[4] or 0),
             elo_losses=int(r[5] or 0), elo_draws=int(r[6] or 0),
+            avatar=r[9],
         ))
     return out
 
@@ -623,7 +624,10 @@ def leaderboard(
                    -- board — it just lets a row show the badge that every
                    -- other surface displaying a player already shows.
                    -- The live solo Elo carried as context on the land board.
-                   COALESCE(u.solo_elo, 1000) AS rank_pts
+                   COALESCE(u.solo_elo, 1000) AS rank_pts,
+                   -- Functionally dependent on u.id (the primary key), which
+                   -- the GROUP BY carries, so it needs no grouping of its own.
+                   u.avatar
             FROM users u
             LEFT JOIN territories t
               ON t.user_id = u.id
@@ -658,6 +662,7 @@ def leaderboard(
                 rank_key=info["key"],
                 rank_label=info["label"],
                 solo_elo=pts,
+                avatar=r[7],
             )
         )
     return out

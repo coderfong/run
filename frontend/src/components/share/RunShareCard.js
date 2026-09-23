@@ -41,6 +41,7 @@ import { Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import LogoRunner, { MARK_FEET, MARK_FOOT } from '../character/LogoRunner';
+import { RunnerFigure, figureWidthFor } from '../identity/PlayerIdentity';
 import TrailDecorations, { TRAIL_NONE } from './trailDecorations';
 import { TRAIL_DECORATIONS_ENABLED } from '../../config/releaseFeatures';
 import { NB, brand, fonts, nbTextOn, type } from '../../theme';
@@ -434,6 +435,12 @@ function statEm(stat) {
 // runner's floor, and the reserve the route is measured against — so the three
 // could drift apart and the runner could end up standing in the gap.
 const STATS_TO_MARK_U = 24;
+// The full body runner's height against the mark's square. The mark is a
+// running pose as wide as it is tall; a standing figure is about a third as
+// wide as it is tall, so at the same box height it would read as a smaller
+// thing. A little taller than the square keeps it the same presence on the
+// card without crowding the numbers.
+const FULL_OF_MARK = 1.3;
 
 // Alignment, as the one thing the layout still needs it for. There was a
 // FLEX_ALIGN beside this for the cross-axis of a stat's own column; the stats
@@ -537,6 +544,9 @@ function Stat({ value, unit, size, lineH, u, tone, align, color }) {
  *                                       is false
  * @param {object}   props.equipped      the avatar, running at the route's end
  * @param {boolean}  props.showCharacter
+ * @param {'full'|'mark'} props.runnerStyle  the player's WHOLE runner, outfit
+ *                                       and shoes (default), or the PASER
+ *                                       mark wearing their head
  * @param {boolean}  props.flip          face the other way
  */
 export default function RunShareCard({
@@ -557,6 +567,7 @@ export default function RunShareCard({
   trail: wantedTrail = TRAIL_NONE,
   equipped = null,
   showCharacter = true,
+  runnerStyle = 'full',
   flip = false,
   cardRef,
 }) {
@@ -721,6 +732,20 @@ export default function RunShareCard({
     : splitCols
       ? Math.min(width * 0.28, artW * 0.8)
       : width * 0.28;
+  // THE FULL BODY RUNNER IS THE DEFAULT. The mark wearing the player's head
+  // (LogoRunner) was the answer while there was no running art, and it left
+  // every garment below the neck off the card: the one image somebody posts
+  // about a run did not show what they ran in. The whole runner stands on the
+  // end dot now, outfit and shoes, and the mark is still here as `mark`.
+  //
+  // Both are described by one box so the placement below is shared: its size,
+  // where across it the planted foot is, and where down it the soles are.
+  const full = runnerStyle !== 'mark';
+  const fullH = full ? Math.min(runnerSize * FULL_OF_MARK, hasArt ? height : artH) : 0;
+  const boxW = full ? figureWidthFor(equipped, fullH) : runnerSize;
+  const boxH = full ? fullH : runnerSize;
+  const footFrac = full ? 0.5 : (flip ? 1 - MARK_FOOT : MARK_FOOT);
+  const feetFrac = full ? 1 : MARK_FEET;
   const runner = (() => {
     if (!showCharacter || !equipped) return null;
     // NOTHING TO STAND ON. The route is off (the sheet's Route chip does
@@ -730,14 +755,14 @@ export default function RunShareCard({
     // random point of somebody's story with nothing to explain it.
     if (!hasArt) {
       return {
-        left: (width - runnerSize) / 2,
-        top: artTop + Math.max(0, (artH - runnerSize) / 2),
+        left: (width - boxW) / 2,
+        top: artTop + Math.max(0, (artH - boxH) / 2),
       };
     }
     if (!route) return null;
     // The mark's feet are not at the bottom edge of its square, so the drop is
     // measured to the soles rather than to the image.
-    const wanted = artTop + route.end[1] - runnerSize * MARK_FEET + 3 * u;
+    const wanted = artTop + route.end[1] - boxH * feetFrac + 3 * u;
     // A route that finished high or low would otherwise put the figure off the
     // top of the card or through the numbers. Vertical room is whatever is left
     // between them; if there is none, the top of that gap wins.
@@ -747,8 +772,8 @@ export default function RunShareCard({
     // figure level with the bottom number instead of being shoved up the card.
     const ceiling = padTop;
     const floor = splitCols
-      ? height - (padBottom + signatureH) - runnerSize - 6 * u
-      : height - (padBottom + signatureH + STATS_TO_MARK_U * u + statsH) - runnerSize - 6 * u;
+      ? height - (padBottom + signatureH) - boxH - 6 * u
+      : height - (padBottom + signatureH + STATS_TO_MARK_U * u + statsH) - boxH - 6 * u;
     // ACROSS is the same question as down, and it was being answered with half
     // the box — which is not where the figure's foot is. The mark is a running
     // pose: the foot on the ground sits about two thirds of the way across its
@@ -756,7 +781,7 @@ export default function RunShareCard({
     // clear stride to the RIGHT of the line. Anchor the foot instead, and
     // mirror the anchor when the figure is flipped, because `flip` mirrors the
     // whole box.
-    const footX = flip ? 1 - MARK_FOOT : MARK_FOOT;
+    const footX = footFrac;
     // ACROSS, the figure is kept to its OWN COLUMN give or take a stride.
     // It used to be clamped only to the card, which was harmless while the art
     // sat up in the corner on its own — now that the box stands level with the
@@ -770,15 +795,15 @@ export default function RunShareCard({
     // card that means anything — every time somebody finished a lap near the
     // inside edge. Half a figure of overhang never happens by accident and
     // still catches the case worth catching.
-    const stride = runnerSize * 0.5;
+    const stride = boxW * 0.5;
     const minLeft = splitCols ? Math.max(4 * u, artLeft - stride) : 4 * u;
     const maxLeft = splitCols
-      ? Math.min(width - runnerSize - 4 * u, artLeft + artW - runnerSize + stride)
-      : width - runnerSize - 4 * u;
+      ? Math.min(width - boxW - 4 * u, artLeft + artW - boxW + stride)
+      : width - boxW - 4 * u;
     return {
       // `route.end` is in the ART BOX's own pixels — the box is no longer the
       // whole card, so its offset has to come back in here.
-      left: Math.max(minLeft, Math.min(maxLeft, artLeft + route.end[0] - runnerSize * footX)),
+      left: Math.max(minLeft, Math.min(maxLeft, artLeft + route.end[0] - boxW * footX)),
       top: floor > ceiling ? Math.max(ceiling, Math.min(floor, wanted)) : ceiling,
     };
   })();
@@ -939,14 +964,23 @@ export default function RunShareCard({
           {/* Inked round the body as far as the route's under-stroke reaches
               past the route, so the runner and the line it stands on wear
               one outline. */}
-          <LogoRunner
-            equipped={equipped}
-            size={runnerSize}
-            color={tone.text}
-            flip={flip}
-            outline={tone.ink}
-            outlineWidth={((ROUTE_UNDER_W - ROUTE_W) / 2) * u}
-          />
+          {full ? (
+            // captureSafe: RN's synchronous Image for every layer, because
+            // this view is rasterised by captureRef (see CharacterRig). NOT
+            // mirrored by `flip`: a standing figure faces the camera, so a
+            // flip turns nothing and only puts asymmetric gear (a side
+            // ponytail, a one shoulder bag) on the wrong side.
+            <RunnerFigure equipped={equipped} height={boxH} width={boxW} captureSafe />
+          ) : (
+            <LogoRunner
+              equipped={equipped}
+              size={runnerSize}
+              color={tone.text}
+              flip={flip}
+              outline={tone.ink}
+              outlineWidth={((ROUTE_UNDER_W - ROUTE_W) / 2) * u}
+            />
+          )}
         </View>
       )}
 

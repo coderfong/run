@@ -40,6 +40,7 @@ import { preloadRunnerAssets } from '../utils/runnerAssetPreload';
 import { sinceServer } from '../utils/time';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import { haptic, PressableScale, Reveal, staggerDelay } from '../ui/motion';
+import { TIP, useTutorialTip } from '../tutorial';
 
 // How long a rivalry stays ACTIVE after its last beat. Two weeks is long
 // enough that a runner who goes out at the weekend never sees last Saturday's
@@ -111,6 +112,8 @@ function RivalsFilter({ tab, onChange, activeCount }) {
 }
 
 export default function RivalsScreen({ navigation }) {
+  // One card, the first time this screen is opened. See src/tutorial/tips.js.
+  useTutorialTip(TIP.RIVALS);
   const { colors } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();

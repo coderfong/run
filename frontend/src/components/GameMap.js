@@ -305,6 +305,13 @@ export function TerritoryFill({
   animateIn = false,
   animateDelay = 0,
   animateDuration = 900,
+  // Line weights, and how long a CHANGE to any of these styles takes to ease
+  // across. The claim chooser raises them while the runner is moving the
+  // shape and as each step opens, so the shape under the controls stands out
+  // from the held land around it. Defaults are what every other caller had.
+  strokeWidth = 2,
+  glowWidth = 6,
+  styleTransitionMs = 0,
 }) {
   const reduced = useReduceMotion();
   // Hooks run before the early returns below — this component is routinely
@@ -326,7 +333,7 @@ export function TerritoryFill({
   if (!MAPBOX_AVAILABLE) return null;
   if (!points || points.length < 3) return null;
 
-  const transition = { duration: animated ? animateDuration : 0, delay: 0 };
+  const transition = { duration: animated ? animateDuration : (reduced ? 0 : styleTransitionMs), delay: 0 };
   const on = shown ? 1 : 0;
 
   return (
@@ -340,10 +347,11 @@ export function TerritoryFill({
           id={`${id}-glow`}
           style={{
             lineColor: strokeColor,
-            lineWidth: 6,
+            lineWidth: glowWidth,
             lineOpacity: 0.4 * on,
             lineBlur: 4,
             lineOpacityTransition: transition,
+            lineWidthTransition: transition,
           }}
         />
       )}
@@ -351,9 +359,10 @@ export function TerritoryFill({
         id={`${id}-stroke`}
         style={{
           lineColor: strokeColor,
-          lineWidth: 2,
+          lineWidth: strokeWidth,
           lineOpacity: on,
           lineOpacityTransition: transition,
+          lineWidthTransition: transition,
         }}
       />
     </ShapeSource>

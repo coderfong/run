@@ -18,6 +18,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useTutorialActive } from '../tutorial/TutorialContext';
 import { rollCosmetic } from '../config/lootboxRoll';
 import { RANK_TIERS, TOP_TIER, standingFrom, tierByKey } from '../config/rankLadder';
 import { requestRankCheck, writeSeenRank } from '../rank/rankSeen';
@@ -76,6 +77,7 @@ function Btn({ label, on, disabled, onPress, colors, type }) {
 
 export default function DevCelebrationsPanel({ style }) {
   const { user } = useAuth();
+  const tutorialActive = useTutorialActive();
   const { equipped } = useAvatar();
   const { colors } = useTheme();
   const type = useThemedType();
@@ -88,6 +90,9 @@ export default function DevCelebrationsPanel({ style }) {
   const [gamble, setGamble] = useState(null);
   const [crossroads, setCrossroads] = useState(false);
 
+  // Never while the first-run tutorial is on screen, whoever is holding the
+  // phone: a new runner's tutorial must look exactly like the real app.
+  if (tutorialActive) return null;
   if (!__DEV__ && !user?.dev_tools) return null;
 
   const label = RANK_TIERS[tier].label;

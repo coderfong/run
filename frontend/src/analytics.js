@@ -60,7 +60,18 @@ export const EVENTS = {
   TUTORIAL_STEP_COMPLETED: 'tutorial_step_completed',
   TUTORIAL_SKIPPED: 'tutorial_skipped',
   TUTORIAL_COMPLETED: 'tutorial_completed',
-  // The real actions, not the cards that asked for them.
+  // The real actions, not the cards that asked for them. One per thing the
+  // runner has to DO in the core tutorial; the drop between two adjacent ones
+  // is where new runners get stuck.
+  TUTORIAL_STEP_START_RUN_COMPLETED: 'tutorial_step_start_run_completed',
+  TUTORIAL_STEP_RUN_COMPLETED: 'tutorial_step_run_completed',
+  TUTORIAL_STEP_POSITION_COMPLETED: 'tutorial_step_position_completed',
+  TUTORIAL_STEP_ROTATION_COMPLETED: 'tutorial_step_rotation_completed',
+  TUTORIAL_STEP_CLAIM_COMPLETED: 'tutorial_step_claim_completed',
+  // Picked up again after the app was closed, and from which step. Paired
+  // with TUTORIAL_STEP_VIEWED this is the abandonment read.
+  TUTORIAL_RESUMED: 'tutorial_resumed',
+  // The v1 names, kept so dashboards built on them do not go silent at once.
   TUTORIAL_START_RUN_COMPLETED: 'tutorial_start_run_completed',
   TUTORIAL_FINISH_RUN_COMPLETED: 'tutorial_finish_run_completed',
   TUTORIAL_CLAIM_SELECTED: 'tutorial_claim_selected',

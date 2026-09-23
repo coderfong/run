@@ -19,7 +19,9 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { ScrollView, Text } from 'react-native';
 
-import ClaimPayoff, { density, faceCap, fittedHeight } from '../src/components/ClaimPayoff';
+import ClaimPayoff, { RIG_CAP_OF_WINDOW, density, faceCap, fittedHeight } from '../src/components/ClaimPayoff';
+import ClaimProgress from '../src/components/claim/ClaimProgress';
+import { ToonButton, ToonGhostButton } from '../src/components/ui';
 import RankProgress from '../src/components/rank/RankProgress';
 import { RANK_FLOORS, rankBands, rankSteps } from '../src/config/rankLadder';
 
@@ -102,10 +104,10 @@ describe('the fit, on every phone and every claim', () => {
 
   // Every shape a claim comes in, from the quietest to the loudest.
   const SHAPES = [
-    { name: 'a quiet reinforcement', v: 0, reinforced: true, steal: false, held: false, rank: false, xp: true },
-    { name: 'one steal', v: 1, reinforced: false, steal: true, held: false, rank: true, xp: true },
-    { name: 'a steal that also reinforced', v: 1, reinforced: true, steal: true, held: false, rank: true, xp: true },
-    { name: 'a brawl with defences that held', v: 6, reinforced: true, steal: true, held: true, rank: true, xp: true },
+    { name: 'a quiet reinforcement', v: 0, reinforced: true, steal: false, held: false, rankUp: false, xp: true },
+    { name: 'one steal', v: 1, reinforced: false, steal: true, held: false, rankUp: true, xp: true },
+    { name: 'a steal that also reinforced', v: 1, reinforced: true, steal: true, held: false, rankUp: true, xp: true },
+    { name: 'a brawl with defences that held', v: 6, reinforced: true, steal: true, held: true, rankUp: true, xp: true },
   ];
 
   PHONES.forEach((phone) => {
@@ -117,7 +119,7 @@ describe('the fit, on every phone and every claim', () => {
           reinforced: shape.reinforced,
           steal: shape.steal,
           held: shape.held,
-          rank: shape.rank,
+          rankUp: shape.rankUp,
           xp: shape.xp,
         };
         const d = density({ winH: phone.h, top: phone.top, bottom: phone.bottom, rows, extra, blocks });
@@ -125,7 +127,8 @@ describe('the fit, on every phone and every claim', () => {
         // scroll on a screen that is not allowed to have one. Measured against
         // `d.show` — what the screen actually draws — since a tight fit sheds
         // its footnotes before it starts squeezing.
-        const avail = phone.h - phone.top - phone.bottom - 60 - 12 - d.pad * 2;
+        // 60 the button, 40 the rank link under it, 12 the air above them.
+        const avail = phone.h - phone.top - phone.bottom - 60 - 40 - 12 - d.pad * 2;
         expect(fittedHeight({ d, rows, extra, blocks: d.show })).toBeLessThanOrEqual(avail);
         expect(d.fits).toBe(true);
       });
@@ -136,14 +139,16 @@ describe('the fit, on every phone and every claim', () => {
     // A big phone with a small claim on it: the runner is drawn at full size
     // and the stage grows into what is left, which is why the stage — and only
     // the stage — is the flexible box in the layout.
-    const blocks = { reinforced: false, steal: false, held: false, rank: false, xp: true };
+    const blocks = { reinforced: false, steal: false, held: false, rankUp: false, xp: true };
     const d = density({ winH: 932, top: 59, bottom: 34, rows: 0, extra: 0, blocks });
     expect(d.k).toBe(1);
-    expect(d.rig).toBe(104);
+    // Bigger than its full size, but never more than a quarter of the phone.
+    expect(d.rig).toBeGreaterThan(124);
+    expect(d.rig).toBeLessThanOrEqual(Math.round(932 * RIG_CAP_OF_WINDOW));
   });
 
   it('shrinks rather than clipping when a brawl lands on the smallest phone', () => {
-    const blocks = { reinforced: true, steal: true, held: true, rank: true, xp: true };
+    const blocks = { reinforced: true, steal: true, held: true, rankUp: true, xp: true };
     const d = density({ winH: 667, top: 20, bottom: 0, rows: 1, extra: 5, blocks });
     expect(d.k).toBeLessThan(1);
     // ...but never past the floor, where the frames stop reading as frames.
@@ -154,11 +159,10 @@ describe('the fit, on every phone and every claim', () => {
     // A brawl on an SE has more to say than there is room for. What goes is
     // the context — a defence that held, ground reinforced — and never the
     // ground taken, the faces, or the ladders.
-    const blocks = { reinforced: true, steal: true, held: true, rank: true, xp: true };
+    const blocks = { reinforced: true, steal: true, held: true, rankUp: true, xp: true };
     const tight = density({ winH: 667, top: 20, bottom: 0, rows: 1, extra: 5, blocks });
     expect(tight.show.held).toBe(false);
     expect(tight.show.steal).toBe(true);
-    expect(tight.show.rank).toBe(true);
     expect(tight.show.xp).toBe(true);
 
     // ...and it keeps them whenever they fit, which is most of the time.
@@ -167,21 +171,103 @@ describe('the fit, on every phone and every claim', () => {
   });
 });
 
-describe('rank as movement, not a receipt', () => {
-  it('draws the bar instead of the points the claim paid', () => {
+describe('what the payoff leads with, and where it goes next', () => {
+  it('never prints rank as a receipt, and keeps the rank bar for the detail screen', () => {
     const tree = render(claim());
     const text = copy(tree);
-    expect(tree.root.findAllByType(RankProgress)).toHaveLength(1);
+    expect(tree.root.findAllByType(RankProgress)).toHaveLength(0);
     expect(text).not.toContain('rank points · ');
     expect(text).not.toContain('+21');
     act(() => tree.unmount());
   });
 
-  it('leaves the bar off a claim the ladder did not judge', () => {
-    // A neutral expansion moves nothing. A bar that travels nowhere says the
-    // claim was weighed and found worthless, which is not what happened.
-    const tree = render(claim({ victims: [], solo_elo_delta: 0 }));
-    expect(tree.root.findAllByType(RankProgress)).toHaveLength(0);
+  it('reads success, then the ground won, then the XP', () => {
+    const tree = render(claim({ victims: [] }));
+    const text = copy(tree);
+    const at = (s) => text.indexOf(s);
+    expect(at('TERRITORY CLAIMED')).toBeGreaterThanOrEqual(0);
+    expect(at('+0.63 km²')).toBeGreaterThan(at('TERRITORY CLAIMED'));
+    expect(at('NEW LAND')).toBeGreaterThan(at('+0.63 km²'));
+    expect(at('LEVEL 3')).toBeGreaterThan(at('NEW LAND'));
+    act(() => tree.unmount());
+  });
+
+  it('makes Continue the main button and rank progression a quiet link', () => {
+    const onContinue = jest.fn();
+    const onRank = jest.fn();
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <ClaimPayoff
+          visible
+          claim={claim()}
+          myAvatar={{}}
+          onClose={() => {}}
+          onContinue={onContinue}
+          onViewRankProgression={onRank}
+        />
+      );
+    });
+    const [main] = tree.root.findAllByType(ToonButton);
+    expect(main.props.title).toBe('Continue');
+    act(() => main.props.onPress());
+    expect(onContinue).toHaveBeenCalledTimes(1);
+    expect(onRank).not.toHaveBeenCalled();
+
+    const [link] = tree.root.findAllByType(ToonGhostButton);
+    expect(link.props.title).toMatch(/View rank progression/);
+    act(() => link.props.onPress());
+    expect(onRank).toHaveBeenCalledTimes(1);
+    act(() => tree.unmount());
+  });
+
+  it('names a promotion only when the server says there was one', () => {
+    const up = render(claim({ rank_up: true, rank_key_before: 'gold', rank_key_after: 'platinum' }));
+    expect(copy(up)).toContain('RANK UP!');
+    expect(copy(up)).toContain('Gold → Platinum');
+    act(() => up.unmount());
+
+    const flat = render(claim());
+    expect(copy(flat)).not.toContain('RANK UP');
+    act(() => flat.unmount());
+  });
+
+  it('leaves the XP block off a claim that paid none', () => {
+    const tree = render(claim({ xp_gained: 0 }));
+    expect(tree.root.findAllByType(ClaimProgress)).toHaveLength(0);
+    act(() => tree.unmount());
+  });
+});
+
+describe('the progression block at the top of the ladder', () => {
+  // Level 50 starts at 100 * 50² XP; there is no level 51.
+  const TOP = 100 * 50 * 50;
+
+  it('says MAX LEVEL and never counts toward a level that does not exist', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(<ClaimProgress xp={TOP + 5_000} gained={88} />);
+    });
+    const text = copy(tree);
+    expect(text).toContain('LEVEL 50');
+    expect(text).toContain('MAX LEVEL');
+    expect(text).not.toMatch(/level 51/i);
+    expect(tree.root.findByProps({ accessible: true }).props.accessibilityLabel).toBe(
+      '88 XP earned. Level 50, maximum level.'
+    );
+    act(() => tree.unmount());
+  });
+
+  it('counts toward the next level below the top', () => {
+    let tree;
+    act(() => {
+      // Level 3 runs 900 to 1600; 1240 is 340 in.
+      tree = renderer.create(<ClaimProgress xp={1_240} gained={40} />);
+    });
+    const text = copy(tree);
+    expect(text).toContain('LEVEL 3');
+    expect(text).toContain(' / 700 XP');
+    expect(text).not.toContain('MAX');
     act(() => tree.unmount());
   });
 });

@@ -143,6 +143,11 @@ def _user_dict(user: models.User) -> dict:
         # simulator is present in every build and reaches nobody who has not
         # been named in the environment. False for everyone by default.
         "dev_tools": is_dev_account(user),
+        # The saved loadout. The app keeps its own copy on the device, and a
+        # fresh install used to read "no copy here" as "never made a runner"
+        # and send a veteran back through the character intro. Null only for
+        # an account that genuinely never saved one.
+        "avatar": user.avatar,
     }
 
 

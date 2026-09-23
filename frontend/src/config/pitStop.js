@@ -52,20 +52,66 @@ export const SCENE = {
 
 export const SCENE_ASPECT = SCENE.width / SCENE.height; // ~1.03
 
-// The Seedance master keeps the sand foreground below the interactive stall.
-// Express its portrait height in scene units so movie and overlays share one
-// cover scale on every phone.
+// THE MOVIE IS THE ENVIRONMENT. The shop's backdrop is a looping Seedance
+// clip (assets/video/shop-water-point-loop.mp4), a repaint of the stall with
+// its own sign board, shelves, hanging bottles and counter stock baked in. It
+// keeps the old painting's WIDTH registration (counter x 87..1445) but sits
+// lower in its taller portrait frame: its counter top lands 295 scene units
+// below the old painting's `counterTop`. So the movie is drawn 295 units
+// ABOVE the scene origin and every frame in PIT_STOP_LAYOUT (the crew, the
+// cup, the sign) stays measured in the one box it always was.
+//
+// Measured off the clip at 720x1280 (x 1536/720 for scene units):
+//   sign board   x 175..545, y 340..440   -> scene x 373..1163, y 430..644
+//   valance      lower edge y 470         -> scene 708
+//   counter      top y 695, lip 718, front to 780, wood to 880
+//                                         -> scene 1188, 1237, 1369, 1582
 export const SHOP_VIDEO = { width: 720, height: 1280 };
 export const SHOP_VIDEO_SCENE_HEIGHT = SCENE.width * SHOP_VIDEO.height / SHOP_VIDEO.width;
+export const SHOP_VIDEO_OFFSET = 295;
 
-// What the shop SHOWS of that box: everything below `top`, less whatever the
-// page's floating chrome covers. The sky above the canopy is cut so the stock
-// is on screen the moment the shop opens, but the shop runs the art up under
-// the status bar with its buttons floating over it, so PitStopScene hands back
-// as much sky as that `headroom` covers and the canopy always starts below the
-// buttons. Every frame is still measured in the FULL box: the scene slides the
-// whole stack up rather than re-measuring anything.
-export const SCENE_VIEW = { top: 360 };
+// What the shop SHOWS of the scene: from just above the sign board down to
+// the counter's wooden base, where the storefront panel takes over. The crop
+// is set per device by `shopSceneLayout` below, not by a fixed number.
+export const SCENE_VIEW = {
+  // The sign board's top edge. It is parked just under the floating header,
+  // so the back button and purse never sit on the stall's name.
+  signTop: 430,
+  // Where the storefront panel starts: the lower half of the counter's
+  // wooden base, so the whole blue counter front stays in view and the panel
+  // reads as a tray pulled out from under it.
+  panelLine: 1470,
+};
+
+/**
+ * The shop's split for one screen: how much sky to crop, how far down the
+ * storefront panel starts, and the scale everything is drawn at.
+ *
+ * The scene is always drawn at the SCREEN WIDTH (the counter spans the whole
+ * picture, and cropping its sides takes the sign's ends with it). What moves
+ * per device is the crop: the sign board sits just under the header, and the
+ * panel starts on the counter's base. The panel is held to 36..52% of the
+ * screen: on a wide screen that would push it past half way, so the crop
+ * gives up sky instead of the panel giving up rows.
+ */
+export function shopSceneLayout({ width, height, headroom = 0 }) {
+  const scale = width / SCENE.width;
+  let cropTop = SCENE_VIEW.signTop - (headroom + 4) / scale;
+  let panelTop = (SCENE_VIEW.panelLine - cropTop) * scale;
+  const most = height * 0.52;
+  const least = height * 0.36;
+  if (panelTop > most) {
+    cropTop += (panelTop - most) / scale;
+    panelTop = most;
+  } else if (panelTop < least) {
+    cropTop -= (least - panelTop) / scale;
+    panelTop = least;
+  }
+  // Never above the top of the movie itself.
+  cropTop = Math.max(-SHOP_VIDEO_OFFSET, cropTop);
+  panelTop = (SCENE_VIEW.panelLine - cropTop) * scale;
+  return { scale, cropTop, panelTop };
+}
 
 /** Reference units -> fraction of the scene box, for percentage layout. */
 export const px = (x) => `${(x / SCENE.width) * 100}%`;
@@ -147,7 +193,12 @@ export const PIT_STOP_LAYOUT = {
   // It is as big as the band allows because it is the page's TITLE: the shop
   // has no header text of its own, so this board is where the screen says
   // what it is.
-  sign: { x: 448, y: 400, width: 640, height: 150 },
+  //
+  // 2026-09-23: the Seedance movie paints its own blank wooden board across
+  // the canopy (scene x 373..1163, y 430..644), with a water drop hanging off
+  // its left end. The name is lettered onto that board now, clear of the
+  // drop, instead of on a second blue board over it.
+  sign: { x: 548, y: 462, width: 552, height: 150 },
 
   // Real PASER icons standing on the painted shelves, one per side. Both go
   // at the shelf ends the crew does NOT stand in front of — the restocker

@@ -283,3 +283,109 @@ export function rankSteps(fromPoints, toPoints, bands) {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// One geometry for both rank screens.
+//
+// The full ladder (RankLadderScreen) and the post claim progression
+// (RankProgressionScreen) draw the SAME track: a tier's band, filled from its
+// floor to where the runner stands. They used to place that runner two
+// different ways (a progress fraction off the payload on one, division bands
+// on the other), which is part of why they read as two rank systems. Both now
+// ask these helpers.
+// ---------------------------------------------------------------------------
+
+/** "2,484". The one way a points total is printed on either screen. */
+export function fmtPoints(n) {
+  return Math.round(Number(n) || 0).toLocaleString();
+}
+
+/** Server floors when they are a whole ladder, the mirror otherwise. */
+export function floorsOrMirror(floors) {
+  return Array.isArray(floors) && floors.length === RANK_TIERS.length ? floors : RANK_FLOORS;
+}
+
+/** The tier a points total stands in, by floors alone. Below Wood is Wood. */
+export function tierForPoints(points, floors) {
+  const f = floorsOrMirror(floors);
+  let index = 0;
+  for (let i = 0; i < f.length; i += 1) {
+    if (Number(points) >= f[i]) index = i;
+  }
+  return index;
+}
+
+// The top tier has no ceiling, so it has no span to be a fraction of. A fixed
+// visual span that it approaches but never fills keeps the marker MOVING as a
+// Mythic runner keeps earning, without ever printing a target that does not
+// exist.
+export const TOP_TIER_VISUAL_SPAN = 400;
+
+/**
+ * Where a points total sits inside a tier's band, 0 at its floor, 1 at the
+ * next tier's floor. Open ended at the top (see TOP_TIER_VISUAL_SPAN).
+ */
+export function positionInTier(points, floor, next) {
+  if (floor == null) return 0;
+  const p = Number(points) || 0;
+  if (next == null) {
+    return 1 - Math.exp(-Math.max(0, p - floor) / TOP_TIER_VISUAL_SPAN);
+  }
+  return Math.max(0, Math.min(1, (p - floor) / Math.max(1, next - floor)));
+}
+
+/** A full standing for a points total in a known tier, cut on `floors`. */
+export function standingAt(points, tierIndex, floors) {
+  const f = floorsOrMirror(floors);
+  const t = tierAt(tierIndex);
+  return standingFrom({
+    key: t.key,
+    points,
+    floor: f[t.tier],
+    next_points: f[t.tier + 1] ?? null,
+  });
+}
+
+/**
+ * What ONE claim did to the runner's rank, from the claim payload alone.
+ *
+ * Tiers come from the server's own keys (`rank_key_before/after`), never from
+ * comparing thresholds here: promotions are decided server side, and a tier up
+ * this screen celebrated that the server did not award would be a lie. The
+ * floors only place the marker inside those tiers.
+ *
+ * Null for a claim with no solo rating (a practice run, an unrated account).
+ */
+export function rankChange(claim, floors) {
+  if (!claim || claim.solo_elo == null || !Number.isFinite(Number(claim.solo_elo))) return null;
+  const f = floorsOrMirror(floors);
+  const after = Number(claim.solo_elo);
+  const delta = Math.round(Number(claim.solo_elo_delta) || 0);
+  const before = after - delta;
+  const afterTier = claim.rank_key_after ? tierByKey(claim.rank_key_after).tier : tierForPoints(after, f);
+  const beforeTier = claim.rank_key_before ? tierByKey(claim.rank_key_before).tier : tierForPoints(before, f);
+  return {
+    before,
+    after,
+    delta,
+    from: standingAt(before, beforeTier, f),
+    to: standingAt(after, afterTier, f),
+    rankUp: !!claim.rank_up && afterTier > beforeTier,
+    rankDown: !!claim.rank_down && afterTier < beforeTier,
+    isTop: afterTier >= TOP_TIER,
+    floors: f,
+  };
+}
+
+/** The tier above a standing, or null at the top. */
+export function tierAbove(standing) {
+  return standing && standing.tier < TOP_TIER ? tierAt(standing.tier + 1) : null;
+}
+
+/** "66 to Mythic", or "Top of the ladder". Null when there is nothing to go on. */
+export function nextTierCopy(standing) {
+  if (!standing) return null;
+  if (standing.isTop) return 'Top of the ladder';
+  if (standing.toNext == null) return null;
+  return `${fmtPoints(standing.toNext)} to ${tierAt(standing.tier + 1).label}`;
+}

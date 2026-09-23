@@ -34,6 +34,7 @@ import LeaderboardScreen from './src/screens/LeaderboardScreen';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingFlow from './src/onboarding/OnboardingFlow';
 import ProfileScreen from './src/screens/ProfileScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
 import LocationPermissionScreen from './src/screens/LocationPermissionScreen';
 import RunDetailScreen from './src/screens/RunDetailScreen';
 import RunShareScreen from './src/screens/RunShareScreen';
@@ -304,6 +305,7 @@ function YouStack() {
   return (
     <YouStackNav.Navigator screenOptions={{ headerShown: false, ...header }}>
       <YouStackNav.Screen name="YouMain" component={ProfileScreen} />
+      <YouStackNav.Screen name="Settings" component={SettingsScreen} />
       {/* Draws its own panel header (with a back button) — see HomeStack. */}
       <YouStackNav.Screen name="Progression" component={ProgressionScreen} />
       {/* Draws its own header: the scene runs up under the status bar with
@@ -584,6 +586,12 @@ function RecordStack({ watchStartAt }) {
         component={ResultScreen}
         options={{ headerShown: false, animation: 'fade' }}
       />
+      {/* The claim payoff's "View rank progression" link. Pushed on THIS
+          stack so back returns to the run recap; reaching it through the Home
+          tab closed the whole run modal and lost the ceremonies queued there. */}
+      <RecordStackNav.Screen name="RankProgression" component={RankProgressionScreen} />
+      {/* Its "View full ladder" link, on the same stack for the same reason. */}
+      <RecordStackNav.Screen name="RankLadder" component={RankLadderScreen} />
     </RecordStackNav.Navigator>
   );
 }

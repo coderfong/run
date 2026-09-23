@@ -114,7 +114,7 @@ export function useTutorialTip(key, ready = true) {
   const onScreen = useOnScreen();
 
   useEffect(() => {
-    if (!onScreen || !ready) return;
+    if (!onScreen || !ready || !key) return;
     requestTip(key);
   }, [onScreen, ready, key, requestTip]);
 }

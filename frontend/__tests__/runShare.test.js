@@ -22,6 +22,7 @@ import RunShareCard, {
   availableStats,
 } from '../src/components/share/RunShareCard';
 import LogoRunner, { MARK_FOOT } from '../src/components/character/LogoRunner';
+import { RunnerFigure } from '../src/components/identity/PlayerIdentity';
 import OutlinedText from '../src/components/ui/OutlinedText';
 import { fonts } from '../src/theme';
 import TrailDecorations, {
@@ -92,6 +93,33 @@ describe('the run share card', () => {
   // the figure by the middle of its box stood it a stride clear of wherever the
   // run ended. The box therefore has to land LEFT of the end point by that
   // fraction, which is what MARK_FOOT says and what this checks.
+  // The default runner is the player's WHOLE figure, and it stands with its
+  // feet on the end dot: centred across it, soles on it.
+  test('stands the full body runner on the end of the route', () => {
+    let tree;
+    act(() => {
+      tree = renderer.create(
+        <RunShareCard width={300} team={TEAM} run={RUN} path={PATH} rings={RINGS} equipped={EQUIPPED} />
+      );
+    });
+    expect(tree.root.findAllByType(LogoRunner)).toHaveLength(0);
+    const fig = tree.root.findByType(RunnerFigure);
+    expect(fig.props.equipped).toBe(EQUIPPED);
+    expect(fig.props.captureSafe).toBe(true);
+    const box = StyleSheet.flatten(
+      tree.root.findByProps({ testID: 'share-route-runner' }).props.style
+    );
+    const dot = tree.root
+      .findAll((n) => typeof n.props?.cx === 'number' && n.props?.fill === TEAM.glow)
+      .map((n) => n.props)[0];
+    const art = tree.root
+      .findAll((n) => n.props?.style?.position === 'absolute')
+      .map((n) => n.props.style)
+      .find((st) => typeof st.width === 'number' && typeof st.height === 'number' && st.top > 0);
+    expect(Math.abs(box.left + fig.props.width / 2 - (art.left + dot.cx))).toBeLessThan(1);
+    act(() => tree.unmount());
+  });
+
   test('stands the runner avatar on the end of the route', () => {
     let tree;
     act(() => {
@@ -103,6 +131,7 @@ describe('the run share card', () => {
           path={PATH}
           rings={RINGS}
           equipped={EQUIPPED}
+          runnerStyle="mark"
         />
       );
     });
@@ -350,7 +379,7 @@ describe('the run share card', () => {
         />
       );
     });
-    expect(tree.root.findAllByType(LogoRunner).length).toBe(1);
+    expect(tree.root.findAllByType(RunnerFigure).length).toBe(1);
     act(() => tree.unmount());
   });
 });
@@ -552,7 +581,7 @@ describe('the share sheet', () => {
       act(() => jest.runOnlyPendingTimers());
 
       expect(tree.root.findByType(RunShareCard).props.showCharacter).toBe(true);
-      expect(tree.root.findAllByType(LogoRunner).length).toBe(1);
+      expect(tree.root.findAllByType(RunnerFigure).length).toBe(1);
       act(() => tree.unmount());
     } finally {
       jest.useRealTimers();

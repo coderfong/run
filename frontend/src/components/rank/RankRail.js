@@ -29,6 +29,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { RankPlaque } from './RankBadge';
+import RankCrest from '../identity/RankCrest';
 import { DIVISIONS, numeral, tierAt } from '../../config/rankLadder';
 import { PressableScale } from '../../ui/motion';
 import { NB, fonts, hardShadow, nbInk, space, useTheme, withAlpha } from '../../theme';
@@ -66,9 +67,15 @@ const TRACK_Y = PAD_TOP + CUR / 2 - TRACK_H / 2;
 const PLAQUE_W = 132;
 const PLAQUE_H = 26;
 const HEAD_GAP = 4;
+// The rank crest (identity/RankCrest) that leads the heading when the rail
+// sits under a FULL BODY runner: there the rank is no longer the frame round
+// the portrait, so the rail is where the tier's emblem is shown. It is a touch
+// taller than the plaque, so the heading takes its height.
+const CREST = 32;
+const HEAD_H = Math.max(PLAQUE_H, CREST);
 
 /** The whole component's height. Fixed, on purpose — see the header. */
-export const RAIL_H = PLAQUE_H + HEAD_GAP + TRACK_BOX_H;
+export const RAIL_H = HEAD_H + HEAD_GAP + TRACK_BOX_H;
 
 function fmt(n) {
   return Number(n || 0).toLocaleString();
@@ -126,8 +133,9 @@ function Node({ tier, division, reached, current, colors, scheme }) {
  * @param {object}   standing  from `standingFrom()` in config/rankLadder
  * @param {number[]} floors    per tier points thresholds (optional)
  * @param {Function} onPress   opens the full ladder
+ * @param {boolean}  crest     lead the heading with the tier's crest
  */
-export default function RankRail({ standing, floors = [], onPress, style }) {
+export default function RankRail({ standing, floors = [], onPress, crest = false, style }) {
   const { colors, scheme } = useTheme();
 
   // Progress through the tier you are in, which is exactly how far along the
@@ -164,6 +172,7 @@ export default function RankRail({ standing, floors = [], onPress, style }) {
       }
     >
       <View style={styles.heading}>
+        {crest ? <RankCrest standing={standing} size={CREST} style={styles.crest} /> : null}
         <RankPlaque
           name={standing.name}
           color={standing.color}
@@ -240,9 +249,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: PLAQUE_H,
+    height: HEAD_H,
     marginBottom: HEAD_GAP,
   },
+  crest: { marginRight: 4 },
   headNumbers: { flex: 1, alignItems: 'flex-end', paddingLeft: space.sm },
   points: { fontFamily: fonts.bold, fontSize: 13, letterSpacing: 0.2 },
   gap: { fontFamily: fonts.bodyMedium, fontSize: 11, marginTop: 1 },

@@ -18,21 +18,21 @@
 // Coin packs deliberately DON'T live here — they're real-money IAP and sit
 // with the energy packs in one "Get more" sheet.
 //
-// TAP SELECTS, IT DOESN'T BUY. A tap pops the item forward in the scene,
-// starts the shopkeeper talking about it and equips it in the try-on mirror;
+// TAP SELECTS, IT DOESN'T BUY. A tap outlines the card, sets the crew
+// reacting and docks the placard, which shows your runner wearing the item;
 // buying is a second, deliberate press on the placard's Buy button.
 //
-// THE PRODUCTS LIVE INSIDE THE SCENE NOW. What used to be a decorative
-// PitStopScene with a plain product grid and a detail panel below it is one
-// component, WaterPointStage: the painted illustration plus every product,
-// the try-on mirror and the restock sign, anchored where the real art has
-// room for them (see config/shopStageLayout.js). This file keeps exactly the
-// data and purchase logic the old grid used — the SHELF_SIZE/SHELF_MIX
-// rotation cap, the 402/409/410 handling, RewardReveal, the coin wallet —
-// and hands it to the stage instead of to a FlatList of cards.
+// TWO LAYERS, NEVER MIXED (2026-09-23). The top of the screen is the Water
+// Point itself: the looping movie, the crew, the stall's own sign, and only
+// the back button and purse floating over it. The bottom is the STOREFRONT:
+// a warm panel pulled out from under the counter holding the nine cards and
+// the restock clock. Nothing is placed on the painted counter or shelves any
+// more, and there are no category tabs (nine cards is its own index). The
+// data and purchase logic are exactly what they were: the SHELF_SIZE /
+// SHELF_MIX cap, the 402/409/410 handling, RewardReveal, the coin wallet.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, StatusBar, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -40,19 +40,22 @@ import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { useAvatar } from '../state/avatar';
 
-import { brand, space, useTheme, useThemedType } from '../theme';
+import { brand, nbInk, space, useTheme, useThemedType } from '../theme';
 import RewardReveal from '../components/RewardReveal';
-import { BackButton, Button, PANEL_INK, Screen } from '../components/ui';
+import { BackButton, Button, PANEL_INK } from '../components/ui';
 import { getItem, SLOTS } from '../config/cosmetics';
 import { RARITY_COLOR } from '../components/RewardArt';
 import BuyEnergySheet from '../components/BuyEnergySheet';
-import WaterPointStage from '../components/shop/WaterPointStage';
+import PitStopScene from '../components/shop/PitStopScene';
+import ShopProductCard from '../components/shop/ShopProductCard';
+import RestockTimer from '../components/shop/RestockTimer';
 import ProductPlacard from '../components/shop/ProductPlacard';
 import ShopWallet from '../components/shop/ShopWallet';
-import { PIT_STOP_ANIM } from '../config/pitStop';
+import { PIT_STOP_ANIM, shopSceneLayout } from '../config/pitStop';
 import { IAP_ENABLED } from '../config/releaseFeatures';
 import { haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
+import { TIP, useTutorialTip } from '../tutorial';
 
 const SLOT_ORDER = Object.fromEntries(SLOTS.map((s, index) => [s.key, index]));
 const RARITY_ORDER = ['common', 'rare', 'epic', 'legendary'];
@@ -70,17 +73,29 @@ const SHELF_SIZE = 9;
 // backend rotates nine, every item it sends survives this filter untouched.
 const SHELF_MIX = { common: 4, rare: 3, epic: 1, legendary: 1 };
 
-// How long the Water Point gets to react to a purchase — the crew's pop, the
-// seller's "Done!", the friend's "Nice pick." — before RewardReveal's
-// full-screen modal takes the payoff over. Comfortably shorter than
-// useShopDialogue's own BUY_DISMISS (1500ms), so the seller's line is
-// already on screen, not still arriving, when the modal covers it.
+// How long the Water Point gets to react to a purchase (the crew's pop, the
+// placard's confetti) before RewardReveal's full-screen modal takes the
+// payoff over.
 const REACTION_MS = 400;
 
+// The Water Point's own blue, sampled off the movie's counter: the selected
+// card, the card outlines and the restock pill. Pink stays the Buy button.
+const WATER_BLUE = '#0A86E0';
+// The panel's rounded top; the movie runs on behind its corners.
+const PANEL_RADIUS = 28;
+const GRID_GAP = 10;
+// Room under the grid for the docked placard, so the last row can scroll
+// clear of it.
+const PLACARD_ROOM = 190;
+
 export default function ShopScreen() {
-  const { colors } = useTheme();
+  // One card, the first time this screen is opened. See src/tutorial/tips.js.
+  useTutorialTip(TIP.SHOP);
+  const { colors, scheme } = useTheme();
   const type = useThemedType();
   const insets = useSafeAreaInsets();
+  const window = useWindowDimensions();
+  const [screenH, setScreenH] = useState(window.height);
   const navigation = useNavigation();
   const focused = useIsFocused();
   const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
@@ -213,12 +228,34 @@ export default function ShopScreen() {
     }
   }, [selected, purchase.status, refreshUnlocks, load]);
 
+  const headroom = insets.top + space.xs + 38 + space.sm;
+  const { cropTop, panelTop } = shopSceneLayout({ width: window.width, height: screenH, headroom });
+
+  // Three across on a phone, four once there is room for four readable cards.
+  const columns = window.width >= 600 ? 4 : 3;
+  const cardWidth = Math.floor(
+    (window.width - space.gutter * 2 - GRID_GAP * (columns - 1)) / columns
+  );
+  const disabled = purchase.status === 'pending';
+
+  const renderCard = useCallback(({ item }) => (
+    <ShopProductCard
+      item={item}
+      width={cardWidth}
+      accent={WATER_BLUE}
+      selected={selectedId === item.item_id}
+      equipped={!!item.owned && equipped?.[item.slot] === item.item_id}
+      disabled={disabled}
+      onSelect={select}
+    />
+  ), [cardWidth, selectedId, equipped, disabled, select]);
+
   // THE HEADER: back on the left, purse on the right, floating over the
-  // painting. There is no title: the stall's own sign (StationSign, inside
-  // the scene) says "Water point". The native bar is off for this screen
-  // (App.js), so the row pays the status-bar inset itself, exactly once.
-  // Both controls are white tiles with fixed dark ink whatever the scheme,
-  // because the sky behind them is the same painting in both.
+  // movie. There is no title: the stall's own sign says "Water point". The
+  // native bar is off for this screen (App.js), so the row pays the
+  // status-bar inset itself, exactly once. Both controls are white tiles with
+  // fixed dark ink whatever the scheme, because the sky behind them is the
+  // same movie in both.
   const header = (
     <View style={[styles.header, { paddingTop: insets.top + space.xs }]} pointerEvents="box-none">
       <BackButton onPress={() => navigation.goBack()} fill="#fff" ink={PANEL_INK} size={38} />
@@ -231,70 +268,77 @@ export default function ShopScreen() {
     </View>
   );
 
-  const statusBar = focused ? <StatusBar barStyle="dark-content" /> : null;
-
-  // The stage stays up through loading and empty states — the station IS the
-  // screen — but a failure with nothing cached to fall back on still gets the
-  // retry page, same as before.
-  if (loading && error) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
-        {statusBar}
-        <WaterPointStage
-          items={[]}
-          selectedId={null}
-          selected={null}
-          affordable={false}
-          coins={null}
-          purchaseStatus="idle"
-          equipped={equipped}
-          headroom={insets.top + space.xs + 38 + space.sm}
-          expiresAt={null}
-          active={focused}
-        />
-        <Screen center>
-          <Text style={[type.body, { textAlign: 'center' }]}>Couldn't load the shop.</Text>
-          <Button title="Try again" size="sm" full={false} onPress={load} style={{ marginTop: space.md }} />
-        </Screen>
-        {header}
+  let empty = null;
+  if (!data && loading) {
+    empty = <ActivityIndicator color={WATER_BLUE} style={{ marginTop: space.xl }} />;
+  } else if (!data && error) {
+    empty = (
+      <View style={styles.empty}>
+        <Text style={[type.body, { textAlign: 'center' }]}>Couldn't load the shop.</Text>
+        <Button title="Try again" size="sm" full={false} onPress={load} style={{ marginTop: space.md }} />
       </View>
+    );
+  } else if (shown.length === 0) {
+    empty = (
+      <Text style={[type.body, styles.empty, { color: colors.textMuted, textAlign: 'center' }]}>
+        The station is restocking. Check back when the clock runs out.
+      </Text>
     );
   }
 
-  const headroom = insets.top + space.xs + 38 + space.sm;
-
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {statusBar}
-      <View style={{ flex: 1 }}>
-        <WaterPointStage
-          items={shown}
-          selectedId={selectedId}
-          selected={selected}
-          affordable={affordable}
-          coins={data ? coins : null}
-          purchaseStatus={purchase.status}
-          equipped={equipped}
-          headroom={headroom}
-          expiresAt={data?.expires_at}
-          onExpire={load}
-          onSelect={select}
-          active={focused}
-        />
+    <View
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      onLayout={(e) => setScreenH(e.nativeEvent.layout.height)}
+    >
+      {focused ? <StatusBar barStyle="dark-content" /> : null}
 
-        {!loading && shown.length === 0 ? (
-          <Text style={[type.body, { color: colors.textMuted, textAlign: 'center', marginTop: space.lg }]}>
-            The station is restocking. Check back when the clock runs out.
-          </Text>
-        ) : null}
+      {/* THE WATER POINT. Drawn a panel radius past the panel's top edge so
+          the movie runs on behind its rounded corners. Takes no touches. */}
+      <View style={[styles.scene, { height: panelTop + PANEL_RADIUS }]} pointerEvents="none">
+        <PitStopScene
+          selectedProductId={selectedId}
+          selectedRarity={selected?.rarity || null}
+          isSelectedUnavailable={!!selected && (selected.owned || !affordable)}
+          purchaseStatus={purchase.status}
+          active={focused}
+          cropTop={cropTop}
+          height={panelTop + PANEL_RADIUS}
+        />
       </View>
 
-      {/* Drawn AFTER the stage, so it floats over the painting. */}
+      {/* THE STOREFRONT, pulled out from under the counter. */}
+      <View
+        style={[
+          styles.panel,
+          { top: panelTop, backgroundColor: colors.bg, borderColor: nbInk(scheme, colors.bg) },
+        ]}
+      >
+        {empty || (
+          <FlatList
+            data={shown}
+            key={`cols-${columns}`}
+            numColumns={columns}
+            keyExtractor={(item) => item.item_id}
+            renderItem={renderCard}
+            columnWrapperStyle={{ gap: GRID_GAP }}
+            contentContainerStyle={[
+              styles.grid,
+              { paddingBottom: (selected ? PLACARD_ROOM : 0) + insets.bottom + space.lg },
+            ]}
+            showsVerticalScrollIndicator={false}
+            ListFooterComponent={(
+              <RestockTimer expiresAt={data?.expires_at} onExpire={load} accent={WATER_BLUE} />
+            )}
+            ListFooterComponentStyle={{ marginTop: space.sm }}
+          />
+        )}
+      </View>
+
       {header}
 
-      {/* What you picked, docked to the bottom of the screen — see
-          ProductPlacard for why this is native UI rather than another layer
-          inside the scene's own coordinate system. */}
+      {/* What you picked, docked to the bottom of the screen over the grid:
+          the runner wearing it, the price, and the one button that spends. */}
       {selected ? (
         <ProductPlacard
           item={selected}
@@ -304,6 +348,7 @@ export default function ShopScreen() {
           pending={purchase.status === 'pending'}
           celebrating={purchase.status === 'success'}
           purchaseTick={purchase.tick}
+          equipped={equipped}
           onBuy={buy}
           onClose={() => setSelectedId(null)}
           bottomInset={insets.bottom}
@@ -344,4 +389,21 @@ const styles = StyleSheet.create({
     paddingBottom: space.sm,
     zIndex: 5,
   },
+  scene: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden' },
+  panel: {
+    position: 'absolute',
+    // Pulled a stroke wider than the screen so the side strokes fall off the
+    // edge and only the rounded top reads as the panel's lip.
+    left: -2.5,
+    right: -2.5,
+    bottom: 0,
+    borderTopLeftRadius: PANEL_RADIUS,
+    borderTopRightRadius: PANEL_RADIUS,
+    borderTopWidth: 2.5,
+    borderLeftWidth: 2.5,
+    borderRightWidth: 2.5,
+    overflow: 'hidden',
+  },
+  grid: { paddingHorizontal: space.gutter + 2.5, paddingTop: space.lg, gap: GRID_GAP },
+  empty: { marginTop: space.xl, paddingHorizontal: space.gutter, alignItems: 'center' },
 });

@@ -18,11 +18,8 @@ import { api, apiPhotoSource } from '../api/client';
 import { updateCached } from '../api/cache';
 import {
   NB,
-  nbAccentFor,
-  nbTextOn,
   radius,
   space,
-  tintOn,
   withAlpha,
   useTheme,
   useThemedType,
@@ -32,6 +29,7 @@ import { NEUTRAL } from '../state/clan';
 import { useAvatar } from '../state/avatar';
 import { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
+import { RunnerFigure } from './identity/PlayerIdentity';
 import { PressableScale, haptic, Reveal } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
@@ -53,6 +51,11 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 // tell whose it is at a glance down the feed, and the rank border it wears had
 // no room to read at all.
 const PORTRAIT = 46;
+// The runner sticker on a territory post's map: the whole outfit, small, stood
+// on the map's bottom right corner and breaking the frame like a sticker. Big
+// enough that shoes and a top read, small enough to keep off the claim, which
+// the map centres.
+const STICKER_H = 78;
 const POST_PHOTO_W = 272;
 
 // The narrowest the who-and-when block is allowed to get before the buttons
@@ -158,37 +161,8 @@ function formatArea(m2) {
   return `${(m2 / 1e6).toFixed(m2 >= 1e5 ? 2 : 3)} km²`;
 }
 
-// One stat, in a drawn box with white paper — a raised tile on the coloured
-// card rather than a number lost on the fill. The frame and its pose are dealt
-// off the run id and the slot, so the three in a row are three different
-// drawings instead of three stamps of one (the anti-repeat idiom the rest of
-// the app's framed rows use). Text is fixed dark: the paper is always white,
-// whatever the scheme, so the theme's own (scheme-flipping) inks would vanish
-// on it in dark mode.
-function FramedStat({ item, index, label, value, unit, valueColor }) {
-  const type = useThemedType();
-  const styles = useThemedStyles(makeStyles);
-  const seed = `stat:${item.id}:${index}`;
-  return (
-    <Framed
-      frame={frameVariant('box', seed)}
-      fill="#FFFFFF"
-      weight={INK.thin}
-      pose={framePose(seed)}
-      style={styles.statCell}
-      contentStyle={styles.statCellInner}
-    >
-      <Text style={[type.labelSm, styles.statLabel]} numberOfLines={1}>{label}</Text>
-      <View style={styles.statValueRow}>
-        <Text style={[type.statSm, { color: valueColor || NB.ink }]} numberOfLines={1}>{value}</Text>
-        {unit ? <Text style={[type.statSm, styles.statUnit]} numberOfLines={1}>{unit}</Text> : null}
-      </View>
-    </Framed>
-  );
-}
-
 export default function FeedCard({ item, navigation, autoPlaySteal = false, onScreen = true, index = 0 }) {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const type = useThemedType();
   // The themed sheet. `RouteThumb` above builds its own; this one was missed
   // when the file moved to themed styles, and since the only two uses of it
@@ -214,18 +188,8 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
   const hasPhotos = post.media.length > 0;
   const hasRoute = hasRouteData({ rings: item.rings, path: item.path });
   const victims = item.victims || [];
-  // Seeded off the run id so it is stable for the life of the run. Falls back
-  // to the username, so the seeded/bot rows in a fresh database still come out
-  // varied rather than all landing on the first colour in the deck.
-  const accent = nbAccentFor(item.id || item.username || 'run');
-  // The card's paper: the dealt hue washed into the ordinary card surface, not
-  // the hue itself. A feed of full-strength deck colours was a wall of shouting
-  // blocks, one after another down the page, and it drowned the route and the
-  // numbers the card exists to show. A wash keeps each run its own colour and
-  // hands the loud part back to the stroke and the drop. Opaque via `tintOn`,
-  // because HardShadow paints a solid block behind the card.
-  const cardFill = tintOn(colors.card, accent, scheme === 'dark' ? 0.28 : 0.32);
-  const onCard = nbTextOn(cardFill);
+  const accent = c.stroke || colors.primary || NB.ink;
+  const cardFill = colors.card || '#FFFDF5';
   // Seeded from the row the feed already handed us, so the chips are on the
   // card at first paint rather than a fetch later.
   const { reactions, mine, burst, react } = useRunReactions(item.id, item);
@@ -320,19 +284,6 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
           setPickerAt(null);
           navigation?.navigate('RunDetail', { runId: item.id });
         }}
-        // Every run card gets a colour dealt off its own id, so the feed reads
-        // as a stack of coloured blocks rather than a column of identical white
-        // rectangles — which is the single biggest thing separating this from
-        // the reference boards. Dealt, not chosen: the same run is the same
-        // colour on every render and on every device, and nothing has to store
-        // a colour per row. See `nbAccentFor`.
-        //
-        // It is the card's FILL now, not just its drop — a wash of the dealt
-        // hue (see `cardFill`), not the flat saturated block it started as. The pieces that
-        // used to need a neutral ground for their own colour (the route map, a
-        // photo, the clan-coloured stats) each sit in their own drawn frame with
-        // its own paper now, so they no longer read directly against the fill and
-        // the clan-colour-wins rule holds where it still meets the chrome.
         accent={accent}
         fill={cardFill}
         style={{ marginBottom: space.md }}
@@ -350,50 +301,29 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
               to `wood` for yourself made your feed row show a bare frame while
               your profile showed your real one. */}
           {item.is_you || item.avatar ? (
-            <PortraitBorder
-              borderKey={(item.is_you ? myRankKey : item.rank_key) || 'wood'}
-              size={PORTRAIT}
-            >
-              <CharacterBust equipped={item.is_you ? equipped : item.avatar} size={PORTRAIT} bg={c.fill} />
-            </PortraitBorder>
+            <View style={[styles.portraitAccent, { borderColor: accent }]}>
+              <PortraitBorder
+                borderKey={(item.is_you ? myRankKey : item.rank_key) || 'wood'}
+                size={PORTRAIT}
+              >
+                <CharacterBust equipped={item.is_you ? equipped : item.avatar} size={PORTRAIT} bg={c.fill} />
+              </PortraitBorder>
+            </View>
           ) : (
-            <View style={{ width: PORTRAIT, height: PORTRAIT, borderRadius: PORTRAIT / 2, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={[styles.initialsAvatar, { backgroundColor: c.fill, borderColor: accent }]}>
               <Text style={[type.bodySmBold, { color: c.stroke }]}>
                 {(item.username || '?').slice(0, 2).toUpperCase()}
               </Text>
             </View>
           )}
           <View style={styles.identityText}>
-            {/* On the card's own colour now — `nbTextOn` keeps the name legible
-                whichever hue the run was dealt, in either scheme. */}
-            <Text style={[type.bodyBold, { color: onCard }]} numberOfLines={1}>
+            <Text style={[type.bodyBold, { color: colors.text }]} numberOfLines={1}>
               {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}
               {item.is_you ? ' (you)' : ''}
             </Text>
-            {/* WHAT HAPPENED AND WHEN, in its own drawn frame. One line, like
-                the name above it — left to wrap it would go to two on the
-                narrowest phones and push the portrait off centre.
-
-                A framed white chip rather than grey caption text because this
-                is the line that says whether the run actually TOOK anything,
-                and on a saturated card a plain accent chip would blend into the
-                fill it sits on. The drawn frame gives it its own paper and edge
-                — the same hand-drawn box the stats below wear. */}
-            <Framed
-              frame={frameVariant('heading', `meta:${item.id}`)}
-              fill="#FFFFFF"
-              weight={INK.hairline}
-              pose={framePose(`meta:${item.id}`)}
-              style={styles.metaChip}
-              contentStyle={styles.metaChipInner}
-            >
-              <Text
-                style={[type.captionMedium, { color: NB.ink }]}
-                numberOfLines={1}
-              >
-                {item.closed_loop ? 'took ground' : 'ran a path'} {timeAgo(item.created_at)}
-              </Text>
-            </Framed>
+            <Text style={[type.captionMedium, { color: colors.textMuted }]} numberOfLines={1}>
+              {item.closed_loop ? 'took ground' : 'ran a path'} · {timeAgo(item.created_at)}
+            </Text>
           </View>
         </Row>
         <Row gap={2} testID="feed-card-actions" style={styles.actions}>
@@ -440,7 +370,7 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
                   has kudoed: the count is hidden at zero, so tapping the heart
                   on and off changed the card not at all. */}
               <AppIcon name="like" size={28} opacity={kudoed ? 1 : 0.62} />
-              {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : onCard }]}>{count}</Text> : null}
+              {count > 0 ? <Text style={[type.captionMedium, { color: kudoed ? c.stroke : colors.textMuted }]}>{count}</Text> : null}
             </PressableScale>
           </View>
           {/* Everything else. The list is built per row rather than being a
@@ -500,7 +430,20 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
           />
         </View>
       ) : hasRoute ? (
-        <RouteThumb id={item.id} rings={item.rings} path={item.path} color={c.stroke} style={styles.thumb} />
+        <View style={styles.thumb}>
+          <RouteThumb id={item.id} rings={item.rings} path={item.path} color={c.stroke} large />
+          {/* A post that TOOK GROUND gets the runner who took it, whole, as
+              part of the artwork; the header keeps the small portrait. Not
+              on a steal: that card already stages the runner against their
+              victims, and a feed of steals is the card's heaviest shape. */}
+          {item.closed_loop && victims.length === 0 && (item.is_you || item.avatar) ? (
+            <RunnerFigure
+              equipped={item.is_you ? equipped : item.avatar}
+              height={STICKER_H}
+              style={styles.sticker}
+            />
+          ) : null}
+        </View>
       ) : hasPhotos ? (
         <Framed
           frame={frameVariant('box', `photos:${item.id}`)}
@@ -612,33 +555,16 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
         />
       )}
 
-      {/* The three numbers, each in its own drawn frame with white paper — so
-          they read as raised tiles on the coloured card rather than text lost
-          on the fill. Distance and pace always; the third is the claim, in the
-          clan's colour when the run took ground. */}
       <View style={styles.statRow}>
-        <FramedStat
-          item={item}
-          index={0}
-          label="Distance"
-          value={`${(item.distance_m / 1000).toFixed(2)}`}
-          unit="km"
-        />
-        <FramedStat
-          item={item}
-          index={1}
-          label="Pace"
-          value={pace(item.distance_m, item.duration_s)}
-          unit="/km"
-        />
-        <FramedStat
-          item={item}
-          index={2}
-          label={item.closed_loop ? 'Claimed' : 'Not claimed'}
-          value={item.closed_loop ? formatArea(item.area_m2).split(' ')[0] : NO_VALUE}
-          unit={item.closed_loop ? formatArea(item.area_m2).split(' ')[1] : ''}
-          valueColor={item.closed_loop ? c.stroke : undefined}
-        />
+        <Text style={[type.statSm, styles.statSummary, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+          {(item.distance_m / 1000).toFixed(2)} km
+          <Text style={{ color: colors.textMuted }}>  ·  </Text>
+          {pace(item.distance_m, item.duration_s)}/km
+          <Text style={{ color: colors.textMuted }}>  ·  </Text>
+          <Text style={{ color: item.closed_loop ? c.stroke : colors.textMuted }}>
+            {item.closed_loop ? `+${formatArea(item.area_m2)}` : 'not claimed'}
+          </Text>
+        </Text>
       </View>
     </Card>
     </Reveal>
@@ -690,7 +616,8 @@ const makeStyles = (colors) =>
   StyleSheet.create({
     // Sizing (aspect ratio, centring) is RouteThumb's own default style —
     // this is only the layout this ROW wants around it.
-    thumb: { marginTop: space.md },
+    thumb: { marginTop: space.lg },
+    sticker: { position: 'absolute', right: -4, bottom: -8 },
     // The map's half of the paired row — margin lives on `pairedRow` instead,
     // since this box now shares a line with the photo rather than starting
     // one of its own.
@@ -709,35 +636,36 @@ const makeStyles = (colors) =>
     // Every row carries the same three slots now — react, kudos, menu — so in
     // practice it stays on one line and, more to the point, your own runs and
     // everybody else's are the same height. The wrap is the safety net.
-    header: { flexWrap: 'wrap', rowGap: space.sm },
+    header: { flexWrap: 'wrap', rowGap: space.sm, marginBottom: space.xs },
     // No `flex: 1` here, deliberately. That sets flexBasis to 0, and the wrap
     // decision is made on flex BASIS, not on what the content actually needs —
     // a zero-basis identity always "fits", so the header would never break and
     // the name would go straight back to being crushed.
     identity: { flexGrow: 1, flexShrink: 1, minWidth: IDENTITY_MIN },
-    identityText: { flexGrow: 1, flexShrink: 1 },
-    // `flex-start` so the drawn chip is only as wide as its own text —
-    // stretched to the identity column's full width it would read as a banner
-    // across the card rather than as a chip under the name.
-    metaChip: {
-      alignSelf: 'flex-start',
-      marginTop: 4,
-      maxWidth: '100%',
+    identityText: { flexGrow: 1, flexShrink: 1, gap: 2 },
+    portraitAccent: {
+      width: PORTRAIT + 6,
+      height: PORTRAIT + 6,
+      borderRadius: (PORTRAIT + 6) / 2,
+      borderWidth: 2,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    metaChipInner: { paddingHorizontal: 2 },
-    // The three framed stat tiles, sharing the row evenly with a small gap.
+    initialsAvatar: {
+      width: PORTRAIT + 6,
+      height: PORTRAIT + 6,
+      borderRadius: (PORTRAIT + 6) / 2,
+      borderWidth: 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     statRow: {
-      flexDirection: 'row',
-      gap: space.sm,
       marginTop: space.md,
+      paddingTop: space.sm,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
-    statCell: { flex: 1 },
-    statCellInner: { alignItems: 'center' },
-    // Fixed inks, not the theme's: the tile's paper is always white, so a
-    // scheme-flipping label/value colour would disappear on it in dark mode.
-    statLabel: { color: '#5c5c66', marginBottom: 2 },
-    statValueRow: { flexDirection: 'row', alignItems: 'flex-end' },
-    statUnit: { color: '#5c5c66', marginLeft: 3, marginBottom: 2 },
+    statSummary: { fontSize: 16, lineHeight: 22 },
     // Never shrinks: 40pt is already the minimum a thumb can hit. `marginLeft:
     // auto` is what keeps the strip against the right edge on the wrapped
     // line, where `between` has nothing to push it away from.
@@ -745,8 +673,8 @@ const makeStyles = (colors) =>
     kudosSlot: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
     kudosFx: { position: 'absolute', zIndex: 4 },
     action: {
-      minWidth: 40,
-      minHeight: 40,
+      minWidth: 38,
+      minHeight: 38,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -767,7 +695,7 @@ const makeStyles = (colors) =>
     },
     // Its own line under the map now, not scattered on top of it — see
     // RouteThumb and the note above the ReactionBar render.
-    reactionsRow: { marginTop: space.md },
+    reactionsRow: { marginTop: space.sm },
     captionFrame: { marginTop: space.md },
     captionInner: { padding: space.md },
     // `bodyBold` alone (15pt) was the same weight the header row's stat labels

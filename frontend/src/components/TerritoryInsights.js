@@ -41,6 +41,15 @@
 //   the value string and into a chip. "0.064 km² · above your usual" as one
 //   run on value was the row most likely to wrap on a small phone.
 //
+// 2026-09-23, ONE BOX, NOT THREE. Testers found the recap fragmented, and
+// this card was a big part of it: a masthead rule, a divider under every row,
+// and "Your form" as a gold box nested inside the card. Now there is one
+// stroke (the card's), rows are separated by space alone, "Your form" is a
+// labelled group under a single hairline, and every text takes its role from
+// report/reportText.js, the scale the whole recap shares. On the result screen
+// the lead is the STANDING: the ground is already the hero of the card above,
+// and leading with it again was the repetition testers called out.
+//
 // The stranded "·" went with that. `Held against you by 2` used to render the
 // empty value placeholder in the value column, so the row read as a fact whose
 // number had failed to load. The count IS the figure, and now it says so.
@@ -63,6 +72,7 @@ import {
   withAlpha,
 } from '../theme';
 import ProTeaser from './ProTeaser';
+import { reportText } from './report/reportText';
 import { HardShadow, Pill } from './ui';
 
 const km2 = (m2) => {
@@ -86,21 +96,21 @@ const ordinal = (n) => {
  * off the two main columns so the names stay a readable left edge and the
  * numbers stay a scannable right one.
  */
-function StatLine({ label, note, value, tag, tint, divider, colors, type, last }) {
+function StatLine({ label, note, value, tag, t }) {
   return (
-    <View style={[styles.line, !last && { borderBottomWidth: 1.5, borderBottomColor: divider }]}>
+    <View
+      style={styles.line}
+      accessible
+      accessibilityLabel={[label, note, value, tag].filter(Boolean).join(', ')}
+    >
       <View style={styles.lineLabel}>
-        <Text style={[type.bodySm, { color: colors.textMuted }]}>{label}</Text>
-        {note ? (
-          <Text style={[type.caption, { color: colors.textDim, marginTop: 2 }]}>{note}</Text>
-        ) : null}
-      </View>
-      <View style={styles.lineValue}>
-        <Text style={[type.statSm, tint ? { color: tint } : null]} numberOfLines={1}>
-          {value}
-        </Text>
+        <Text style={t.rowLabel}>{label}</Text>
+        {note ? <Text style={[t.body, styles.lineNote]}>{note}</Text> : null}
         {tag ? <Pill label={tag} color={GOLD} style={styles.lineTag} /> : null}
       </View>
+      <Text style={[t.statValue, styles.lineValue]} numberOfLines={1}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -122,9 +132,10 @@ function StatLine({ label, note, value, tag, tint, divider, colors, type, last }
  * leaves it off: read back a week later there is no hero card above it, so the
  * summary is the only place those numbers appear at all.
  *
- * What stays either way is the part a card never shows — new ground broken,
- * biggest single capture, where the run leaves you on the board — and, for a
- * subscriber, the form analytics that were always the actual depth here.
+ * Since 2026-09-23 it also drops new ground and biggest capture: a claim is
+ * one shape, so both are the hero number again. What stays is where the run
+ * leaves you on the board (promoted to the lead), who held against you, and,
+ * for a subscriber, the form analytics that were always the actual depth here.
  */
 export default function TerritoryInsights({ runId, style, allowAutoPrompt = false, hideClaimSummary = false }) {
   const { colors, scheme } = useTheme();
@@ -173,7 +184,8 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
   if (!claimed) return null;
 
   const ink = nbInk(scheme, colors.card);
-  const rule = withAlpha(ink, 0.16);
+  const hairline = withAlpha(ink, 0.14);
+  const t = reportText(type, colors);
 
   // The free half, built as data rather than as JSX so the FIRST figure can be
   // promoted to the headline without a second copy of the same conditions.
@@ -181,7 +193,7 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
   if (!hideClaimSummary) {
     facts.push({ key: 'claimed', label: 'Land claimed', value: km2(data.territory_m2) });
   }
-  if (data.land_gained_m2 != null) {
+  if (!hideClaimSummary && data.land_gained_m2 != null) {
     facts.push({ key: 'gained', label: 'New ground', value: km2(data.land_gained_m2) });
   }
   if (!hideClaimSummary && data.rivals_taken > 0) {
@@ -192,7 +204,9 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
       value: km2(data.stolen_m2),
     });
   }
-  if (data.biggest_capture_m2 > 0) {
+  // A claim is one shape, so on the result screen its biggest capture IS the
+  // hero number above; read back later it is still worth a line.
+  if (!hideClaimSummary && data.biggest_capture_m2 > 0) {
     facts.push({ key: 'biggest', label: 'Biggest capture', value: km2(data.biggest_capture_m2) });
   }
   if (data.rivals_held > 0) {
@@ -201,9 +215,10 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
     facts.push({ key: 'held', label: 'Held against you', value: runners(data.rivals_held) });
   }
   if (data.standing_rank) {
-    facts.push({
+    // Led with on the result screen, where the ground is already the hero.
+    facts[hideClaimSummary ? 'unshift' : 'push']({
       key: 'standing',
-      label: 'You now stand',
+      label: 'Current standing',
       value: `${ordinal(data.standing_rank)} of ${data.standing_field.toLocaleString()}`,
     });
   }
@@ -223,7 +238,6 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
       label: 'Land per kilometre',
       value: km2(pro.m2_per_km),
       tag: better == null ? null : better ? 'Above your usual' : 'Below your usual',
-      tint: better === true ? GOLD : undefined,
     });
   }
   if (pro) {
@@ -237,7 +251,8 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
   if (pro?.stolen_m2_30d > 0) {
     form.push({
       key: 'stolen30',
-      label: 'Taken off rivals, 30 days',
+      label: 'Taken off rivals',
+      note: 'Last 30 days',
       value: km2(pro.stolen_m2_30d),
     });
   }
@@ -253,71 +268,38 @@ export default function TerritoryInsights({ runId, style, allowAutoPrompt = fals
   return (
     <HardShadow radius={nbRadius.sm} style={[styles.drop, style]}>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: ink }]}>
-        {/* The masthead. A full weight rule under it rather than a hairline:
-            it is the one line on the card that says where the report starts. */}
-        <View style={[styles.head, { borderBottomColor: ink }]}>
-          <Text style={[type.title, { color: colors.text }]}>Territory report</Text>
-          <Text style={[type.caption, { color: colors.textMuted, marginTop: 3 }]}>
-            What this run did to the map.
-          </Text>
-        </View>
+        <Text style={t.cardTitle} accessibilityRole="header">Territory report</Text>
+        <Text style={t.cardSub}>What this run did to the map.</Text>
 
-        <View style={styles.body}>
-          {lead ? (
-            <View style={[styles.lead, { borderBottomColor: rule }]}>
-              <Text style={[type.labelSm, { color: colors.textMuted }]}>{lead.label}</Text>
-              <Text style={[type.stat, { color: colors.text, marginTop: 2 }]} numberOfLines={1}>
-                {lead.value}
-              </Text>
-              {lead.note ? (
-                <Text style={[type.caption, { color: colors.textDim, marginTop: 2 }]}>
-                  {lead.note}
-                </Text>
-              ) : null}
-            </View>
-          ) : null}
+        {lead ? (
+          <View
+            style={styles.lead}
+            accessible
+            accessibilityLabel={[lead.label, lead.value, lead.note].filter(Boolean).join(', ')}
+          >
+            <Text style={t.statLabel}>{lead.label}</Text>
+            <Text style={[t.leadValue, styles.leadValue]} numberOfLines={1} adjustsFontSizeToFit>
+              {lead.value}
+            </Text>
+            {lead.note ? <Text style={[t.body, styles.lineNote]}>{lead.note}</Text> : null}
+          </View>
+        ) : null}
 
-          {rest.map((f, i) => (
-            <StatLine
-              key={f.key}
-              {...f}
-              divider={rule}
-              colors={colors}
-              type={type}
-              last={i === rest.length - 1}
-            />
-          ))}
-        </View>
+        {rest.map((f) => (
+          <StatLine key={f.key} label={f.label} note={f.note} value={f.value} tag={f.tag} t={t} />
+        ))}
 
         {pro ? (
-          // The paid half, boxed in a gold washed block of its own. Underneath
-          // the free figures, and visibly a different kind of thing: what the
-          // run MEANS rather than what it did.
-          <View
-            style={[
-              styles.form,
-              {
-                borderColor: withAlpha(GOLD, 0.85),
-                backgroundColor: withAlpha(GOLD, scheme === 'dark' ? 0.09 : 0.06),
-              },
-            ]}
-          >
-            <Text style={[type.labelSm, { color: GOLD }]}>Your form</Text>
-            {pro.is_personal_best ? (
-              <Pill label="Biggest claim yet" color={GOLD} style={styles.best} />
-            ) : null}
-            <View style={styles.formLines}>
-              {form.map((f, i) => (
-                <StatLine
-                  key={f.key}
-                  {...f}
-                  divider={withAlpha(GOLD, 0.35)}
-                  colors={colors}
-                  type={type}
-                  last={i === form.length - 1}
-                />
-              ))}
+          // The paid half: what the run MEANS rather than what it did. A
+          // labelled group under one hairline, not a box of its own.
+          <View style={[styles.form, { borderTopColor: hairline }]}>
+            <View style={styles.formHead}>
+              <Text style={t.sectionLabel} accessibilityRole="header">Your form</Text>
+              {pro.is_personal_best ? <Pill label="Biggest claim yet" color={GOLD} /> : null}
             </View>
+            {form.map((f) => (
+              <StatLine key={f.key} label={f.label} note={f.note} value={f.value} tag={f.tag} t={t} />
+            ))}
           </View>
         ) : (
           // The locked half. Every row is NAMED and none carries a number,
@@ -357,47 +339,40 @@ const styles = StyleSheet.create({
   // the marginHorizontal the call sites set.
   drop: { alignSelf: 'stretch', marginBottom: NB.offset },
 
+  // One stroke, one padding. Everything inside is spaced, not boxed.
   card: {
     borderWidth: NB.stroke,
     borderRadius: nbRadius.sm,
-    // The masthead rule runs edge to edge, so the padding lives on the pieces
-    // inside rather than on the box.
-    overflow: 'hidden',
+    padding: space.lg,
   },
 
-  head: {
-    paddingHorizontal: space.lg,
-    paddingTop: space.lg,
-    paddingBottom: space.md,
-    borderBottomWidth: NB.stroke,
-  },
-
-  body: { paddingHorizontal: space.lg, paddingBottom: space.md },
-
-  lead: { paddingVertical: space.md, borderBottomWidth: 1.5 },
+  lead: { marginTop: space.md, marginBottom: space.xs },
+  leadValue: { marginTop: 2 },
 
   line: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    paddingVertical: space.md,
+    paddingVertical: space.sm,
     gap: space.md,
   },
-  lineLabel: { flex: 1 },
-  lineValue: { alignItems: 'flex-end', flexShrink: 0 },
-  lineTag: { alignSelf: 'flex-end', marginTop: 6 },
+  lineLabel: { flex: 1, minWidth: 0, alignItems: 'flex-start' },
+  lineNote: { marginTop: 1 },
+  lineValue: { flexShrink: 0, textAlign: 'right' },
+  lineTag: { marginTop: 5 },
 
   form: {
-    margin: space.lg,
-    marginTop: space.xs,
-    borderWidth: NB.strokeThin,
-    borderRadius: nbRadius.sm,
-    paddingHorizontal: space.md,
+    marginTop: space.sm,
     paddingTop: space.md,
-    paddingBottom: space.xs,
+    borderTopWidth: 1.5,
   },
-  formLines: { marginTop: space.xs },
-  best: { marginTop: space.sm },
+  formHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.sm,
+    marginBottom: space.xs,
+  },
 
-  teaser: { margin: space.lg, marginTop: space.xs },
+  teaser: { marginTop: space.md },
 });

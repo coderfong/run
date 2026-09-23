@@ -41,10 +41,10 @@ const EMPTY = {
   gender: '',
   introDone: false,
   tutorialPending: false,
-  // The Crossroads explainer. Unlike `tutorialPending` this one defaults false
-  // for EVERY account, new or old: the plaza is a screen you can arrive at
-  // years in, and nobody who has not read it once should be left guessing at
-  // it. Set the first time the screen is dismissed.
+  // The Crossroads explainer. Set the first time the screen is dismissed.
+  // It auto opens ONLY during an account's first onboarding (2026-09-23, on
+  // the user's rule that teaching surfaces are for first onboarding only):
+  // see `inFirstOnboarding` in src/tutorial/progress.js.
   crossroadsIntroSeen: false,
   // Same idea for the "Ranked map" explainer on GlobalMapScreen. Rank (Wood →
   // Mythic, earned from taking and holding ground) is a completely different

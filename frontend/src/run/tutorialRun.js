@@ -14,6 +14,14 @@
 // read the server's answer — see their own `tutorialSim` branches — so
 // nothing here can mint real territory, XP or currency, and nothing outside
 // the tutorial's simulated run/claim segment may import it.
+//
+// SANDBOX, stated once. Every id in here starts `tutorial-`, nothing is
+// written to storage, the API client is never imported, and every reward and
+// energy number is zero. The demo's run, claim and territory live in the run
+// and claim screens' component state and are gone when the Record modal
+// closes. RunningScreen and ResultScreen hold the other half of the promise:
+// each network call they make is behind a `tutorialSim` branch that answers
+// from this file instead.
 
 import { buildSimulatedRun, FALLBACK_ORIGIN } from './simulatedRun';
 
@@ -105,13 +113,15 @@ export function buildTutorialResult({ path, distanceM, startedAtMs, endedAtMs })
     stolen_m2: 0,
     stolen_from: null,
     achievements: [],
-    xp_gained: Math.round(distanceM / 20),
+    // Nothing is paid for a demo. These numbers are never sent anywhere and
+    // never shown, but zero is the honest value.
+    xp_gained: 0,
     tier: 'qualified_for_claim',
     qualification_reason: null,
     claim_eligible: true,
     verification_state: 'verified',
     gate_reason: null,
-    coins_gained: Math.round(distanceM / 60),
+    coins_gained: 0,
     energy_gained: 0,
     coins_capped: false,
     energy_capped: false,
@@ -139,14 +149,16 @@ function tutorialPlacement({ ring, areaM2, t = 0.5, deg = 0 }) {
     ally_m2: 0,
     rivals: [],
     action: 'empty',
-    energy_cost: 4,
-    base_energy_cost: 4,
+    // The demo claim costs nothing, and says so: the tutorial card tells the
+    // runner it won't use their real energy.
+    energy_cost: 0,
+    base_energy_cost: 0,
     applied_discounts: [],
-    energy_before: 40,
-    energy_after: 36,
+    energy_before: null,
+    energy_after: null,
     available: true,
     unavailable_reason: null,
-    expected_xp: 20,
+    expected_xp: 0,
     expected_rank_points: 0,
   };
 }
@@ -168,9 +180,9 @@ export function buildTutorialOptions({ run_id, claim_ring, claim_area_m2 }, rout
     most_land_index: 0,
     biggest_steal_index: null,
     best_defence_index: null,
-    energy: 40,
-    energy_max: 40,
-    first_claim_of_day: true,
+    energy: null,
+    energy_max: null,
+    first_claim_of_day: false,
     neutral_claims_remaining: 3,
     min_route_attachment: 0,
     rank_tier: 0,
@@ -223,15 +235,15 @@ export function buildTutorialClaimOut({ result, user, equipped }) {
     stolen_m2: 0,
     stolen_from: null,
     victims: [],
-    xp_gained: 20,
+    xp_gained: 0,
     level: 1,
     xp: 0,
     next_level_xp: 100,
     leveled_up: false,
-    energy: 36,
-    energy_max: 40,
+    energy: null,
+    energy_max: null,
     action: 'empty',
-    energy_cost: 4,
+    energy_cost: 0,
     neutral_claims_remaining: 2,
     solo_elo: 1000,
     solo_elo_delta: 0,

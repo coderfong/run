@@ -39,6 +39,7 @@ import {
 import ClubAvatar from '../components/ClubAvatar';
 import PortraitBorder from '../components/PortraitBorder';
 import { CharacterBust } from '../components/character/CharacterRig';
+import { RankCrest, RunnerFigure } from '../components/identity/PlayerIdentity';
 import { useAvatar } from '../state/avatar';
 import { Arrival, PressableScale, useArrival } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
@@ -49,6 +50,9 @@ const km2 = (m) => (m / 1e6).toFixed(2);
 // at the same height. The frame drawn around it can be wider — see
 // RunnerPortrait — which is why nothing here is a fixed 40pt box.
 const PORTRAIT = 40;
+// The solo podium's runners. First stands tallest.
+const PODIUM_FIRST_H = 118;
+const PODIUM_H = 94;
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
 // The scope defaults from a route param (Home's leaderboards card opens on
 // Clubs) but is now also a filter in the sheet, alongside category — this
@@ -334,8 +338,47 @@ export default function SeasonScreen({ navigation, route }) {
     );
   };
 
+  // THE SOLO PODIUM. The top three stand as their whole runner (outfit,
+  // shoes, rank crest at their feet); everyone from fourth down is a compact
+  // row with a portrait, which is what keeps this list cheap however long the
+  // board is. Clubs have no runner to show, so their board is rows only.
+  const soloPodium = mode === 'solo' && !waiting && (rows || []).length > 0;
+  const podiumRows = soloPodium ? rows.slice(0, 3) : [];
+  const listRows = soloPodium ? rows.slice(3) : rows;
+  const rankOffset = soloPodium ? 3 : 0;
+
+  const podium = soloPodium ? (
+    <View style={styles.podium} accessibilityRole="summary">
+      {[podiumRows[1], podiumRows[0], podiumRows[2]].filter(Boolean).map((item) => {
+        const rank = rows.indexOf(item) + 1;
+        const isMe = item.user_id === user.id;
+        const amount = metricAmount(item, category);
+        return (
+          <View key={item.user_id} style={[styles.podiumCol, rank === 1 && styles.podiumFirst]}>
+            {rank === 1 ? <AppIcon name="crown" size={20} style={{ marginBottom: 2 }} /> : null}
+            <View style={styles.podiumRunner}>
+              <RunnerFigure
+                equipped={isMe ? myEquipped : item.avatar}
+                height={rank === 1 ? PODIUM_FIRST_H : PODIUM_H}
+                accessibilityLabel={`${item.username}'s runner`}
+              />
+              <RankCrest
+                tierKey={(isMe ? myRankKey : item.rank_key) || 'wood'}
+                size={24}
+                style={styles.podiumCrest}
+              />
+            </View>
+            <Text style={[type.statSm, { color: colors.textMuted }]}>{`#${rank}`}</Text>
+            <Text style={type.bodySmBold} numberOfLines={1}>{item.username}{isMe ? ' (you)' : ''}</Text>
+            <Text style={type.caption} numberOfLines={1}>{`${amount.value} ${amount.unit}`}</Text>
+          </View>
+        );
+      })}
+    </View>
+  ) : null;
+
   const renderSolo = (item, index) => {
-    const rank = index + 1;
+    const rank = index + 1 + rankOffset;
     const top = rank === 1;
     const isMe = item.user_id === user.id;
     const c = NEUTRAL;
@@ -392,7 +435,7 @@ export default function SeasonScreen({ navigation, route }) {
         // different tree. Changing a filter refetches, and a second tree would
         // unmount the sheet the filter was chosen in — the sheet would slam
         // shut on every tap inside it.
-        data={!waiting ? rows : []}
+        data={!waiting ? listRows : []}
         keyExtractor={(item) => item.clan_id || item.user_id}
         contentContainerStyle={{ paddingHorizontal: space.gutter, paddingBottom: space.xxl }}
         // The header is the full-bleed art rectangle, so it cancels the list's
@@ -411,6 +454,7 @@ export default function SeasonScreen({ navigation, route }) {
                 style={{ marginBottom: space.sm }}
               />
             ) : null}
+            {podium}
           </>
         }
         ListEmptyComponent={
@@ -425,7 +469,8 @@ export default function SeasonScreen({ navigation, route }) {
                 />
               ))}
             </View>
-          ) : (
+          ) : soloPodium ? null : (
+            // A board of three or fewer is ALL podium: nothing is missing.
             <EmptyState
               icon={<AppIcon name="trophy" size={44} />}
               title={mode === 'clans' ? 'No clubs on the board yet' : 'No solo runners yet'}
@@ -512,6 +557,17 @@ function Amount({ value, unit, color }) {
 
 const makeStyles = (colors, scheme) => StyleSheet.create({
   rankCol: { width: 24, alignItems: 'center' },
+  podium: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: space.lg,
+    marginVertical: space.md,
+  },
+  podiumCol: { alignItems: 'center', width: 96 },
+  podiumFirst: { marginBottom: space.md },
+  podiumRunner: { alignItems: 'center', justifyContent: 'flex-end', marginBottom: 4 },
+  podiumCrest: { position: 'absolute', right: -6, bottom: -2 },
   // The initials fallback for a runner with no avatar yet. Sized to PORTRAIT,
   // which is also the diameter RunnerPortrait draws a real bust at, so a board
   // of mixed accounts has one row height.

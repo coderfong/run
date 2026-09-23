@@ -13,6 +13,7 @@ import { StyleSheet } from 'react-native';
 import RankUpCeremony from '../src/components/rank/RankUpCeremony';
 import RankDownCeremony from '../src/components/rank/RankDownCeremony';
 import RankBadge from '../src/components/rank/RankBadge';
+import { RunnerFigure } from '../src/components/identity/PlayerIdentity';
 import RankWorld from '../src/components/rank/RankWorld';
 import { standingFrom } from '../src/config/rankLadder';
 import { RANK_ART_ASPECT, rankArt } from '../src/config/rankArt';
@@ -54,8 +55,14 @@ describe.each([
   test('stands nothing on the art', () => {
     const tree = landed();
     // The runner is still on the screen, under the world rather than in it.
-    expect(tree.root.findAllByType(RankBadge)).toHaveLength(1);
-    expect(tree.root.findByType(RankWorld).findAllByType(RankBadge)).toHaveLength(0);
+    // A promotion stands the WHOLE runner there (RunnerFigure); a demotion
+    // keeps the framed portrait badge.
+    const runner = (node) => [
+      ...node.findAllByType(RankBadge),
+      ...node.findAllByType(RunnerFigure),
+    ];
+    expect(runner(tree.root)).toHaveLength(1);
+    expect(runner(tree.root.findByType(RankWorld))).toHaveLength(0);
     act(() => tree.unmount());
   });
 

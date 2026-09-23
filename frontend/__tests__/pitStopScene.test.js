@@ -17,7 +17,6 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
 import PitStopScene from '../src/components/shop/PitStopScene';
-import { shopCoverLayout } from '../src/components/shop/WaterPointStage';
 import {
   PIT_STOP_CREW,
   PIT_STOP_LAYOUT as L,
@@ -25,19 +24,20 @@ import {
   SCENE,
   SCENE_ASPECT,
   SCENE_VIEW,
+  shopSceneLayout,
 } from '../src/config/pitStop';
 import CharacterRig, { BODY_RATIO, HEADROOM } from '../src/components/character/CharacterRig';
 import { getItem } from '../src/config/cosmetics';
 
-// Where things are in the painting, in scene units.
+// Where things are in the Seedance movie, in scene units (the clip is drawn
+// SHOP_VIDEO_OFFSET above the origin; see config/pitStop.js).
 const PAINTING = {
-  awningStripes: [375, 563],
-  wallTop: 673,
-  shelfTop: 911,
-  shelfLeft: [199, 532],
-  shelfRight: [1010, 1330],
-  counterX: [87, 1445],
-  counterLip: 1267,
+  signBoard: { x: [373, 1163], y: [430, 644] },
+  // The water drop hanging off the board's left end.
+  signDropRight: 512,
+  wallTop: 708,
+  counterTop: 1188,
+  woodBottom: 1582,
 };
 
 const right = (f) => f.x + f.width;
@@ -105,87 +105,54 @@ describe('the crew stand behind the counter', () => {
   });
 });
 
-describe('what stands on the painted furniture', () => {
-  test('the shelf props sit on their shelves, past the volunteer in front', () => {
-    const restocker = L.restocker.x - L.restocker.width / 2;
-    expect(L.stopwatch.x).toBeGreaterThanOrEqual(PAINTING.shelfLeft[0]);
-    expect(right(L.stopwatch)).toBeLessThan(restocker);
-
-    const helper = L.helper.x + L.helper.width / 2;
-    expect(L.trophy.x).toBeGreaterThan(helper);
-    expect(right(L.trophy)).toBeLessThanOrEqual(PAINTING.shelfRight[1]);
-  });
-
-  test('the shelf props are SUNK, so their ink lands on the shelf', () => {
-    // The icon files carry transparent padding and `contain` keeps it, so a
-    // frame ending on the shelf line leaves the drawing hovering. Both frames
-    // deliberately reach past it — but by less than a fifth of their height,
-    // or the prop is buried in the shelf instead of standing on it.
-    for (const f of [L.stopwatch, L.trophy]) {
-      expect(bottom(f)).toBeGreaterThan(PAINTING.shelfTop);
-      expect(bottom(f) - PAINTING.shelfTop).toBeLessThan(f.height * 0.2);
-    }
-  });
-
-  test('the counter stock stands on the counter, in front of it', () => {
-    for (const key of ['coconut', 'lootbox', 'watermelon', 'sodaBottles']) {
-      const f = L[key];
-      expect(f.x).toBeGreaterThan(PAINTING.counterX[0]);
-      expect(right(f)).toBeLessThan(PAINTING.counterX[1]);
-      // Standing at the front lip, not floating inside the top surface.
-      expect(bottom(f)).toBeGreaterThanOrEqual(PAINTING.counterLip);
-    }
-  });
-
-  test('the offered cup clears the counter plate that is drawn over it', () => {
+describe('the offered cup', () => {
+  test('stands above the counter line the crew are clipped at', () => {
     expect(bottom(L.cup)).toBeLessThan(SCENE.counterTop);
-    // And it stays out of the helper's lane — the cup is drawn after the crew.
+    // And it stays out of the helper's lane; the cup is drawn after the crew.
     expect(right(L.cup)).toBeLessThanOrEqual(L.helper.x - L.helper.width / 2);
   });
 });
 
-describe('what hangs off the canopy', () => {
-  test('both hang from the canopy edge, in the lanes between the crew', () => {
-    const lanes = [
-      [L.restocker.x + L.restocker.width / 2, L.keeper.x - L.keeper.width / 2],
-      [L.keeper.x + L.keeper.width / 2, L.helper.x - L.helper.width / 2],
-    ];
-    for (const f of [L.hangBottle, L.hangMedal]) {
-      expect(f.y).toBe(PAINTING.wallTop - 2);
-      expect(lanes.some(([a, b]) => f.x >= a && right(f) <= b)).toBe(true);
-    }
-  });
-
-  test('neither reaches the shelves below', () => {
-    for (const f of [L.hangBottle, L.hangMedal]) {
-      expect(bottom(f)).toBeLessThan(PAINTING.shelfTop);
-    }
+describe('the station sign', () => {
+  test('is lettered onto the blank board in the movie, clear of the hanging drop', () => {
+    expect(L.sign.x).toBeGreaterThanOrEqual(PAINTING.signDropRight);
+    expect(right(L.sign)).toBeLessThanOrEqual(PAINTING.signBoard.x[1]);
+    expect(L.sign.y).toBeGreaterThanOrEqual(PAINTING.signBoard.y[0]);
+    expect(bottom(L.sign)).toBeLessThanOrEqual(PAINTING.signBoard.y[1]);
   });
 });
 
-describe('the station sign', () => {
-  test('sits on the striped part of the canopy, clear of the valance', () => {
-    expect(L.sign.y).toBeGreaterThan(PAINTING.awningStripes[0]);
-    expect(bottom(L.sign)).toBeLessThan(PAINTING.awningStripes[1]);
+// Small phone, 6.1", Pro Max, and an iPad for the clamp. `headroom` is the
+// floating header: status bar + 4 + a 38pt button + 8.
+const DEVICES = [
+  { name: 'SE', width: 375, height: 667, headroom: 20 + 50 },
+  { name: '6.1"', width: 390, height: 844, headroom: 47 + 50 },
+  { name: 'Pro Max', width: 430, height: 932, headroom: 59 + 50 },
+  { name: 'iPad', width: 820, height: 1180, headroom: 24 + 50 },
+];
+
+describe('the shop split', () => {
+  test.each(DEVICES)('$name: the scene keeps 36..52% of the screen, the panel the rest', (d) => {
+    const { panelTop } = shopSceneLayout(d);
+    expect(panelTop / d.height).toBeGreaterThanOrEqual(0.36 - 1e-9);
+    expect(panelTop / d.height).toBeLessThanOrEqual(0.52 + 1e-9);
   });
 
-  test('survives the crop, with the whole canopy above it', () => {
-    // The shop cuts the sky off the top of the scene. It has to cut ABOVE the
-    // canopy's stripes, or the stall loses its roofline and the sign sits
-    // hard against the edge of the page.
-    expect(SCENE_VIEW.top).toBeLessThan(PAINTING.awningStripes[0]);
-    expect(SCENE_VIEW.top).toBeLessThan(L.sign.y);
+  test.each(DEVICES.slice(0, 3))('$name: the sign sits below the floating header', (d) => {
+    const { scale, cropTop } = shopSceneLayout(d);
+    expect((L.sign.y - cropTop) * scale).toBeGreaterThanOrEqual(d.headroom);
+  });
+
+  test.each(DEVICES)('$name: the whole blue counter front shows above the panel', (d) => {
+    // The panel starts on the counter's wooden base, never above its top.
+    expect(SCENE_VIEW.panelLine).toBeGreaterThan(PAINTING.counterTop);
+    expect(SCENE_VIEW.panelLine).toBeLessThan(PAINTING.woodBottom);
+    const { scale, cropTop, panelTop } = shopSceneLayout(d);
+    expect((SCENE_VIEW.panelLine - cropTop) * scale).toBeCloseTo(panelTop, 6);
   });
 });
 
 describe('the scene itself', () => {
-  test('the portrait movie covers the full screenshot viewport after its top crop', () => {
-    const layout = shopCoverLayout({ width: 369, height: 800 }, 70);
-    expect(layout.renderHeight).toBeGreaterThanOrEqual(800);
-    expect(layout.renderWidth).toBeGreaterThan(369);
-    expect(layout.left).toBeLessThan(0);
-  });
-
   test('renders, takes no touches, and is hidden from screen readers', () => {
     let tree;
     act(() => {

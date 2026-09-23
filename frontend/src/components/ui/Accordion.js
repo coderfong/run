@@ -49,6 +49,7 @@ export default function AccordionSection({
   open = false,
   onToggle,
   frameTint,
+  framed = true,
   last = false,
   children,
   style,
@@ -77,7 +78,7 @@ export default function AccordionSection({
         accessibilityState={{ expanded: !!open }}
       >
         <View style={styles.headText}>
-          <SectionLabel title={title} frameTint={frameTint} />
+          <SectionLabel title={title} framed={framed} frameTint={frameTint} />
           {subtitle ? (
             <Text style={[type.caption, styles.sub]} numberOfLines={2}>
               {subtitle}

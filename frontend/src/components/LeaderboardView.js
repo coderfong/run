@@ -23,6 +23,14 @@ import { toast } from '../ui/toast';
 import { art } from '../config/onboardingArt';
 import GameAnimation from './GameAnimation';
 import GameLottie from './GameLottie';
+import { RankCrest, RunnerFigure } from './identity/PlayerIdentity';
+import { useAvatar } from '../state/avatar';
+
+// The podium stands the top three as their WHOLE runner: a podium is the one
+// place on a board where what somebody is wearing is worth the room. First
+// stands tallest. The rows below stay compact text (and never mount a rig),
+// which is what keeps a 50 row FlatList cheap.
+const PODIUM_H = { 1: 112, 2: 90, 3: 90 };
 
 // Rank -> place badge. Animated (config/gameAnimations.js), self-looping, and
 // held as a still under Reduce Motion — a rank badge is the row's rank, so the
@@ -140,6 +148,7 @@ export default function LeaderboardView({ board = 'land' }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const { user } = useAuth();
+  const { equipped: myEquipped } = useAvatar();
   const accent = useAccent();
   const reduce = useReduceMotion();
   // Seeded from the response cache — the standings you last saw are on screen
@@ -265,17 +274,35 @@ export default function LeaderboardView({ board = 'land' }) {
               <GameLottie name="rankUp" size={100} trigger={r.delta} style={styles.podiumRankFx} />
             ) : null}
             {isFirst && <AppIcon name="crown" size={20} style={{ marginBottom: 4 }} />}
-            <View
-              style={[
-                styles.podiumAvatar,
-                { backgroundColor: c.fill, borderColor: c.stroke },
-                isFirst && { width: 72, height: 72, borderRadius: 36 },
-              ]}
-            >
-              <Text style={[isFirst ? type.title : type.bodyBold, { color: c.stroke }]}>
-                {(r.username || '?').slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
+            {/* The whole runner, outfit and shoes, with their rank crest at
+                their feet. Initials only for a server that predates the
+                `avatar` field (the key is absent, not null: null is simply a
+                runner in the default outfit). Your own column reads your
+                live loadout, the rule every other surface follows. */}
+            {r.user_id === user.id || 'avatar' in r ? (
+              <View style={styles.podiumRunner}>
+                <RunnerFigure
+                  equipped={r.user_id === user.id ? myEquipped : r.avatar}
+                  height={PODIUM_H[r.rank] || PODIUM_H[3]}
+                  accessibilityLabel={`${r.username}'s runner`}
+                />
+                {r.rank_key ? (
+                  <RankCrest tierKey={r.rank_key} size={24} style={styles.podiumCrest} />
+                ) : null}
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.podiumAvatar,
+                  { backgroundColor: c.fill, borderColor: c.stroke },
+                  isFirst && { width: 72, height: 72, borderRadius: 36 },
+                ]}
+              >
+                <Text style={[isFirst ? type.title : type.bodyBold, { color: c.stroke }]}>
+                  {(r.username || '?').slice(0, 2).toUpperCase()}
+                </Text>
+              </View>
+            )}
             {/* The medal, where the podium used to print "#1" under the
                 avatar. The rank is what these three columns ARE, so the badge
                 is the caption rather than an ornament beside one. */}
@@ -448,6 +475,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   podiumCol: { alignItems: 'center', width: 88 },
   podiumRankFx: { position: 'absolute', top: -22 },
   podiumFirst: { marginBottom: space.sm },
+  podiumRunner: { alignItems: 'center', justifyContent: 'flex-end' },
+  podiumCrest: { position: 'absolute', right: -4, bottom: -2 },
   podiumAvatar: {
     width: 56,
     height: 56,

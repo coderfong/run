@@ -451,3 +451,15 @@ No Meta SDK, no login, nothing else to configure.
 | A trail decoration lying on its side | Nothing should ever follow the route's tangent — check `lean` in `TRAIL_DECORATIONS`, it is a tilt in degrees, not a rotation |
 | No Save / Copy button | A binary built before `expo-media-library` / `expo-clipboard` |
 | Preview looks like grey squares | That is the transparency checkerboard, not the card |
+
+## 2026-09-23: the runner on the card is the whole outfit
+
+`RunShareCard` takes `runnerStyle`: `'full'` (the default) stands the player's
+whole runner (`components/identity/RunnerFigure`, `captureSafe`) with its feet
+on the route's end dot, centred across it, so tops, bottoms, shoes and
+accessories all make it onto the posted card. `'mark'` is the older PASER mark
+wearing the player's head (`LogoRunner`), kept for a style that wants it; no
+sheet control exposes it, per the one screen rule. The full figure is NOT
+mirrored by `flip`: a standing figure faces the camera, and a flip only moves
+asymmetric gear to the wrong side. See `components/identity/PlayerIdentity.js`
+for the portrait / bust / full rule the whole app follows.

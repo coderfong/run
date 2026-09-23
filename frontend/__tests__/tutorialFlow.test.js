@@ -2,14 +2,17 @@
  * The tutorial's state machine, driven the way the app drives it.
  *
  * The provider is mounted for real against a fake profile store, a fake
- * recording flag and a fake navigator, and then pushed through the whole
- * sequence — including the ways it goes wrong: a run abandoned halfway, a
- * claim that never arrives, the app being killed and reopened.
+ * recording flag and a fake navigator, and pushed through the whole core
+ * tutorial and the ways it goes wrong: a double tap, Back out of the demo,
+ * the app killed and reopened, a target that has not laid out yet, a skip
+ * half way through, a replay by a veteran.
  *
- * What is being protected here is the promise that the tutorial FOLLOWS the
- * app. Nothing in these tests calls a tutorial-only button to move the
- * tutorial on; every transition is either a real signal from a screen, a real
- * navigation, or a tap on the one card that legitimately has a button.
+ * What is being protected is the promise that THE RUNNER DRIVES IT. Nothing
+ * here presses a tutorial-only button to move the tutorial on (apart from the
+ * explicit card buttons: SHOW ME, GOT IT, START EXPLORING); every other
+ * transition is a real signal from a screen or a real change of route. And
+ * the tutorial itself never navigates except as the direct result of one of
+ * those buttons.
  */
 
 import React from 'react';
@@ -33,15 +36,13 @@ jest.mock('../src/pro/ProProvider', () => ({
   default: ({ children }) => children,
   useProEntitlement: () => ({ runCount: mockRunCount }),
 }));
-// Analytics is real but sinkless; silence its dev logging so the run is
-// readable. The events it would have sent are asserted through the spy below.
 jest.spyOn(console, 'log').mockImplementation(() => {});
 
 import { TutorialProvider, useTutorial, useTutorialState } from '../src/tutorial/TutorialContext';
 import { PHASE } from '../src/tutorial/phases';
-import { CORE, TIP } from '../src/tutorial/progress';
+import { CORE, TIP, TUTORIAL_VERSION } from '../src/tutorial/progress';
 import { SIGNAL } from '../src/tutorial/signals';
-import { stepFor } from '../src/tutorial/steps';
+import { TARGET } from '../src/tutorial/targets';
 import { EVENTS, clearRecentEvents, recentEvents } from '../src/analytics';
 
 // --- a fake navigator -------------------------------------------------------
@@ -52,12 +53,13 @@ function makeNav(initialRoute = 'HomeMain') {
   return {
     isReady: () => true,
     getCurrentRoute: () => ({ name: route }),
+    getRootState: () => ({ key: 'root-key' }),
     addListener: (_type, fn) => {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
     navigate: jest.fn(),
-    // What a screen transition looks like from out here.
+    dispatch: jest.fn(),
     go(next) {
       route = next;
       listeners.forEach((fn) => fn());
@@ -65,7 +67,7 @@ function makeNav(initialRoute = 'HomeMain') {
   };
 }
 
-// --- a probe that reports what the tutorial is doing ------------------------
+// --- a probe ----------------------------------------------------------------
 
 let api = null;
 let state = null;
@@ -94,34 +96,20 @@ function setProfile(patch = {}) {
     profile: { introDone: true, tutorialPending: false, tutorial: null, ...stored, ...patch },
     loading: false,
     saveTutorial: (tutorial) => {
-      // Mirrors the real store: one key, written back whole, everything else
-      // in the profile left exactly as it was.
       act(() => {
-        mockProfile = {
-          ...mockProfile,
-          profile: { ...mockProfile.profile, tutorial },
-        };
+        mockProfile = { ...mockProfile, profile: { ...mockProfile.profile, tutorial } };
       });
     },
     completeTutorial: () => {
       act(() => {
-        mockProfile = {
-          ...mockProfile,
-          profile: { ...mockProfile.profile, tutorialPending: false },
-        };
+        mockProfile = { ...mockProfile, profile: { ...mockProfile.profile, tutorialPending: false } };
       });
     },
   };
 }
 
-// The provider re-reads the profile from context, and our fake context object
-// is swapped wholesale — so a re-render has to be forced after a write, the
-// same way a real provider would re-render its consumers.
-//
-// It runs to a FIXED POINT, because one write can legitimately cause another:
-// arriving at a step whose `skipWhen` is already true moves straight past it.
-// Settling here is what the real provider gets for free from React re-running
-// effects on its own state.
+// Re-render to a fixed point: one write can cause another (a doneWhen that is
+// already true, a demo step found without its screen).
 function sync(tree) {
   for (let i = 0; i < 8; i += 1) {
     const before = mockProfile.profile.tutorial;
@@ -137,17 +125,20 @@ function sync(tree) {
   throw new Error('tutorial state never settled');
 }
 
-function boot({ tutorialPending = false, introDone = true, runCount = 0, tutorial = null } = {}) {
+function boot({ tutorialPending = false, introDone = true, runCount = 0, tutorial = null, route = 'HomeMain' } = {}) {
   mockProfile = null;
   setProfile({ tutorialPending, introDone, tutorial });
   mockRecording = false;
   mockRunCount = runCount;
-  const nav = makeNav();
+  const nav = makeNav(route);
   const tree = mount(nav);
   tree.navRef = nav;
+  mounted.push(tree);
   sync(tree);
   return { tree, nav };
 }
+
+const at = (phase) => ({ version: TUTORIAL_VERSION, core: CORE.RUNNING, phase, tips: {} });
 
 const phase = () => state.phase;
 const stepPhase = () => state.step?.phase ?? null;
@@ -160,7 +151,7 @@ const facts = (tree, patch) => {
   act(() => api.setFacts(patch));
   sync(tree);
 };
-const advance = (tree) => {
+const press = (tree) => {
   act(() => api.advance());
   sync(tree);
 };
@@ -168,39 +159,119 @@ const goRoute = (tree, nav, route) => {
   act(() => nav.go(route));
   sync(tree);
 };
+const recording = (tree, on) => {
+  act(() => {
+    mockRecording = on;
+  });
+  sync(tree);
+};
+
+// A real control, as a screen registers it: a node that can be measured.
+function mountTarget(tree, id, rect = { x: 16, y: 300, width: 340, height: 120 }) {
+  act(() =>
+    api.registerTarget(id, {
+      measureInWindow: (cb) => cb(rect.x, rect.y, rect.width, rect.height),
+    })
+  );
+  sync(tree);
+}
+function unmountTarget(tree, id) {
+  act(() => api.registerTarget(id, null));
+  sync(tree);
+}
+
+const eventNames = () => recentEvents().map((e) => e.name);
+
+const mounted = [];
 
 beforeEach(() => {
   clearRecentEvents();
 });
 
+// A waiting step keeps measuring for its target. Unmounting is what stops it,
+// exactly as leaving the screen does in the app.
+afterEach(() => {
+  while (mounted.length) {
+    const tree = mounted.pop();
+    act(() => tree.unmount());
+  }
+});
+
+// Getting INTO the demo the only way the app can: from LET'S RUN, through the
+// real events. Booting a record that is already mid demo is a cold start, and
+// a cold start mid demo correctly rewinds to LET'S RUN (see the resume tests).
+function driveTo(target) {
+  const booted = boot({ tutorial: at(PHASE.START_RUN) });
+  const { tree, nav } = booted;
+  const order = [
+    PHASE.RUN_START,
+    PHASE.DEMO_RUN,
+    PHASE.FINISH_DEMO,
+    PHASE.CLAIM_POSITION,
+    PHASE.CLAIM_NEXT,
+    PHASE.CLAIM_ROTATE,
+    PHASE.CLAIM_CONFIRM,
+  ];
+  for (const p of order) {
+    if (p === PHASE.RUN_START) goRoute(tree, nav, 'Record');
+    if (p === PHASE.DEMO_RUN) {
+      signal(tree, SIGNAL.RUN_STARTED);
+      recording(tree, true);
+    }
+    if (p === PHASE.FINISH_DEMO) signal(tree, SIGNAL.DEMO_ROUTE_DONE);
+    if (p === PHASE.CLAIM_POSITION) {
+      recording(tree, false);
+      goRoute(tree, nav, 'Result');
+      signal(tree, SIGNAL.RUN_FINISHED);
+      facts(tree, { claimReady: true, claimStep: 'place', demoClaimM2: 375000 });
+    }
+    if (p === PHASE.CLAIM_NEXT) signal(tree, SIGNAL.CLAIM_POSITION_CHANGED);
+    if (p === PHASE.CLAIM_ROTATE) facts(tree, { claimStep: 'rotate' });
+    if (p === PHASE.CLAIM_CONFIRM) signal(tree, SIGNAL.CLAIM_ROTATION_CHANGED);
+    expect(phase()).toBe(p);
+    if (p === target) break;
+  }
+  nav.navigate.mockClear();
+  return booted;
+}
+
 // ---------------------------------------------------------------------------
 
 describe('arming', () => {
-  it('puts a brand new account at the welcome card', () => {
-    boot({ tutorialPending: true, runCount: 0 });
+  it('puts a brand new account at the welcome card, on Home', () => {
+    const { nav } = boot({ tutorialPending: true, runCount: 0 });
     expect(phase()).toBe(PHASE.WELCOME);
     expect(state.core).toBe(CORE.RUNNING);
     expect(stepPhase()).toBe(PHASE.WELCOME);
+    expect(state.host).toBe('root');
+    // Arriving moves nothing.
+    expect(nav.navigate).not.toHaveBeenCalled();
   });
 
   it('clears the intro flag once it has taken it over', () => {
     boot({ tutorialPending: true, runCount: 0 });
     expect(mockProfile.profile.tutorialPending).toBe(false);
-    // ...and the versioned record is what holds the state now.
     expect(mockProfile.profile.tutorial.core).toBe(CORE.RUNNING);
+    // Marked as a first onboarding: what lets the tips show later.
+    expect(mockProfile.profile.tutorial.firstOnboarding).toBe(true);
   });
 
   it('LEAVES AN EXISTING RUNNER COMPLETELY ALONE', () => {
     boot({ tutorialPending: false, runCount: 120 });
     expect(state.core).toBe(CORE.IDLE);
     expect(state.step).toBeNull();
+    expect(mockProfile.profile.tutorial?.firstOnboarding).toBeFalsy();
+  });
+
+  it('does not drop somebody half way through the OLD tutorial into the new one', () => {
+    boot({ tutorial: { version: 1, core: CORE.RUNNING, phase: 'training-rival', tips: {} }, runCount: 0 });
+    expect(state.core).toBe(CORE.DONE);
+    expect(state.step).toBeNull();
   });
 
   it('shows nothing at all while the run count is still unknown', () => {
     const { tree } = boot({ tutorialPending: false, runCount: null });
     expect(state.step).toBeNull();
-    expect(state.core).toBe(CORE.IDLE);
-    // And once it lands saying "no runs yet", the tutorial arms.
     act(() => {
       mockRunCount = 0;
     });
@@ -210,290 +281,302 @@ describe('arming', () => {
 
   it('reports that it started', () => {
     boot({ tutorialPending: true, runCount: 0 });
-    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_STARTED);
+    expect(eventNames()).toContain(EVENTS.TUTORIAL_STARTED);
   });
 });
 
-describe('getting to the map', () => {
-  // The welcome card is entered the instant the tutorial arms, and the Map tab
-  // does not exist that early: App.js builds the tabs lazily and only starts
-  // preloading the other three once the app has been idle. A jump from here
-  // moved the tab INDEX onto a tab that had not been built, so the pager
-  // stayed on Home while the route, the tab bar and every map gate believed
-  // otherwise — and the whole map lesson played over the Home screen.
-  it('does not jump tabs before the runner has pressed anything', () => {
-    const { nav } = boot({ tutorialPending: true });
-
+describe('route and target awareness', () => {
+  it('never draws the welcome card over another screen', () => {
+    boot({ tutorialPending: true, route: 'MapMain' });
     expect(phase()).toBe(PHASE.WELCOME);
+    expect(state.step).toBeNull();
+  });
+
+  it('draws nothing for an action step until its REAL control is measured', () => {
+    const { tree } = boot({ tutorial: at(PHASE.START_RUN) });
+    expect(phase()).toBe(PHASE.START_RUN);
+    expect(state.step).toBeNull();
+    mountTarget(tree, TARGET.HOME_START_RUN);
+    expect(stepPhase()).toBe(PHASE.START_RUN);
+    expect(state.rect).toMatchObject({ x: 16, y: 300, width: 340, height: 120 });
+  });
+
+  it('waits, rather than guessing, when the target is slow to lay out', () => {
+    jest.useFakeTimers();
+    try {
+      const { tree } = boot({ tutorial: at(PHASE.START_RUN) });
+      let ready = false;
+      act(() =>
+        api.registerTarget(TARGET.HOME_START_RUN, {
+          measureInWindow: (cb) => (ready ? cb(10, 200, 300, 100) : cb(0, 0, 0, 0)),
+        })
+      );
+      sync(tree);
+      expect(state.step).toBeNull();
+      // Well past the old give up and centre point.
+      act(() => jest.advanceTimersByTime(5000));
+      sync(tree);
+      expect(state.step).toBeNull();
+      ready = true;
+      act(() => jest.advanceTimersByTime(600));
+      sync(tree);
+      expect(stepPhase()).toBe(PHASE.START_RUN);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('waits for a control scrolled off screen instead of blocking everything', () => {
+    const { tree } = boot({ tutorial: at(PHASE.START_RUN) });
+    mountTarget(tree, TARGET.HOME_START_RUN, { x: 16, y: 5000, width: 340, height: 52 });
+    expect(state.step).toBeNull();
+    // The runner scrolls it into view; the screen re-registers on layout.
+    mountTarget(tree, TARGET.HOME_START_RUN, { x: 16, y: 600, width: 340, height: 52 });
+    expect(stepPhase()).toBe(PHASE.START_RUN);
+  });
+
+  it('takes the card away the moment its target unmounts', () => {
+    const { tree } = boot({ tutorial: at(PHASE.START_RUN) });
+    mountTarget(tree, TARGET.HOME_START_RUN);
+    expect(stepPhase()).toBe(PHASE.START_RUN);
+    unmountTarget(tree, TARGET.HOME_START_RUN);
+    // The stale rect belongs to a target that is gone.
+    act(() => api.remeasure());
+    sync(tree);
+    expect(phase()).toBe(PHASE.START_RUN);
+  });
+
+  it('never uses a rect measured for one step to place the next', () => {
+    const { tree, nav } = boot({ tutorial: at(PHASE.START_RUN) });
+    mountTarget(tree, TARGET.HOME_START_RUN);
+    goRoute(tree, nav, 'Record');
+    expect(phase()).toBe(PHASE.RUN_START);
+    // The run screen's Start is not registered yet.
+    expect(state.step).toBeNull();
+    expect(state.rect).toBeNull();
+  });
+});
+
+describe('the core tutorial, driven by the runner', () => {
+  it('plays from welcome to done without the tutorial ever navigating on its own', () => {
+    const { tree, nav } = boot({ tutorialPending: true, runCount: 0 });
+
+    // WELCOME → SHOW ME. Home stays put.
+    press(tree);
+    expect(phase()).toBe(PHASE.START_RUN);
+    mountTarget(tree, TARGET.HOME_START_RUN);
+    expect(stepPhase()).toBe(PHASE.START_RUN);
+    expect(state.step.interactive).toBe(true);
+
+    // The runner taps LET'S RUN; the hero's own onPress opens the run screen.
+    goRoute(tree, nav, 'Record');
+    expect(phase()).toBe(PHASE.RUN_START);
+    mountTarget(tree, TARGET.RUN_START, { x: 16, y: 700, width: 340, height: 56 });
+    expect(stepPhase()).toBe(PHASE.RUN_START);
+    expect(state.host).toBe('record');
+
+    // The runner presses Start: the demo begins.
+    signal(tree, SIGNAL.RUN_STARTED);
+    expect(phase()).toBe(PHASE.DEMO_RUN);
+    expect(state.step).toBeNull(); // countdown: nothing over it
+    recording(tree, true);
+    expect(stepPhase()).toBe(PHASE.DEMO_RUN);
+    expect(state.step.kind).toBe('banner');
+
+    // The route has drawn itself: Finish appears and WAITS.
+    signal(tree, SIGNAL.DEMO_ROUTE_DONE);
+    expect(phase()).toBe(PHASE.FINISH_DEMO);
+    mountTarget(tree, TARGET.FINISH_RUN, { x: 16, y: 700, width: 340, height: 56 });
+    expect(stepPhase()).toBe(PHASE.FINISH_DEMO);
+
+    // The runner presses Finish demo run.
+    recording(tree, false);
+    goRoute(tree, nav, 'Result');
+    signal(tree, SIGNAL.RUN_FINISHED);
+    expect(phase()).toBe(PHASE.CLAIM_POSITION);
+    expect(state.step).toBeNull(); // chooser not up yet
+    facts(tree, { claimReady: true, claimStep: 'place', demoClaimM2: 375000 });
+    mountTarget(tree, TARGET.CLAIM_POSITION, { x: 16, y: 520, width: 340, height: 90 });
+    expect(stepPhase()).toBe(PHASE.CLAIM_POSITION);
+
+    // Slides the claim.
+    signal(tree, SIGNAL.CLAIM_POSITION_CHANGED);
+    expect(phase()).toBe(PHASE.CLAIM_NEXT);
+    mountTarget(tree, TARGET.CLAIM_NEXT, { x: 16, y: 640, width: 340, height: 48 });
+    expect(stepPhase()).toBe(PHASE.CLAIM_NEXT);
+    expect(state.step.copy(state.facts).ack).toMatch(/Nice/);
+
+    // Taps CHOOSE ANGLE: the chooser really moves to its second step.
+    facts(tree, { claimStep: 'rotate' });
+    expect(phase()).toBe(PHASE.CLAIM_ROTATE);
+    mountTarget(tree, TARGET.CLAIM_ROTATION, { x: 16, y: 480, width: 340, height: 180 });
+    expect(stepPhase()).toBe(PHASE.CLAIM_ROTATE);
+
+    // Turns it.
+    signal(tree, SIGNAL.CLAIM_ROTATION_CHANGED);
+    expect(phase()).toBe(PHASE.CLAIM_CONFIRM);
+    mountTarget(tree, TARGET.CLAIM_BUTTON, { x: 16, y: 720, width: 340, height: 52 });
+    expect(stepPhase()).toBe(PHASE.CLAIM_CONFIRM);
+
+    // Taps CLAIM.
+    signal(tree, SIGNAL.CLAIM_PLACED);
+    expect(stepPhase()).toBe(PHASE.CLAIM_SUCCESS);
+    expect(state.host).toBe('record');
+    expect(state.step.copy(state.facts).lines[0]).toContain('0.38 km²');
+
+    // GOT IT, GOT IT, GOT IT.
+    press(tree);
+    expect(stepPhase()).toBe(PHASE.DEFEND);
+    press(tree);
+    expect(stepPhase()).toBe(PHASE.RANK);
+    press(tree);
+    expect(stepPhase()).toBe(PHASE.READY);
+
+    // Nothing so far has been the tutorial navigating.
+    expect(nav.navigate).not.toHaveBeenCalled();
+    expect(nav.dispatch).not.toHaveBeenCalled();
+
+    // START EXPLORING: done, and the demo's modal closes back to Home because
+    // the runner pressed a button that says so.
+    press(tree);
+    expect(state.core).toBe(CORE.DONE);
+    expect(state.step).toBeNull();
+    expect(nav.navigate).toHaveBeenCalledWith('Tabs', { screen: 'Home', params: { screen: 'HomeMain' } });
+
+    const names = eventNames();
+    [
+      EVENTS.TUTORIAL_STEP_START_RUN_COMPLETED,
+      EVENTS.TUTORIAL_STEP_RUN_COMPLETED,
+      EVENTS.TUTORIAL_STEP_POSITION_COMPLETED,
+      EVENTS.TUTORIAL_STEP_ROTATION_COMPLETED,
+      EVENTS.TUTORIAL_STEP_CLAIM_COMPLETED,
+      EVENTS.TUTORIAL_COMPLETED,
+    ].forEach((name) => expect(names).toContain(name));
+  });
+
+  it('NEVER moves on by itself, however long the runner looks at a step', () => {
+    jest.useFakeTimers();
+    try {
+      [PHASE.WELCOME, PHASE.START_RUN, PHASE.CLAIM_POSITION, PHASE.DEFEND, PHASE.RANK, PHASE.READY].forEach(
+        (p) => {
+          const { tree, nav } = p === PHASE.CLAIM_POSITION ? driveTo(p) : boot({ tutorial: at(p) });
+          act(() => jest.advanceTimersByTime(120000));
+          sync(tree);
+          expect(phase()).toBe(p);
+          expect(nav.navigate).not.toHaveBeenCalled();
+        }
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('has no tap anywhere: the card button is the only way past a card, and an action step ignores it', () => {
+    const { tree } = boot({ tutorial: at(PHASE.START_RUN) });
+    mountTarget(tree, TARGET.HOME_START_RUN);
+    press(tree);
+    expect(phase()).toBe(PHASE.START_RUN);
+  });
+
+  it('a double tap on a card button moves ONE card', () => {
+    const { tree } = boot({ tutorial: at(PHASE.DEFEND) });
+    act(() => {
+      api.advance();
+      api.advance();
+    });
+    sync(tree);
+    expect(phase()).toBe(PHASE.RANK);
+  });
+
+  it('a double report of the same event moves ONE step', () => {
+    const { tree } = driveTo(PHASE.CLAIM_POSITION);
+    act(() => {
+      api.signal(SIGNAL.CLAIM_POSITION_CHANGED);
+      api.signal(SIGNAL.CLAIM_POSITION_CHANGED);
+    });
+    sync(tree);
+    expect(phase()).toBe(PHASE.CLAIM_NEXT);
+  });
+
+  it('ignores an event that belongs to another step', () => {
+    const { tree } = driveTo(PHASE.CLAIM_POSITION);
+    signal(tree, SIGNAL.CLAIM_ROTATION_CHANGED);
+    signal(tree, SIGNAL.CLAIM_PLACED);
+    expect(phase()).toBe(PHASE.CLAIM_POSITION);
+  });
+
+  it('a real run finishing never moves the tutorial', () => {
+    const { tree } = boot({ tutorial: at(PHASE.WELCOME) });
+    signal(tree, SIGNAL.RUN_FINISHED);
+    expect(phase()).toBe(PHASE.WELCOME);
+  });
+
+  it('"Take a real run" finishes and opens a FRESH run screen in place of the demo', () => {
+    const { tree, nav } = boot({ tutorial: at(PHASE.READY), route: 'Result' });
+    act(() => api.secondary());
+    sync(tree);
+    expect(state.core).toBe(CORE.DONE);
+    expect(nav.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'REPLACE', target: 'root-key', payload: expect.objectContaining({ name: 'Record' }) })
+    );
+  });
+});
+
+describe('back, close and interruptions', () => {
+  it('closing the demo run rewinds to LET\'S RUN, never pointing at a screen that is gone', () => {
+    const { tree, nav } = driveTo(PHASE.DEMO_RUN);
+    expect(stepPhase()).toBe(PHASE.DEMO_RUN);
+    recording(tree, false);
+    goRoute(tree, nav, 'HomeMain');
+    expect(phase()).toBe(PHASE.START_RUN);
     expect(nav.navigate).not.toHaveBeenCalled();
   });
 
-  // The step that teaches the map is the step that asks for it. This is the
-  // one that has to keep working: it is gated on ALREADY being on the map, so
-  // if entering and drawing were the same moment it could never fire.
-  it('asks for the map when the tour reaches the map, from Home', () => {
-    const { tree, nav } = boot({ tutorialPending: true });
-    // Anything the welcome card did is not what is under test, and it must not
-    // be what satisfies this: the jump has to come from the map step itself.
-    nav.navigate.mockClear();
-    advance(tree); // SHOW ME
-
-    expect(phase()).toBe(PHASE.MAP);
-    expect(nav.navigate).toHaveBeenCalledWith('Tabs', {
-      screen: 'Map',
-      params: { screen: 'MapMain' },
-    });
-    // And it is still holding its card back until the map is really up.
-    expect(stepPhase()).toBeNull();
-  });
-
-  // The bug this whole split exists to prevent: a step that is only allowed to
-  // draw somewhere else must still be able to GET there.
-  it('enters a gated step so it can navigate to what its gate waits for', () => {
-    const { tree, nav } = boot({ tutorialPending: true });
-    nav.navigate.mockClear();
-    advance(tree);
-
-    // `state.step` is the step the overlay may DRAW, and this one is still
-    // held back — which is exactly the condition under test.
-    expect(stepPhase()).toBeNull();
-
-    const gated = stepFor(PHASE.MAP);
-    expect(gated.gate({ route: 'HomeMain' })).toBe(false);
-    expect(gated.onEnter).toBeInstanceOf(Function);
-    expect(nav.navigate).toHaveBeenCalled();
-  });
-
-  // An impression is the runner seeing a card. A step still waiting behind its
-  // gate has not been seen by anybody.
-  it('does not report a step as viewed while it is still waiting', () => {
-    const { tree } = boot({ tutorialPending: true });
-    advance(tree);
-
-    const viewed = recentEvents()
-      .filter((e) => e.name === EVENTS.TUTORIAL_STEP_VIEWED)
-      .map((e) => e.props.step);
-    expect(viewed).toContain(PHASE.WELCOME);
-    expect(viewed).not.toContain(PHASE.MAP);
-  });
-});
-
-describe('the tour', () => {
-  it('waits for the map before teaching the map', () => {
-    const { tree, nav } = boot({ tutorialPending: true });
-    advance(tree); // past the welcome card
-    expect(phase()).toBe(PHASE.MAP);
-    // Still on Home: the step exists but has nothing to point at yet, so it
-    // shows nothing rather than lighting the wrong screen.
-    expect(stepPhase()).toBeNull();
-
-    goRoute(tree, nav, 'MapMain');
-    expect(stepPhase()).toBe(PHASE.MAP);
-  });
-
-  it('skips "that is you" when location was refused', () => {
-    const { tree, nav } = boot({ tutorialPending: true });
-    goRoute(tree, nav, 'MapMain');
-    advance(tree); // welcome → map
-    facts(tree, { playerLocated: false });
-    advance(tree); // map → player
-    // The player step steps aside on its own rather than waiting forever.
-    expect(phase()).toBe(PHASE.TERRITORY);
-  });
-
-  it('shows "that is you" when there is a dot to point at', () => {
-    const { tree, nav } = boot({ tutorialPending: true });
-    goRoute(tree, nav, 'MapMain');
-    facts(tree, { playerLocated: true });
-    advance(tree);
-    advance(tree);
-    expect(phase()).toBe(PHASE.PLAYER);
-    expect(stepPhase()).toBe(PHASE.PLAYER);
-  });
-
-  it('reaches the practice run and waits for its button', () => {
-    const { tree, nav } = boot({ tutorialPending: true });
-    goRoute(tree, nav, 'MapMain');
-    facts(tree, { playerLocated: true });
-    advance(tree); // welcome
-    advance(tree); // map
-    advance(tree); // player
-    advance(tree); // territory
-    advance(tree); // goal → practice run
-    expect(phase()).toBe(PHASE.TRAINING_RUN);
-    expect(stepPhase()).toBe(PHASE.TRAINING_RUN);
-    expect(state.step.cta).toBe('START PRACTICE RUN');
-  });
-
-  it('says what the goal is, not just three verbs', () => {
-    const { title, lines } = stepFor(PHASE.CORE_LOOP).copy({});
-    expect(title.toLowerCase()).toContain('goal');
-    expect(lines.join(' ').toLowerCase()).toContain('territory');
-  });
-
-  it('teaches the rest of the game through safe simulated scenes', () => {
-    const expected = [
-      [PHASE.TRAINING_RUN, 'run'],
-      [PHASE.TRAINING_RIVAL, 'rival'],
-      [PHASE.TRAINING_CAPTURED, 'captured'],
-      [PHASE.TRAINING_CROSSROADS, 'crossroads'],
-      [PHASE.TRAINING_CUSTOMISE, 'customise'],
-      [PHASE.TRAINING_SHOP, 'shop'],
-      [PHASE.TRAINING_PROGRESS, 'progress'],
-      [PHASE.TRAINING_DEFEND, 'defend'],
-    ];
-    expected.forEach(([phaseName, scene]) => {
-      const training = stepFor(phaseName);
-      expect(training.kind).toBe('training');
-      expect(training.scene).toBe(scene);
-      expect(training.dismiss).toBe('cta');
-      expect(training.interactive).toBe(false);
-      expect(training.target).toBeNull();
-    });
-  });
-});
-
-// The practice run plays on the REAL run and claim screens. Its card's button
-// opens the run screen; the screens' own autopilots press Start, Finish and
-// Claim, and the tour hears about each exactly as it would from a runner.
-describe('the practice run', () => {
-  function atPractice() {
-    const booted = boot({
-      tutorialPending: false,
-      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.TRAINING_RUN, tips: {} },
-      runCount: 0,
-    });
-    goRoute(booted.tree, booted.nav, 'MapMain');
-    return booted;
-  }
-  function running() {
-    const booted = atPractice();
-    booted.nav.navigate.mockClear();
-    advance(booted.tree); // START PRACTICE RUN
-    goRoute(booted.tree, booted.nav, 'Record');
-    act(() => {
-      mockRecording = true;
-    });
-    sync(booted.tree);
-    return booted;
-  }
-  function atClaim() {
-    const booted = running();
-    signal(booted.tree, SIGNAL.RUN_FINISHED);
-    act(() => {
-      mockRecording = false;
-    });
-    goRoute(booted.tree, booted.nav, 'Result');
-    return booted;
-  }
-
-  it('opens the real run screen from the practice card', () => {
-    const { tree, nav } = atPractice();
-    nav.navigate.mockClear();
-    advance(tree);
-    expect(phase()).toBe(PHASE.ACTIVE_RUN);
-    expect(nav.navigate).toHaveBeenCalledWith('Record');
-  });
-
-  it('does not bounce back to its card before the run screen has opened', () => {
-    const { tree } = atPractice();
-    advance(tree);
-    // Still on the map for a moment while the modal presents.
-    expect(phase()).toBe(PHASE.ACTIVE_RUN);
-  });
-
-  it('holds the running coach mark back until the run is really going', () => {
-    const { tree, nav } = atPractice();
-    advance(tree);
+  it('Back from the claim to the run screen goes back to Start, which plays a new demo', () => {
+    const { tree, nav } = driveTo(PHASE.CLAIM_ROTATE);
     goRoute(tree, nav, 'Record');
-    expect(stepPhase()).toBeNull();
-    act(() => {
-      mockRecording = true;
-    });
-    sync(tree);
-    expect(stepPhase()).toBe(PHASE.ACTIVE_RUN);
+    expect(phase()).toBe(PHASE.RUN_START);
   });
 
-  it('follows the finished practice into the claim', () => {
-    const { tree } = running();
-    signal(tree, SIGNAL.RUN_FINISHED);
-    expect(phase()).toBe(PHASE.CLAIM_SELECT);
+  it('killed mid demo, it resumes at LET\'S RUN', () => {
+    boot({ tutorial: at(PHASE.CLAIM_CONFIRM) });
+    expect(phase()).toBe(PHASE.START_RUN);
+    expect(eventNames()).toContain(EVENTS.TUTORIAL_RESUMED);
   });
 
-  it('waits for real options before explaining the chooser', () => {
-    const { tree } = atClaim();
-    expect(stepPhase()).toBeNull();
-    facts(tree, { claimReady: true });
-    expect(stepPhase()).toBe(PHASE.CLAIM_SELECT);
+  it('killed after the demo claim landed, it resumes at the defend card', () => {
+    boot({ tutorial: at(PHASE.CLAIM_SUCCESS) });
+    expect(phase()).toBe(PHASE.DEFEND);
+    expect(stepPhase()).toBe(PHASE.DEFEND);
+    expect(state.host).toBe('root');
   });
 
-  it('holds "it is yours" until the whole celebration is over', () => {
-    const { tree } = atClaim();
-    facts(tree, { claimReady: true });
-    signal(tree, SIGNAL.CLAIM_PLACED);
-    expect(phase()).toBe(PHASE.FIRST_CLAIM_SUCCESS);
-    expect(stepPhase()).toBeNull();
-    facts(tree, { claimCelebrated: true });
-    expect(stepPhase()).toBe(PHASE.FIRST_CLAIM_SUCCESS);
-    expect(state.step.dismiss).toBe('auto');
-    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_FIRST_CLAIM_COMPLETED);
-  });
-
-  it('carries on with the tour once the practice is back on Home', () => {
-    const { tree, nav } = atClaim();
-    facts(tree, { claimReady: true });
-    signal(tree, SIGNAL.CLAIM_PLACED);
-    facts(tree, { claimCelebrated: true });
-    advance(tree); // the card timing out
-    expect(phase()).toBe(PHASE.TRAINING_RIVAL);
-    // Not drawn over the claim modal, where nobody could see it...
-    expect(stepPhase()).toBeNull();
-    // ...but as soon as the autopilot has brought the runner Home.
-    goRoute(tree, nav, 'HomeMain');
-    expect(stepPhase()).toBe(PHASE.TRAINING_RIVAL);
-  });
-
-  it('moves the tour on when a practice has nothing to claim', () => {
-    const { tree } = atClaim();
-    signal(tree, SIGNAL.CLAIM_UNAVAILABLE);
-    expect(phase()).toBe(PHASE.TRAINING_RIVAL);
-    expect(state.core).toBe(CORE.RUNNING);
-  });
-
-  it('REWINDS TO ITS OWN CARD, not the beginning, when abandoned', () => {
-    const { tree, nav } = running();
-    act(() => {
-      mockRecording = false;
-    });
-    goRoute(tree, nav, 'HomeMain');
-    expect(phase()).toBe(PHASE.TRAINING_RUN);
-    expect(phase()).not.toBe(PHASE.WELCOME);
-  });
-});
-
-describe('the real run at the end', () => {
-  it('finishes the tour when the runner opens the run screen', () => {
-    const { tree, nav } = boot({
-      tutorialPending: false,
-      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.START_RUN, tips: {} },
-      runCount: 0,
-    });
-    expect(state.step.interactive).toBe(true);
-    expect(state.step.dismiss).toBe('action');
-    goRoute(tree, nav, 'Record');
-    expect(state.core).toBe(CORE.DONE);
-    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_COMPLETED);
+  it('backgrounded and resumed on a card that needs no screen, it stays put', () => {
+    boot({ tutorial: at(PHASE.RANK) });
+    expect(stepPhase()).toBe(PHASE.RANK);
   });
 });
 
 describe('getting out', () => {
   it('skip stops everything without pretending it was completed', () => {
-    const { tree } = boot({ tutorialPending: true });
+    const { tree, nav } = boot({ tutorialPending: true });
     act(() => api.skip());
     sync(tree);
     expect(state.core).toBe(CORE.SKIPPED);
     expect(state.step).toBeNull();
-    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_SKIPPED);
+    expect(eventNames()).toContain(EVENTS.TUTORIAL_SKIPPED);
+    // Already on Home: nothing to close.
+    expect(nav.navigate).not.toHaveBeenCalled();
+  });
+
+  it('skip half way through the demo closes it: no demo run or claim survives', () => {
+    const { tree, nav } = driveTo(PHASE.CLAIM_ROTATE);
+    act(() => api.skip());
+    sync(tree);
+    expect(state.core).toBe(CORE.SKIPPED);
+    expect(state.facts.claimReady).toBe(false);
+    expect(state.facts.demoClaimM2).toBe(0);
+    expect(nav.navigate).toHaveBeenCalledWith('Tabs', { screen: 'Home', params: { screen: 'HomeMain' } });
   });
 
   it('a skipped tutorial stays skipped across a relaunch', () => {
@@ -501,57 +584,36 @@ describe('getting out', () => {
     act(() => api.skip());
     sync(tree);
     const saved = mockProfile.profile.tutorial;
-
-    // Cold start, same account.
     boot({ tutorialPending: false, tutorial: saved, runCount: 0 });
     expect(state.core).toBe(CORE.SKIPPED);
     expect(state.step).toBeNull();
   });
-
-  it('resumes mid tour after the app is killed', () => {
-    const { tree, nav } = boot({ tutorialPending: true });
-    goRoute(tree, nav, 'MapMain');
-    advance(tree);
-    advance(tree);
-    const saved = mockProfile.profile.tutorial;
-    expect(saved.phase).toBe(PHASE.PLAYER);
-
-    const again = boot({ tutorialPending: false, tutorial: saved, runCount: 0 });
-    goRoute(again.tree, again.nav, 'MapMain');
-    expect(phase()).toBe(PHASE.PLAYER);
-  });
-
-  it('resumes at the practice card, not the beginning, after being killed mid claim', () => {
-    const { tree } = boot({
-      tutorialPending: false,
-      tutorial: { version: 1, core: CORE.RUNNING, phase: PHASE.CLAIM_SELECT, tips: {} },
-      runCount: 0,
-    });
-    expect(phase()).toBe(PHASE.TRAINING_RUN);
-    expect(tree).toBeTruthy();
-  });
 });
 
 describe('replay', () => {
-  it('re arms the core tutorial and clears the tips', () => {
-    const { tree } = boot({
-      tutorialPending: false,
-      tutorial: { version: 1, core: CORE.DONE, phase: PHASE.COMPLETE, tips: { club: true } },
+  it('re arms the NEW core tutorial, clears the tips and starts on Home', () => {
+    const { tree, nav } = boot({
+      tutorial: { version: TUTORIAL_VERSION, core: CORE.DONE, phase: PHASE.COMPLETE, tips: { club: true } },
       runCount: 200,
+      route: 'Settings',
     });
-    expect(state.core).toBe(CORE.DONE);
-
-    act(() => api.replay());
+    act(() => {
+      expect(api.replay()).toBe(true);
+    });
     sync(tree);
     expect(state.core).toBe(CORE.RUNNING);
     expect(phase()).toBe(PHASE.WELCOME);
     expect(mockProfile.profile.tutorial.tips).toEqual({});
+    expect(nav.navigate).toHaveBeenCalledWith('Tabs', { screen: 'Home', params: { screen: 'HomeMain' } });
+    // Not drawn over Settings; it waits for Home.
+    expect(state.step).toBeNull();
+    goRoute(tree, nav, 'HomeMain');
+    expect(stepPhase()).toBe(PHASE.WELCOME);
   });
 
   it('does not touch anything else in the profile', () => {
     const { tree } = boot({
-      tutorialPending: false,
-      tutorial: { version: 1, core: CORE.DONE, phase: PHASE.COMPLETE, tips: {} },
+      tutorial: { version: TUTORIAL_VERSION, core: CORE.DONE, phase: PHASE.COMPLETE, tips: {} },
       runCount: 200,
     });
     act(() => {
@@ -563,36 +625,112 @@ describe('replay', () => {
     expect(mockProfile.profile.firstName).toBe('Robin');
     expect(mockProfile.profile.birthday).toBe('1990-01-01');
   });
+
+  it('refuses while a real run is recording', () => {
+    const { tree } = boot({
+      tutorial: { version: TUTORIAL_VERSION, core: CORE.DONE, phase: PHASE.COMPLETE, tips: {} },
+      runCount: 200,
+    });
+    recording(tree, true);
+    let ok;
+    act(() => {
+      ok = api.replay();
+    });
+    sync(tree);
+    expect(ok).toBe(false);
+    expect(state.core).toBe(CORE.DONE);
+  });
 });
 
 describe('contextual tips', () => {
-  function done() {
+  // A new player who has finished the core tutorial: tips are part of their
+  // first onboarding.
+  function done(route = 'HomeMain') {
     return boot({
-      tutorialPending: false,
-      tutorial: { version: 1, core: CORE.DONE, phase: PHASE.COMPLETE, tips: {} },
+      tutorial: { version: TUTORIAL_VERSION, core: CORE.DONE, phase: PHASE.COMPLETE, tips: {}, firstOnboarding: true },
       runCount: 12,
+      route,
     });
   }
 
+  // Teaching is for a first onboarding only. A veteran (never armed: a
+  // reinstall, a new phone, an update that added the tip) and a record that
+  // was migrated from the old tour are never shown one.
+  it.each([
+    ['an existing account', { version: TUTORIAL_VERSION, core: CORE.IDLE, phase: PHASE.IDLE, reason: 'existing_account', tips: {} }],
+    ['a record migrated from the old tour', { version: 1, core: CORE.DONE, phase: 'complete', tips: {} }],
+  ])('shows no tip to %s', (_, tutorial) => {
+    const { tree } = boot({ tutorial, runCount: 40 });
+    act(() => api.requestTip(TIP.MISSIONS));
+    sync(tree);
+    expect(state.tip).toBeNull();
+  });
+
+  it('keeps an account armed as new eligible, even from before the flag existed', () => {
+    const { tree } = boot({
+      tutorial: { version: TUTORIAL_VERSION, core: CORE.DONE, phase: PHASE.COMPLETE, reason: 'intro_just_finished', tips: {} },
+      runCount: 3,
+    });
+    act(() => api.requestTip(TIP.MISSIONS));
+    sync(tree);
+    expect(state.tip.key).toBe(TIP.MISSIONS);
+  });
+
   it('shows a tip once and remembers it', () => {
     const { tree } = done();
-    act(() => api.requestTip(TIP.CLUB));
+    act(() => api.requestTip(TIP.MISSIONS));
     sync(tree);
-    expect(state.tip.key).toBe(TIP.CLUB);
-
+    expect(state.tip.key).toBe(TIP.MISSIONS);
     act(() => api.dismissTip());
     sync(tree);
     expect(state.tip).toBeNull();
-    expect(mockProfile.profile.tutorial.tips[TIP.CLUB]).toBe(true);
+    expect(mockProfile.profile.tutorial.tips[TIP.MISSIONS]).toBe(true);
+    act(() => api.requestTip(TIP.MISSIONS));
+    sync(tree);
+    expect(state.tip).toBeNull();
+  });
 
+  it('a yes calls what the screen asked for; a not now does not', () => {
+    const { tree } = done('Result');
+    const onAccept = jest.fn();
+    act(() => api.requestTip(TIP.SHARE, { onAccept }));
+    sync(tree);
+    expect(state.tip.key).toBe(TIP.SHARE);
+    expect(state.host).toBe('record');
+    act(() => api.dismissTip(true));
+    sync(tree);
+    expect(onAccept).toHaveBeenCalledTimes(1);
+
+    const again = done('Result');
+    const never = jest.fn();
+    act(() => api.requestTip(TIP.SHARE, { onAccept: never }));
+    sync(again.tree);
+    act(() => api.dismissTip(false));
+    sync(again.tree);
+    expect(never).not.toHaveBeenCalled();
+  });
+
+  it('a tip with a target waits for that target', () => {
+    const { tree } = done();
     act(() => api.requestTip(TIP.CLUB));
     sync(tree);
+    expect(state.tip).toBeNull();
+    mountTarget(tree, TARGET.CLUB_MAIN);
+    expect(state.tip.key).toBe(TIP.CLUB);
+  });
+
+  it('goes away with the screen it belonged to', () => {
+    const { tree, nav } = done('MapMain');
+    act(() => api.requestTip(TIP.MAP));
+    sync(tree);
+    expect(state.tip.key).toBe(TIP.MAP);
+    goRoute(tree, nav, 'HomeMain');
     expect(state.tip).toBeNull();
   });
 
   it('NEVER interrupts the core tutorial', () => {
     const { tree } = boot({ tutorialPending: true, runCount: 0 });
-    act(() => api.requestTip(TIP.LEADERBOARD));
+    act(() => api.requestTip(TIP.SHOP));
     sync(tree);
     expect(state.tip).toBeNull();
     expect(stepPhase()).toBe(PHASE.WELCOME);
@@ -601,17 +739,17 @@ describe('contextual tips', () => {
   it('shows one at a time', () => {
     const { tree } = done();
     act(() => {
-      api.requestTip(TIP.CLUB);
-      api.requestTip(TIP.LEADERBOARD);
+      api.requestTip(TIP.MISSIONS);
+      api.requestTip(TIP.SHOP);
     });
     sync(tree);
-    expect(state.tip.key).toBe(TIP.CLUB);
+    expect(state.tip.key).toBe(TIP.MISSIONS);
   });
 
   it('reports the impression', () => {
     const { tree } = done();
     act(() => api.requestTip(TIP.DEFENSE));
     sync(tree);
-    expect(recentEvents().map((e) => e.name)).toContain(EVENTS.TUTORIAL_TIP_VIEWED);
+    expect(eventNames()).toContain(EVENTS.TUTORIAL_TIP_VIEWED);
   });
 });
