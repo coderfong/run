@@ -26,7 +26,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Modal, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ShieldOff } from 'lucide-react-native';
+import { Map as MapIcon, Shield, ShieldOff } from 'lucide-react-native';
 
 import { brand, space, toon, toonType, useTheme, useThemedType } from '../theme';
 import { Confetti, haptic } from '../ui/motion';
@@ -35,14 +35,25 @@ import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import CharacterRig, { CharacterBust } from './character/CharacterRig';
 import PortraitBorder from './PortraitBorder';
 import AppIcon from './AppIcon';
+import XpProgress from './XpProgress';
 import TerritoryStealBanner, { STEAL_HEADROOM } from './TerritoryStealBanner';
 import { fmtArea } from './RivalCard';
+
+// Every runner this claim hit held. The headline names who did it rather than
+// the abstract "ground held" — a defence is a person, and it is the rematch.
+function allDefended(claim) {
+  const victims = claim?.victims || [];
+  return victims.length > 0 && victims.every((v) => v.defended);
+}
 
 function headline(claim) {
   const victims = claim?.victims || [];
   if (victims.some((v) => v.reclaimed && !v.defended)) return 'YOU TOOK IT BACK';
   if (victims.some((v) => !v.defended)) return 'LAND TAKEN';
-  if (victims.length) return 'GROUND HELD AGAINST YOU';
+  if (victims.length === 1) {
+    return `${String(victims[0].username || 'A RUNNER').toUpperCase()} DEFENDED THEIR LAND AGAINST YOU`;
+  }
+  if (victims.length) return `${victims.length} RUNNERS DEFENDED THEIR LAND AGAINST YOU`;
   // A claim dropped entirely on land the runner already held took nothing.
   // Saying "TERRITORY CLAIMED" over a +0.000 is the moment the whole screen
   // stops being believed. Under a square metre is a rounding artefact rather
@@ -58,6 +69,16 @@ function headline(claim) {
 function gained(claim) {
   if (claim?.gained_m2 != null) return claim.gained_m2;
   return claim?.territory?.area_m2 || 0;
+}
+
+// The runner's land here BEFORE this claim: the merged holding it joined, less
+// what it won. Never less than what it reinforced — that ground was theirs by
+// definition. Zero for a backend too old to split the claim, since without
+// `gained_m2` the holding and the gain are the same number.
+function previousLand(claim) {
+  if (claim?.gained_m2 == null) return 0;
+  const held = (claim?.territory?.area_m2 || 0) - claim.gained_m2;
+  return Math.max(claim?.reinforced_m2 || 0, held, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +117,15 @@ const FLEX = {
 
 // Does not.
 const FIXED = {
+  // The label under the hero number ("newly claimed"). Always drawn.
   areaSub: 18,
+  // A defended headline names the defender, which takes a second line.
+  headlineWrap: 24,
+  // The level bar: chip row, track, caption.
+  xp: 74,
+  // The land breakdown: a sentence, then the previous-land and reinforced
+  // tiles side by side.
+  breakdown: 84,
   // The banner's BAR. Its 90pt of fireball headroom is pulled back out below,
   // so the screen is not charged for a hole.
   stealBar: 46,
@@ -142,17 +171,26 @@ function sizes(k, pad) {
   };
 }
 
-function solve({ avail, pad, rows, extra, blocks }) {
-  const gaps =
+function blockGaps(rows, blocks) {
+  return (
     (blocks.steal ? 1 : 0) +
     (rows > 0 ? 1 : 0) +
-    (blocks.held ? 1 : 0);
+    (blocks.held ? 1 : 0) +
+    (blocks.reinforced ? 1 : 0) +
+    (blocks.xp ? 1 : 0)
+  );
+}
+
+function solve({ avail, pad, rows, extra, blocks }) {
+  const gaps = blockGaps(rows, blocks);
 
   let flex = FLEX.headline + FLEX.rig + FLEX.stageGap * 2 + FLEX.area + gaps * FLEX.gap;
   if (rows > 0) flex += FLEX.peoplePad + rows * FLEX.peopleRow;
 
-  let fixed = 0;
-  if (blocks.reinforced) fixed += FIXED.areaSub;
+  let fixed = FIXED.areaSub;
+  if (blocks.defended) fixed += FIXED.headlineWrap;
+  if (blocks.xp) fixed += FIXED.xp;
+  if (blocks.reinforced) fixed += FIXED.breakdown;
   if (blocks.steal) fixed += FIXED.stealBar;
   if (rows > 0) fixed += FIXED.peopleHead;
   if (extra > 0) fixed += FIXED.peopleMore;
@@ -203,14 +241,14 @@ function density({ winH, top, bottom, rows, extra, blocks }) {
 // same sum the fit is solved against, read back. It lives here so it can never
 // drift from the numbers it is checking.
 export function fittedHeight({ d, rows, extra, blocks }) {
-  const gaps =
-    (blocks.steal ? 1 : 0) +
-    (rows > 0 ? 1 : 0) +
-    (blocks.held ? 1 : 0);
+  const gaps = blockGaps(rows, blocks);
 
   let h = d.headline + d.stageGap * 2 + d.rig + Math.round(d.areaFont * 1.2) + d.areaPad * 2;
   h += gaps * d.gap;
-  if (blocks.reinforced) h += FIXED.areaSub;
+  h += FIXED.areaSub;
+  if (blocks.defended) h += FIXED.headlineWrap;
+  if (blocks.xp) h += FIXED.xp;
+  if (blocks.reinforced) h += FIXED.breakdown;
   if (blocks.steal) h += FIXED.stealBar;
   if (rows > 0) h += FIXED.peopleHead + d.cardPad * 2 + rows * (d.face + d.rowGap);
   if (extra > 0) h += FIXED.peopleMore;
@@ -244,7 +282,10 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
 
   const area = gained(claim);
   const reinforced = claim?.reinforced_m2 || 0;
+  const previous = previousLand(claim);
   const stolenArea = taken.reduce((sum, v) => sum + (v.area_m2 || 0), 0);
+  const defended = allDefended(claim);
+  const hasXp = claim?.xp != null;
 
   const d = useMemo(
     () =>
@@ -257,7 +298,11 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
         blocks: {
           reinforced: reinforced >= 1,
           steal: taken.length > 0,
-          held: held.length > 0,
+          // When everyone held, the headline already says so by name; the
+          // footnote would only repeat it.
+          held: held.length > 0 && !defended,
+          defended,
+          xp: hasXp,
         },
       }),
     [
@@ -269,6 +314,8 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
       reinforced,
       taken.length,
       held.length,
+      defended,
+      hasXp,
     ]
   );
 
@@ -290,10 +337,30 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
             style={{ minHeight: d.headline }}
             contentStyle={styles.headlineInner}
           >
-            <OutlinedText style={[toonType.hero, styles.headline]} outline={toon.ink} width={3} fit minimumFontScale={0.62}>
+            <OutlinedText
+              style={[defended ? toonType.headline : toonType.hero, styles.headline]}
+              outline={toon.ink}
+              width={3}
+              fit
+              numberOfLines={defended ? 2 : 1}
+              minimumFontScale={0.62}
+            >
               {headline(claim)}
             </OutlinedText>
           </Framed>
+
+          {/* Where the claim left the runner on the level ladder. The claim's
+              XP moves it here, at the moment it was earned. No `onLevelUp`:
+              the result card's own bar already announces a crossing, and one
+              level must not be celebrated twice. */}
+          {d.show.xp && (
+            <XpProgress
+              xp={claim.xp}
+              gained={claim.xp_gained || 0}
+              accent={brand.teal}
+              style={{ marginTop: d.gap }}
+            />
+          )}
 
           {/* The slack in the layout is spent HERE. On a tall screen the
               character gets a floor to celebrate on; on a short one this is
@@ -323,16 +390,46 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
             >
               {`+${fmtArea(area)}`}
             </OutlinedText>
-            {/* Ground the claim landed on that was already theirs. It wins no
-                border, so it is never inside the + above — but it stacks that
-                land's strength and buys it time, which is worth naming rather
-                than leaving the runner to wonder where the rest went. */}
-            {d.show.reinforced && (
-              <Text style={[type.caption, styles.areaSub, { color: colors.textDim }]}>
-                {`${fmtArea(reinforced)} of your own land reinforced`}
-              </Text>
-            )}
+            <Text style={[type.labelSm, styles.areaSub, { color: colors.textDim }]}>
+              {area >= 1 ? 'newly claimed' : 'no new ground'}
+            </Text>
           </Framed>
+
+          {/* Ground the claim landed on that was already theirs. It wins no
+              border, so it is never inside the + above — but it stacks that
+              land's strength and buys it time, which is worth naming rather
+              than leaving the runner to wonder where the rest went. Shown
+              against the land they held before, so the reinforcement reads as
+              a share of something rather than a second, unexplained number. */}
+          {d.show.reinforced && (
+            <View style={[styles.breakdown, { marginTop: d.gap }]}>
+              <Text style={[type.bodySmBold, styles.breakdownLine, { color: colors.text }]} numberOfLines={2}>
+                {area >= 1
+                  ? `You reinforced your previous land and newly claimed ${fmtArea(area)}`
+                  : 'You reinforced your previous land'}
+              </Text>
+              <View style={styles.tiles}>
+                <LandTile
+                  id="previous-land"
+                  icon={<MapIcon size={14} color={colors.textMuted} />}
+                  label="Previous land"
+                  value={fmtArea(previous)}
+                  color={colors.text}
+                  colors={colors}
+                  type={type}
+                />
+                <LandTile
+                  id="reinforced-land"
+                  icon={<Shield size={14} color={brand.pink} />}
+                  label="Reinforced"
+                  value={fmtArea(reinforced)}
+                  color={brand.pink}
+                  colors={colors}
+                  type={type}
+                />
+              </View>
+            </View>
+          )}
 
           {/* the steal itself, played out: bomb, blast, their heads thrown out
               of it and landing back in a row pulling a sad face.
@@ -445,6 +542,33 @@ export default function ClaimPayoff({ visible, claim, myAvatar, onClose, onViewL
   );
 }
 
+// One figure in the land breakdown: a label over a number, in a drawn box like
+// the rest of the screen.
+function LandTile({ id, icon, label, value, color, colors, type }) {
+  return (
+    <Framed
+      frame={frameVariant('box', id)}
+      tint={toon.ink}
+      fill={colors.card}
+      weight={INK.thin}
+      pose={framePose(id)}
+      inset={false}
+      style={styles.tile}
+      contentStyle={styles.tileInner}
+    >
+      <View style={styles.tileHead}>
+        {icon}
+        <Text style={[type.labelSm, { color: colors.textMuted }]} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+      <Text style={[toonType.sub, { color }]} numberOfLines={1}>
+        {value}
+      </Text>
+    </Framed>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
   // Everything above the button, in the height it has. No scroll: see the
@@ -459,6 +583,12 @@ const styles = StyleSheet.create({
   areaInner: { alignItems: 'center', paddingHorizontal: space.lg },
   // A footnote under the hero number, not a second number.
   areaSub: { marginTop: 4, textAlign: 'center' },
+  breakdown: { alignSelf: 'stretch' },
+  breakdownLine: { textAlign: 'center', marginBottom: space.sm },
+  tiles: { flexDirection: 'row', gap: space.sm },
+  tile: { flex: 1 },
+  tileInner: { alignItems: 'center', paddingVertical: space.sm, paddingHorizontal: space.sm },
+  tileHead: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
   // The banner throws heads outside its own bounds, so it never clips.
   stealBanner: { overflow: 'visible' },
   peopleHeadline: { marginBottom: 2 },

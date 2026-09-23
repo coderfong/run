@@ -646,6 +646,7 @@ export default function ResultScreen({ navigation, route }) {
   // first idle (a fitBounds issued before Mapbox has settled is dropped) and
   // only once, or the fit would re-trigger itself on the idle it causes.
   const fitted = useRef(false);
+  const claimHeadHeight = useRef(0);
   // useCallback so this stays referentially stable across ResultScreen's own
   // re-renders — it's passed straight through to GameMap as `onIdle`, and
   // GameMap/ShapeSource are PureComponents that treat a changed callback
@@ -674,14 +675,18 @@ export default function ResultScreen({ navigation, route }) {
     // Grow the box around its own centre. The floor matters more than the
     // factor: a lap of one block is a tiny bbox, and 2.2x of almost nothing is
     // still almost nothing, so short runs would open zoomed to the pavement.
-    const padLat = Math.max((maxLat - minLat) * 0.6, 0.006);
-    const padLon = Math.max((maxLon - minLon) * 0.6, 0.006);
+    const padLat = Math.max((maxLat - minLat) * 0.35, 0.004);
+    const padLon = Math.max((maxLon - minLon) * 0.35, 0.004);
+    // The heading floats OVER the top of the map, so a uniform padding fitted
+    // the run up under the title and left the bottom of the map empty. Pad the
+    // top by the heading's own height so the run sits in the part you can see.
+    const edge = 24;
     mapRef.current?.fitToPoints(
       [
         { latitude: minLat - padLat, longitude: minLon - padLon },
         { latitude: maxLat + padLat, longitude: maxLon + padLon },
       ],
-      24,
+      [claimHeadHeight.current + edge, edge, edge, edge],
       700
     );
   }, [seq.isRunning, path, claimPoints]);
@@ -1344,13 +1349,16 @@ export default function ResultScreen({ navigation, route }) {
   // celebration is noise. By the time this runs the runner is back on a normal
   // screen, which is exactly when a "tap to see the rivalry" prompt can be
   // acted on.
-  const endCelebration = () => {
+  const closeClaimStage = () => {
     seq.complete();
     // The claim is over, so the claim stage is over: the recap is what should
     // be underneath whatever overlay closes last. Set before those overlays
     // are opened, not after, so dismissing one lands on the summary rather
     // than back on a spent map.
     setStage(STAGE.SUMMARY);
+  };
+
+  const celebrationOutro = () => {
     // PASERBY goes LAST, and only if this run actually crossed somebody. It is
     // a separate overlay rather than a phase of the claim sequence on purpose:
     // a run that met nobody must end exactly the way it always did, and the
@@ -1362,16 +1370,38 @@ export default function ResultScreen({ navigation, route }) {
     rivalPopup.show({ victims: payoff?.victims, myAvatar: equipped });
   };
 
+  const endCelebration = () => {
+    closeClaimStage();
+    celebrationOutro();
+  };
+
+  // Rank progression is a real screen pushed over this one, so leaving for it
+  // IS the end of the celebration. It used to navigate away mid-payoff, and
+  // its Done came back to a claim sequence still parked on the payoff phase —
+  // a frozen map with nothing left to press. The stage is closed on the way
+  // out; the outro overlays wait until the runner is back, since a popup
+  // fired now would open over (or behind) the screen they just went to.
+  const outroPending = useRef(false);
+  const outroRef = useRef(celebrationOutro);
+  outroRef.current = celebrationOutro;
+  useEffect(
+    () =>
+      navigation?.addListener?.('focus', () => {
+        if (!outroPending.current) return;
+        outroPending.current = false;
+        outroRef.current();
+      }),
+    [navigation]
+  );
+
   const goToRankProgression = () => {
+    closeClaimStage();
+    outroPending.current = true;
     navigation.navigate('Tabs', {
       screen: 'Home',
       params: {
         screen: 'RankProgression',
-        params: { 
-          claim: payoff,
-          runXpTotal: xpTotal,
-          runXpGained: xpGained,
-        },
+        params: { claim: payoff },
       },
     });
   };
@@ -1599,7 +1629,6 @@ export default function ResultScreen({ navigation, route }) {
                   <Animated.View style={[styles.placementHandle, handleAnimatedStyle]}>
                     <View style={[styles.handleOuter, { borderColor: team.glow }]} />
                     <View style={[styles.handleInner, { backgroundColor: team.glow }]} />
-                    <Text style={styles.handleIcon}>↔</Text>
                   </Animated.View>
                 </UserMarker>
               )}
@@ -1815,6 +1844,7 @@ export default function ResultScreen({ navigation, route }) {
           <View
             style={[styles.claimHead, { paddingTop: insets.top + space.sm }]}
             pointerEvents="box-none"
+            onLayout={(e) => { claimHeadHeight.current = e.nativeEvent.layout.height; }}
           >
             <LinearGradient
               colors={[scheme === 'dark' ? withAlpha(colors.bg, 0.92) : 'rgba(255,255,255,0.94)', 'transparent']}
@@ -1977,11 +2007,11 @@ export default function ResultScreen({ navigation, route }) {
                     read as a purchase; the decision is about ground, and what
                     it costs is a fact about the account, not about the move. */}
                 <View style={styles.claimFooter}>
-                  <View style={styles.claimCost}>
-                    <Text style={type.caption}>
-                      {preview?.energy_cost ? `Costs ${preview.energy_cost} energy` : ''}
-                    </Text>
-                  </View>
+                  {!!preview?.energy_cost && (
+                    <View style={styles.claimCost}>
+                      <Text style={type.caption}>{`Costs ${preview.energy_cost} energy`}</Text>
+                    </View>
+                  )}
                   {energyStatus && (
                     <EnergyMeter
                       compact
@@ -1993,7 +2023,7 @@ export default function ResultScreen({ navigation, route }) {
 
                 {/* "Looks good? Claim it." lights THIS button and lets the
                     press through to it. */}
-                <View {...claimButtonTarget} collapsable={false}>
+                <View {...claimButtonTarget} collapsable={false} style={styles.claimButtonWrap}>
                   <ToonButton
                     title={claiming ? 'Claiming…' : 'CLAIM HERE'}
                     onPress={placeClaim}
@@ -2766,13 +2796,6 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-  },
-  handleIcon: {
-    position: 'absolute',
-    bottom: -8,
-    fontSize: 10,
-    fontWeight: '500',
-    color: colors.textMuted,
   },
   
   rotationRing: {

@@ -19,26 +19,54 @@
 // unchanged hairstyle. Pushing the line down would not have fixed it either:
 // a flat full-width cut leaves a boxy, ink-less shelf of hair beside the hat.
 //
+// WHY THE SECOND PASS OVER-CUT. One flat line across the HAT'S FULL WIDTH
+// (x0 to x1, which for a typical cap is nearly ear to ear) hides anything
+// above the seat everywhere under that whole span — including hair sitting
+// against the TEMPLE, well clear of the crown the hat actually domes over.
+// Real side hair, low pigtail roots and bob volume live exactly there, so a
+// single wide flat cut read as one rectangular bite out of the hairstyle
+// rather than a hat resting on a head.
+//
 // THE SHAPE NOW (head fractions: x 0..1 across the skull, y 0 = skull top,
 // 1 = chin; see `getHairOcclusion`):
 //
-//          fall ↘        [ hat from x0 to x1 ]        ↙ fall
-//      ─────────────────●━━━━━━━━━━━ seat y ━━━━━━━●─────────────────
-//        hair below the     hidden under the hat     hair below the
-//        sloped line shows  above the seat line      sloped line shows
+//                    [ hat from edgeX0 to edgeX1 ]
+//        edgeX0   crownX0                   crownX1   edgeX1
+//      ────●━━━━━━━━●━━━━━━━━━━━━━━━━━━━━━━━━●━━━━━━━━●────
+//          ╲        ┗━━━━━ crown y ━━━━━━━┛        ╱
+//           ╲      (fully hidden: the hat's dome)  ╱
+//            ╲___tapering to fully visible___╱
+//               by the hat's own edge (revealY)
+//        hair beyond edgeX0/edgeX1: never clipped at all
 //
-//   - SEAT (`y`): where the hat's lower edge meets the head, measured per item
-//     by scripts/measure-headwear-fit.py (its lowest ink across the skull,
-//     10th percentile), pulled up by the category's `edgeInset` so the cut
-//     always sits UNDER the hat's own ink. Crown and upper-side hair above it
-//     is gone for every closed hat, however tall the style.
-//   - SIDES (`x0`/`x1` and `fall`): beyond the hat's own extent the cut falls
-//     away at `fall` degrees below horizontal, so side hair, pigtails and
-//     ponytails appear to come out FROM UNDER the edge instead of standing
-//     up beside it.
-//   - SEAM: where that cut crosses hair outside the hat, the rig draws a thin
-//     line of ink (a tinted copy of the hair itself, so it only lands on
-//     hair), so a tucked edge is outlined like the rest of the art.
+//   - CROWN (`crownY`, `crownX0..crownX1`): a flat band centred under the
+//     hat, narrower than the hat's own measured width by `crownWidth` — the
+//     part of the skull the hat actually domes over. Above this line is gone
+//     for every closed hat, however tall the style; nothing outside this
+//     band is ever hidden this deeply.
+//   - TAPER (`crownX0→edgeX0`, `crownX1→edgeX1`): between the crown band and
+//     the hat's own physical edge — the brim/side wall's footprint, still
+//     under the hat but past its dome — the hidden line rises in a straight
+//     run from `crownY` down to `revealY`, so hair right against the crown is
+//     still mostly hidden but hair at the hat's own edge is almost entirely
+//     kept: this is what lets side hair, low pigtail roots and bob volume
+//     survive under a cap instead of being cut with the crown.
+//   - BEYOND THE HAT (past `edgeX0`/`edgeX1`): never clipped. By the hat's own
+//     edge the taper has already reached `revealY`, so there is no seam to
+//     paper over — anything further out was never under the hat to begin
+//     with.
+//
+// `crownY` is measured per item the same way it always was: the hat's own
+// lowest ink across the skull (scripts/measure-headwear-fit.py), pulled up by
+// the category's `edgeInset` so the cut sits under the hat's own ink.
+// `crownWidth` (0..1, a fraction of the hat's OWN width) and `revealY` are
+// category defaults — a snug beanie or headwrap claims most of its own width
+// as crown and only eases off right at its edge; a baseball cap claims less
+// than half of its width as crown and gives back almost everything by its
+// edge. `hairRegions[id].keepBelow`, when a specific style still loses a
+// hanging ponytail or braid it shouldn't, floors `crownY` itself so nothing
+// below that head-fraction is ever hidden — a per-style escape hatch, not a
+// second geometry to maintain.
 //
 // CATEGORY decides whether any of that happens and how deep it goes; HAIR
 // metadata covers the few styles whose geometry breaks the default. Open-top
@@ -89,20 +117,24 @@ export function getHeadwearFitProfile(item) {
   return { ...FIT.profiles[category], ...FIT.hatTweaks[item.id], category };
 }
 
-// Hairstyle region metadata (headwearFit.json `hairRegions`). The seat line
-// already splits every style into crown (above it, hidden) and fringe/side/
-// back (below it, kept), so most styles need nothing. The exception is a
-// style that is ALL gathered on the crown (`gathered: 'crown'`), whose
-// hanging parts only exist because of the bun: under a closed hat the bun is
-// gone, so the tail would be left floating in the air.
+// Hairstyle region metadata (headwearFit.json `hairRegions`). The crown band
+// and its taper already split every style into what a hat's dome covers and
+// what survives below and beside it, so most styles need nothing here. Two
+// escape hatches for the styles whose geometry still breaks the default:
+//   - `gathered: 'crown'` — the whole style is gathered on the crown itself
+//     (a top bun), so its hanging parts exist only because of the bun: under
+//     a closed hat the bun is gone and there is nothing left to show.
+//   - `keepBelow` — a head fraction nothing is ever hidden below, for a style
+//     whose hanging ponytail, pigtail or braid still crosses into the crown
+//     band's own x-range and would otherwise be clipped with it.
 export function getHairRegions(hair) {
   return (hair && FIT.hairRegions[hair.id]) || null;
 }
 
 // The occlusion to apply to `hair` under `hat`, or null when nothing clips.
-//   { hide: true }                         → no hair survives under this hat
-//   { y, x0, x1, fall }                    → the seat shape described above
-// y/x0/x1 in HEAD fractions, fall in screen degrees below horizontal.
+//   { hide: true }                                     → no hair survives
+//   { crownY, crownX0, crownX1, edgeX0, edgeX1, revealY } → the shape above
+// All of crownY/crownX0/crownX1/edgeX0/edgeX1/revealY are HEAD fractions.
 export function getHairOcclusion(hat, hair) {
   if (!hair || hair.id === 'none') return null;
   const profile = getHeadwearFitProfile(hat);
@@ -111,10 +143,20 @@ export function getHairOcclusion(hat, hair) {
   if (regions && regions.gathered === 'crown') return { hide: true };
   const m = FIT.hats[hat.id] || {};
   const edge = m.edgeY != null ? m.edgeY : profile.defaultEdgeY;
+  let crownY = Math.min(edge, profile.maxEdgeY) - profile.edgeInset;
+  if (regions && regions.keepBelow != null) crownY = Math.min(crownY, regions.keepBelow);
+  const edgeX0 = m.x0 != null ? m.x0 : DEFAULT_EXTENT.x0;
+  const edgeX1 = m.x1 != null ? m.x1 : DEFAULT_EXTENT.x1;
+  const mid = (edgeX0 + edgeX1) / 2;
+  const half = ((edgeX1 - edgeX0) * (profile.crownWidth ?? 0.5)) / 2;
   return {
-    y: Math.min(edge, profile.maxEdgeY) - profile.edgeInset,
-    x0: m.x0 != null ? m.x0 : DEFAULT_EXTENT.x0,
-    x1: m.x1 != null ? m.x1 : DEFAULT_EXTENT.x1,
-    fall: profile.sideFall,
+    crownY,
+    crownX0: mid - half,
+    crownX1: mid + half,
+    edgeX0,
+    edgeX1,
+    revealY: regions && regions.keepBelow != null
+      ? Math.min(regions.keepBelow, profile.revealY ?? 0.8)
+      : (profile.revealY ?? 0.8),
   };
 }

@@ -159,6 +159,7 @@
         <label class="check"><input type="checkbox" id="oGhost" checked /> ghost of original</label>
         <label class="check"><input type="checkbox" id="oSolo" /> dim other layers</label>
         <label class="check"><input type="checkbox" id="oDark" /> dark stage</label>
+        <label class="check"><input type="checkbox" id="oHatCrop" checked /> hat crops hair</label>
         <div class="fld" style="margin-top:8px"><span>zoom</span><input type="range" id="zoom" min="160" max="520" step="10" value="300" /><span id="zoomv" class="muted"></span></div>
       </div>
       <hr />
@@ -286,6 +287,90 @@ function backImgOf(s, item) {
   if (item.backImg) return item.backImg;
   if (!item.backArt) return null;
   return item.backArt[Math.max(0, Math.min(item.backArt.length - 1, colorIdx(s)))];
+}
+
+// --- hair-under-hat cropping (ported from src/config/headwearFit.js, read
+// that first) ----------------------------------------------------------------
+// The rig never guesses which hair is hidden from a boolean on the item: it
+// asks the same getHairOcclusion() the app draws with, seeded from M.fit
+// (headwearFit.json, exposed by manifest.mjs). Without this the studio only
+// knew "hair fully on" or "hair fully off," which is exactly why a hat's real
+// seat line — the crop that makes side hair look tucked under the brim rather
+// than floating beside it — never showed up while placing one.
+const HAT_DEFAULT_EXTENT = { x0: -0.08, x1: 1.08 };
+function headwearCategory(item) {
+  if (!item || !item.id || item.id === 'none') return null;
+  const override = M.fit.overrides[item.id];
+  if (override) return override;
+  if (item.hideHair) return 'beanie';
+  if (item.hidesBulky) return 'closed_hat';
+  return 'open_headwear';
+}
+function headwearFitProfile(item) {
+  const category = headwearCategory(item);
+  if (!category) return { occlude: false, category: null };
+  return { ...M.fit.profiles[category], ...(M.fit.hatTweaks[item.id] || {}), category };
+}
+function hairRegionsOf(hair) {
+  return (hair && M.fit.hairRegions[hair.id]) || null;
+}
+// The occlusion to apply to `hair` under `hat` — null when nothing clips,
+// { hide: true } when the whole style is gone (a crown bun with nowhere to
+// go), or the crown/taper shape { crownY, crownX0, crownX1, edgeX0, edgeX1,
+// revealY } (head fractions) described in config/headwearFit.js: a flat band
+// hidden under the hat's own dome, tapering on each side down to the hat's
+// physical edge, with everything beyond that edge never clipped at all.
+function hairOcclusion(hat, hair) {
+  if (!hair || hair.id === 'none') return null;
+  const profile = headwearFitProfile(hat);
+  if (!profile.occlude) return null;
+  const regions = hairRegionsOf(hair);
+  if (regions && regions.gathered === 'crown') return { hide: true };
+  const m = M.fit.hats[hat.id] || {};
+  const edge = m.edgeY != null ? m.edgeY : profile.defaultEdgeY;
+  let crownY = Math.min(edge, profile.maxEdgeY) - profile.edgeInset;
+  if (regions && regions.keepBelow != null) crownY = Math.min(crownY, regions.keepBelow);
+  const edgeX0 = m.x0 != null ? m.x0 : HAT_DEFAULT_EXTENT.x0;
+  const edgeX1 = m.x1 != null ? m.x1 : HAT_DEFAULT_EXTENT.x1;
+  const mid = (edgeX0 + edgeX1) / 2;
+  const half = ((edgeX1 - edgeX0) * (profile.crownWidth ?? 0.5)) / 2;
+  return {
+    crownY,
+    crownX0: mid - half,
+    crownX1: mid + half,
+    edgeX0,
+    edgeX1,
+    revealY: regions && regions.keepBelow != null
+      ? Math.min(regions.keepBelow, profile.revealY ?? 0.8)
+      : (profile.revealY ?? 0.8),
+  };
+}
+// Head-fraction → body px, the rig's own conversions (CharacterRig.js).
+const headFracPx = (f) => (M.rig.HEAD.top + f * M.rig.HEAD.h) / 640 * bodyH();
+const headXPx = (f) => bodyW / 2 + (f - 0.5) * (M.rig.HEAD.w / 248) * bodyW;
+
+// A CSS clip-path for the hair <img> at `box` (its own left/top/w/h in stage
+// px): the full box with a hexagonal notch cut from its top-centre — the
+// crown band flat, tapering down to `revealY` at the hat's own physical
+// edge, and never clipped at all beyond that edge. Same polygon CharacterRig
+// draws with an SVG clip path; see its own comment for why a polygon rather
+// than RN's usual rotated-window stand-in for clipping.
+function hairClipPath(occlusion, box) {
+  if (!box || box.w <= 0 || box.h <= 0) return 'none';
+  const clampPct = (v) => Math.max(0, Math.min(100, v));
+  const toX = (xAbs) => clampPct(((xAbs - box.left) / box.w) * 100);
+  const toY = (yAbs) => clampPct((yAbs / box.h) * 100);
+  const elX = toX(headXPx(occlusion.edgeX0));
+  const crX0 = toX(headXPx(occlusion.crownX0));
+  const crX1 = toX(headXPx(occlusion.crownX1));
+  const erX = toX(headXPx(occlusion.edgeX1));
+  const crownYpct = toY(headFracPx(occlusion.crownY));
+  const revealYpct = toY(headFracPx(occlusion.revealY));
+  const pts = [
+    [0, 0], [elX, 0], [elX, revealYpct], [crX0, crownYpct], [crX1, crownYpct],
+    [erX, revealYpct], [erX, 0], [100, 0], [100, 100], [0, 100],
+  ];
+  return 'polygon(' + pts.map((p) => p[0].toFixed(2) + '% ' + p[1].toFixed(2) + '%').join(',') + ')';
 }
 
 // Base spec + the catalogue's own layout + anything dragged in this session.
@@ -422,7 +507,10 @@ function layerStack() {
   for (const { key } of M.slots) it[key] = itemById(key, equipped[key]);
   const acc = it.accessory || {};
   const accImg = imgOf('accessory', acc);
-  const hideHair = !!(it.headwear && (it.headwear.hideHair || (it.headwear.hidesBulky && it.hair && it.hair.bulky)));
+  // The real crop, not a guess: null (nothing clips), { hide: true } (whole
+  // style gone), or the seat shape hairClipPath() draws.
+  const occl = it.headwear ? hairOcclusion(it.headwear, it.hair) : null;
+  const hideHair = !!(occl && occl.hide);
   const L = [];
   const add = (key, s, item, src, opts) => { if (src) L.push({ key, slot: s, item, src, ...(opts || {}) }); };
 
@@ -447,7 +535,7 @@ function layerStack() {
   for (const s of ['bottom', 'top', 'hair', 'glasses', 'headwear']) {
     if (s === 'bottom' && it.top && it.top.hidesBottom) continue;
     if (s === 'hair' && hideHair) continue;
-    if (isBack(s, it[s])) add(s + 'Behind', s, it[s], imgOf(s, it[s]));
+    if (isBack(s, it[s])) add(s + 'Behind', s, it[s], imgOf(s, it[s]), s === 'hair' ? { occlusion: occl } : null);
   }
   L.push({ key: 'body', src: fitting?.bodyOverride || M.body, fixed: true });
   // Shoes under the trouser hem: a hem falls ON the foot, so a shoe drawn over
@@ -467,7 +555,7 @@ function layerStack() {
   L.push({ key: 'head', src: M.head, fixed: true });
   add('accHead', 'accessory', acc, acc.atNeck ? accFront : null);
   add('face', 'face', it.face, imgOf('face', it.face));
-  if (!hideHair && !isBack('hair', it.hair)) add('hair', 'hair', it.hair, imgOf('hair', it.hair));
+  if (!hideHair && !isBack('hair', it.hair)) add('hair', 'hair', it.hair, imgOf('hair', it.hair), { occlusion: occl });
   if (!isBack('glasses', it.glasses)) add('glasses', 'glasses', it.glasses, imgOf('glasses', it.glasses));
   if (!isBack('headwear', it.headwear)) add('headwear', 'headwear', it.headwear, imgOf('headwear', it.headwear));
   return L;
@@ -511,6 +599,12 @@ async function render() {
     el.style.width = box.w + 'px';
     el.style.height = box.h + 'px';
     el.style.transform = box.rot ? 'rotate(' + box.rot + 'deg)' : '';
+    // Hair under a hat: clip to the hat's own seat line, same shape the rig
+    // draws with (see hairClipPath). Off when the toggle is unchecked, so the
+    // uncropped hairstyle can still be checked before deciding a fit.
+    el.style.clipPath = (l.slot === 'hair' && l.occlusion && $('oHatCrop').checked)
+      ? hairClipPath(l.occlusion, box)
+      : 'none';
     const isSel = !l.fixed && l.slot === slot && l.item && l.item.id === selId
       && (!l.foot || !selFoot || l.foot === selFoot);
     let op = ($('oSolo').checked && !isSel && !l.fixed) ? 0.18 : 1;
@@ -1228,7 +1322,7 @@ for (const [r, n] of [['rw', 'nw'], ['rt', 'nt'], ['rd', 'nd'], ['rr', 'nr']]) {
   $(n).addEventListener('change', () => { $(r).value = $(n).value; fieldChanged(); });
 }
 $('zoom').addEventListener('input', () => { bodyW = Number($('zoom').value); render(); });
-for (const id of ['oGuides', 'oGhost', 'oSolo', 'oDark']) $(id).addEventListener('change', render);
+for (const id of ['oGuides', 'oGhost', 'oSolo', 'oDark', 'oHatCrop']) $(id).addEventListener('change', render);
 
 function resetItem() {
   const item = itemById(slot, selId);

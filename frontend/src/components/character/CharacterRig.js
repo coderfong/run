@@ -23,6 +23,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import Svg, { ClipPath, Defs, Image as SvgImage, Polygon } from 'react-native-svg';
 
 import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
 import { getHairOcclusion } from '../../config/headwearFit';
@@ -170,80 +171,92 @@ function SwapLayer({ img, frame, entered, onSwapIn, captureSafe, crisp = false }
 }
 
 // ---------------------------------------------------------------------------
-// Hair occlusion windows (see config/headwearFit.js for the shape).
+// Hair occlusion (see config/headwearFit.js for the shape).
 //
-// The visible hair is the region under a seat line that runs flat across the
-// hat's extent and falls away at `fall` degrees beyond each side. RN has no
-// arbitrary masks, so it is drawn as three overflow-hidden windows onto the
-// same art — the centre, and one ROTATED window per side whose top edge is the
-// sloped line — each counter-rotating its content so the hair stays exactly
-// where the plain layer draws it. The side windows overlap the centre one
-// below the seat (never leave a gap), which only redraws identical pixels.
+// The visible hair is a flat CROWN band under the hat's own dome (fully
+// hidden), tapering on each side down to the hat's own physical edge (mostly
+// hidden near the crown, almost entirely kept by the time the hat's own edge
+// is reached), with everything beyond that edge never clipped at all. That
+// shape is one simple polygon — the full art rectangle with a hexagonal notch
+// cut from its top-centre — so it is drawn as exactly that: a single
+// `react-native-svg` clip path around the hair art, rather than RN's usual
+// stand-in for clipping (nested rotated `overflow: hidden` views).
 //
-// Each window also draws a SEAM: a band of the hair's own art tinted to ink,
-// the art's line weight deep, right along the cut. It lands only where there
-// is hair, so a tucked edge beside the hat is outlined like the rest of the
-// drawing instead of ending in a flat, ink-less shelf. Under the hat itself
-// it is hidden by the hat.
+// A ROTATED-WINDOW build of this was tried first and measured wrong: once the
+// taper needs a specific finite length rather than one shared category angle
+// reaching to infinity, the window's height can no longer be an arbitrary
+// "far enough" constant — a long thin rectangle rotated by the taper's own
+// angle sweeps its far corner sideways by height × sin(angle), which for a
+// generous height reaches clean across the head and starts revealing crown
+// hair on the OTHER side. A real clip polygon has no such failure mode.
 // ---------------------------------------------------------------------------
-
-// The art's outline weight, as a fraction of body height (≈3.8px of 640).
-const HAIR_INK_OF_BODY = 0.006;
-const HAIR_INK = '#000000';
-// Far enough past the rig in every direction that a window never cuts art.
-const WINDOW_REACH = 2;
 
 // Head-fraction x (0..1 across the skull) → body px.
 const headX = (f, bodyW) => bodyW / 2 + (f - 0.5) * (HEAD.w / 248) * bodyW;
 
-function HairImg({ img, frame, ink, captureSafe, crisp }) {
-  if (captureSafe) {
-    return <RNImage source={img} style={ink ? [frame, { tintColor: HAIR_INK }] : frame} resizeMode="contain" fadeDuration={0} />;
-  }
-  return <ExpoImage source={img} style={frame} tintColor={ink ? HAIR_INK : undefined} resizeMode="contain" fadeDuration={0} crisp={crisp} />;
+// The notch polygon, in the art's own local px (0,0 at its frame's top-left) —
+// what `react-native-svg`'s `<Polygon>` wants. Traced clockwise from the
+// frame's top-left corner, in across the top to skip the hidden notch, back
+// out, then straight round the rest of the frame — see the ASCII shape in
+// config/headwearFit.js for what the six inner points describe.
+function hairClipPoints(occlusion, frame, bodyW, bodyH) {
+  const W = frame.width, H = frame.height;
+  const clampX = (x) => Math.max(0, Math.min(W, x));
+  const clampY = (y) => Math.max(0, Math.min(H, y));
+  const elX = clampX(headX(occlusion.edgeX0, bodyW) - frame.left);
+  const crX0 = clampX(headX(occlusion.crownX0, bodyW) - frame.left);
+  const crX1 = clampX(headX(occlusion.crownX1, bodyW) - frame.left);
+  const erX = clampX(headX(occlusion.edgeX1, bodyW) - frame.left);
+  const crownYpx = clampY(headFrac(occlusion.crownY) * bodyH - frame.top);
+  const revealYpx = clampY(headFrac(occlusion.revealY) * bodyH - frame.top);
+  return [
+    [0, 0], [elX, 0], [elX, revealYpx], [crX0, crownYpx], [crX1, crownYpx],
+    [erX, revealYpx], [erX, 0], [W, 0], [W, H], [0, H],
+  ].map(([x, y]) => `${x},${y}`).join(' ');
 }
 
-// A window onto the art: a `w`×`h` rect whose top-left sits at (`x`, `y`)
-// relative to `pivot`, in a frame rotated `deg` about that pivot. `frame` is
-// the art's normal body-px frame; the inner wrapper undoes the rotation.
-function Window({ pivot, deg, x, y, w, h, frame, children }) {
-  const left = pivot.x + x;
-  const top = pivot.y + y;
-  const rotated = deg !== 0;
-  const outer = {
-    position: 'absolute', left, top, width: w, height: h, overflow: 'hidden',
-    ...(rotated ? { transformOrigin: [-x, -y, 0], transform: [{ rotate: `${deg}deg` }] } : null),
-  };
-  const inner = {
-    position: 'absolute', left: 0, top: 0, width: w, height: h,
-    ...(rotated ? { transformOrigin: [-x, -y, 0], transform: [{ rotate: `${-deg}deg` }] } : null),
-  };
-  return (
-    <View style={outer} pointerEvents="none">
-      <View style={inner}>{children({ ...frame, left: frame.left - left, top: frame.top - top })}</View>
-    </View>
-  );
-}
+function OccludedHair({ img, occlusion, frame, bodyW, bodyH, swap, entered, onSwapIn }) {
+  const clipId = React.useId();
+  const points = hairClipPoints(occlusion, frame, bodyW, bodyH);
 
-function OccludedHair({ occlusion, frame, bodyW, bodyH, art }) {
-  const seatY = headFrac(occlusion.y) * bodyH;
-  const lx = headX(occlusion.x0, bodyW);
-  const rx = headX(occlusion.x1, bodyW);
-  const ink = HAIR_INK_OF_BODY * bodyH;
-  const far = WINDOW_REACH * Math.max(bodyW, bodyH);
-  const L = { x: lx, y: seatY };
-  const R = { x: rx, y: seatY };
-  const f = occlusion.fall;
+  // The same swap-detection SwapLayer does for every other layer (see its own
+  // comment above), inlined because there is only one image element to watch
+  // now rather than several windows sharing one `art()` callback.
+  const shown = useRef(img);
+  const armed = useRef(!!entered);
+  useEffect(() => {
+    if (shown.current === img) return;
+    shown.current = img;
+    armed.current = true;
+  }, [img]);
+  const onLoad = () => {
+    if (!armed.current) return;
+    armed.current = false;
+    onSwapIn?.();
+  };
+
   return (
-    <>
-      {/* seams first, so the hair's own outline wins wherever they meet */}
-      <Window pivot={L} deg={0} x={0} y={0} w={rx - lx} h={ink} frame={frame}>{(fr) => art(fr, 'seamC')}</Window>
-      <Window pivot={L} deg={-f} x={-far} y={0} w={far} h={ink} frame={frame}>{(fr) => art(fr, 'seamL')}</Window>
-      <Window pivot={R} deg={f} x={0} y={0} w={far} h={ink} frame={frame}>{(fr) => art(fr, 'seamR')}</Window>
-      <Window pivot={L} deg={0} x={0} y={ink} w={rx - lx} h={far} frame={frame}>{(fr) => art(fr, 'body')}</Window>
-      <Window pivot={L} deg={-f} x={-far} y={ink} w={far} h={far} frame={frame}>{(fr) => art(fr, 'sideL')}</Window>
-      <Window pivot={R} deg={f} x={0} y={ink} w={far} h={far} frame={frame}>{(fr) => art(fr, 'sideR')}</Window>
-    </>
+    <Svg
+      width={frame.width}
+      height={frame.height}
+      style={{ position: 'absolute', left: frame.left, top: frame.top }}
+      pointerEvents="none"
+    >
+      <Defs>
+        <ClipPath id={clipId}>
+          <Polygon points={points} />
+        </ClipPath>
+      </Defs>
+      <SvgImage
+        href={img}
+        x={0}
+        y={0}
+        width={frame.width}
+        height={frame.height}
+        clipPath={`url(#${clipId})`}
+        onLoad={swap ? onLoad : undefined}
+      />
+    </Svg>
   );
 }
 
@@ -270,23 +283,27 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
 
   // Hair under a crown-covering hat: draw only what the hat leaves showing
   // (config/headwearFit.js has the shape and why). Nothing about the art or
-  // its placement changes — the same frame is drawn through windows — so
-  // taking the hat off restores the exact plain layer.
+  // its placement changes — the same frame is clipped through an SVG path —
+  // so taking the hat off restores the exact plain layer.
+  //
+  // captureSafe/crisp are expo-image-vs-core-Image concerns (see the prop's
+  // own comment on CharacterRig below) and react-native-svg's Image is
+  // neither, so they have no equivalent branch here. Untested: a runner in an
+  // occlusion-category hat, captured the instant their rig mounts (a fresh
+  // share card), could in principle race the same way expo-image once did —
+  // check a real capture if that ever needs ruling out.
   if (occlusion) {
     if (occlusion.hide) return null;
     return (
       <OccludedHair
+        img={img}
         occlusion={occlusion}
         frame={frame}
         bodyW={bodyW}
         bodyH={bodyH}
-        art={(f, key) =>
-          swap && key === 'body' ? (
-            <SwapLayer img={img} frame={f} entered={entered} onSwapIn={onSwapIn} captureSafe={captureSafe} crisp={crisp} />
-          ) : (
-            <HairImg img={img} frame={f} ink={key.startsWith('seam')} captureSafe={captureSafe} crisp={crisp} />
-          )
-        }
+        swap={swap}
+        entered={entered}
+        onSwapIn={onSwapIn}
       />
     );
   }

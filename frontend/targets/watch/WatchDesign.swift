@@ -25,15 +25,17 @@ struct WatchScreen<Content: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            // Reserve only what the system has NOT already reserved. Whether
-            // watchOS keeps the clock strip out of this frame depends on where
-            // the screen sits (a pager page is handed the whole glass, a plain
-            // screen may not be), and adding the full strip on top of a safe
-            // area that already excludes it pushed every screen down by twice
-            // the clock and cut the bottom of the run page off on a 40mm.
-            let topInset = max(0, WatchLayout.clockInset - geo.safeAreaInsets.top)
+            // The screen takes the WHOLE glass (ignoresSafeArea below) and
+            // insets itself, once. It used to sit inside the system's safe
+            // area and subtract `geo.safeAreaInsets` from the clock strip —
+            // but a proxy inside the safe area reports zero insets, so the
+            // full strip went on top of the system's own and every screen
+            // started a clock's height too low, cutting its bottom off. With
+            // the safe area ignored the proxy reports the real insets, and
+            // the larger of the two is the only one applied.
+            let topInset = max(WatchLayout.clockInset, geo.safeAreaInsets.top)
             let wantedBottom = WatchLayout.floorInset + (inPager ? WatchLayout.pagerInset : 0)
-            let bottomInset = max(0, wantedBottom - geo.safeAreaInsets.bottom)
+            let bottomInset = max(wantedBottom, geo.safeAreaInsets.bottom)
             let usableHeight = max(0, geo.size.height - topInset - bottomInset)
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: spacing) {
@@ -48,7 +50,9 @@ struct WatchScreen<Content: View>: View {
                 .padding(.top, topInset)
                 .padding(.bottom, bottomInset)
             }
+            .ignoresSafeArea()
         }
+        .ignoresSafeArea()
     }
 }
 
@@ -359,15 +363,9 @@ struct StatCard: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
-
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(0..<7, id: \.self) { index in
-                    Capsule()
-                        .fill(PaserStyle.ink.opacity(0.30))
-                        .frame(height: WatchLayout.size(CGFloat(3 + ((index * 5 + label.count) % 9))))
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            // There was a row of bars here drawn off the label's length — a
+            // chart of nothing, and the height that pushed the second row of
+            // cards off the bottom of the stats page.
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(WatchLayout.size(9))

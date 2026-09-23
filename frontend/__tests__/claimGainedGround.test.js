@@ -115,7 +115,28 @@ describe('the claim payoff', () => {
 
   it('names the reinforced half instead of folding it into the total', () => {
     const tree = render(claim());
-    expect(copy(tree)).toContain('0.013 km² of your own land reinforced');
+    const text = copy(tree);
+    expect(text).toContain('You reinforced your previous land and newly claimed 0.061 km²');
+    expect(text).toContain('Reinforced');
+    expect(text).toContain('0.013 km²');
+    act(() => tree.unmount());
+  });
+
+  it('shows the land held before the claim: the holding less what it won', () => {
+    const tree = render(claim());
+    const text = copy(tree);
+    expect(text).toContain('Previous land');
+    // 2.41 km² held now, 0.061 of it new.
+    expect(text).toContain('2.35 km²');
+    act(() => tree.unmount());
+  });
+
+  it('names the runner who defended when every attack bounced', () => {
+    const tree = render(claim({ victims: [{ user_id: 'd1', username: 'darylcheong', defended: true }] }));
+    const text = copy(tree);
+    expect(text).toContain('DARYLCHEONG DEFENDED THEIR LAND AGAINST YOU');
+    // The headline already says it; the footnote does not repeat it.
+    expect(text).not.toContain('held their ground');
     act(() => tree.unmount());
   });
 

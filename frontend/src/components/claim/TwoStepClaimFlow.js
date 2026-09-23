@@ -79,7 +79,14 @@ function GroundMetric({ label, value, color, dim }) {
   return (
     <View style={[styles.metric, { borderLeftColor: color }, dim && styles.metricDim]}>
       <Text style={[styles.metricLabel, dim && { color: D.textDim }]} numberOfLines={1}>{label}</Text>
-      <Text style={[styles.metricValue, { color: dim ? D.textDim : D.text }]} numberOfLines={1}>{value}</Text>
+      <Text
+        style={[styles.metricValue, { color: dim ? D.textDim : D.text }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.7}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -193,9 +200,6 @@ function PlacementStep({ t, baseT, accent, onChange, onCommit, onInteractionChan
               pointerEvents="none"
             >
               <View style={[styles.handleCore, { backgroundColor: accent }]} />
-              <View style={styles.handleIcon}>
-                <Text style={styles.handleIconText}>↔</Text>
-              </View>
             </Animated.View>
           )}
         </View>
@@ -408,7 +412,7 @@ export default function TwoStepClaimFlow({
         fill={D.cardAlt}
         weight={INK.thin}
         pose={framePose('ground-score')}
-        inset={false}
+        inset={space.xs}
         style={[styles.breakdownFrame, stale && styles.breakdownStale]}
         contentStyle={styles.breakdown}
       >
@@ -437,7 +441,7 @@ export default function TwoStepClaimFlow({
             accessibilityLabel="Next step: rotate claim"
             style={styles.nextButton}
           >
-            <Text style={styles.nextButtonText}>NEXT</Text>
+            <Text style={styles.nextButtonText}>NEXT: ROTATE  →</Text>
           </PressableScale>
         </>
       ) : (
@@ -547,16 +551,6 @@ const makeStyles = (theme) => ({
     height: 12,
     borderRadius: 6,
   },
-  handleIcon: {
-    position: 'absolute',
-    bottom: -8,
-  },
-  handleIconText: {
-    ...safeType.caption,
-    color: theme.textMuted,
-    fontSize: 10,
-  },
-  
   // Rotation styles
   rotationContainer: {
     alignItems: 'center',
@@ -588,11 +582,13 @@ const makeStyles = (theme) => ({
   breakdown: {
     flexDirection: 'row',
     gap: space.sm,
+    paddingVertical: space.xs,
   },
   metric: {
     flex: 1,
+    minWidth: 0,
     borderLeftWidth: 3,
-    paddingLeft: space.sm,
+    paddingLeft: space.xs + 2,
   },
   metricDim: {
     opacity: 0.5,
@@ -608,22 +604,28 @@ const makeStyles = (theme) => ({
   },
   
   // Buttons
+  // A secondary control: CLAIM HERE below is the one primary action, and a
+  // full-width NEXT bar right above it read as a second, competing CTA.
   nextButton: {
-    marginTop: space.md,
-    backgroundColor: theme.cardAlt,
+    marginTop: space.xs,
+    marginBottom: space.md,
+    alignSelf: 'flex-end',
+    backgroundColor: 'transparent',
     borderWidth: safeNB.strokeThin,
-    borderColor: safeNbInk(),
-    borderRadius: safeRadius.md,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.lg,
+    borderColor: theme.border,
+    borderRadius: safeRadius.pill,
+    paddingVertical: space.xs + 2,
+    paddingHorizontal: space.md,
     alignItems: 'center',
   },
   nextButtonText: {
     ...safeType.bodySmBold,
     color: theme.text,
+    letterSpacing: 0.6,
   },
   rotationButtons: {
-    marginTop: space.md,
+    marginTop: space.sm,
+    marginBottom: space.md,
     flexDirection: 'row',
     justifyContent: 'center',
   },
