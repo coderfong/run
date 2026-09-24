@@ -12,19 +12,19 @@
 const FACE = {
   // Attacker, sizing up the ground before the hit.
   smug: 'smirk',
-  // Attacker mid-dash — teeth-out, committed.
-  attack: 'joy',
-  // Chomp variant: mischievous rather than graphic.
-  cheeky: 'tongueout',
-  sly: 'sly',
+  // Attacker mid-dash — committed. (Was 'joy' until that face was deleted.)
+  attack: 'determined',
+  // Chomp variant: mischievous rather than graphic — a grin, not a snarl.
+  cheeky: 'beam',
+  sly: 'smirk',
   // Attacker, having won.
   victory: 'beam',
-  celebrate: 'laugh',
-  // Defenders.
-  startled: 'whoa',
-  gasp: 'gasp',
+  celebrate: 'beam',
+  // Defenders: a small shock for noticing, a bigger one for being hit.
+  startled: 'uneasy',
+  gasp: 'worried',
   glum: 'glum',
-  sad: 'sad',
+  sad: 'exhausted',
 };
 
 // Swap one slot, keep everything else the runner is wearing. Returns a new
