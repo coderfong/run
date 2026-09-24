@@ -81,6 +81,7 @@
 //   python scripts/measure-headwear-fit.py
 //   python scripts/headwear-fit-qa.py
 import FIT from './headwearFit.json';
+import UNDER_HAT from './hairUnderHat.json';
 
 export const HEADWEAR_CATEGORY = {
   CLOSED_HAT: 'closed_hat', // structured cap with a brim near the brow: baseball, trucker, bucket
@@ -131,16 +132,30 @@ export function getHairRegions(hair) {
   return (hair && FIT.hairRegions[hair.id]) || null;
 }
 
+// HAND-PAINTED COVERS (hairUnderHat.json `cover`, written by the Fit Studio's
+// "Hair under hat" editor). Where the measured shape is still wrong for a hat, the
+// hidden region is painted by hand with the hat on and stored as polygons in
+// head fractions. A pair's own cover (hat + this hairstyle) wins over the
+// hat's cover for every hairstyle, which wins over the measured shape. A
+// cover is the WHOLE answer for that hat, so it applies even to open-top
+// pieces, and an empty one means "show all of this hair". A crown-gathered
+// style (below) is still dropped by a hat-wide cover; only its own pair cover
+// brings it back.
+
 // The occlusion to apply to `hair` under `hat`, or null when nothing clips.
 //   { hide: true }                                     → no hair survives
+//   { cover: [[[x, y], ...], ...] }                    → hand-painted, hidden inside
 //   { crownY, crownX0, crownX1, edgeX0, edgeX1, revealY } → the shape above
-// All of crownY/crownX0/crownX1/edgeX0/edgeX1/revealY are HEAD fractions.
+// All coordinates are HEAD fractions.
 export function getHairOcclusion(hat, hair) {
   if (!hair || hair.id === 'none') return null;
+  const covers = (hat && UNDER_HAT.cover[hat.id]) || {};
+  if (covers[hair.id]) return { cover: covers[hair.id] };
   const profile = getHeadwearFitProfile(hat);
-  if (!profile.occlude) return null;
   const regions = getHairRegions(hair);
-  if (regions && regions.gathered === 'crown') return { hide: true };
+  if (profile.occlude && regions && regions.gathered === 'crown') return { hide: true };
+  if (covers['*']) return { cover: covers['*'] };
+  if (!profile.occlude) return null;
   const m = FIT.hats[hat.id] || {};
   const edge = m.edgeY != null ? m.edgeY : profile.defaultEdgeY;
   let crownY = Math.min(edge, profile.maxEdgeY) - profile.edgeInset;
@@ -159,4 +174,25 @@ export function getHairOcclusion(hat, hair) {
       ? Math.min(regions.keepBelow, profile.revealY ?? 0.8)
       : (profile.revealY ?? 0.8),
   };
+}
+
+// WITH-HAT HAIR POSITION (hairUnderHat.json `layout`, dragged in the Fit
+// Studio). A hairstyle can sit differently while a hat is on: pressed down,
+// narrower, pushed to one side. Its layout under this hat is the hat's own
+// entry for the style, else the style's entry for every crown-covering hat
+// ('*'), laid over its plain layout. Only the hair moves; the hat stays
+// anchored to the skull and the occlusion stays in head fractions, so the
+// crop does not move with it.
+export function getHairLayout(hat, hair) {
+  if (!hair) return null;
+  const byHat = (hat && hat.id !== 'none' && UNDER_HAT.layout[hair.id]) || null;
+  if (!byHat) return hair.layout || null;
+  const own = byHat[hat.id] || (getHeadwearFitProfile(hat).occlude ? byHat['*'] : null);
+  if (!own) return hair.layout || null;
+  // An entry anchors by either top or cy; drop the other so the rig, which
+  // reads cy first, cannot mix the two.
+  const base = { ...(hair.layout || {}) };
+  if (own.top != null) delete base.cy;
+  if (own.cy != null) delete base.top;
+  return { ...base, ...own };
 }

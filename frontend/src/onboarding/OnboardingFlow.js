@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme';
 import { shouldCollectName } from '../auth/onboardingIdentity';
 import { ITEMS } from '../config/cosmetics';
+import { isHiddenItem } from '../config/hiddenCosmetics';
 import { useProVisible } from '../pro/storeAvailable';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
@@ -136,7 +137,7 @@ export default function OnboardingFlow({ onDone, mode = 'full', onboardingIdenti
     // broken screen. Skipping it is self-healing: the step comes back on its
     // own the moment that slot has art again.
     const character = CHARACTER_STEPS
-      .filter((s) => (ITEMS[s.slotKey] || []).some((item) => item.id !== 'none'))
+      .filter((s) => (ITEMS[s.slotKey] || []).some((item) => item.id !== 'none' && !isHiddenItem(item)))
       .map((s) => ({ ...s, kind: 'character' }));
     if (mode === 'character') return [...character, { key: 'ready', kind: 'ready' }];
     return [

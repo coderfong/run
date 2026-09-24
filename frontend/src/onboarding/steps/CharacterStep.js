@@ -21,6 +21,7 @@ import {
   itemVariantSources,
   unlockLabel,
 } from '../../config/cosmetics';
+import { listedItems } from '../../config/hiddenCosmetics';
 import { useAvatar } from '../../state/avatar';
 import { preloadImages } from '../../utils/imagePreload';
 import { PickerSheet } from '../pickers';
@@ -38,7 +39,8 @@ export default function CharacterStep({
   const { equipped, setPart, isUnlocked } = useAvatar();
   const rigRef = useRef(null);
   const slot = useMemo(() => SLOTS.find((s) => s.key === slotKey), [slotKey]);
-  const all = ITEMS[slotKey] || [];
+  // Hidden items (hiddenCosmetics.js) are left out, bar the one being worn.
+  const all = useMemo(() => listedItems(ITEMS[slotKey], equipped[slotKey]), [slotKey, equipped]);
 
   // First run shows only what the runner can actually wear. A wall of padlocks
   // is a shop pitch, and this is the five minutes where they are meeting their

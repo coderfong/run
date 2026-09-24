@@ -10,6 +10,8 @@
 // rarity you get is chosen here, against the client catalogue, because that
 // catalogue only exists on the client.
 //
+// HIDDEN ITEMS (hiddenCosmetics.js) are never in the pool either.
+//
 // PASS REWARDS ARE NEVER IN THE POOL. A box must not be able to hand over
 // something the free or premium track is supposed to be the route to, or the
 // ladder stops being a reason to climb.
@@ -20,6 +22,7 @@
 // to the whole pool once a rarity is complete so it can never come up empty.
 
 import { ITEMS } from './cosmetics';
+import { isHiddenItem } from './hiddenCosmetics';
 
 export function rollCosmetic(rarity, isUnlocked) {
   const pool = [];
@@ -30,6 +33,7 @@ export function rollCosmetic(rarity, isUnlocked) {
         && item.id !== 'none'
         && !item.unlock?.pass
         && !item.unlock?.premium
+        && !isHiddenItem(item)
       ) pool.push({ slot, item });
     }
   }

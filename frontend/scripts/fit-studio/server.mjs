@@ -16,6 +16,8 @@ import { applyOverrides, OVERRIDES_FILE } from './apply-fit.mjs';
 import { deleteItem } from './delete-item.mjs';
 import { removeCollar, collarArt, origFile, savePaint } from './collar.mjs';
 import { saveBodyOverride, saveErasedArt } from './pixel-erase.mjs';
+import { saveHairCover, saveHairLayout } from './hair-under-hat.mjs';
+import { setHidden } from './hide-item.mjs';
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const PORT = Number(process.env.FIT_PORT || 5178);
@@ -114,6 +116,31 @@ const server = http.createServer(async (req, res) => {
         : saveErasedArt({ frontend: FRONTEND, asset, png });
       console.log(`pixel erase saved: ${result.asset}${result.backup ? ` (backup: ${result.backup})` : ''}`);
       return send(res, 200, JSON.stringify(result));
+    }
+
+    if (pathname === '/hair-cover' && req.method === 'POST') {
+      const { hat, hair, cover, seat } = JSON.parse(await readBody(req) || '{}');
+      const result = saveHairCover({ hat, hair, cover: cover === undefined ? null : cover, seat: seat || null });
+      console.log(`hair under ${hat} (${hair === '*' ? 'every hairstyle' : hair}): ` +
+        (result.removed ? 'back to the measured shape' : `${result.polygons} polygon(s)`) +
+        (result.seat ? ` · seat re-measured ${JSON.stringify(result.seat)}` : ''));
+      return send(res, 200, JSON.stringify(result));
+    }
+
+    if (pathname === '/hide' && req.method === 'POST') {
+      const { ids, hidden } = JSON.parse(await readBody(req) || '{}');
+      const result = setHidden({ ids, hidden: !!hidden });
+      if (result.changed) {
+        console.log(`${hidden ? 'hidden from app' : 'shown in app again'}: ${[].concat(ids).join(', ')}` +
+          (result.shop ? ` (${result.shop.note})` : ''));
+      }
+      return send(res, 200, JSON.stringify(result));
+    }
+
+    // Autosaved while hair is dragged in a with-hat position, so not logged.
+    if (pathname === '/hair-layout' && req.method === 'POST') {
+      const { hair, hat, layout } = JSON.parse(await readBody(req) || '{}');
+      return send(res, 200, JSON.stringify(saveHairLayout({ hair, hat, layout: layout || null })));
     }
 
     // Art. Everything under frontend/assets, nothing above it.

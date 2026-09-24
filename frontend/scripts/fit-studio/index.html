@@ -29,6 +29,8 @@
   .row img { width: 34px; height: 34px; object-fit: contain; background: #0e1013; border-radius: 4px; }
   .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .row .id { color: var(--dim); font-size: 11px; }
+  .row.hid img, .row.hid .nm { opacity: .45; }
+  .hidTag { font-size: 10px; color: var(--dim); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
   .badge { font-size: 11px; }
   main { display: flex; flex-direction: column; align-items: center; overflow: auto; padding: 16px; }
   #stagewrap { position: relative; }
@@ -60,6 +62,7 @@
   .muted { color: var(--dim); }
   .sw { display: inline-block; width: 16px; height: 16px; border-radius: 4px; margin: 2px; border: 1px solid #0006; cursor: pointer; }
   .sw.on { outline: 2px solid var(--sel); }
+  #hideRow button.on, #hairPosRow button.on { background: var(--sel); color: #06202b; border-color: transparent; font-weight: 600; }
   #zRow button.on { background: var(--sel); color: #06202b; border-color: transparent; font-weight: 600; }
   hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
   #collarEdit { position: fixed; inset: 0; background: rgba(8,10,13,.86); z-index: 50; display: flex; flex-direction: column; }
@@ -78,6 +81,14 @@
   #peStage { flex:1; overflow:auto; display:flex; justify-content:safe center; align-items:flex-start; padding:18px; }
   #peCanvas { background: repeating-conic-gradient(#d9d9d9 0 25%, #fff 0 50%) 50% / 20px 20px; border-radius:8px; cursor:crosshair; touch-action:none; image-rendering:pixelated; }
   #peHint { padding:8px 14px 12px; color:var(--dim); text-align:center; }
+  #hairEdit { position: fixed; inset: 0; background: rgba(8,10,13,.9); z-index: 55; display: flex; flex-direction: column; }
+  #heBar { display: flex; gap: 10px; align-items: center; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #heBar .grow { flex: 1; }
+  #heBar select { width: auto; }
+  #heBar button.on { background: var(--sel); color: #06202b; border-color: transparent; font-weight: 600; }
+  #heStage { flex: 1; overflow: auto; display: flex; justify-content: safe center; align-items: flex-start; padding: 18px; }
+  #heCanvas { border-radius: 8px; cursor: none; touch-action: none; }
+  #heHint { padding: 8px 14px 12px; color: var(--dim); font-size: 12px; text-align: center; }
   #askBox { position: fixed; inset: 0; background: rgba(8,10,13,.72); z-index: 60; display: flex; align-items: center; justify-content: center; }
   #askCard { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; max-width: 640px; max-height: 70vh; overflow: auto; box-shadow: 0 18px 60px #0009; }
   #askText { white-space: pre-wrap; font-size: 13px; line-height: 1.5; }
@@ -94,6 +105,7 @@
     <div class="filters">
       <label class="check"><input type="checkbox" id="fEdited" /> edited</label>
       <label class="check"><input type="checkbox" id="fSuspect" /> suspect</label>
+      <label class="check"><input type="checkbox" id="fHidden" /> hidden</label>
       <span id="count" class="muted"></span>
     </div>
     <div id="list"></div>
@@ -108,6 +120,19 @@
     <div class="scroll">
       <div class="pad">
         <div id="who" style="margin-bottom:10px"><b>—</b></div>
+        <!-- Hair can sit differently under a hat. Which position a drag moves:
+             the plain one, the one under every crown-covering hat, or the one
+             under the worn hat only. -->
+        <div id="hairPosRow" style="display:none; margin-bottom:10px">
+          <div class="btns" style="align-items:center">
+            <span class="muted" style="font-size:12px">position</span>
+            <button data-pos="plain">no hat</button>
+            <button data-pos="*">every hat</button>
+            <button data-pos="hat">this hat only</button>
+          </div>
+          <div id="hairPosOut" class="muted" style="font-size:11px; margin-top:6px"></div>
+          <button id="hairPosDrop" style="display:none; margin-top:6px">Remove this with-hat position</button>
+        </div>
         <div class="fld"><span>width</span><input type="range" id="rw" min="0.2" max="1.6" step="0.001" /><input type="number" id="nw" step="0.005" /></div>
         <div class="fld"><span id="anchorLabel">top</span><input type="range" id="rt" min="-0.3" max="1" step="0.001" /><input type="number" id="nt" step="0.002" /></div>
         <div class="fld"><span>side</span><input type="range" id="rd" min="-0.4" max="0.4" step="0.001" /><input type="number" id="nd" step="0.002" /></div>
@@ -141,6 +166,20 @@
         <div class="btns" style="margin-top:10px">
           <button id="bEraseAsset">Erase selected art…</button>
           <button id="bEraseBody">Erase character body…</button>
+        </div>
+        <!-- Which hair the worn hat hides, painted with the hat on. Shown
+             whenever a hat and a hairstyle are both worn, whatever tab is open. -->
+        <div class="btns" id="hairHatRow" style="margin-top:10px; align-items:center; display:none">
+          <button id="bHairHat">Hair under hat…</button>
+          <span id="hairHatOut" class="muted" style="font-size:11px"></span>
+        </div>
+        <!-- Hiding keeps the item in the catalogue (anyone wearing it still
+             renders) but leaves it out of everything the app offers: the
+             Avatar Studio grid, first run, the shop, loot boxes, the dice.
+             src/config/hiddenCosmetics.js has the details. -->
+        <div class="btns" id="hideRow" style="margin-top:10px; align-items:center">
+          <button id="bHide">Hide from app</button>
+          <span id="hideOut" class="muted" style="font-size:11px"></span>
         </div>
         <div class="btns" style="margin-top:10px; align-items:center">
           <button class="danger" id="bDelete">Delete item</button>
@@ -193,6 +232,28 @@
   </div>
   <div id="peStage"><canvas id="peCanvas"></canvas></div>
   <div id="peHint">Drag to erase pixels. Hold <kbd>alt</kbd> or use the right mouse button to restore them. <kbd>[</kbd>/<kbd>]</kbd> brush · <kbd>ctrl</kbd>+<kbd>z</kbd> undo · <kbd>esc</kbd> close. Saving creates a recoverable backup.</div>
+</div>
+
+<!-- Hair under the worn hat. The mask is what the hat HIDES; the hat is drawn
+     on top so the hair poking out around it can be judged as the app draws it. -->
+<div id="hairEdit" style="display:none">
+  <div id="heBar">
+    <b>Hair under hat</b><span id="heName" class="muted"></span>
+    <select id="heScope"></select>
+    <button id="heMode">painting: remove hair</button>
+    <label class="check">brush <input type="range" id="heBrush" min="2" max="90" step="1" value="16" /></label>
+    <label class="check">zoom <input type="range" id="heZoom" min="0.5" max="4" step="0.25" value="1.5" /></label>
+    <label class="check">hat <input type="range" id="heHatAlpha" min="0" max="100" step="5" value="100" /></label>
+    <button id="heRegen" title="Re-measure the hat's seat from its art where it sits now, and rebuild the hidden hair from it">Regenerate</button>
+    <button id="heClear">Show all hair</button>
+    <button id="heUndo">Undo</button>
+    <span class="grow"></span><span id="heOut" class="muted"></span>
+    <button id="heCancel">Cancel</button><button id="heSave" class="primary">Save</button>
+  </div>
+  <div id="heStage"><canvas id="heCanvas"></canvas></div>
+  <div id="heHint">Pink is hair the hat hides. Paint to remove hair; hold <kbd>alt</kbd> or use the right button to bring it back.
+    <kbd>h</kbd> hat on/off · <kbd>[</kbd> <kbd>]</kbd> brush · <kbd>ctrl</kbd>+<kbd>z</kbd> undo · <kbd>esc</kbd> close.
+    <b>Regenerate</b> then Save with no painting goes back to the automatic shape.</div>
 </div>
 
 <!-- Painting the collar's back piece. The split puts a horizontal line through
@@ -320,13 +381,26 @@ function hairRegionsOf(hair) {
 // revealY } (head fractions) described in config/headwearFit.js: a flat band
 // hidden under the hat's own dome, tapering on each side down to the hat's
 // physical edge, with everything beyond that edge never clipped at all.
+//
+// A hand-painted cover (hairCover.json, M.fit.hairCover) wins over all of it:
+// the pair's own first, then the hat's cover for every hairstyle. See the
+// "Hair under hat" editor below.
 function hairOcclusion(hat, hair) {
   if (!hair || hair.id === 'none') return null;
+  const covers = (hat && M.fit.hairCover[hat.id]) || {};
+  if (covers[hair.id]) return { cover: covers[hair.id] };
+  const regions = hairRegionsOf(hair);
+  const gathered = !!(regions && regions.gathered === 'crown');
+  if (covers['*'] && !(headwearFitProfile(hat).occlude && gathered)) return { cover: covers['*'] };
+  return autoOcclusion(hat, regions);
+}
+// The measured shape alone, ignoring any painted cover. `seat` stands in for
+// the hat's entry in headwearFit.json (a fresh measurement from Regenerate).
+function autoOcclusion(hat, regions, seat) {
   const profile = headwearFitProfile(hat);
   if (!profile.occlude) return null;
-  const regions = hairRegionsOf(hair);
   if (regions && regions.gathered === 'crown') return { hide: true };
-  const m = M.fit.hats[hat.id] || {};
+  const m = seat || M.fit.hats[hat.id] || {};
   const edge = m.edgeY != null ? m.edgeY : profile.defaultEdgeY;
   let crownY = Math.min(edge, profile.maxEdgeY) - profile.edgeInset;
   if (regions && regions.keepBelow != null) crownY = Math.min(crownY, regions.keepBelow);
@@ -357,9 +431,19 @@ const headXPx = (f) => bodyW / 2 + (f - 0.5) * (M.rig.HEAD.w / 248) * bodyW;
 // than RN's usual rotated-window stand-in for clipping.
 function hairClipPath(occlusion, box) {
   if (!box || box.w <= 0 || box.h <= 0) return 'none';
+  // A painted cover: the whole box with each polygon cut out, even-odd, the
+  // same path CharacterRig's hairCoverPath() builds.
+  if (occlusion.cover) {
+    const r = (v) => v.toFixed(1);
+    let d = 'M0 0H' + r(box.w) + 'V' + r(box.h) + 'H0Z';
+    for (const poly of occlusion.cover) {
+      d += poly.map(([x, y], i) => (i ? 'L' : 'M') + r(headXPx(x) - box.left) + ' ' + r(headFracPx(y) - box.top)).join('') + 'Z';
+    }
+    return 'path(evenodd, "' + d + '")';
+  }
   const clampPct = (v) => Math.max(0, Math.min(100, v));
   const toX = (xAbs) => clampPct(((xAbs - box.left) / box.w) * 100);
-  const toY = (yAbs) => clampPct((yAbs / box.h) * 100);
+  const toY = (yAbs) => clampPct(((yAbs - box.top) / box.h) * 100);
   const elX = toX(headXPx(occlusion.edgeX0));
   const crX0 = toX(headXPx(occlusion.crownX0));
   const crX1 = toX(headXPx(occlusion.crownX1));
@@ -376,7 +460,87 @@ function hairClipPath(occlusion, box) {
 // Base spec + the catalogue's own layout + anything dragged in this session.
 function baseSpec(s, item) { return M.rig.LAYOUT[(item && item.fit) || s] || null; }
 function savedSpec(s, item) { return { ...(baseSpec(s, item) || {}), ...(item.layout || {}) }; }
-function liveSpec(s, item) { return { ...savedSpec(s, item), ...((OV[s] || {})[item.id] || {}) }; }
+function liveSpec(s, item) {
+  const spec = { ...savedSpec(s, item), ...((OV[s] || {})[item.id] || {}) };
+  return s === 'hair' ? withHatLayout(spec, hatHairLayout(item)) : spec;
+}
+
+// --- hair position under a hat ----------------------------------------------
+// A hairstyle can sit differently while a hat is on (hairUnderHat.json
+// `layout`, read by config/headwearFit.js getHairLayout). `hairPos` is which
+// position a hair drag edits: 'plain' is the hairstyle's own layout (the
+// catalogue, through OV as ever); '*' is its position under every
+// crown-covering hat; 'hat' under the worn hat only. The with-hat ones save
+// straight to hairUnderHat.json as they are dragged.
+let hairPos = 'plain';
+function wornHat() {
+  const h = itemById('headwear', equipped.headwear);
+  return h && h.id !== 'none' ? h : null;
+}
+// An entry anchors by top or cy; drop the other so the rig cannot mix them.
+function withHatLayout(spec, lay) {
+  if (!lay) return spec;
+  const out = { ...spec };
+  if (lay.top != null) delete out.cy;
+  if (lay.cy != null) delete out.top;
+  return { ...out, ...lay };
+}
+// What the APP draws under `hat`: the hat's own entry, else the '*' entry
+// for a crown-covering hat.
+function appHatHairLayout(hair, hat) {
+  const by = hair && hat ? M.fit.hairLayout[hair.id] : null;
+  if (!by) return null;
+  return by[hat.id] || (headwearFitProfile(hat).occlude ? by['*'] : null) || null;
+}
+// What the STAGE draws. While this hair is being fitted the position being
+// edited decides, so a drag always moves what is on screen.
+function hatHairLayout(hair) {
+  const hat = wornHat();
+  if (!hat || !hair) return null;
+  if (slot === 'hair' && hair.id === selId) {
+    if (hairPos === 'plain') return null;
+    const by = M.fit.hairLayout[hair.id] || {};
+    return hairPos === 'hat' ? (by[hat.id] || by['*'] || null) : (by['*'] || null);
+  }
+  return appHatHairLayout(hair, hat);
+}
+const hatHairKey = () => (hairPos === 'hat' ? wornHat().id : '*');
+const editingHatHair = (s) => s === 'hair' && hairPos !== 'plain' && !!wornHat();
+// Open the hair tab on whichever position the app is drawing right now.
+function syncHairPos() {
+  const hat = wornHat(), hair = itemById('hair', equipped.hair);
+  const by = (hair && M.fit.hairLayout[hair.id]) || {};
+  hairPos = !hat ? 'plain' : by[hat.id] ? 'hat' : appHatHairLayout(hair, hat) ? '*' : 'plain';
+}
+function setHatHairSpec(id, patch) {
+  const hair = itemById('hair', id);
+  const cur = liveSpec('hair', hair);
+  const anchor = anchorKind('hair', hair) === 'cy' ? { cy: cur.cy } : { top: cur.top };
+  const key = hatHairKey();
+  M.fit.hairLayout[id] = M.fit.hairLayout[id] || {};
+  M.fit.hairLayout[id][key] = { w: cur.w, ...anchor, dx: cur.dx || 0, ...patch };
+  saveHatHair(id, key);
+  render();
+}
+function dropHatHair(id) {
+  const key = hatHairKey();
+  if (!M.fit.hairLayout[id] || !M.fit.hairLayout[id][key]) return;
+  delete M.fit.hairLayout[id][key];
+  saveHatHair(id, key);
+  render();
+}
+const hatHairTimers = {};
+function saveHatHair(hairId, key) {
+  const k = hairId + '|' + key;
+  clearTimeout(hatHairTimers[k]);
+  hatHairTimers[k] = setTimeout(async () => {
+    const layout = (M.fit.hairLayout[hairId] || {})[key] || null;
+    const j = await (await fetch('/hair-layout', { method: 'POST', body: JSON.stringify({ hair: hairId, hat: key, layout }) })).json();
+    $('status').textContent = j.ok
+      ? 'saved ' + new Date().toLocaleTimeString() + ' → hairUnderHat.json (' + hairId + ' under ' + (key === '*' ? 'every hat' : key) + (layout ? '' : ', removed') + ')'
+      : '! ' + (j.error || 'save failed');
+  }, 400);
+}
 function edit(s, id) { return (OV[s] || {})[id] || null; }
 
 // Draw side. `z: 'back'` puts an item behind the body; anything else is the
@@ -485,6 +649,7 @@ function setFoot(id, side, patch) {
 }
 
 function setSpec(s, id, patch) {
+  if (editingHatHair(s)) return setHatHairSpec(id, patch);
   OV[s] = OV[s] || {};
   const item = itemById(s, id);
   const saved = savedSpec(s, item);
@@ -823,6 +988,16 @@ window.addEventListener('keydown', (e) => {
     else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) $('ceUndo').click();
     return;
   }
+  if (HE.open) {
+    const brush = $('heBrush');
+    if (e.key === 'Escape') closeHairEdit();
+    else if (e.key === '[') brush.value = Math.max(2, Number(brush.value) - 2);
+    else if (e.key === ']') brush.value = Math.min(90, Number(brush.value) + 2);
+    else if (e.key === 'h') HE.hatOn = !HE.hatOn;
+    else if (e.key === 'z' && (e.ctrlKey || e.metaKey)) $('heUndo').click();
+    heDraw();
+    return;
+  }
   if (PE.open) {
     const brush = $('peBrush');
     if (e.key === 'Escape') closePixelEdit();
@@ -865,6 +1040,8 @@ function syncFields() {
   $('who').innerHTML = '<b>' + item.label + '</b> <span class="muted">' + slot + ':' + item.id +
     (item.fit ? ' · fit ' + item.fit : '') + '</span><br /><span class="muted">' + item.source + '.js</span>';
   $('anchorLabel').textContent = kind === 'cy' ? 'centre y' : 'top';
+  syncHairPanels(item);
+  syncHide(item);
   const zable = Z_SLOTS.has(slot) && item.id !== 'none';
   $('zRow').style.display = zable ? '' : 'none';
   if (zable) {
@@ -1317,6 +1494,440 @@ $('peSave').addEventListener('click',async()=>{
   $('status').textContent=wasBody ? 'Per-cosmetic body cutout saved · '+j.key : 'Erased art saved · backup: '+backup;
 });
 
+// --- hide from the app ---------------------------------------------------------
+// Not a delete: the item stays in the catalogue and keeps rendering on anyone
+// wearing it; the app just stops offering it (src/config/hiddenCosmetics.js).
+// The server's shop catalogue is regenerated on every change.
+function hideNotes(item) {
+  const notes = [];
+  if (item.reward) notes.push('still paid out as a ' + item.reward + ' reward');
+  if (item.isDefault) notes.push('still what new runners start in');
+  return notes;
+}
+function syncHide(item) {
+  const can = !!(item && item.id !== 'none');
+  $('hideRow').style.display = can ? '' : 'none';
+  if (!can) return;
+  $('bHide').textContent = item.hidden ? 'Show in app' : 'Hide from app';
+  $('bHide').classList.toggle('on', !!item.hidden);
+  const notes = hideNotes(item);
+  $('hideOut').textContent = item.hidden
+    ? 'hidden from the app' + (notes.length ? ' · ' + notes.join(', ') : '')
+    : (notes.length ? 'if hidden: ' + notes.join(', ') : '');
+}
+$('bHide').addEventListener('click', async () => {
+  const item = itemById(slot, selId);
+  if (!item || item.id === 'none') return;
+  const hide = !item.hidden;
+  $('hideOut').textContent = hide ? 'hiding…' : 'showing…';
+  const j = await (await fetch('/hide', { method: 'POST', body: JSON.stringify({ ids: [item.id], hidden: hide }) })).json();
+  if (!j.ok) { $('hideOut').textContent = '! ' + (j.error || 'failed'); return; }
+  // Flip it locally rather than reloading the whole catalogue: the list,
+  // the badge and the button are all this changes in the studio.
+  item.hidden = hide;
+  renderList();
+  $('status').textContent = (hide ? 'hidden from the app: ' : 'back in the app: ') + item.label + ' (' + item.id + ')' +
+    (j.shop ? ' · shop catalogue ' + (j.shop.ran ? 'regenerated' : 'NOT regenerated: ' + j.shop.note) : '') +
+    ' · ' + j.hidden.length + ' hidden in total';
+});
+$('fHidden').addEventListener('input', renderList);
+
+// --- hair panels ------------------------------------------------------------
+
+function syncHairPanels(item) {
+  const hat = wornHat();
+  const hair = itemById('hair', equipped.hair);
+  const hasHair = !!(hair && hair.id !== 'none');
+  const posRow = slot === 'hair' && hat && item && item.id !== 'none';
+  $('hairPosRow').style.display = posRow ? '' : 'none';
+  if (posRow) {
+    for (const b of document.querySelectorAll('#hairPosRow [data-pos]')) b.classList.toggle('on', b.dataset.pos === hairPos);
+    const by = M.fit.hairLayout[item.id] || {};
+    const open = !headwearFitProfile(hat).occlude;
+    const inApp = appHatHairLayout(item, hat);
+    let msg;
+    if (hairPos === 'plain') {
+      msg = 'Dragging moves this hair everywhere, hat or not.' +
+        (inApp ? ' Under ' + hat.label + ' the app uses a with-hat position instead, so this is not what it shows.' : '');
+    } else if (hairPos === '*') {
+      msg = 'Dragging moves this hair only while a crown-covering hat is on.' +
+        (by[hat.id] ? ' ' + hat.label + ' has its own position, which wins.' : '') +
+        (open ? ' ' + hat.label + ' is open-top, so this does not apply to it; use "this hat only".' : '') +
+        (by['*'] ? '' : ' Not set yet: the first drag creates it.');
+    } else {
+      msg = 'Dragging moves this hair only under ' + hat.label + '.' +
+        (by[hat.id] ? '' : by['*'] ? ' Starting from the every-hat position.' : ' Not set yet: the first drag creates it.');
+    }
+    $('hairPosOut').textContent = msg;
+    $('hairPosDrop').style.display = hairPos !== 'plain' && by[hatHairKey()] ? '' : 'none';
+  }
+  $('hairHatRow').style.display = hat && hasHair ? '' : 'none';
+  if (hat && hasHair) {
+    const covers = M.fit.hairCover[hat.id] || {};
+    $('hairHatOut').textContent = covers[hair.id] ? 'hidden hair painted for this hairstyle'
+      : covers['*'] ? 'hidden hair painted for every hairstyle'
+      : headwearFitProfile(hat).occlude ? 'hidden hair from the measured seat' : 'open-top: hides no hair';
+  }
+}
+for (const b of document.querySelectorAll('#hairPosRow [data-pos]')) {
+  b.addEventListener('click', () => { hairPos = b.dataset.pos; render(); });
+}
+$('hairPosDrop').addEventListener('click', () => { const item = itemById(slot, selId); if (item) dropHatHair(item.id); });
+
+// --- hair under a hat -------------------------------------------------------
+// Paints which hair the worn hat HIDES, with the hat drawn on top, and saves
+// it as polygons in head fractions (hairUnderHat.json `cover`, through
+// hair-under-hat.mjs). The mask is a grid over the head at HE_SCALE × the
+// rig's own 248px body; saving traces it into polygons, opening rasterises
+// them back. Regenerate re-measures the hat's seat from its art where it sits
+// now and rebuilds the mask from the automatic shape; saving that untouched
+// drops the painted cover and keeps the fresh seat.
+const HE_TINT = [236, 72, 153];
+const HE_SCALE = 2;
+const HE_UNDO_MAX = 40;
+const HE_TOP = -3;   // a cover reaching the top of the grid runs on up to here
+const HE = {
+  open: false, hat: null, hair: null, scope: '*', bw: 0, bh: 0, ox: 0, oy: 0, W: 0, H: 0,
+  mask: null, undo: [], base: null, hairPx: null, over: null, off: null,
+  fromAuto: false, painted: false, seat: null, erase: true, hatOn: true, cursor: null, raf: 0,
+};
+const heX = (f) => HE.bw / 2 + (f - 0.5) * (M.rig.HEAD.w / 248) * HE.bw - HE.ox;
+const heY = (f) => (M.rig.HEAD.top + f * M.rig.HEAD.h) / 640 * HE.bh - HE.oy;
+const heFx = (px) => (px + HE.ox - HE.bw / 2) / ((M.rig.HEAD.w / 248) * HE.bw) + 0.5;
+const heFy = (py) => ((py + HE.oy) / HE.bh * 640 - M.rig.HEAD.top) / M.rig.HEAD.h;
+
+// frameOf() reads the stage's own scale; borrow it at another one.
+function atBodyW(w, fn) { const keep = bodyW; bodyW = w; try { return fn(); } finally { bodyW = keep; } }
+// Where the APP draws this hair under the worn hat, whatever position the
+// panel is editing.
+const appHairSpec = (hair, hat) =>
+  withHatLayout({ ...savedSpec('hair', hair), ...((OV.hair || {})[hair.id] || {}) }, appHatHairLayout(hair, hat));
+
+function heRaster(occl) {
+  const m = new Uint8Array(HE.W * HE.H);
+  if (!occl) return m;
+  if (occl.hide) return m.fill(1);
+  const polys = occl.cover || [[
+    [occl.edgeX0, HE_TOP], [occl.edgeX0, occl.revealY], [occl.crownX0, occl.crownY],
+    [occl.crownX1, occl.crownY], [occl.edgeX1, occl.revealY], [occl.edgeX1, HE_TOP],
+  ]];
+  const c = document.createElement('canvas'); c.width = HE.W; c.height = HE.H;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.beginPath();
+  for (const p of polys) {
+    p.forEach(([fx, fy], i) => (i ? x.lineTo(heX(fx), heY(fy)) : x.moveTo(heX(fx), heY(fy))));
+    x.closePath();
+  }
+  x.fill('evenodd');
+  const a = x.getImageData(0, 0, HE.W, HE.H).data;
+  for (let i = 0; i < m.length; i++) m[i] = a[i * 4 + 3] >= 128 ? 1 : 0;
+  return m;
+}
+
+// Where the editing scope starts: what is stored for it, else the measured shape.
+function heLoadScope() {
+  const covers = M.fit.hairCover[HE.hat.id] || {};
+  let occl, from;
+  if (HE.scope === 'pair') {
+    occl = hairOcclusion(HE.hat, HE.hair);
+    from = covers[HE.hair.id] ? 'painted for this hairstyle' : covers['*'] ? 'painted for every hairstyle' : 'measured seat';
+    HE.fromAuto = !covers[HE.hair.id] && !covers['*'];
+  } else {
+    occl = covers['*'] ? { cover: covers['*'] } : autoOcclusion(HE.hat, null);
+    from = covers['*'] ? 'painted for every hairstyle' : 'measured seat';
+    HE.fromAuto = !covers['*'];
+  }
+  HE.mask = heRaster(occl);
+  HE.painted = false; HE.seat = null; HE.undo = [];
+  const shadowed = HE.scope === '*' && covers[HE.hair.id];
+  $('heOut').textContent = 'starting from: ' + from + (shadowed ? ' · ' + HE.hair.label + ' has its own cover, which still wins' : '');
+  heDraw();
+}
+
+async function openHairEdit() {
+  const hat = wornHat(), hair = itemById('hair', equipped.hair);
+  if (!hat || !hair || hair.id === 'none') throw new Error('Wear a hat and a hairstyle first.');
+  Object.assign(HE, { hat, hair, bw: 248 * HE_SCALE, cursor: null });
+  HE.bh = HE.bw * M.rig.BODY_RATIO;
+  const glasses = itemById('glasses', equipped.glasses);
+  const face = itemById('face', equipped.face);
+  const src = {
+    hair: imgOf('hair', hair), hat: imgOf('headwear', hat), hatBack: backImgOf('headwear', hat),
+    glasses: glasses && glasses.id !== 'none' ? imgOf('glasses', glasses) : null,
+    face: face ? imgOf('face', face) : null,
+  };
+  await Promise.all(Object.values(src).filter(Boolean).map(loadSize));
+  const at = (fn) => atBodyW(HE.bw, fn);
+  const hairF = at(() => frameOf('hair', hair, appHairSpec(hair, hat)));
+  const hatF = at(() => frameOf('headwear', hat, liveSpec('headwear', hat)));
+  const glF = src.glasses ? at(() => frameOf('glasses', glasses, liveSpec('glasses', glasses))) : null;
+  const faceF = src.face ? at(() => frameOf('face', face, liveSpec('face', face))) : null;
+  HE.ox = 0; HE.oy = 0;
+  const xs = [hairF.left, hairF.left + hairF.w, hatF.left, hatF.left + hatF.w, heX(-0.4), heX(1.4)];
+  const ys = [hairF.top, hairF.top + hairF.h, hatF.top, hatF.top + hatF.h, heY(-0.5), heY(1.1)];
+  const pad = 24;
+  HE.ox = Math.floor(Math.min(...xs)) - pad; HE.oy = Math.floor(Math.min(...ys)) - pad;
+  HE.W = Math.ceil(Math.max(...xs)) + pad - HE.ox; HE.H = Math.ceil(Math.max(...ys)) + pad - HE.oy;
+
+  const img = {};
+  await Promise.all(Object.entries({ ...src, body: M.body, head: M.head })
+    .filter(([, v]) => v).map(async ([k, v]) => { img[k] = await loadImage(artUrl(v)); }));
+  const layer = () => { const c = document.createElement('canvas'); c.width = HE.W; c.height = HE.H; return c; };
+  const put = (ctx, im, f) => ctx.drawImage(im, f.left - HE.ox, f.top - HE.oy, f.w, f.h);
+  const bodyF = { left: 0, top: 0, w: HE.bw, h: HE.bh };
+
+  const base = layer(), bx = base.getContext('2d', { willReadFrequently: true });
+  bx.fillStyle = $('oDark').checked ? '#22262c' : '#f3efe7'; bx.fillRect(0, 0, HE.W, HE.H);
+  if (img.hatBack) put(bx, img.hatBack, hatF);
+  put(bx, img.body, bodyF); put(bx, img.head, bodyF);
+  if (img.face) put(bx, img.face, faceF);
+  HE.base = bx.getImageData(0, 0, HE.W, HE.H);
+
+  const hl = layer(), hx = hl.getContext('2d', { willReadFrequently: true });
+  put(hx, img.hair, hairF);
+  HE.hairPx = hx.getImageData(0, 0, HE.W, HE.H).data;
+
+  HE.over = layer();
+  const ox = HE.over.getContext('2d');
+  if (img.glasses) put(ox, img.glasses, glF);
+  put(ox, img.hat, hatF);
+  HE.off = layer();
+
+  const covers = M.fit.hairCover[hat.id] || {};
+  const sel = $('heScope');
+  sel.innerHTML = '';
+  for (const [v, t] of [['*', 'every hairstyle under this hat'], ['pair', 'only ' + hair.label + ' under this hat']]) {
+    const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o);
+  }
+  HE.scope = covers[hair.id] ? 'pair' : '*';
+  sel.value = HE.scope;
+  $('heName').textContent = hat.label + ' + ' + hair.label;
+  HE.open = true;
+  $('hairEdit').style.display = '';
+  const fit = Math.max(0.5, Math.min(4, Math.floor(Math.min((innerWidth - 60) / HE.W, (innerHeight - 160) / HE.H) * 4) / 4));
+  $('heZoom').value = fit;
+  heLoadScope();
+}
+
+function heDraw() {
+  if (!HE.open) return;
+  cancelAnimationFrame(HE.raf);
+  HE.raf = requestAnimationFrame(() => {
+    const { W, H, mask } = HE, hp = HE.hairPx;
+    const out = new ImageData(new Uint8ClampedArray(HE.base.data), W, H), d = out.data;
+    const [tr, tg, tb] = HE_TINT;
+    for (let i = 0, p = 0; i < mask.length; i++, p += 4) {
+      let a = hp[p + 3] / 255, r = hp[p], g = hp[p + 1], b = hp[p + 2];
+      if (mask[i]) {
+        if (a > 0) { r = (r + tr) / 2; g = (g + tg) / 2; b = (b + tb) / 2; a *= 0.4; }
+        else { r = tr; g = tg; b = tb; a = 0.12; }
+      }
+      if (a <= 0) continue;
+      d[p] = r * a + d[p] * (1 - a); d[p + 1] = g * a + d[p + 1] * (1 - a); d[p + 2] = b * a + d[p + 2] * (1 - a);
+    }
+    const ox = HE.off.getContext('2d');
+    ox.putImageData(out, 0, 0);
+    if (HE.hatOn) { ox.globalAlpha = Number($('heHatAlpha').value) / 100; ox.drawImage(HE.over, 0, 0); ox.globalAlpha = 1; }
+    const c = $('heCanvas'), z = Number($('heZoom').value);
+    const cw = Math.round(W * z), ch = Math.round(H * z);
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+    const x = c.getContext('2d');
+    x.imageSmoothingEnabled = true;
+    x.drawImage(HE.off, 0, 0, cw, ch);
+    if (HE.cursor) {
+      x.beginPath();
+      x.arc(HE.cursor.x * z, HE.cursor.y * z, Number($('heBrush').value) / 2 * z, 0, Math.PI * 2);
+      x.lineWidth = 1.5; x.strokeStyle = HE.erase ? 'rgba(236,72,153,.95)' : 'rgba(56,189,248,.95)'; x.stroke();
+    }
+  });
+}
+
+(() => {
+  const c = $('heCanvas'); let down = false, last = null, value = 1;
+  const point = (e) => { const b = c.getBoundingClientRect(); return { x: (e.clientX - b.left) * HE.W / b.width, y: (e.clientY - b.top) * HE.H / b.height }; };
+  const dab = (cx, cy) => {
+    const r = Number($('heBrush').value) / 2;
+    const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(HE.W - 1, Math.ceil(cx + r));
+    const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(HE.H - 1, Math.ceil(cy + r));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+      if (dx * dx + dy * dy <= r * r) HE.mask[y * HE.W + x] = value;
+    }
+  };
+  const stroke = (p) => {
+    const step = Math.max(1, Number($('heBrush').value) / 6);
+    const n = last ? Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / step)) : 1;
+    for (let k = 1; k <= n; k++) dab(last ? last.x + (p.x - last.x) * k / n : p.x, last ? last.y + (p.y - last.y) * k / n : p.y);
+    last = p; HE.painted = true; HE.cursor = p; heDraw();
+  };
+  c.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    HE.undo.push(HE.mask.slice()); if (HE.undo.length > HE_UNDO_MAX) HE.undo.shift();
+    const flip = e.altKey || e.button === 2;
+    value = (HE.erase !== flip) ? 1 : 0;
+    down = true; last = null; c.setPointerCapture(e.pointerId); stroke(point(e));
+  });
+  c.addEventListener('pointermove', (e) => { if (down) stroke(point(e)); else { HE.cursor = point(e); heDraw(); } });
+  c.addEventListener('pointerup', () => { down = false; last = null; });
+  c.addEventListener('pointercancel', () => { down = false; last = null; });
+  c.addEventListener('pointerleave', () => { if (!down) { HE.cursor = null; heDraw(); } });
+  c.addEventListener('contextmenu', (e) => e.preventDefault());
+})();
+
+// The mask's outline as polygons in head fractions. Every boundary between a
+// hidden cell and a shown one becomes a unit edge, clockwise round the hidden
+// side; the edges are chained into loops and each loop simplified. Even-odd
+// fill only depends on which edges exist, so however a pinch point is
+// chained, the filled region is the same.
+function heTrace() {
+  const { W, H, mask } = HE, V = W + 1;
+  const on = (x, y) => x >= 0 && y >= 0 && x < W && y < H && mask[y * W + x] === 1;
+  const next = new Map();
+  const edge = (x0, y0, x1, y1) => { const k = y0 * V + x0, v = y1 * V + x1; const a = next.get(k); if (a) a.push(v); else next.set(k, [v]); };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (!mask[y * W + x]) continue;
+    if (!on(x, y - 1)) edge(x, y, x + 1, y);
+    if (!on(x + 1, y)) edge(x + 1, y, x + 1, y + 1);
+    if (!on(x, y + 1)) edge(x + 1, y + 1, x, y + 1);
+    if (!on(x - 1, y)) edge(x, y + 1, x, y);
+  }
+  const polys = [];
+  while (next.size) {
+    const start = next.keys().next().value;
+    const loop = [];
+    let cur = start;
+    do {
+      loop.push([cur % V, Math.floor(cur / V)]);
+      const a = next.get(cur), nx = a.pop();
+      if (!a.length) next.delete(cur);
+      cur = nx;
+    } while (cur !== start);
+    let area = 0;
+    for (let i = 0; i < loop.length; i++) { const [ax, ay] = loop[i], [bx, by] = loop[(i + 1) % loop.length]; area += ax * by - bx * ay; }
+    if (Math.abs(area) / 2 < 6) continue;   // a stray dab, not a shape
+    const pts = dpClosed(dropCollinear(loop), 0.85);
+    if (pts.length < 3) continue;
+    polys.push(pts.map(([x, y]) => [heFx(x), y === 0 ? HE_TOP : heFy(y)]));
+  }
+  return polys;
+}
+function dropCollinear(loop) {
+  const n = loop.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const [ax, ay] = loop[(i - 1 + n) % n], [bx, by] = loop[i], [cx, cy] = loop[(i + 1) % n];
+    if ((bx - ax) * (cy - by) - (by - ay) * (cx - bx) !== 0) out.push(loop[i]);
+  }
+  return out;
+}
+function dpOpen(pts, eps) {
+  if (pts.length < 3) return pts.slice();
+  const [ax, ay] = pts[0], [bx, by] = pts[pts.length - 1];
+  const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy);
+  let far = -1, fi = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = len ? Math.abs(dy * (pts[i][0] - ax) - dx * (pts[i][1] - ay)) / len : Math.hypot(pts[i][0] - ax, pts[i][1] - ay);
+    if (d > far) { far = d; fi = i; }
+  }
+  if (far <= eps) return [pts[0], pts[pts.length - 1]];
+  return dpOpen(pts.slice(0, fi + 1), eps).slice(0, -1).concat(dpOpen(pts.slice(fi), eps));
+}
+function dpClosed(pts, eps) {
+  if (pts.length < 4) return pts;
+  let k = 0, far = -1;
+  for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1]); if (d > far) { far = d; k = i; } }
+  const a = dpOpen(pts.slice(0, k + 1), eps), b = dpOpen(pts.slice(k).concat([pts[0]]), eps);
+  return a.slice(0, -1).concat(b.slice(0, -1));
+}
+
+// The hat's seat from its art where it sits NOW, dragged or not: a port of
+// measure() in scripts/measure-headwear-fit.py (same 4× rig, same 43 skull
+// columns, same 10th percentile of each column's lowest ink).
+async function measureSeat(hat) {
+  const sx = 4, BWm = 248 * sx;
+  const src = imgOf('headwear', hat);
+  await loadSize(src);
+  const f = atBodyW(BWm, () => frameOf('headwear', hat, liveSpec('headwear', hat)));
+  const im = await loadImage(artUrl(src));
+  const w = Math.max(1, Math.round(f.w)), h = Math.max(1, Math.round(f.h));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high'; x.drawImage(im, 0, 0, w, h);
+  const a = x.getImageData(0, 0, w, h).data;
+  const low = new Int32Array(w).fill(-1);
+  for (let col = 0; col < w; col++) for (let row = h - 1; row >= 0; row--) if (a[(row * w + col) * 4 + 3] > 128) { low[col] = row; break; }
+  let cmin = -1, cmax = -1;
+  for (let col = 0; col < w; col++) if (low[col] >= 0) { if (cmin < 0) cmin = col; cmax = col; }
+  if (cmin < 0) throw new Error(hat.label + ' has no ink to measure.');
+  const { w: HW, h: HH, top: HT } = M.rig.HEAD;
+  const hx0 = (248 - HW) / 2 * sx;
+  const hx = (px) => (px - hx0) / (HW * sx), hy = (py) => (py / sx - HT) / HH;
+  const edges = [];
+  for (let i = 0; i < 43; i++) {
+    const col = Math.round(hx0 + (0.08 + i * 0.84 / 42) * HW * sx - f.left);
+    if (col < 0 || col >= w || low[col] < 0) continue;
+    edges.push(hy(f.top + low[col] + 1));
+  }
+  let edgeY = null;
+  if (edges.length) {
+    const s = edges.slice().sort((p, q) => p - q), pos = 0.1 * (s.length - 1), lo = Math.floor(pos);
+    edgeY = s[lo] + (s[Math.min(lo + 1, s.length - 1)] - s[lo]) * (pos - lo);
+  }
+  return { edgeY, x0: hx(f.left + cmin), x1: hx(f.left + cmax + 1), cover: edges.length / 43 };
+}
+
+function closeHairEdit() { HE.open = false; HE.undo = []; cancelAnimationFrame(HE.raf); $('hairEdit').style.display = 'none'; }
+
+$('bHairHat').addEventListener('click', async () => {
+  try { await openHairEdit(); } catch (e) { $('status').textContent = '! ' + e.message; }
+});
+$('heScope').addEventListener('change', () => { HE.scope = $('heScope').value; heLoadScope(); });
+$('heMode').addEventListener('click', () => {
+  HE.erase = !HE.erase;
+  $('heMode').textContent = HE.erase ? 'painting: remove hair' : 'painting: bring hair back';
+  $('heMode').classList.toggle('on', !HE.erase);
+  heDraw();
+});
+for (const id of ['heZoom', 'heHatAlpha', 'heBrush']) $(id).addEventListener('input', heDraw);
+$('heUndo').addEventListener('click', () => { const m = HE.undo.pop(); if (!m) return; HE.mask = m; HE.painted = true; heDraw(); });
+$('heClear').addEventListener('click', () => {
+  HE.undo.push(HE.mask.slice()); HE.mask = new Uint8Array(HE.W * HE.H); HE.painted = true;
+  $('heOut').textContent = 'all hair showing · Save to keep';
+  heDraw();
+});
+$('heRegen').addEventListener('click', async () => {
+  try {
+    const seat = await measureSeat(HE.hat);
+    const old = M.fit.hats[HE.hat.id] || {};
+    HE.undo.push(HE.mask.slice());
+    HE.seat = seat;
+    HE.mask = heRaster(autoOcclusion(HE.hat, HE.scope === 'pair' ? hairRegionsOf(HE.hair) : null, seat));
+    HE.fromAuto = true; HE.painted = false;
+    const f3 = (v) => (v == null ? '·' : v.toFixed(3));
+    $('heOut').textContent = headwearFitProfile(HE.hat).occlude
+      ? 'regenerated · seat ' + f3(old.edgeY) + ' → ' + f3(seat.edgeY) + ', width ' + f3(old.x0) + '…' + f3(old.x1) + ' → ' + f3(seat.x0) + '…' + f3(seat.x1)
+      : 'regenerated · open-top hat, the automatic shape hides no hair';
+    heDraw();
+  } catch (e) { $('heOut').textContent = '! ' + e.message; }
+});
+$('heCancel').addEventListener('click', closeHairEdit);
+$('heSave').addEventListener('click', async () => {
+  const hat = HE.hat, hair = HE.hair, covers = M.fit.hairCover[hat.id] || {};
+  const key = HE.scope === 'pair' ? hair.id : '*';
+  // Regenerated and left alone: drop the painted cover so the measured shape
+  // (with its fresh seat) takes over, unless a pair would then fall back to a
+  // hat-wide cover instead of the shape it was shown.
+  const toAuto = HE.fromAuto && !HE.painted && (HE.scope === '*' || !covers['*']);
+  if (toAuto && !HE.seat && !covers[key]) { closeHairEdit(); $('status').textContent = 'hair under hat: nothing changed'; return; }
+  $('heOut').textContent = 'saving…';
+  const cover = toAuto ? null : heTrace();
+  const j = await (await fetch('/hair-cover', { method: 'POST', body: JSON.stringify({ hat: hat.id, hair: key, cover, seat: HE.seat }) })).json();
+  if (!j.ok) { $('heOut').textContent = '! ' + (j.error || 'save failed'); return; }
+  closeHairEdit();
+  await boot(true);
+  $('status').textContent = 'hair under ' + hat.label + (key === '*' ? ' (every hairstyle)' : ' (' + hair.label + ')') + ': ' +
+    (j.removed ? 'back to the measured shape' : j.polygons + ' polygon(s)') + (j.seat ? ' · seat re-measured' : '') + ' → hairUnderHat.json';
+});
+
 for (const [r, n] of [['rw', 'nw'], ['rt', 'nt'], ['rd', 'nd'], ['rr', 'nr']]) {
   $(r).addEventListener('input', () => { $(n).value = $(r).value; fieldChanged(); });
   $(n).addEventListener('change', () => { $(r).value = $(n).value; fieldChanged(); });
@@ -1326,6 +1937,7 @@ for (const id of ['oGuides', 'oGhost', 'oSolo', 'oDark', 'oHatCrop']) $(id).addE
 
 function resetItem() {
   const item = itemById(slot, selId);
+  if (item && editingHatHair(slot)) return dropHatHair(item.id);
   if (!item || !OV[slot]) return;
   delete OV[slot][item.id];
   save(); render(); renderList();
@@ -1450,6 +2062,7 @@ function visibleItems() {
     if (q && !((it.label || '').toLowerCase().includes(q) || it.id.toLowerCase().includes(q))) return false;
     if ($('fEdited').checked && !edit(slot, it.id)) return false;
     if ($('fSuspect').checked && !suspect(slot, it)) return false;
+    if ($('fHidden').checked && !it.hidden) return false;
     return true;
   });
 }
@@ -1460,12 +2073,13 @@ function renderList() {
   for (const it of visibleItems()) {
     const src = imgOf(slot, it);
     const row = document.createElement('div');
-    row.className = 'row' + (it.id === selId ? ' on' : '');
+    row.className = 'row' + (it.id === selId ? ' on' : '') + (it.hidden ? ' hid' : '');
     row.innerHTML =
       (src ? '<img loading="lazy" src="/art/' + src + '" />' : '<img />') +
       '<div class="nm">' + (it.label || it.id) + '<div class="id">' + it.id + '</div></div>' +
       '<div class="badge">' + (edit(slot, it.id) ? '<span style="color:var(--accent)">●</span>' : '') +
-      (suspect(slot, it) ? ' <span style="color:var(--warn)">⚠</span>' : '') + '</div>';
+      (suspect(slot, it) ? ' <span style="color:var(--warn)">⚠</span>' : '') +
+      (it.hidden ? ' <span class="hidTag">hidden</span>' : '') + '</div>';
     row.addEventListener('click', () => select(slot, it.id));
     list.appendChild(row);
   }
@@ -1477,6 +2091,7 @@ function select(s, id) {
   slot = s;
   selId = id;
   equipped[s] = id;
+  if (s === 'hair') syncHairPos();
   renderTabs();
   renderList();
   renderSwatches();
@@ -1494,6 +2109,7 @@ function renderTabs() {
     b.addEventListener('click', () => {
       slot = key;
       selId = equipped[key] || (items(key)[0] || {}).id;
+      if (key === 'hair') syncHairPos();
       renderTabs(); renderList(); renderSwatches(); render();
     });
     tabs.appendChild(b);

@@ -220,8 +220,12 @@ const shopItems = new Map(
     .map((match) => [match[1], { slot: match[2], rarity: match[3] }])
 );
 const excludedUnlocks = new Set(['free', 'passOnly', 'premiumOnly']);
+// Items hidden from the app (src/config/hiddenCosmetics.js) are never sold.
+const hiddenBlock = fs.readFileSync(path.resolve('src/config/hiddenCosmetics.js'), 'utf8')
+  .split('// BEGIN HIDDEN')[1].split('// END HIDDEN')[0];
+const hiddenIds = new Set([...hiddenBlock.matchAll(/'([^']+)'/g)].map((m) => m[1]));
 const expectedShop = [...itemMeta.entries()].filter(([key, meta]) => (
-  !key.endsWith(':none') && !excludedUnlocks.has(meta.unlock)
+  !key.endsWith(':none') && !excludedUnlocks.has(meta.unlock) && !hiddenIds.has(key.split(':')[1])
 ));
 for (const [key, meta] of expectedShop) {
   const [slot, id] = key.split(':');
@@ -233,8 +237,8 @@ for (const [key, meta] of expectedShop) {
 }
 for (const [id, actual] of shopItems) {
   const meta = itemMeta.get(`${actual.slot}:${id}`);
-  if (!meta || excludedUnlocks.has(meta.unlock)) {
-    console.log(`SHOP LEAK ${actual.slot}:${id}: ${meta?.unlock || 'unknown item'}`);
+  if (!meta || excludedUnlocks.has(meta.unlock) || hiddenIds.has(id)) {
+    console.log(`SHOP LEAK ${actual.slot}:${id}: ${hiddenIds.has(id) ? 'hidden' : meta?.unlock || 'unknown item'}`);
     bad++;
   }
 }

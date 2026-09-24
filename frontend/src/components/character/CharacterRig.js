@@ -23,10 +23,10 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { ClipPath, Defs, Image as SvgImage, Polygon } from 'react-native-svg';
+import Svg, { ClipPath, Defs, Image as SvgImage, Path, Polygon } from 'react-native-svg';
 
 import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
-import { getHairOcclusion } from '../../config/headwearFit';
+import { getHairLayout, getHairOcclusion } from '../../config/headwearFit';
 import INK_BOUNDS from '../../config/itemInkBounds.json';
 import { useOnScreen, useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
@@ -216,9 +216,25 @@ function hairClipPoints(occlusion, frame, bodyW, bodyH) {
   ].map(([x, y]) => `${x},${y}`).join(' ');
 }
 
+// A hand-painted cover (config/hairCover.json) instead of the measured notch:
+// the whole frame with every cover polygon cut out of it. Even-odd, so the
+// polygons are holes in the frame, and a hole traced inside a cover (hair
+// painted back in the middle of it) is visible again.
+function hairCoverPath(cover, frame, bodyW, bodyH) {
+  const r = (v) => Math.round(v * 100) / 100;
+  let d = `M0 0H${r(frame.width)}V${r(frame.height)}H0Z`;
+  for (const poly of cover) {
+    d += poly
+      .map(([x, y], i) => `${i ? 'L' : 'M'}${r(headX(x, bodyW) - frame.left)} ${r(headFrac(y) * bodyH - frame.top)}`)
+      .join('') + 'Z';
+  }
+  return d;
+}
+
 function OccludedHair({ img, occlusion, frame, bodyW, bodyH, swap, entered, onSwapIn }) {
   const clipId = React.useId();
-  const points = hairClipPoints(occlusion, frame, bodyW, bodyH);
+  const points = occlusion.cover ? null : hairClipPoints(occlusion, frame, bodyW, bodyH);
+  const coverPath = occlusion.cover ? hairCoverPath(occlusion.cover, frame, bodyW, bodyH) : null;
 
   // The same swap-detection SwapLayer does for every other layer (see its own
   // comment above), inlined because there is only one image element to watch
@@ -245,7 +261,7 @@ function OccludedHair({ img, occlusion, frame, bodyW, bodyH, swap, entered, onSw
     >
       <Defs>
         <ClipPath id={clipId}>
-          <Polygon points={points} />
+          {coverPath ? <Path d={coverPath} clipRule="evenodd" /> : <Polygon points={points} />}
         </ClipPath>
       </Defs>
       <SvgImage
@@ -490,7 +506,7 @@ export function figureBounds(equippedProp) {
     accessory: getItem('accessory', equipped.accessory || 'none'),
   };
   const occ = getHairOcclusion(it.headwear, it.hair);
-  if (!occ?.hide) take(layerReach(itemImage('hair', it.hair, equipped), 'hair', null, it.hair.layout, inkBox('hair', it.hair)));
+  if (!occ?.hide) take(layerReach(itemImage('hair', it.hair, equipped), 'hair', null, getHairLayout(it.headwear, it.hair), inkBox('hair', it.hair)));
   take(layerReach(itemImage('headwear', it.headwear, equipped), 'headwear', null, it.headwear.layout, inkBox('headwear', it.headwear)));
   take(layerReach(itemImage('glasses', it.glasses, equipped), 'glasses', null, it.glasses.layout, inkBox('glasses', it.glasses)));
   take(layerReach(itemImage('top', it.top, equipped), 'top', it.top.fit, it.top.layout, inkBox('top', it.top)));
@@ -695,6 +711,9 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
   // never reads the hair: so one hat sits at the same skull position under
   // every style, and only the hair visible around it changes.
   const hairOcclusion = getHairOcclusion(it.headwear, it.hair);
+  // Where the hair sits under this hat, which can differ from where it sits
+  // bare-headed (config/headwearFit.js getHairLayout).
+  const hairLayout = getHairLayout(it.headwear, it.hair);
 
   // Accessories carry a z: wings/capes/packs go BEHIND the body, medals/vests
   // in front of the top garment.
@@ -759,7 +778,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
           </>
         )}
         {behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} occlusion={hairOcclusion} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={hairLayout} occlusion={hairOcclusion} {...layerBox} />
         )}
         {behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
@@ -834,7 +853,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
             hair and tied hair falling out from under its edge. Open-top
             pieces (visor, headband, headphones) keep all of it. */}
         {!behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={it.hair.layout} occlusion={hairOcclusion} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={hairLayout} occlusion={hairOcclusion} {...layerBox} />
         )}
         {!behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />

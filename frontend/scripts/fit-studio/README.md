@@ -26,6 +26,48 @@ then open http://localhost:5178.
 The ⚠ marker in the item list flags art pushed a long way off centre — nearly
 always a bad cut rather than a deliberate look.
 
+## Hair under a hat
+
+With a hat and a hairstyle both worn, two things can be set in
+`src/config/hairUnderHat.json` (read by `src/config/headwearFit.js`, so the app
+draws exactly what the studio shows):
+
+- **Where the hair sits.** On the hair tab, *position* picks what a drag moves:
+  **no hat** (the hairstyle's own catalogue layout, as ever), **every hat** (its
+  position under any crown-covering hat) or **this hat only** (under the worn
+  hat, which wins over every hat and also works on open-top pieces). The
+  with-hat positions save as you drag; `0` or *Remove this with-hat position*
+  drops one. Only the hair moves: the hat stays on the skull and the crop stays
+  where the hat is.
+- **Which hair the hat hides.** *Hair under hat…* paints it with the hat on:
+  pink is hidden, brush to hide more, `alt`/right button to bring hair back, `h`
+  hat on/off. Save it for *every hairstyle under this hat* or *only this one*.
+  **Regenerate** re-measures the hat's seat from its art where it sits now (the
+  same maths as `scripts/measure-headwear-fit.py`) and rebuilds the hidden hair
+  from it; saving that untouched drops the painted cover, goes back to the
+  automatic shape and writes the fresh seat into `headwearFit.json`.
+
+Both files are backed up to `backups/hair-under-hat/<stamp>/` the first time a
+server run rewrites them.
+
+## Hiding an item
+
+**Hide from app** (or **Show in app** to undo) keeps the item in the
+catalogue but stops the app offering it: the Avatar Studio grid, the first-run
+rack, the coin shop, loot boxes and the random-outfit dice all skip it. Anyone
+already wearing it still renders, and the Avatar Studio keeps it in their grid
+while it is on. The list lives in `src/config/hiddenCosmetics.js`, and the
+server's shop catalogue is regenerated on every change.
+
+Reach for this before **Delete**: a hidden item can come back with one click,
+and nothing that names it (pass rewards, saved outfits, tests) breaks. The
+panel says when hiding would still leave the item somewhere: a pass or PRO
+reward is still paid out by its ladder, and a default is still what new
+runners start in. Tick **hidden** above the list to see only hidden items.
+
+The shop needs a backend deploy to stop selling a newly hidden item; until
+then the app itself leaves it off the shelf.
+
 ## Deleting an item
 
 **Delete item** drops the selected item's line from the catalogue, and with

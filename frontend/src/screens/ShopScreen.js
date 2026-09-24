@@ -44,6 +44,7 @@ import { brand, nbInk, space, useTheme, useThemedType } from '../theme';
 import RewardReveal from '../components/RewardReveal';
 import { BackButton, Button, PANEL_INK } from '../components/ui';
 import { getItem, SLOTS } from '../config/cosmetics';
+import { isHiddenId } from '../config/hiddenCosmetics';
 import { RARITY_COLOR } from '../components/RewardArt';
 import BuyEnergySheet from '../components/BuyEnergySheet';
 import PitStopScene from '../components/shop/PitStopScene';
@@ -118,7 +119,11 @@ export default function ShopScreen() {
   // The server owns rotation and prices; the client adds its stat/pass unlock
   // knowledge so the shop never offers a Buy button for an already-equippable
   // item. Sort by rarity, then wearable slot, then the visible name.
+  // Hidden items (hiddenCosmetics.js) are dropped here as well as from the
+  // server's catalogue, so a backend that has not been redeployed since an
+  // item was hidden still cannot put it on the shelf.
   const items = useMemo(() => (data?.items || [])
+    .filter((item) => !isHiddenId(item.item_id))
     .map((item) => {
       const cat = getItem(item.slot, item.item_id);
       return { ...item, cat, owned: item.owned || (!!cat && isUnlocked(cat)) };

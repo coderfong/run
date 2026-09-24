@@ -16,10 +16,8 @@ PRICE_BY_RARITY = {
 # check-catalog.js), so a flat map is safe and keeps lookups simple.
 SHOP_ITEMS = {
     # --- accessory ---
-    "starnecklace": ("accessory", "rare"),  # Star pendant
     "greenscarf": ("accessory", "common"),  # Knit scarf
     "tealscarf": ("accessory", "common"),  # Winter scarf
-    "dogtags": ("accessory", "rare"),  # Dog tags
     "pearlcollar": ("accessory", "rare"),  # Pearl collar
     "pearls": ("accessory", "common"),  # Pearl strand
     "charmchain": ("accessory", "common"),  # Charm chain
@@ -37,19 +35,10 @@ SHOP_ITEMS = {
     # --- bottom ---
     "wb065": ("bottom", "rare"),  # Yellow cargo shorts
     # --- face ---
-    "wink": ("face", "common"),  # Wink
-    "tongueout": ("face", "common"),  # Cheeky
-    "stareyes": ("face", "rare"),  # Star eyes
-    "sleepy": ("face", "rare"),  # Sleepy
-    "hearteyes": ("face", "rare"),  # Dizzy
     "exhausted": ("face", "rare"),  # Cooked
-    "blush": ("face", "epic"),  # Blush
     "smirk": ("face", "common"),  # Smirk
     "beam": ("face", "common"),  # Beaming
     "angry": ("face", "common"),  # Angry
-    "joy": ("face", "common"),  # Joy
-    "sob": ("face", "rare"),  # Sob
-    "sly": ("face", "rare"),  # Sly
     # --- footwear ---
     "wf015": ("footwear", "rare"),  # Black knit runners
     "wf020": ("footwear", "rare"),  # Lavender sneakers
@@ -93,10 +82,7 @@ SHOP_ITEMS = {
     "bigafro": ("hair", "rare"),  # Big afro
     "highbun": ("hair", "rare"),  # High bun
     # --- headwear ---
-    "beanie": ("headwear", "common"),  # Beanie
     "snapback": ("headwear", "common"),  # Backwards cap
-    "bucket": ("headwear", "common"),  # Bucket hat
-    "visor": ("headwear", "rare"),  # Visor
     "skatehelmet": ("headwear", "rare"),  # Skate helmet
     "hardhat": ("headwear", "rare"),  # Hard hat
     "frogbeanie": ("headwear", "rare"),  # Frog beanie
@@ -104,7 +90,6 @@ SHOP_ITEMS = {
     "antlers": ("headwear", "rare"),  # Antlers
     "aviatorcap": ("headwear", "rare"),  # Aviator cap
     "chefhat": ("headwear", "rare"),  # Chef hat
-    "cowboyhat": ("headwear", "rare"),  # Cowboy hat
     "piratehat": ("headwear", "epic"),  # Pirate hat
     "headdress": ("headwear", "epic"),  # Feather crown
     "gradcap": ("headwear", "rare"),  # Grad cap
@@ -130,35 +115,19 @@ SHOP_ITEMS = {
     "bowcap": ("headwear", "common"),  # Bow cap
     "maidband": ("headwear", "common"),  # Maid band
     "angelheart": ("headwear", "epic"),  # Angel heart
-    "ballcap": ("headwear", "common"),  # Ball cap
-    "canvasbucket": ("headwear", "common"),  # Canvas bucket
     "headphones": ("headwear", "rare"),  # Headphones
-    "sitehelmet": ("headwear", "rare"),  # Site helmet
     "witchhat": ("headwear", "epic"),  # Witch hat
     "puffmuffs": ("headwear", "common"),  # Puff earmuffs
-    "flatsnap": ("headwear", "common"),  # Flat snapback
-    "gardenhat": ("headwear", "common"),  # Garden hat
     "wideband": ("headwear", "common"),  # Wide band
     "tiedbandana": ("headwear", "common"),  # Tied bandana
-    "jeweltiara": ("headwear", "epic"),  # Jewel tiara
     "tophat": ("headwear", "epic"),  # Top hat
-    "fedora": ("headwear", "rare"),  # Fedora
-    "cowpokehat": ("headwear", "rare"),  # Cowpoke hat
     "cheftoque": ("headwear", "rare"),  # Chef toque
-    "mortarboard": ("headwear", "rare"),  # Mortarboard
-    "bloomcrown": ("headwear", "common"),  # Bloom crown
     "rabbitears": ("headwear", "common"),  # Rabbit ears
     "tricorn": ("headwear", "epic"),  # Tricorn
-    "flightcap": ("headwear", "rare"),  # Flight cap
     "firehelmet": ("headwear", "rare"),  # Fire helmet
-    "golfcap": ("headwear", "common"),  # Golf cap
     "trapperhat": ("headwear", "rare"),  # Trapper hat
     "unicornhorn": ("headwear", "epic"),  # Unicorn horn
-    "haloring": ("headwear", "legendary"),  # Halo ring
     "loveboppers": ("headwear", "common"),  # Love boppers
-    "officercap": ("headwear", "rare"),  # Officer cap
-    "navycap": ("headwear", "common"),  # Navy cap
-    "ribboncap": ("headwear", "common"),  # Ribbon cap
     "scrumcap": ("headwear", "rare"),  # Scrum cap
     "sunbowhat": ("headwear", "common"),  # Sun hat
     "santahat": ("headwear", "rare"),  # Santa hat
@@ -166,19 +135,11 @@ SHOP_ITEMS = {
     "headwrap": ("headwear", "rare"),  # Head wrap
     "vikinghelm": ("headwear", "epic"),  # Viking helm
     "mobcap": ("headwear", "common"),  # Mob cap
-    "clochehat": ("headwear", "common"),  # Cloche hat
     "bowwrap": ("headwear", "common"),  # Bow wrap
     "minerhelmet": ("headwear", "rare"),  # Miner helmet
     "fez": ("headwear", "rare"),  # Fez
-    "paradeshako": ("headwear", "epic"),  # Parade shako
-    "jestercap": ("headwear", "epic"),  # Jester cap
-    "weddingveil": ("headwear", "epic"),  # Wedding veil
     "scallopband": ("headwear", "common"),  # Scallop band
-    "pinupwrap": ("headwear", "common"),  # Pin up wrap
     "derbyhat": ("headwear", "common"),  # Derby hat
-    "laurelcrown": ("headwear", "epic"),  # Laurel crown
-    "samuraihelm": ("headwear", "epic"),  # Samurai helm
-    "skullcap": ("headwear", "common"),  # Skull cap
     "boaterhat": ("headwear", "common"),  # Boater hat
     "pearltiara": ("headwear", "rare"),  # Pearl tiara
     "swimcap": ("headwear", "common"),  # Swim cap

@@ -20,7 +20,7 @@ const CONFIG = path.join(FRONTEND, 'src', 'config');
 const RIG_FILE = path.join(FRONTEND, 'src', 'components', 'character', 'CharacterRig.js');
 const HEADWEAR_FIT_FILE = path.join(CONFIG, 'headwearFit.json');
 
-const CATALOG_FILES = ['cosmetics.js', 'cosmeticsArt.js', 'outfitItems.js', 'hairSheetItems.js', 'curatedCosmetics.js'];
+const CATALOG_FILES = ['cosmetics.js', 'cosmeticsArt.js', 'outfitItems.js', 'hairSheetItems.js', 'curatedCosmetics.js', 'hiddenCosmetics.js'];
 
 // Which source file owns each item — that is where a fit gets written back.
 export const SOURCE_FILES = {
@@ -77,7 +77,7 @@ async function loadCatalog() {
     src = src.replace(/require\((['"])(.*?)\1\)/g, (_m, _q, spec) =>
       JSON.stringify(rel(path.resolve(CONFIG, spec)))
     );
-    src = src.replace(/from '\.\/(cosmeticsArt|outfitItems|hairSheetItems|curatedCosmetics)'/g, "from './$1.mjs'");
+    src = src.replace(/from '\.\/(cosmeticsArt|outfitItems|hairSheetItems|curatedCosmetics|hiddenCosmetics)'/g, "from './$1.mjs'");
     fs.writeFileSync(path.join(tmp, file.replace(/\.js$/, '.mjs')), src, 'utf8');
   }
   const mod = await import(`${url.pathToFileURL(path.join(tmp, 'cosmetics.mjs'))}?t=${Date.now()}`);
@@ -107,6 +107,14 @@ export async function buildManifest() {
     fromOutfits.has(id) ? 'outfits' : fromHairSheets.has(id) ? 'hairSheets' : fromCurated.has(id) ? 'curated' : 'cosmetics';
 
   const slots = mod.SLOTS.map(({ key, label }) => ({ key, label }));
+  // Hidden from the app (hiddenCosmetics.js; hide-item.mjs writes it). Read
+  // here rather than imported, since hide-item.mjs imports this module.
+  const hiddenSrc = fs.readFileSync(path.join(CONFIG, 'hiddenCosmetics.js'), 'utf8');
+  const hidden = new Set([...hiddenSrc.split('// BEGIN HIDDEN')[1].split('// END HIDDEN')[0].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  // Anything that makes hiding an item surprising: a pass or PRO reward is
+  // still paid out by its ladder, and a default is still what a new runner
+  // starts in.
+  const defaults = new Set(Object.values(mod.DEFAULT_EQUIPPED || {}));
   const items = {};
   for (const { key } of slots) {
     items[key] = (mod.ITEMS[key] || []).map((item) => {
@@ -143,6 +151,9 @@ export async function buildManifest() {
       bulky: !!item.bulky,
       rarity: item.rarity || null,
       bodyOverride: fs.existsSync(override) ? rel(override) : null,
+      hidden: hidden.has(item.id),
+      reward: item.unlock?.pass ? 'pass' : item.unlock?.premium ? 'PRO' : null,
+      isDefault: defaults.has(item.id),
     });
     });
   }
@@ -152,7 +163,12 @@ export async function buildManifest() {
     // The same seat-line data src/config/headwearFit.js reads, so a hat's
     // hair crop in the studio is computed by the identical function as the
     // rig rather than approximated — see index.html's hairOcclusion().
-    fit: JSON.parse(fs.readFileSync(HEADWEAR_FIT_FILE, 'utf8')),
+    // Hair under a hat (hairUnderHat.json) rides along as `fit.hairCover`
+    // (painted covers) and `fit.hairLayout` (with-hat hair positions).
+    fit: (() => {
+      const under = JSON.parse(fs.readFileSync(path.join(CONFIG, 'hairUnderHat.json'), 'utf8'));
+      return { ...JSON.parse(fs.readFileSync(HEADWEAR_FIT_FILE, 'utf8')), hairCover: under.cover, hairLayout: under.layout };
+    })(),
     slots,
     items,
     body: mod.BODY_IMG,

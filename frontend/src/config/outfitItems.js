@@ -48,9 +48,9 @@ export const OUTFIT_TOPS = [
   { id: 'k5t', label: 'Pink crop tee', family: 'Crop tee', colorway: 'Pink', img: require('../../assets/character/outfit/ofT105.png'), layout: { w: 0.9933, top: 0.3353, dx: 0.0067 }, rarity: 'common', unlock: free },
   { id: 'k8t', label: 'Lilac half zip', family: 'Half zip', colorway: 'Lilac', img: require('../../assets/character/outfit/ofT108.png'), layout: { w: 1.05, top: 0.2868, dx: -0.0017 }, rarity: 'common', unlock: free },
   { id: 'k9t', label: 'Blush block hoodie', family: 'Block hoodie', colorway: 'Blush', img: require('../../assets/character/outfit/ofT109.png'), layout: { w: 1.05, top: 0.2735, dx: 0.0033 }, rarity: 'common', unlock: free },
-  { id: 'k10t', label: 'Navy varsity jacket', family: 'Varsity jacket', colorway: 'Navy', img: require('../../assets/character/outfit/ofT110.png'), layout: { w: 1.04, top: 0.298, dx: -0.005 }, rarity: 'legendary', unlock: premiumOnly },
+  { id: 'k10t', label: 'Navy varsity jacket', family: 'Varsity jacket', colorway: 'Navy', img: require('../../assets/character/outfit/ofT110.png'), layout: { w: 1.0167, top: 0.3135, dx: 0.0033 }, rarity: 'legendary', unlock: premiumOnly },
   { id: 'k12t', label: 'Blush crop jacket', family: 'Crop jacket', colorway: 'Blush', img: require('../../assets/character/outfit/ofT112.png'), layout: { w: 1.1134, top: 0.283, dx: 0.02 }, rarity: 'rare', unlock: runs(15, 'Finish 15 runs') },
-  { id: 'k14t', label: 'Grey crop puffer', family: 'Crop puffer', colorway: 'Grey', img: require('../../assets/character/outfit/ofT114.png'), layout: { w: 1.1933, top: 0.2714, dx: 0.0034 }, rarity: 'common', unlock: free },
+  { id: 'k14t', label: 'Grey crop puffer', family: 'Crop puffer', colorway: 'Grey', img: require('../../assets/character/outfit/ofT114.png'), layout: { w: 1.1933, top: 0.2727, dx: 0.0134 }, rarity: 'common', unlock: free },
   // --- PASER running cosmetics (2026-09-17) ---
   // Top items commented out - assets not yet available
 ];

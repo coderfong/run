@@ -14,6 +14,7 @@ import { StyleSheet } from 'react-native';
 import CharacterRig from '../src/components/character/CharacterRig';
 import { ITEMS, getItem } from '../src/config/cosmetics';
 import FIT from '../src/config/headwearFit.json';
+import UNDER_HAT from '../src/config/hairUnderHat.json';
 import { getHairOcclusion, getHeadwearCategory } from '../src/config/headwearFit';
 import { Image } from '../src/ui/image';
 
@@ -59,6 +60,8 @@ describe('headwear fit data', () => {
     for (const id of ['cap', 'cur_truckercap', 'beanie', 'cur_knitbeanie', 'cur_buckethat', 'cur_beret']) {
       const seats = new Set(
         ['curtains', 'bluntbob', 'sleeklong', 'bigafro', 'hs26', 'braids', 'spacebuns', 'highpony']
+          // A pair painted in the Fit Studio is the one deliberate exception.
+          .filter((hid) => !(UNDER_HAT.cover[id] || {})[hid])
           .map((hid) => JSON.stringify(getHairOcclusion(hat(id), hair(hid))))
       );
       expect([id, seats.size]).toEqual([id, 1]);

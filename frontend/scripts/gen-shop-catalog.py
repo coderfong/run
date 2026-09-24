@@ -12,6 +12,8 @@ Excluded from the shop:
   * passOnly items — free-track rewards must still be new when claimed.
   * free starter items — charging for something already equippable is wrong.
   * 'none' entries — the empty-slot placeholders.
+  * hidden items — listed in src/config/hiddenCosmetics.js (the Fit Studio's
+    "Hide from app"), so the server never puts them on the shelf.
 
 Run from frontend/:  python scripts/gen-shop-catalog.py
 """
@@ -35,6 +37,11 @@ OUT = os.path.abspath(os.path.join(FE, "..", "backend", "app", "shop_catalog.py"
 # a common is ~6 runs, a legendary is a real goal rather than an impulse buy.
 PRICE = {"common": 150, "rare": 400, "epic": 900, "legendary": 2000}
 
+# Ids hidden from the app, one quoted id per line between the markers.
+_hidden_src = open(os.path.join(FE, "src", "config", "hiddenCosmetics.js"), encoding="utf-8").read()
+_hidden_block = _hidden_src.split("// BEGIN HIDDEN", 1)[1].split("// END HIDDEN", 1)[0]
+HIDDEN = set(re.findall(r"'([^']+)'", _hidden_block))
+
 src = open(SRC, encoding="utf-8").read()
 
 items = []
@@ -45,7 +52,7 @@ for m in re.finditer(r"\n  (\w+): \[([\s\S]*?)\n  \],", src):
         if not mid:
             continue
         iid = mid.group(1)
-        if iid == "none":
+        if iid == "none" or iid in HIDDEN:
             continue
         if any(marker in line for marker in ("unlock: free", "passOnly", "premiumOnly")):
             continue                      # already owned or reserved for a pass track
@@ -61,7 +68,7 @@ for arr, slot in PUSHED.items():
         raise SystemExit(f"{arr} not found in outfitItems.js")
     for line in osrc[start:end].splitlines():
         mid = re.search(r"id: '([^']+)'", line)
-        if not mid or mid.group(1) == "none":
+        if not mid or mid.group(1) == "none" or mid.group(1) in HIDDEN:
             continue
         if any(marker in line for marker in ("unlock: free", "passOnly", "premiumOnly")):
             continue

@@ -72,7 +72,7 @@ export function pruneOrphanArt() {
   return { removed, partial };
 }
 
-function regenerateShopCatalog() {
+export function regenerateShopCatalog() {
   const script = path.join(FRONTEND, 'scripts', 'gen-shop-catalog.py');
   if (!fs.existsSync(script)) return { ran: false, note: 'gen-shop-catalog.py not found' };
   for (const exe of ['python', 'py', 'python3']) {

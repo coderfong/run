@@ -7,19 +7,22 @@ src/config/headwearFit.js, so hat + hair pairs can be judged offline.
     python scripts/headwear-fit-qa.py --swap cap      # one hat over every hair
     python scripts/headwear-fit-qa.py --mode legacy   # the first pass's single line
 
-The occlusion maths below is a line-for-line port of `getHairOcclusion` in
-headwearFit.js — change them together. Output: scripts/qa-headwear-fit/*.png
+The occlusion maths below ports `getHairOcclusion` and `getHairLayout` in
+headwearFit.js, including the Fit Studio's painted covers and with-hat hair
+positions from hairUnderHat.json. Change them together. Output: scripts/qa-headwear-fit/*.png
 """
 import argparse
 import json
 import os
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 OUT = os.path.join(ROOT, 'scripts', 'qa-headwear-fit')
 CAT = json.load(open(os.path.join(OUT, 'catalog.json')))
 FIT = json.load(open(os.path.join(ROOT, 'src', 'config', 'headwearFit.json')))
+UNDER_HAT = json.load(open(os.path.join(ROOT, 'src', 'config', 'hairUnderHat.json')))
 
 S = 2                        # render scale over the 248x640 body art
 BW, BH = 248 * S, 640 * S
@@ -96,6 +99,36 @@ def hair_cut(hat, hair):
     return dict(y=y, l=m.get('x0', -0.08), r=m.get('x1', 1.08), fall=prof['sideFall'])
 
 
+def hair_cover(hat, hair):
+    """Hand-painted cover from the Fit Studio (hairUnderHat.json `cover`), as
+    getHairOcclusion picks it: the pair's own, else the hat's '*' unless a
+    crown-gathered style is dropped by a closed hat. None when not painted."""
+    covers = UNDER_HAT['cover'].get(hat['id']) or {}
+    if hair['id'] in covers:
+        return covers[hair['id']]
+    cat = category(hat)
+    gathered = (FIT['hairRegions'].get(hair['id']) or {}).get('gathered') == 'crown'
+    if '*' in covers and not (cat and FIT['profiles'][cat].get('occlude') and gathered):
+        return covers['*']
+    return None
+
+
+def hair_layout(hat, hair):
+    """Port of `getHairLayout`: where the hair sits while this hat is worn."""
+    by = UNDER_HAT['layout'].get(hair['id']) if hat and hat['id'] != 'none' else None
+    cat = category(hat) if by else None
+    own = by and (by.get(hat['id']) or (by.get('*') if cat and FIT['profiles'][cat].get('occlude') else None))
+    if not own:
+        return hair['layout']
+    base = dict(hair['layout'] or {})
+    if own.get('top') is not None:
+        base.pop('cy', None)
+    if own.get('cy') is not None:
+        base.pop('top', None)
+    base.update(own)
+    return base
+
+
 def head_to_px(x, y):
     hx0 = (BW - HEAD['w'] * S) / 2
     return hx0 + x * HEAD['w'] * S, (HEAD['top'] + y * HEAD['h']) * S
@@ -130,9 +163,19 @@ def compose(hair_id, hat_id, hair_c=5, hat_c=0, glasses_id='none', mode='new'):
     paste(face, place(face, 'face', None))
 
     himg = art(hair, hair_c)
+    hlay = hair_layout(hat, hair)
+    cover = hair_cover(hat, hair) if mode != 'legacy' else None
     if himg:
         mask = None
-        if mode == 'legacy':
+        if cover is not None:
+            # Painted in the studio: everything but the cover polygons, even-odd.
+            hidden = np.zeros((canvas.height, canvas.width), dtype=np.uint8)
+            for poly in cover:
+                one = Image.new('L', canvas.size, 0)
+                ImageDraw.Draw(one).polygon([(x + pad_x, y + oy) for x, y in (head_to_px(*p) for p in poly)], fill=255)
+                hidden ^= np.asarray(one)
+            mask = Image.fromarray(255 - hidden)
+        elif mode == 'legacy':
             f = hat.get('fit') or {}
             if f.get('cropHair'):
                 y = f['crownCoverYBulky'] if hair['bulky'] else f['crownCoverY']
@@ -160,9 +203,9 @@ def compose(hair_id, hat_id, hair_c=5, hat_c=0, glasses_id='none', mode='new'):
                 seam = Image.new('L', canvas.size, 0)
                 ImageDraw.Draw(seam).polygon(poly(0, ink), fill=255)
                 inked = Image.new('RGBA', himg.size, (0, 0, 0, 255)); inked.putalpha(himg.getchannel('A'))
-                paste(inked, place(himg, 'hair', hair['layout']), seam)
+                paste(inked, place(himg, 'hair', hlay), seam)
         if himg:
-            paste(himg, place(himg, 'hair', hair['layout']), mask)
+            paste(himg, place(himg, 'hair', hlay), mask)
     if glasses_id != 'none':
         g = by_id('glasses', glasses_id); gi = art(g, 0)
         paste(gi, place(gi, 'glasses', g['layout']))

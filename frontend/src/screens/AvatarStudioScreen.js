@@ -45,6 +45,7 @@ import { RARITY_COLOR } from '../components/RewardArt';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
 import { PressableScale, PressableShift, Reveal, haptic } from '../ui/motion';
 import { toast } from '../ui/toast';
+import { listedItems } from '../config/hiddenCosmetics';
 import { useAvatar } from '../state/avatar';
 import { useClan } from '../state/clan';
 import CharacterRig, { BODY_RATIO, PartThumb } from '../components/character/CharacterRig';
@@ -245,7 +246,10 @@ export default function AvatarStudioScreen({ navigation, standalone = false, onD
   const [saving, setSaving] = useState(false);
 
   const slot = useMemo(() => SLOTS.find((s) => s.key === slotKey), [slotKey]);
-  const items = useMemo(() => ITEMS[slotKey] || [], [slotKey]);
+  // Hidden items (hiddenCosmetics.js) are not offered, except the piece
+  // being worn, which stays in the grid so it can be seen and swapped off.
+  const wornId = equipped[slotKey];
+  const items = useMemo(() => listedItems(ITEMS[slotKey], wornId), [slotKey, wornId]);
   const gridKeyExtractor = useCallback((item) => item.id, []);
 
   // A PASER PRO item being TRIED ON. Local to this screen and never persisted
