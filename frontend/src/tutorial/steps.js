@@ -84,10 +84,14 @@ export const STEPS = [
     kind: 'welcome',
     enterHaptic: 'light',
     // Home stays exactly where it is. No tab jump, no scroll: SHOW ME only
-    // swaps this card for a light on the LET'S RUN card underneath it.
+    // swaps this card for a light on the Start a run card underneath it.
     copy: () => ({
       title: 'Welcome to *PASER*',
-      lines: ['Run in the real world.', 'Claim the map.', 'Defend your land.', 'Climb the ranks.'],
+      lines: [
+        'Your run becomes claimable land.',
+        "Plan your claim. Defend what's yours.",
+        'Be the one true PASER.',
+      ],
     }),
   },
 
@@ -103,8 +107,8 @@ export const STEPS = [
     kind: 'card',
     copy: () => ({
       title: 'Run to *claim* land',
-      lines: ['Every completed run can become territory.'],
-      action: "Tap LET'S RUN",
+      lines: ['Your run becomes claimable land.'],
+      action: 'Tap Start a run',
     }),
     // The hero's own onPress opens the run screen. The step ends when that
     // screen is really up, however it got there.
@@ -125,8 +129,8 @@ export const STEPS = [
     copy: () => ({
       ack: "Let's go.",
       title: 'Start your run',
-      lines: ['PASER tracks your route. When you finish, it can become territory.'],
-      action: 'Tap START RUN',
+      lines: ['PASER tracks your route as you go.'],
+      action: 'Tap Start run',
     }),
     // Reported by the run screen when the runner presses Start and the demo
     // begins. Its Start button starts the demo, never a real run, while the
@@ -167,8 +171,8 @@ export const STEPS = [
     gate: (facts) => facts.running === true,
     copy: () => ({
       title: 'Finish your run',
-      lines: ['Your route is ready to become territory.'],
-      action: 'Tap FINISH DEMO RUN',
+      lines: ['Your route is ready to become *land*.'],
+      action: 'Tap Finish demo run',
     }),
     on: { [SIGNAL.RUN_FINISHED]: PHASE.CLAIM_POSITION },
   },
@@ -187,7 +191,7 @@ export const STEPS = [
     gate: claimOn('place'),
     copy: () => ({
       title: 'Move your *claim*',
-      lines: ['Slide this to choose where your territory lands.'],
+      lines: ['Pick where your land goes.'],
     }),
     // A real drag that ends somewhere other than where it started. A tap that
     // snaps back to the resting notch does not count.
@@ -206,10 +210,10 @@ export const STEPS = [
     kind: 'card',
     gate: claimOn('place'),
     copy: () => ({
-      ack: 'Nice. Your claim moves along your route.',
-      title: 'Now choose the angle',
+      ack: 'Nice.',
+      title: 'Now choose your angle',
       lines: [],
-      action: 'Tap CHOOSE ANGLE',
+      action: 'Tap Choose angle',
     }),
     // The claim screen owns which step its chooser is on, and publishes it.
     doneWhen: (facts) => facts.claimStep === 'rotate',
@@ -227,8 +231,8 @@ export const STEPS = [
     kind: 'card',
     gate: claimOn('rotate'),
     copy: () => ({
-      title: 'Choose the angle',
-      lines: ['Rotate your territory to fit where you want it.'],
+      title: 'Choose your angle',
+      lines: ['Turn it to fit your claim.'],
     }),
     on: { [SIGNAL.CLAIM_ROTATION_CHANGED]: PHASE.CLAIM_CONFIRM },
   },
@@ -247,8 +251,8 @@ export const STEPS = [
     copy: () => ({
       ack: 'Perfect.',
       title: '*Claim* your land',
-      lines: ["This demo won't use your real energy."],
-      action: 'Tap CLAIM',
+      lines: ['Just practice. No energy spent.'],
+      action: 'Tap Claim',
     }),
     on: { [SIGNAL.CLAIM_PLACED]: PHASE.CLAIM_SUCCESS },
   },
@@ -266,10 +270,10 @@ export const STEPS = [
     kind: 'payoff',
     enterHaptic: 'success',
     copy: (facts) => ({
-      title: 'Territory claimed!',
+      title: '*Land* claimed!',
       lines: [
-        facts.demoClaimM2 ? `*+${demoKm2(facts.demoClaimM2)}* new land` : '*New land* is yours.',
-        'This demo claim is just for practice.',
+        facts.demoClaimM2 ? `*+${demoKm2(facts.demoClaimM2)}* is yours` : '*New land* is yours.',
+        'Just practice, for now.',
       ],
     }),
   },
@@ -289,10 +293,7 @@ export const STEPS = [
     kind: 'card',
     copy: () => ({
       title: 'Now *defend* it',
-      lines: [
-        'Run through your territory again to make it stronger.',
-        "Other runners can take land that isn't defended.",
-      ],
+      lines: ['Run it again to defend it.', 'Undefended land is fair game.'],
     }),
   },
 
@@ -308,7 +309,7 @@ export const STEPS = [
     kind: 'card',
     copy: () => ({
       title: '*Rank* up',
-      lines: ['Holding more territory earns rank points.'],
+      lines: ['Hold more land. Climb higher.'],
     }),
   },
 

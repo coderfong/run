@@ -239,6 +239,7 @@ export default function RankClimb({
       <Animated.View pointerEvents="box-none" style={[styles.markerWrap, markerStyle]}>
         <RankMarker
           equipped={equipped}
+          rankKey={tierAt(now).key}
           points={
             dir === 0 || reduced ? fmtPoints(change.after) : (
               <CountUpText

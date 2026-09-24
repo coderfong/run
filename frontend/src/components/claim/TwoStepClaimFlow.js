@@ -734,7 +734,7 @@ export default function TwoStepClaimFlow({
           index={2}
           accent={accent}
           title="Choose angle"
-          body="Rotate your territory to get the position you want."
+          body="Rotate to lock in your claim."
         />
         {coach.active && <CoachTip text="Drag the dial or tap an arrow to rotate it." accent={accent} />}
         <AngleDial
@@ -772,7 +772,7 @@ export default function TwoStepClaimFlow({
         index={1}
         accent={accent}
         title="Choose where"
-        body="Move your territory along your run."
+        body="Move your claim along your run."
       />
       {coach.active && !moved && <CoachTip text="Slide to move your claim along your run." accent={accent} />}
       {coach.active && watchTip && <CoachTip text="Watch the shape move on the map." accent={accent} />}

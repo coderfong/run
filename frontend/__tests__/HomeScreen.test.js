@@ -90,7 +90,12 @@ jest.mock('../src/pro/ProProvider', () => ({
 // in react-test-renderer.
 jest.mock('../src/effects/ReactionEffect', () => 'ReactionEffect');
 
-import { FlatList, StyleSheet, Text } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, Text } from 'react-native';
+import Framed from '../src/components/ui/Framed';
+
+// Every string the tree draws, one per Text node.
+const texts = (tree) =>
+  tree.root.findAllByType(Text).map((n) => [].concat(n.props.children ?? []).join(''));
 import { NavigationContext } from '@react-navigation/native';
 
 import HomeScreen from '../src/screens/HomeScreen';
@@ -603,12 +608,15 @@ describe('feed card header', () => {
     // The escape hatch: when both sides cannot fit, the header breaks.
     expect(header.flexWrap).toBe('wrap');
 
-    // Enough for the portrait and the longer of the two lines.
+    // Enough for the portrait and a readable name and timestamp.
     expect(identity.minWidth).toBeGreaterThanOrEqual(150);
     expect(identity.flexGrow).toBe(1);
-    // `flex: 1` here would zero the basis, and the wrap is decided on basis —
-    // a zero-basis identity always "fits", so the header would never break.
-    expect(identity.flexBasis).toBeUndefined();
+    // The line breaks on the basis CLAMPED BY minWidth (CSS and Yoga agree), so
+    // a zero basis with a floor breaks exactly when the name would drop under
+    // the floor. An `auto` basis broke on the text's full natural width, which
+    // sent the buttons to a second line on every row of a 375pt phone.
+    expect(identity.flexBasis).toBe(0);
+    expect(identity.minWidth).toBeLessThanOrEqual(170);
 
     // 40pt is the smallest a thumb can hit, so the buttons hold their size and
     // sit against the right edge on whichever line they end up on.
@@ -670,7 +678,7 @@ describe('the Home street', () => {
     await act(async () => {});
 
     const rail = tree.root.findByType(SideRail);
-    expect(rail.props.inline).toBe(true);
+    expect(rail.props.paged).toBe(true);
 
     // Each word is INSIDE a button, not beside it — a label the thumb misses
     // is a label that lies about where to press.
@@ -683,10 +691,76 @@ describe('the Home street', () => {
       );
     // A tile may carry a badge as well as its word, so each button is asked to
     // CONTAIN its name rather than to be only that.
-    for (const word of ['Missions', 'Rewards', 'Shop', 'Rivals', 'Crossroads']) {
+    for (const word of ['Missions', 'Rewards', 'Shop', 'Rivals', 'Crossroads', 'Pasers']) {
       expect(buttons.some((inside) => inside.includes(word))).toBe(true);
     }
 
+    act(() => tree.unmount());
+  });
+
+  // SIX SHORTCUTS, TWO PAGES OF THREE, SWIPED. Page one is the daily loop,
+  // page two the social one. Paged (snapping a whole page), never a free
+  // strip with half a tile hanging off the edge, and no second row of pills
+  // under it for the two that did not fit.
+  it('pages the shortcuts three at a time, in order', async () => {
+    const tree = mount();
+    await act(async () => {});
+
+    const rail = tree.root.findByType(SideRail);
+    const strip = rail.findByType(ScrollView);
+    expect(strip.props.horizontal).toBe(true);
+    expect(strip.props.pagingEnabled).toBe(true);
+
+    const pages = strip.props.children.map((page) => page.props.children.map((tile) => tile.props.label));
+    expect(pages).toEqual([
+      ['Missions', 'Rewards', 'Shop'],
+      ['Rivals', 'Crossroads', 'Pasers'],
+    ]);
+    // Nothing but the six tiles is a button in the rail: the Rivals and
+    // Crossroads pills that used to sit under the row are gone.
+    const buttons = new Set(
+      rail.findAll((n) => n.props?.accessibilityRole === 'button').map((n) => n.props.accessibilityLabel)
+    );
+    expect(buttons.size).toBe(6);
+
+    // Pasers opens the friends showcase on Home's own stack.
+    const pasers = rail.find((n) => n.props?.accessibilityRole === 'button' && /^Pasers/.test(n.props.accessibilityLabel || ''));
+    act(() => pasers.props.onPress());
+    expect(navigation.navigate).toHaveBeenCalledWith('Pasers');
+
+    act(() => tree.unmount());
+  });
+
+  // The hero lost its second headline and a lot of its height, and every card
+  // in it is one box: same height, same drawn frame, same pose.
+  it('draws every hero card as the same, shorter box', async () => {
+    const tree = mount();
+    await act(async () => {});
+    const all = texts(tree).join('|');
+    expect(all).not.toContain("LET'S RUN");
+    expect(all).not.toContain('THE BOARD');
+    expect(all).toContain("THERE'S LAND TO CLAIM");
+    expect(all).toContain('LEADERBOARD');
+
+    const heroes = tree.root.findAll(
+      (n) => n.type === Framed && n.props.pose != null && n.props.weight != null && typeof n.props.style?.height === 'number'
+    );
+    expect(heroes.length).toBeGreaterThanOrEqual(2);
+    const heights = new Set(heroes.map((h) => h.props.style.height));
+    const frames = new Set(heroes.map((h) => `${h.props.frame}:${h.props.pose}`));
+    expect(heights.size).toBe(1);
+    expect(frames.size).toBe(1);
+    expect([...heights][0]).toBeLessThan(188);
+
+    act(() => tree.unmount());
+  });
+
+  it('titles the feed "Your feed"', async () => {
+    const tree = mount();
+    await act(async () => {});
+    const all = texts(tree);
+    expect(all).toContain('Your feed');
+    expect(all.join('|')).not.toContain('Friends are claiming territory');
     act(() => tree.unmount());
   });
 
@@ -726,6 +800,15 @@ describe('the Home street', () => {
   // 0.2 of tracking on ten letters is "Crossroads"; the slot is the row split
   // five ways. Checked across the phone widths the app ships to, including the
   // 320pt floor where the clamp holds rather than the formula.
+  it('keeps the hero between its clamps on every phone', () => {
+    const { heroHeightFor } = require('../src/screens/HomeScreen');
+    for (const width of [320, 360, 375, 390, 393, 414, 430]) {
+      const h = heroHeightFor(width - 40);
+      expect(h).toBeGreaterThanOrEqual(134);
+      expect(h).toBeLessThanOrEqual(152);
+    }
+  });
+
   it('picks a shortcut size that clears the slot on every phone', () => {
     const crossroadsAt = (size) => 5.59 * size + 0.2 * 10;
     for (const width of [320, 360, 375, 390, 393, 414, 430]) {

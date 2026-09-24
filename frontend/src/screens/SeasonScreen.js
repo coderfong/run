@@ -37,8 +37,7 @@ import {
   ToonHeader,
 } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
-import PortraitBorder from '../components/PortraitBorder';
-import { CharacterBust } from '../components/character/CharacterRig';
+import RankedAvatar from '../components/identity/RankedAvatar';
 import { RankCrest, RunnerFigure } from '../components/identity/PlayerIdentity';
 import { useAvatar } from '../state/avatar';
 import { Arrival, PressableScale, useArrival } from '../ui/motion';
@@ -512,25 +511,22 @@ export default function SeasonScreen({ navigation, route }) {
 // way every other player surface in the app draws them (FeedCard, PasersScreen,
 // RivalCard). Initials only when the account has no avatar yet.
 //
-// PortraitBorder sizes itself to the RING, which on an ornate tier is wider
-// than the portrait inside it — so there is no fixed box around it here. A
-// 40pt clipping wrapper would shear the frame's crown off, and that is exactly
-// the detail the tier is for.
-function RunnerPortrait({ username, avatar, rankKey, color, styles, type }) {
+// The shared RankedAvatar: one square for every row, the frame centred on the
+// face, and an account with no avatar yet gets its initials on the same disc
+// in the same frame — so a board of mixed accounts keeps one name edge and one
+// row height. (The initials used to be a bare circle a different size from
+// the framed portraits beside them.)
+function RunnerPortrait({ username, avatar, rankKey, color }) {
   const { colors } = useTheme();
-  if (!avatar) {
-    return (
-      <View style={[styles.avatar, { backgroundColor: color.fill, borderColor: color.stroke }]}>
-        <Text style={[type.bodySmBold, { color: color.stroke }]}>
-          {(username || '?').slice(0, 2).toUpperCase()}
-        </Text>
-      </View>
-    );
-  }
   return (
-    <PortraitBorder borderKey={rankKey || 'wood'} size={PORTRAIT}>
-      <CharacterBust equipped={avatar} size={PORTRAIT} bg={colors.cardAlt} />
-    </PortraitBorder>
+    <RankedAvatar
+      equipped={avatar || null}
+      rankKey={rankKey}
+      size={PORTRAIT}
+      bg={avatar ? colors.cardAlt : color.fill}
+      initials={avatar ? null : username || '?'}
+      initialsColor={color.stroke}
+    />
   );
 }
 
@@ -568,17 +564,6 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
   podiumFirst: { marginBottom: space.md },
   podiumRunner: { alignItems: 'center', justifyContent: 'flex-end', marginBottom: 4 },
   podiumCrest: { position: 'absolute', right: -6, bottom: -2 },
-  // The initials fallback for a runner with no avatar yet. Sized to PORTRAIT,
-  // which is also the diameter RunnerPortrait draws a real bust at, so a board
-  // of mixed accounts has one row height.
-  avatar: {
-    width: PORTRAIT,
-    height: PORTRAIT,
-    borderRadius: PORTRAIT / 2,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 
   // --- header controls ---
   // The summary bar, and nothing else: the scope chips that used to sit above

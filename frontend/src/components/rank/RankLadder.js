@@ -17,7 +17,7 @@
 // touch quieter, far tiers quieter again, unreached ones a little more. Never
 // greyed: the art above you is the reason to climb.
 //
-// PERCENTILES ARE PER TIER, AND ONLY WHERE THEY SAY SOMETHING. The server's
+// PERCENTILES ARE PER TIER, ABOVE YOU, AND ONLY WHERE THEY SAY SOMETHING. The server's
 // `top_percent` is the share of players AT OR ABOVE a tier, so an empty tier
 // carries the same number as the tier above it, which is how "Top 11% of
 // runners" used to repeat down the column. A card now shows its percentile
@@ -61,8 +61,14 @@ const CARD_INSET = 6;
 // How close the marker may come to either end of its rung: enough to clear the
 // threshold printed on the floor line.
 const YOU_PAD = 9;
+// The YOU tag hangs this far above the marker's number, so the marker stops
+// that much sooner under the rung above's threshold.
+const YOU_TAG = 11;
 // The open end of the track above the top tier.
 const CAP_H = 30;
+// Below this screen width a tier card is too narrow for the full plaque and
+// its line, so the cards take the compact plaque.
+const NARROW_W = 360;
 
 /** The rung height for a screen width: the card lands near 16:9. */
 export function rungHeightFor(width) {
@@ -76,7 +82,9 @@ export function rungHeightFor(width) {
  * tier above means nobody stands in this tier, so it says nothing new.
  */
 export function cardPercent(shares, tierIndex, currentTier) {
-  if (tierIndex === currentTier) return null;
+  // Only the tiers still ahead: how exclusive a goal is helps you want it;
+  // the share of a tier you already passed is trivia.
+  if (tierIndex <= currentTier) return null;
   const mine = shares?.[tierIndex];
   if (mine == null || mine >= 100) return null;
   const above = shares?.[tierIndex + 1];
@@ -84,7 +92,7 @@ export function cardPercent(shares, tierIndex, currentTier) {
   return mine;
 }
 
-function Rung({ rung, standing, floors, shares, equipped, rungH }) {
+function Rung({ rung, standing, floors, shares, equipped, rungH, narrow }) {
   const reached = standing.tier >= rung.tier;
   const isCurrent = standing.tier === rung.tier;
   const distance = Math.abs(standing.tier - rung.tier);
@@ -96,10 +104,13 @@ function Rung({ rung, standing, floors, shares, equipped, rungH }) {
     : reached ? 1 : 0;
 
   // Kept inside the rung whatever the fill says. Placed at a raw percentage
-  // the marker used to leave the ladder entirely at the top.
+  // the marker used to leave the ladder entirely at the top. The clamp only
+  // bites within a few points of a threshold, where the numbers would
+  // otherwise print over each other; everywhere else the marker's centre is
+  // exactly the rung's height at your points.
   const youBottom = Math.max(
     YOU_PAD,
-    Math.min(rungH - MARKER - YOU_PAD, Math.round(fill * rungH - MARKER / 2))
+    Math.min(rungH - MARKER - YOU_PAD - YOU_TAG, Math.round(fill * rungH - MARKER / 2))
   );
 
   const cardV = isCurrent ? CARD_V_CURRENT : CARD_V;
@@ -117,9 +128,14 @@ function Rung({ rung, standing, floors, shares, equipped, rungH }) {
       emphasis={emphasis}
       reached={reached}
       percent={cardPercent(shares, rung.tier, standing.tier)}
-      gap={isCurrent ? nextTierCopy(standing) : null}
+      // What is next, on your own card only. Not at the top: the track's
+      // open end already says "Top of the ladder", once.
+      gap={isCurrent && !standing.isTop ? nextTierCopy(standing) : null}
       youHere={isCurrent}
       runner={isCurrent ? { equipped } : null}
+      // The narrow plaque on small phones, so the line beside it (the gap,
+      // a percentile) has room to be read instead of ending in an ellipsis.
+      compact={narrow}
       accessibilityLabel={label}
     />
   );
@@ -133,7 +149,7 @@ function Rung({ rung, standing, floors, shares, equipped, rungH }) {
         {isCurrent ? (
           <View style={[styles.youWrap, { bottom: youBottom, height: MARKER }]}>
             <Reveal from="down" delay={160} duration={320}>
-              <RankMarker equipped={equipped} points={fmtPoints(standing.points)} />
+              <RankMarker equipped={equipped} rankKey={standing.key} points={fmtPoints(standing.points)} />
             </Reveal>
           </View>
         ) : null}
@@ -220,6 +236,7 @@ export default function RankLadder({ standing, floors, shares, equipped, style, 
               shares={shares}
               equipped={equipped}
               rungH={rungH}
+              narrow={width < NARROW_W}
             />
           </Reveal>
         );

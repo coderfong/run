@@ -66,8 +66,10 @@ export function targetForNotification(data) {
     }
     case 'club':
       return tab('Club', { screen: 'ClubMain' });
+    // Pasers lives on Home now (the Pasers shortcut), not under You, so a
+    // request opens it with Home underneath: back is where the entry point is.
     case 'pasers':
-      return tab('You', { screen: 'Pasers', initial: false });
+      return tab('Home', { screen: 'Pasers', initial: false });
     case 'crossroads':
       return tab('Home', { screen: 'Crossroads', initial: false });
     case 'season':

@@ -52,7 +52,6 @@ import { invalidate } from '../api/cache';
 import { brand, space, toon, toonType, useTheme, useThemedType } from '../theme';
 import {
   Screen,
-  Card,
   Row,
   Button,
   Pill,
@@ -61,8 +60,8 @@ import {
   ToonButton,
   ToonHeader,
 } from '../components/ui';
-import CharacterRig, { CharacterBust } from '../components/character/CharacterRig';
-import PortraitBorder from '../components/PortraitBorder';
+import CharacterRig from '../components/character/CharacterRig';
+import RankedAvatar from '../components/identity/RankedAvatar';
 import PlazaScene, { PLAZA_SPOTS, plazaDepth, plazaPoint } from '../components/paserby/PlazaScene';
 import CrossroadsIntro from '../components/paserby/CrossroadsIntro';
 import ArrivalSpotlight, {
@@ -78,7 +77,7 @@ import ArrivalSpotlight, {
   arrivalBurst,
 } from '../components/paserby/ArrivalCeremony';
 import { setAtCrossroads } from '../components/CrossroadsAlert';
-import { COPY, encounterSubtitle, familiarityLabel } from '../config/paserby';
+import { COPY, familiarityLabel } from '../config/paserby';
 import { art, ART_BG } from '../config/onboardingArt';
 import { useAvatar } from '../state/avatar';
 import { useProfile } from '../state/profile';
@@ -282,9 +281,7 @@ function RunnerSheet({ encounter, busy, onClose, onHighFive, onOpen, onHide }) {
   return (
     <Sheet visible onClose={onClose}>
       <Row gap={space.md} style={{ alignItems: 'center' }}>
-        <PortraitBorder borderKey={encounter.rank_key || 'wood'} size={64}>
-          <CharacterBust equipped={encounter.avatar} size={64} bg={colors.cardAlt} />
-        </PortraitBorder>
+        <RankedAvatar equipped={encounter.avatar} rankKey={encounter.rank_key || 'wood'} size={64} bg={colors.cardAlt} />
         <View style={{ flex: 1 }}>
           <Row gap={6}>
             {/* The NAME gives way, not the club tag. A name is elastic (they run

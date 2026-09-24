@@ -61,8 +61,7 @@ import { pickCaptureStyle } from '../effects/captureStyles';
 import { borderByKey } from '../config/progression';
 import { fmtArea } from './RivalCard';
 import { Framed, OutlinedText, ToonButton, ToonGhostButton } from './ui';
-import { CharacterBust } from './character/CharacterRig';
-import PortraitBorder from './PortraitBorder';
+import RankedAvatar from './identity/RankedAvatar';
 import CutsceneBackdrop from './claim/CutsceneBackdrop';
 import { timingFor } from './claim/timing';
 import TerritoryRevealCanvas from './claim/TerritoryRevealCanvas';
@@ -156,9 +155,7 @@ function RankedPortrait({ name, avatar, rankKey, size = 66, dim = false }) {
   const tierColor = Array.isArray(tier.ring) ? tier.ring[0] : tier.ring;
   return (
     <View style={[styles.portrait, dim ? styles.portraitDim : null]}>
-      <PortraitBorder borderKey={tier.key} size={size}>
-        <CharacterBust equipped={avatar} size={size} bg={colors.bg} />
-      </PortraitBorder>
+      <RankedAvatar equipped={avatar} rankKey={tier.key} size={size} bg={colors.bg} />
       <Text style={[toonType.sub, styles.portraitName, { color: colors.text }]} numberOfLines={1}>
         {name}
       </Text>

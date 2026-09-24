@@ -1,52 +1,56 @@
-// SideRail — pass, shop, rivals and crossroads as shortcut tiles. Home uses the
-// inline row; the original floating-column layout remains available.
+// SideRail — Home's shortcuts: missions, rewards and shop, then rivals,
+// crossroads and pasers. Home uses the PAGED layout; the flat inline row and
+// the original floating column remain available.
 //
 // It exists because those screens were not reachable from Home. Anything it
-// shows on a tile is a REAL state — claimable pass tiers, unseen crossed paths
-// — never decoration.
+// shows on a tile is a REAL state — claimable pass tiers, unseen crossed paths,
+// paser requests waiting on you — never decoration.
 //
-// EACH TILE IS A SOLID BLOCK OF ITS OWN COLOUR, inside a hand-drawn box, with
-// the sticker on top. It has been through two wrong answers: a gradient ring
-// around a card-coloured middle (four empty outlines in a row rather than four
-// buttons), then a full-bleed gradient inside a 2.5px rounded border, which was
-// the only square-cornered chrome left on a page of drawn boxes.
+// TWO PAGES OF THREE, SWIPED (`paged`). Six shortcuts do not fit across a
+// phone at a size worth drawing, and the old answer — three big tiles with
+// Rivals and Crossroads shrunk to text pills underneath — made two of the six
+// look like an afterthought and spent a second row of height on them. Now each
+// page is exactly three, the same size, and a swipe snaps a whole page at a
+// time (`pagingEnabled`), so there is never half a shortcut peeking in from
+// the edge. A small PageDots under the row says there is a second page.
 //
-// EVERY TILE SAYS WHAT IT IS. The inline row wears a word under each drawing —
-// a sticker of a clipboard, a certificate, a shopfront, two gloves and a map
-// pin are five nice drawings and no reader's first guess at "the reward ladder"
-// or "runners whose route crossed yours". The rail is a NAVIGATION row, not a
-// cosmetic grid: the art-only rule (cosmetics, borders) holds where the picture
-// IS the thing being chosen, and it never applied to a set of shortcuts.
+// NO BOX ROUND THE DRAWING on the paged row. The stickers are strong enough on
+// their own; a drawn square round each one was a frame round a frame. The tap
+// target is not smaller for it: the press area is the whole slot — a third of
+// the row wide, drawing and word together — so the thumb has more to hit than
+// the old 72pt tile gave it.
 //
-// The caption is the tab bar's own label recipe — labelSm at 11pt, sentence
-// case — so the row of buttons at the top of Home and the row at the bottom of
-// the window read as one system. The floating column keeps no captions: it is
-// laid over content rather than on the page, and text over a map is a smear.
+// THE WORD SITS ON THE DRAWING. The caption is a few points under the art, so
+// icon and label read as one control rather than as a picture with a caption
+// floating below it. One gap for every tile.
 //
-// Art is optional: each tile falls back to its sticker icon until the framed
-// art lands (docs/ONBOARDING_ASSETS.md §7). All five have their own drawing
-// now — cut off the tile masters by `scripts/cut-rail-art.py`, which prints the
-// ground each was drawn on. THAT GROUND IS THE TILE'S `tint` MIDDLE STOP: the
-// sticker is lit and shadowed for it, so the two are changed together.
+// The flat inline row and the floating column keep the older treatment: EACH
+// TILE IS A SOLID BLOCK OF ITS OWN COLOUR, inside a hand-drawn box, with the
+// sticker on top. THAT GROUND IS THE TILE'S `tint` MIDDLE STOP — the stickers
+// were cut off their tile masters by `scripts/cut-rail-art.py` and are lit for
+// it — so the two are changed together.
+//
+// EVERY TILE SAYS WHAT IT IS. A sticker of a clipboard, a certificate, a
+// shopfront, two gloves and a map pin are five nice drawings and no reader's
+// first guess at "the reward ladder" or "runners whose route crossed yours".
+// The rail is a NAVIGATION row, not a cosmetic grid.
 //
 // NO TILE CROSSES INTO ANOTHER TAB. Each one pushes onto the stack it was
-// tapped from (App.js registers Progression, Rivals and Crossroads on the Home
-// stack as well as the You stack), so back from any of them is the screen you
-// came from. They used to be navigate('You', { screen: …, initial: false }),
-// which walked you into the You tab: back went to the profile, and Home was
-// two taps away. Shop is the exception and always has been — it lives at the
-// ROOT, above the tabs, so it pops straight back to wherever it opened from.
+// tapped from (App.js registers Progression, Rivals, Crossroads and Pasers on
+// the Home stack as well as the You stack), so back from any of them is the
+// screen you came from. Shop is the exception and always has been — it lives
+// at the ROOT, above the tabs, so it pops straight back to wherever it opened
+// from.
 
 import { Lock } from 'lucide-react-native';
 import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import { Image } from '../ui/image';
 import { useFocusEffect } from '@react-navigation/native';
@@ -57,6 +61,7 @@ import { brand, fonts, space, toon, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import Framed from './ui/Framed';
+import PageDots from './ui/PageDots';
 import { art } from '../config/onboardingArt';
 import { badgeLabel } from '../config/paserby';
 import AppIcon from './AppIcon';
@@ -66,40 +71,66 @@ const GOLD = ['#FFD98A', '#F0A93C', '#A8631A'];
 // ONE CAPTION SIZE FOR THE WHOLE ROW, measured off the slot rather than left to
 // each label to settle for itself.
 //
-// The five slots divide the row evenly, so a slot is (screen - two gutters) / 5.
+// The slots divide the row evenly, so a slot is (screen - two gutters) / count.
 // "Crossroads" is the longest label the rail carries, and Inter SemiBold draws
 // it at 5.59pt per point of size, plus the caption's 0.2 of tracking on each of
 // its ten letters. Solving that against the slot, less 10pt so two labels can
-// never end up touching, gives the largest size at which all five fit — and all
-// five take it, which is the point: the row reads as one set of buttons instead
-// of four at 11pt with a smaller one on the end.
+// never end up touching, gives the largest size at which all of them fit — and
+// all of them take it, which is the point: the row reads as one set of buttons
+// instead of four at 11pt with a smaller one on the end.
 //
-// Clamped at labelSm's own 11 and at 9, below which a nav label stops being
-// readable. The floor only starts to bite under ~351pt, and even at 9pt
-// "Crossroads" is 52.3pt wide, so it still clears its slot on a 320pt phone.
+// Clamped at `max` (labelSm's own 11 for the five-across row) and at 9, below
+// which a nav label stops being readable.
 const CROSSROADS_PER_PT = 5.59;
 const CROSSROADS_TRACKING = 0.2 * 10;
 const CAPTION_GUTTER = 10;
 
-export function captionFor(screenWidth, count = 5) {
+export function captionFor(screenWidth, count = 5, max = 11) {
   const slot = (screenWidth - space.gutter * 2) / count;
   const fits = (slot - CAPTION_GUTTER - CROSSROADS_TRACKING) / CROSSROADS_PER_PT;
-  return Math.max(9, Math.min(11, Math.round(fits * 2) / 2));
+  return Math.max(9, Math.min(max, Math.round(fits * 2) / 2));
 }
+
+// The paged row: three to a page, and a drawing this big. A third of a 335pt
+// row is 111pt, so the art sits in the middle of a slot with room either side
+// and the whole slot is the press area.
+export const QUICK_PER_PAGE = 3;
+const QUICK_ART = 60;
+// The drawings are not all square — the rewards scroll is wide and short — so
+// the box is a little wider than it is tall. Contained in a square, a wide
+// drawing came out visibly smaller than a tall one beside it.
+const QUICK_ART_W = Math.round(QUICK_ART * 1.25);
+// Between the drawing and its word. Small on purpose: see "THE WORD SITS ON
+// THE DRAWING" above.
+const QUICK_LABEL_GAP = 2;
 
 // `size` is only ever passed for the inline row, and only because the row
 // grew to five: five 64pt tiles do not fit across a 320pt phone. Sized by the
 // caller rather than by a media query here, so the rail stays the one place
 // that knows how many tiles it has.
-function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = false, size, captionSize, locked = false, quiet = false }) {
+//
+// `bare` drops the drawn box and the colour block: the paged row's look.
+function RailTile({
+  icon,
+  artKey,
+  label,
+  badge,
+  tint = GOLD,
+  onPress,
+  inline = false,
+  bare = false,
+  size,
+  captionSize,
+  locked = false,
+}) {
   const src = art(artKey);
   const { colors } = useTheme();
   const type = useThemedType();
   const badgePulse = useSharedValue(1);
-  
+
   // Pulse animation for badge when present
   const hasBadge = badge && !locked;
-  
+
   React.useEffect(() => {
     if (hasBadge) {
       badgePulse.value = withRepeat(
@@ -112,13 +143,19 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
     }
     return () => cancelAnimation(badgePulse);
   }, [hasBadge, badgePulse]);
-  
+
   const badgeAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: badgePulse.value }],
   }));
-  
+
+  const drawing = src ? (
+    <Image source={src} style={bare ? styles.bareArt : styles.tileArt} resizeMode="contain" />
+  ) : (
+    <AppIcon name={icon} style={styles.tileIcon} />
+  );
+
   return (
-    <View style={[styles.slot, inline && styles.inlineSlot]}>
+    <View style={[styles.slot, (inline || bare) && styles.inlineSlot]}>
       {/* THE WORD IS PART OF THE BUTTON, not a caption beside it: the press
           area is the tile AND its label, so the thing a thumb aims at is the
           thing the eye reads. The tile keeps its own fixed box inside — the
@@ -131,35 +168,38 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
         accessibilityHint={locked ? 'Complete your first run to unlock' : undefined}
         accessibilityRole="button"
         accessibilityLabel={label ? `${label}${locked ? ', locked. Complete your first run to unlock' : ''}${badge ? `, ${badge}` : ''}` : 'Open'}
-        style={[styles.press, locked && { opacity: 0.55 }]}
+        style={[styles.press, bare && styles.barePress, locked && { opacity: 0.55 }]}
       >
-        <View style={[styles.tileWrap, inline && styles.inlineTileWrap, size ? { width: size, height: size } : null]}>
-          {/* A drawn box, like everything else on this page — not a rounded
-              rectangle with a 2.5px border pretending to be one.
-              The fill is FLAT, and it has to be: the frame's paper is the tile's
-              shape, and a gradient cannot be painted into a wobbly silhouette
-              without a mask layer this app does not ship. Behind the frame it
-              would simply be a square of colour showing at every corner, which
-              is the bleed this pass exists to remove. The middle stop of each
-              tile's ramp is the colour the ramp reads as anyway.
-              Each tile is dealt its own drawing and pose off its label, so five
-              in a row are five boxes rather than one box copied five times. */}
-          <Framed
-            frame={frameVariant('chip', label)}
-            tint={toon.ink}
-            fill={quiet ? colors.card : tint[1]}
-            weight={INK.thin}
-            pose={framePose(`rail:${label}`)}
-            inset={false}
-            style={[styles.tile, inline && styles.inlineTile]}
-            contentStyle={styles.tileInner}
-          >
-            {src ? (
-              <Image source={src} style={styles.tileArt} resizeMode="contain" />
-            ) : (
-              <AppIcon name={icon} style={styles.tileIcon} />
-            )}
-          </Framed>
+        <View
+          style={[
+            styles.tileWrap,
+            inline && styles.inlineTileWrap,
+            size ? { width: bare ? QUICK_ART_W : size, height: size } : null,
+          ]}
+        >
+          {bare ? (
+            drawing
+          ) : (
+            // A drawn box, like everything else on this page — not a rounded
+            // rectangle with a 2.5px border pretending to be one. The fill is
+            // FLAT: the frame's paper is the tile's shape, and a gradient
+            // cannot be painted into a wobbly silhouette without a mask layer
+            // this app does not ship. Each tile is dealt its own drawing and
+            // pose off its label, so five in a row are five boxes rather than
+            // one box copied five times.
+            <Framed
+              frame={frameVariant('chip', label)}
+              tint={toon.ink}
+              fill={tint[1]}
+              weight={INK.thin}
+              pose={framePose(`rail:${label}`)}
+              inset={false}
+              style={[styles.tile, inline && styles.inlineTile]}
+              contentStyle={styles.tileInner}
+            >
+              {drawing}
+            </Framed>
+          )}
           {locked ? (
             <View style={[styles.badge, { backgroundColor: colors.card }]}>
               <Lock size={14} color={colors.text} />
@@ -174,13 +214,17 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
             twice; this is the sighted half of the same name.
             THE SIZE COMES FROM THE ROW, not from this Text. It used to shrink
             itself with `adjustsFontSizeToFit`, which sizes each label on its
-            own: "Crossroads" measures 63.5pt at 11pt and its slot is 67pt on a
-            375pt phone, so that one word dropped to 8.8pt while the four beside
-            it stayed at 11 — five buttons in a row wearing two different sizes,
-            sitting on two different baselines. See `captionFor`. */}
-        {inline && label ? (
+            own, so one word dropped to 8.8pt while the rest stayed at 11 —
+            buttons in a row wearing two different sizes on two baselines.
+            See `captionFor`. */}
+        {(inline || bare) && label ? (
           <Text
-            style={[type.labelSm, styles.caption, { color: colors.text, fontSize: captionSize }]}
+            style={[
+              type.labelSm,
+              styles.caption,
+              bare && styles.bareCaption,
+              { color: colors.text, fontSize: captionSize },
+            ]}
             numberOfLines={1}
           >
             {label}
@@ -191,32 +235,19 @@ function RailTile({ icon, artKey, label, badge, tint = GOLD, onPress, inline = f
   );
 }
 
-export function SecondaryShortcut({ label, badge, locked, onPress }) {
-  const { colors } = useTheme();
-  const type = useThemedType();
-  return (
-    <Pressable
-      onPress={() => { if (!locked) { haptic.light(); onPress?.(); } }}
-      disabled={locked}
-      style={({ pressed }) => [
-        styles.secondaryShortcut,
-        {
-          borderColor: colors.border,
-          backgroundColor: pressed ? colors.cardAlt : 'transparent',
-          opacity: locked ? 0.5 : 1,
-        },
-      ]}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: locked }}
-      accessibilityLabel={`${label}${locked ? ', locked. Complete your first run to unlock' : ''}${badge ? `, ${badge}` : ''}`}
-    >
-      <Text style={[type.captionMedium, { color: colors.text, fontSize: 11 }]} numberOfLines={1}>{label}</Text>
-      {badge ? <Text style={[type.captionMedium, styles.secondaryBadge]} numberOfLines={1}>{badge}</Text> : null}
-    </Pressable>
-  );
-}
-
-export default function SideRail({ navigation, onOpenShop, style, inline = false, firstRunComplete = true, primaryOnly = false }) {
+/**
+ * @param {boolean} inline  a flat row of five framed tiles
+ * @param {boolean} paged   two swiped pages of three bare tiles (Home)
+ * @param {boolean} firstRunComplete  Rivals and Crossroads unlock after it
+ */
+export default function SideRail({
+  navigation,
+  onOpenShop,
+  style,
+  inline = false,
+  paged = false,
+  firstRunComplete = true,
+}) {
   const [claimable, setClaimable] = useState(0);
   // Today's missions, for the badge. Same rule as the pass tile: the number is
   // what is WAITING TO BE COLLECTED, not how many missions exist — a badge
@@ -231,6 +262,15 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
   const { data: paserby } = useQuery('me:paserby', api.paserby, {
     fallback: { enabled: true, unseen: 0, total: 0 },
   });
+  // Paser requests waiting on you. The same 'pasers' key the Pasers screen
+  // reads, so accepting one there clears this badge on the way back. It used
+  // to ride the "Add pasers" button on You, which moved here with the entry
+  // point. Only the paged row carries a Pasers tile, so only it asks.
+  const { data: pasers } = useQuery(paged ? 'pasers' : null, api.pasers);
+  const requestsWaiting = pasers?.incoming?.length || 0;
+
+  const { width } = useWindowDimensions();
+  const [page, setPage] = useState(0);
 
   // The rail's whole job is to show what's WAITING, so it re-reads on focus.
   useFocusEffect(
@@ -254,105 +294,115 @@ export default function SideRail({ navigation, onOpenShop, style, inline = false
     }, [])
   );
 
-  const primaryCount = primaryOnly ? 3 : 5;
-  const size = inline ? (primaryOnly ? 72 : 58) : undefined;
+  // Missions first: it is the only tile whose contents change every day, so it
+  // is the one worth looking at on the way past.
+  // GREEN, though the clipboard master is drawn on yellow: the pass tile next
+  // to it is gold, and two yellows in a row read as one wide tile.
+  const tiles = [
+    {
+      key: 'missions',
+      icon: 'verified',
+      artKey: 'railMissions',
+      label: 'Missions',
+      badge: missionsWaiting ? String(missionsWaiting) : null,
+      tint: ['#A5F3D0', '#3faf74', '#116343'],
+      onPress: () => navigation.navigate('Missions'),
+    },
+    {
+      key: 'rewards',
+      icon: 'award',
+      artKey: 'railPass',
+      label: 'Rewards',
+      badge: claimable ? String(claimable) : null,
+      onPress: () => navigation.navigate('Progression'),
+    },
+    {
+      key: 'shop',
+      icon: 'energy',
+      artKey: 'railShop',
+      label: 'Shop',
+      tint: ['#7FF0DE', brand.teal, '#128476'],
+      onPress: onOpenShop,
+    },
+    {
+      key: 'rivals',
+      icon: 'steal',
+      artKey: 'railRivals',
+      label: 'Rivals',
+      locked: !firstRunComplete,
+      tint: ['#C4B5FD', brand.purple, '#5B21B6'],
+      onPress: () => navigation.navigate('Rivals'),
+    },
+    // Crossed paths. The badge is a REAL state — encounters this runner has
+    // not looked at yet. PINK, not the amber the Crossroads header wears: an
+    // amber crossroads sat at one end of the rail looking like the gold pass
+    // at the other.
+    {
+      key: 'crossroads',
+      icon: 'route',
+      artKey: 'railCrossroads',
+      label: 'Crossroads',
+      locked: !firstRunComplete,
+      badge: badgeLabel(paserby?.unseen),
+      tint: ['#FBA6CD', brand.pink, '#9D1458'],
+      onPress: () => navigation.navigate('Crossroads'),
+    },
+  ];
+  if (paged) {
+    // Your pasers: the friends showcase. The high five is the drawing the
+    // Pasers panel already uses, so the shortcut and the page it opens match.
+    tiles.push({
+      key: 'pasers',
+      icon: 'invite',
+      artKey: 'panelPasers',
+      label: 'Pasers',
+      badge: requestsWaiting ? String(requestsWaiting) : null,
+      onPress: () => navigation.navigate('Pasers'),
+    });
+  }
+
+  if (paged) {
+    const rowW = width - space.gutter * 2;
+    const captionSize = captionFor(width, QUICK_PER_PAGE, 12);
+    const pages = [];
+    for (let i = 0; i < tiles.length; i += QUICK_PER_PAGE) pages.push(tiles.slice(i, i + QUICK_PER_PAGE));
+    const onEnd = (e) => {
+      const next = Math.round(e.nativeEvent.contentOffset.x / rowW);
+      if (next !== page) setPage(next);
+    };
+    return (
+      <View style={style}>
+        <ScrollView
+          horizontal
+          pagingEnabled
+          decelerationRate="fast"
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onEnd}
+          accessibilityLabel="Shortcuts"
+        >
+          {pages.map((row, i) => (
+            <View key={i} style={[styles.page, { width: rowW }]}>
+              {row.map(({ key, ...tile }) => (
+                <RailTile key={key} {...tile} bare size={QUICK_ART} captionSize={captionSize} />
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+        <PageDots count={pages.length} index={page} style={styles.pageDots} />
+      </View>
+    );
+  }
+
+  // Five across, so the inline tiles come down a few points.
+  const size = inline ? 58 : undefined;
   // Measured here, once, and handed to all five — see captionFor.
-  const { width } = useWindowDimensions();
-  const captionSize = inline ? captionFor(width, primaryCount) : undefined;
+  const captionSize = inline ? captionFor(width) : undefined;
 
   return (
-    <View style={style} pointerEvents="box-none">
-      <View style={inline ? styles.inlineRail : styles.rail} pointerEvents="box-none">
-      {/* Missions first: it is the only tile whose contents change every day,
-          so it is the one worth looking at on the way past.
-          GREEN, though the clipboard master is drawn on yellow: the pass tile
-          next to it is gold, and two yellows in a row read as one wide tile
-          rather than two. Green is also the colour this tile has always worn.
-          The clipboard's ink is black outlines with a blue clip and a pink
-          star, none of which the swap touches. */}
-      <RailTile
-        icon="verified"
-        artKey="railMissions"
-        label="Missions"
-        badge={missionsWaiting ? String(missionsWaiting) : null}
-        tint={['#A5F3D0', '#3faf74', '#116343']}
-        onPress={() => navigation.navigate('Missions')}
-        inline={inline}
-        size={size}
-        captionSize={captionSize}
-        quiet={primaryOnly}
-      />
-      <RailTile
-        icon="award"
-        artKey="railPass"
-        label="Rewards"
-        badge={claimable ? String(claimable) : null}
-        onPress={() => navigation.navigate('Progression')}
-        inline={inline}
-        size={size}
-        captionSize={captionSize}
-        quiet={primaryOnly}
-      />
-      <RailTile
-        icon="energy"
-        artKey="railShop"
-        label="Shop"
-        tint={['#7FF0DE', brand.teal, '#128476']}
-        onPress={onOpenShop}
-        inline={inline}
-        size={size}
-        captionSize={captionSize}
-        quiet={primaryOnly}
-      />
-      {!primaryOnly ? (
-        <>
-      <RailTile
-        icon="steal"
-        artKey="railRivals"
-        label="Rivals"
-        locked={!firstRunComplete}
-        tint={['#C4B5FD', brand.purple, '#5B21B6']}
-        onPress={() => navigation.navigate('Rivals')}
-        inline={inline}
-        size={size}
-        captionSize={captionSize}
-      />
-      {/* Crossed paths. The badge is a REAL state — encounters this runner has
-          not looked at yet — never decoration, same rule as the pass tile.
-          PINK, not the amber the Crossroads header wears: once the tiles became
-          solid blocks of colour, an amber crossroads sat at one end of the rail
-          looking like the gold pass at the other. Pink is the fourth colour the
-          rail did not have, and it is in the plaza's own paths and blossom. */}
-      <RailTile
-        icon="route"
-        artKey="railCrossroads"
-        label="Crossroads"
-        locked={!firstRunComplete}
-        badge={badgeLabel(paserby?.unseen)}
-        tint={['#FBA6CD', brand.pink, '#9D1458']}
-        onPress={() => navigation.navigate('Crossroads')}
-        inline={inline}
-        size={size}
-        captionSize={captionSize}
-      />
-        </>
-      ) : null}
-      </View>
-      {primaryOnly ? (
-        <View style={styles.secondaryRow}>
-          <SecondaryShortcut
-            label="Rivals"
-            locked={!firstRunComplete}
-            onPress={() => navigation.navigate('Rivals')}
-          />
-          <SecondaryShortcut
-            label="Crossroads"
-            locked={!firstRunComplete}
-            badge={badgeLabel(paserby?.unseen)}
-            onPress={() => navigation.navigate('Crossroads')}
-          />
-        </View>
-      ) : null}
+    <View style={[inline ? styles.inlineRail : styles.rail, style]} pointerEvents="box-none">
+      {tiles.map(({ key, ...tile }) => (
+        <RailTile key={key} {...tile} inline={inline} size={size} captionSize={captionSize} />
+      ))}
     </View>
   );
 }
@@ -362,11 +412,17 @@ const styles = StyleSheet.create({
   // `flex-start` on the cross axis, not `center`: with a caption under every
   // tile the slots are the same height anyway, and centring would float a
   // badged tile's row against an unbadged one the moment one of them wraps.
-  inlineRail: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-around', gap: space.sm },
+  inlineRail: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-around' },
+  // One page of the paged row: three equal slots across its full width.
+  page: { flexDirection: 'row', alignItems: 'flex-start' },
+  pageDots: { marginTop: space.sm },
   slot: { alignItems: 'center', width: 62 },
   // The press area is the tile and its word together, so it is the column that
   // centres them rather than the slot.
   press: { alignItems: 'center', alignSelf: 'stretch' },
+  // The paged row's press area runs the whole slot, with a little air above
+  // and below the drawing, so losing the box costs no touch area.
+  barePress: { paddingVertical: space.xs },
   inlineSlot: { flex: 1, width: 'auto' },
   tileWrap: { width: 56, height: 56 },
   inlineTileWrap: { width: 64, height: 64 },
@@ -386,11 +442,12 @@ const styles = StyleSheet.create({
   // Inset from the frame rather than filling it — the art reads as sitting in
   // the tile instead of being cropped by its rounded corners.
   tileArt: { width: '84%', height: '84%' },
-  // The tab bar's label, to the point: labelSm at 11pt, sentence case rather
-  // than the token's uppercase, and the page's own text colour rather than
-  // `textMuted` — these name buttons, they are not a caption on a picture.
-  // The 11 is the ceiling and the fallback; the size the row actually draws at
-  // comes from `captionFor` and is passed in per render.
+  // With no box to sit in, the drawing takes the whole tile.
+  bareArt: { width: '100%', height: '100%' },
+  // The tab bar's label, to the point: labelSm, sentence case rather than the
+  // token's uppercase, and the page's own text colour rather than `textMuted`
+  // — these name buttons, they are not a caption on a picture. The size the
+  // row actually draws at comes from `captionFor` and is passed in per render.
   caption: {
     fontSize: 11,
     letterSpacing: 0.2,
@@ -399,6 +456,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     width: '100%',
   },
+  bareCaption: { marginTop: QUICK_LABEL_GAP },
   // Fallback stickers fill the frame instead: unlike the rail art, they are
   // trimmed to ~80% of their own canvas, so the extra 16% here only spends the
   // sticker's baked-in margin and lands the drawing at tileArt's visual size.
@@ -431,32 +489,11 @@ const styles = StyleSheet.create({
   badgeTextProminent: {
     color: '#fff',
     fontSize: 12,
-    fontFamily: fonts.black,
+    // Poppins Black: the app's heavy face. This named `fonts.black`, which
+    // is not a token, so the count fell back to the system font.
+    fontFamily: fonts.hero,
     textShadowColor: 'rgba(0,0,0,0.3)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
-  },
-  secondaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: space.sm,
-    marginTop: space.md,
-  },
-  secondaryShortcut: {
-    minHeight: 34,
-    paddingHorizontal: space.md,
-    borderWidth: 1,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  secondaryBadge: {
-    color: '#fff',
-    backgroundColor: '#ef4444',
-    borderRadius: 8,
-    overflow: 'hidden',
-    paddingHorizontal: 5,
-    fontSize: 10,
   },
 });

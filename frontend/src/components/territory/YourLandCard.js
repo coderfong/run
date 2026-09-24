@@ -27,8 +27,8 @@ import { FADING_HOURS, plotFocus } from '../../territory/landStatus';
 // Soonest to fade first, so these are the ones that need a run soonest.
 const PREVIEW = 3;
 
-// `nested` — see PrivacySettings. The card now lives inside the folded
-// Statistics section on You, whose head is already a drawn label box.
+// `nested` — the card sits on You directly under the stat wall, so its
+// heading is a plain section title rather than a drawn label box.
 export default function YourLandCard({ navigation, accent, nested = false }) {
   const { colors } = useTheme();
   const type = useThemedType();
@@ -74,6 +74,7 @@ export default function YourLandCard({ navigation, accent, nested = false }) {
               fadingHours={data.fading_hours || FADING_HOURS}
               onPress={() => showOnMap(plot)}
               divider
+              compact
             />
           ))
         ) : (

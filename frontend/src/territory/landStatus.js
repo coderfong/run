@@ -95,6 +95,21 @@ export function plotDetail(plot) {
     .join(', ');
 }
 
+/**
+ * The one short status a plot earns on a summary row, or null.
+ *
+ * The summary row is for scanning — area, time left, life — so it carries only
+ * NEWS: an attack the plot held off. Where it came from ("from a 5.2 km run")
+ * is provenance, and how often it was reinforced is already in the life bar
+ * (a reinforcement is what refills it), so neither earns a word here. Both
+ * stay on the full Territory page, which is where a plot's history is read.
+ */
+export function plotStatus(plot) {
+  const held = Number(plot?.held) || 0;
+  if (held > 0) return held === 1 ? 'Held 1 attack' : `Held ${held} attacks`;
+  return null;
+}
+
 /** The three numbers across the top of the card and the page. */
 export function summaryCells(summary) {
   const s = summary || {};

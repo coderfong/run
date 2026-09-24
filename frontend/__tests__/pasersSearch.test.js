@@ -136,3 +136,72 @@ describe('PasersScreen search', () => {
     act(() => tree.unmount());
   });
 });
+
+/**
+ * The page is a SHOWCASE: your pasers whole, head to shoes, so what they wear
+ * can be seen. Adding is one button in the header and one line at the foot,
+ * and an empty page says what to do in two buttons.
+ */
+describe('PasersScreen showcase', () => {
+  const { Text } = require('react-native');
+  const RunnerFigure = require('../src/components/identity/RunnerFigure').default;
+  const Sheet = require('../src/components/ui/Sheet').default;
+  const words = (tree) =>
+    tree.root.findAllByType(Text).map((n) => [].concat(n.props.children ?? []).join(''));
+  const figures = (tree) => {
+    const direct = tree.root.findAllByType(RunnerFigure);
+    return direct.length || !RunnerFigure.type ? direct : tree.root.findAllByType(RunnerFigure.type);
+  };
+
+  beforeEach(() => {
+    mockResults = [];
+    jest.clearAllMocks();
+  });
+
+  it('shows every paser as a full-body runner with their name and rank', async () => {
+    mockPasers = {
+      pasers: [
+        hit({ user_id: 'p1', username: 'jonfong78', rank_key: 'mythic', state: 'paser' }),
+        hit({ user_id: 'p2', username: 'runner123', rank_key: 'ember', state: 'paser' }),
+      ],
+      incoming: [],
+      outgoing: [],
+    };
+    const tree = mount();
+    await act(async () => {});
+    const all = words(tree);
+    expect(all).toContain('Your Pasers');
+    expect(all).toContain('jonfong78');
+    expect(all).toContain('runner123');
+    expect(all.some((w) => w.startsWith('Mythic'))).toBe(true);
+    expect(figures(tree).length).toBe(2);
+    // Opening a card opens that runner's profile.
+    const card = tree.root.find((n) => typeof n.props?.accessibilityLabel === 'string'
+      && n.props.accessibilityLabel.startsWith('jonfong78') && typeof n.props.onPress === 'function');
+    act(() => card.props.onPress());
+    expect(navigation.navigate).toHaveBeenCalledWith('RunnerProfile', { userId: 'p1', username: 'jonfong78' });
+    act(() => tree.unmount());
+  });
+
+  it('tells a runner with no pasers what to do', async () => {
+    mockPasers = { pasers: [], incoming: [], outgoing: [] };
+    const tree = mount();
+    await act(async () => {});
+    const all = words(tree);
+    expect(all).toContain('No Pasers yet');
+    expect(all).toContain('Find a Paser');
+    expect(all).toContain('Share my code');
+    act(() => tree.unmount());
+  });
+
+  it('opens the add sheet from the header', async () => {
+    mockPasers = { pasers: [hit({ user_id: 'p1', state: 'paser' })], incoming: [], outgoing: [] };
+    const tree = mount();
+    await act(async () => {});
+    expect(tree.root.findByType(Sheet).props.visible).toBe(false);
+    const add = tree.root.find((n) => n.props?.accessibilityLabel === 'Add' && typeof n.props.onPress === 'function');
+    act(() => add.props.onPress());
+    expect(tree.root.findByType(Sheet).props.visible).toBe(true);
+    act(() => tree.unmount());
+  });
+});

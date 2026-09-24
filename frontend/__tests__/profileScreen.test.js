@@ -195,10 +195,11 @@ describe('ProfileScreen', () => {
     await act(async () => {});
     const t = texts(tree).join('|');
 
-    // The header and the two things you do with the runner.
+    // The header and the thing you do with the runner. Managing pasers is
+    // not on You any more: it moved to its own page off Home's shortcuts.
     expect(t).toContain('runner');
     expect(t).toContain('Customize runner');
-    expect(t).toContain('Add pasers');
+    expect(t).not.toContain('Add pasers');
     // The stat wall.
     for (const label of ['Area held', 'Distance', 'Runs', 'Biggest claim', 'Streak', 'Zones']) {
       expect(t).toContain(label);
@@ -206,9 +207,12 @@ describe('ProfileScreen', () => {
     expect(t).toContain('PASER PRO');
 
     // Profile content stays on You; settings and run history do not.
-    for (const heading of ['Statistics', 'Your land', 'Running streak', 'Trophies']) {
+    for (const heading of ['Your land', 'Running streak', 'Trophies']) {
       expect(t).toContain(heading);
     }
+    // The six labelled tiles say what they are; a heading over them was
+    // height and nothing else.
+    expect(t).not.toContain('Statistics');
     expect(t).not.toContain('Recent runs');
     for (const buried of ['Notifications', 'App customisation', 'Privacy', 'Account', 'Appearance', 'Runner colour', 'Sign out']) {
       expect(t).not.toContain(buried);
@@ -223,7 +227,9 @@ describe('ProfileScreen', () => {
 
     const t = texts(tree).join('|');
     expect(t).toContain('See all');
-    expect(t).toContain('Fades in 5h');
+    // The summary row says every clock one way ("5h left"); red says it is fading.
+    expect(t).toContain('5h left');
+    expect(t).not.toContain('Fades in');
     expect(t).toContain('Running streak');
     expect(t).toContain('Trophies');
     expect(t).not.toContain('Recent runs');

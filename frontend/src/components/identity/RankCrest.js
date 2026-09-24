@@ -1,33 +1,25 @@
-// RankCrest — rank as a small emblem, separate from the character.
+// RankCrest — rank as a small standalone badge, separate from the character.
 //
-// In a portrait the rank frame IS the avatar's border, and that is right when
-// the avatar is 40pt and has nowhere else to put it. On a full body runner the
-// same ring would have to go round the whole figure or round nothing; wrapping
-// only the head swallows the thing the player dressed. So in bust and full
-// contexts rank is stated BESIDE the runner, by this: the tier's own ring art
-// (config/borderArt.js, the frame every portrait already wears) around a disc
-// in the tier's colour carrying the division numeral. Same asset, same colour,
-// same numeral as the rest of the ladder, so the crest, a portrait border and
-// the ladder's plaque can never disagree about what somebody is. No new art.
+// THE PORTRAIT FRAME IS NOT A BADGE. The tier's ring art (config/borderArt.js)
+// is a player status frame: it belongs round the runner's FACE, and only there
+// (identity/RankedAvatar). This crest used to reuse that frame round a disc
+// carrying the division numeral, which put a portrait frame round "III" — the
+// rank symbol dressed up as if it were the player. So the crest is now its own
+// mark: a disc in the tier's colour, outlined in the tier's ink, carrying the
+// numeral. Same colour and same numeral as the plaque and the ladder, so the
+// crest and a frame can never disagree about what somebody is.
+//
+// Use it where the player is already drawn whole (a podium, a showcase card)
+// and rank has to be stated BESIDE the runner. Where there is a face, use
+// RankedAvatar instead.
 //
 // Optional label to its right: the tier name ("MYTHIC III") and a points line.
 
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import PortraitBorder from '../PortraitBorder';
-import { BORDER_ART } from '../../config/borderArt';
 import { numeral, tierByKey } from '../../config/rankLadder';
 import { fonts, withAlpha } from '../../theme';
-
-// PortraitBorder's `size` is the ring's OPENING and it grows the footprint up
-// to 1.5 times that. To make a crest a given size overall, size the opening
-// back down by the same factor.
-function openingFor(tierKey, size) {
-  const artTier = BORDER_ART[tierKey];
-  if (!artTier) return size;
-  return size / Math.min(1 / artTier.hole, 1.5);
-}
 
 function fmt(n) {
   return Number(n || 0).toLocaleString();
@@ -57,31 +49,40 @@ function RankCrest({
   style,
 }) {
   const tier = standing || tierByKey(tierKey || 'wood');
-  const key = tier.key || tierKey || 'wood';
   const div = standing ? standing.division : division;
   const name = standing ? standing.name : (div ? `${tier.label} ${numeral(div)}` : tier.label);
   const pts = points ?? (standing ? standing.points : null);
-  const hole = openingFor(key, size);
-  const disc = hole * 0.9;
+  const stroke = Math.max(1.5, Math.round(size * 0.07 * 2) / 2);
 
   const emblem = (
-    <PortraitBorder borderKey={key} size={hole}>
+    <View
+      style={[
+        styles.disc,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: tier.color,
+          borderColor: tier.ink,
+          borderWidth: stroke,
+        },
+      ]}
+    >
+      {/* A lighter upper half, so the disc reads as a struck badge rather
+          than a flat dot. Clipped by the disc's own radius. */}
       <View
-        style={[
-          styles.disc,
-          { width: disc, height: disc, borderRadius: disc / 2, backgroundColor: tier.color },
-        ]}
-      >
-        {div ? (
-          <Text
-            allowFontScaling={false}
-            style={[styles.numeral, { color: tier.ink, fontSize: Math.max(8, disc * 0.44) }]}
-          >
-            {numeral(div)}
-          </Text>
-        ) : null}
-      </View>
-    </PortraitBorder>
+        pointerEvents="none"
+        style={[styles.shine, { height: size / 2 - stroke, backgroundColor: withAlpha('#ffffff', 0.22) }]}
+      />
+      {div ? (
+        <Text
+          allowFontScaling={false}
+          style={[styles.numeral, { color: tier.ink, fontSize: Math.max(8, size * 0.4) }]}
+        >
+          {numeral(div)}
+        </Text>
+      ) : null}
+    </View>
   );
 
   if (!label) {
@@ -116,7 +117,8 @@ function RankCrest({
 export default React.memo(RankCrest);
 
 const styles = StyleSheet.create({
-  disc: { alignItems: 'center', justifyContent: 'center' },
+  disc: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  shine: { position: 'absolute', left: 0, right: 0, top: 0 },
   numeral: { fontFamily: fonts.display, includeFontPadding: false, textAlign: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   text: { flexShrink: 1 },

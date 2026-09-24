@@ -20,7 +20,7 @@ import { ChevronRight } from 'lucide-react-native';
 import { brand, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale, useReduceMotion } from '../ui/motion';
 import { CharacterBust } from './character/CharacterRig';
-import PortraitBorder from './PortraitBorder';
+import RankedAvatar, { rankedAvatarBox } from './identity/RankedAvatar';
 import OutlinedText from './ui/OutlinedText';
 import { fmtArea } from './RivalCard';
 
@@ -118,9 +118,7 @@ export function RivalPopupHost({ onOpen }) {
 
           {/* the two faces, yours in front of theirs */}
           <View style={styles.faces}>
-            <PortraitBorder borderKey="wood" size={38}>
-              <CharacterBust equipped={first.avatar} size={38} bg={colors.cardAlt} />
-            </PortraitBorder>
+            <RankedAvatar equipped={first.avatar} rankKey="wood" size={38} bg={colors.cardAlt} />
             <View style={styles.mine}>
               <CharacterBust equipped={myAvatar} size={38} bg={colors.cardAlt} />
             </View>
@@ -172,7 +170,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   wash: { position: 'absolute', top: 0, left: 0, right: 0, height: 4 },
-  faces: { flexDirection: 'row', alignItems: 'center', width: 62 },
+  // Their framed face, then yours tucked 14pt over it: sized from both, so
+  // the pair never runs into the copy beside it.
+  faces: { flexDirection: 'row', alignItems: 'center', width: rankedAvatarBox(38) + 38 - 14 },
   // Yours overlaps theirs — the shove is the whole story.
   mine: { marginLeft: -14, borderRadius: 19, overflow: 'hidden' },
   text: { flex: 1, gap: 1 },

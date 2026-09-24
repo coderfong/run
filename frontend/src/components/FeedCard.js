@@ -8,7 +8,6 @@ import { Dimensions, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, 
 // and `UIManager` came from here for a while, which made them undefined, and
 // the `Platform.OS` read below then threw at REQUIRE time — the whole feed
 // gone before a card was ever asked to render.
-import Animated, { FadeIn, FadeInUp, FadeInDown } from 'react-native-reanimated';
 import { Pencil } from 'lucide-react-native';
 import AppIcon from './AppIcon';
 import RouteThumb, { hasRouteData } from './RouteThumb';
@@ -27,8 +26,7 @@ import {
 } from '../theme';
 import { NEUTRAL } from '../state/clan';
 import { useAvatar } from '../state/avatar';
-import { CharacterBust } from './character/CharacterRig';
-import PortraitBorder from './PortraitBorder';
+import RankedAvatar, { rankedAvatarBox } from './identity/RankedAvatar';
 import { RunnerFigure } from './identity/PlayerIdentity';
 import { PressableScale, haptic, Reveal } from '../ui/motion';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
@@ -50,7 +48,15 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 // thumbnail of a thumbnail — the whole point of the character is that you can
 // tell whose it is at a glance down the feed, and the rank border it wears had
 // no room to read at all.
-const PORTRAIT = 46;
+const PORTRAIT = 42;
+// The header's budget on a 375pt phone, measured in the web preview: a 297pt
+// row holds the ranked portrait (42pt face, 52.5pt with its frame — the same
+// footprint the old accent ring had), the name and "took ground · 4h" (98pt),
+// and the three 38pt action slots plus a kudos count (128pt), with 8pt gaps.
+// IDENTITY_TEXT_MIN is the least the text column may shrink to before the
+// buttons wrap; any higher and they went to a second line on every row there.
+const HEADER_GAP = space.sm;
+const IDENTITY_TEXT_MIN = 96;
 // The runner sticker on a territory post's map: the whole outfit, small, stood
 // on the map's bottom right corner and breaking the frame like a sticker. Big
 // enough that shoes and a top read, small enough to keep off the claim, which
@@ -74,7 +80,7 @@ const POST_PHOTO_W = 272;
 // mechanism: if a future action lands back on this row, the name still wins
 // and the row still wraps rather than clipping. It is the portrait, its gap,
 // and enough left over for the longer of the two lines — the timestamp one.
-const IDENTITY_MIN = PORTRAIT + 10 + 118;
+const IDENTITY_MIN = rankedAvatarBox(PORTRAIT) + HEADER_GAP + IDENTITY_TEXT_MIN;
 
 // What a stat shows when there is nothing to show. A dash is the usual glyph
 // for this and the usual glyph is exactly the problem — the app has no dashes
@@ -288,11 +294,11 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
         fill={cardFill}
         style={{ marginBottom: space.md }}
       >
-      <Row between testID="feed-card-header" style={styles.header}>
+      <Row between gap={HEADER_GAP} testID="feed-card-header" style={styles.header}>
         {/* Grows into whatever the buttons leave, and never below IDENTITY_MIN
             — at which point the header wraps and the buttons take the next
             line instead of taking the name's width. */}
-        <Row gap={10} testID="feed-card-identity" style={styles.identity}>
+        <Row gap={HEADER_GAP} testID="feed-card-identity" style={styles.identity}>
           {/* character portrait — yours from local state, others' from the
               avatar the server returns; initials only when none exists yet.
               The BORDER follows the same rule: your own row reads the tier
@@ -300,33 +306,32 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
               the You page draws from, so the two can't disagree. Falling back
               to `wood` for yourself made your feed row show a bare frame while
               your profile showed your real one. */}
-          {item.is_you || item.avatar ? (
-            <View style={[styles.portraitAccent, { borderColor: accent }]}>
-              <PortraitBorder
-                borderKey={(item.is_you ? myRankKey : item.rank_key) || 'wood'}
-                size={PORTRAIT}
-              >
-                <CharacterBust equipped={item.is_you ? equipped : item.avatar} size={PORTRAIT} bg={c.fill} />
-              </PortraitBorder>
-            </View>
-          ) : (
-            <View style={[styles.initialsAvatar, { backgroundColor: c.fill, borderColor: accent }]}>
-              <Text style={[type.bodySmBold, { color: c.stroke }]}>
-                {(item.username || '?').slice(0, 2).toUpperCase()}
-              </Text>
-            </View>
-          )}
+          {/* ONE shared component, one square: the rank frame and the face
+              share a centre at every size (see identity/RankedAvatar). It
+              used to sit inside a second, clan-coloured circle sized to the
+              portrait while the frame was sized to its art, so the two rings
+              had different centres and the frame read as slipped. The clan
+              colour still reaches the row through the name's tag and the
+              claim figure below. */}
+          <RankedAvatar
+            equipped={item.is_you ? equipped : item.avatar}
+            rankKey={(item.is_you ? myRankKey : item.rank_key) || 'wood'}
+            size={PORTRAIT}
+            bg={c.fill}
+            initials={item.is_you || item.avatar ? null : item.username || '?'}
+            initialsColor={c.stroke}
+          />
           <View style={styles.identityText}>
             <Text style={[type.bodyBold, { color: colors.text }]} numberOfLines={1}>
               {item.clan_tag ? `[${item.clan_tag}] ` : ''}{item.username}
               {item.is_you ? ' (you)' : ''}
             </Text>
             <Text style={[type.captionMedium, { color: colors.textMuted }]} numberOfLines={1}>
-              {item.closed_loop ? 'took ground' : 'ran a path'} · {timeAgo(item.created_at)}
+              {item.closed_loop ? 'took ground' : 'ran a path'} · {timeAgo(item.created_at).replace(/ ago$/, '')}
             </Text>
           </View>
         </Row>
-        <Row gap={2} testID="feed-card-actions" style={styles.actions}>
+        <Row gap={0} testID="feed-card-actions" style={styles.actions}>
           {/* THE ROW IS TWO BUTTONS AND A MENU.
               React and kudos stay out here because they are the two things
               people actually do to a run, they are one tap each, and both
@@ -555,8 +560,13 @@ export default function FeedCard({ item, navigation, autoPlaySteal = false, onSc
         />
       )}
 
+      {/* One line, CENTRED on the card. As a single left-aligned run of
+          text it hugged the left edge and left a hole on the right; centred,
+          the three numbers read as a balanced footer. Kept as one Text so
+          all three share a size and a baseline, and shrink together on a
+          narrow phone rather than one at a time. */}
       <View style={styles.statRow}>
-        <Text style={[type.statSm, styles.statSummary, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
+        <Text style={[type.statValue, styles.statSummary, { color: colors.text }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>
           {(item.distance_m / 1000).toFixed(2)} km
           <Text style={{ color: colors.textMuted }}>  ·  </Text>
           {pace(item.distance_m, item.duration_s)}/km
@@ -637,35 +647,21 @@ const makeStyles = (colors) =>
     // practice it stays on one line and, more to the point, your own runs and
     // everybody else's are the same height. The wrap is the safety net.
     header: { flexWrap: 'wrap', rowGap: space.sm, marginBottom: space.xs },
-    // No `flex: 1` here, deliberately. That sets flexBasis to 0, and the wrap
-    // decision is made on flex BASIS, not on what the content actually needs —
-    // a zero-basis identity always "fits", so the header would never break and
-    // the name would go straight back to being crushed.
-    identity: { flexGrow: 1, flexShrink: 1, minWidth: IDENTITY_MIN },
+    // A ZERO basis, bounded below by IDENTITY_MIN. The wrap decision is made
+    // on the basis clamped by the minimum, so this breaks the line exactly when
+    // the name column would drop under IDENTITY_MIN and not before. On an
+    // `auto` basis it broke whenever the text's full natural width plus the
+    // buttons overran the card, which on a 375pt phone was every row: the
+    // buttons sat alone on a second line over a band of empty card.
+    identity: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: IDENTITY_MIN },
     identityText: { flexGrow: 1, flexShrink: 1, gap: 2 },
-    portraitAccent: {
-      width: PORTRAIT + 6,
-      height: PORTRAIT + 6,
-      borderRadius: (PORTRAIT + 6) / 2,
-      borderWidth: 2,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    initialsAvatar: {
-      width: PORTRAIT + 6,
-      height: PORTRAIT + 6,
-      borderRadius: (PORTRAIT + 6) / 2,
-      borderWidth: 2,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
     statRow: {
       marginTop: space.md,
       paddingTop: space.sm,
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
-    statSummary: { fontSize: 16, lineHeight: 22 },
+    statSummary: { lineHeight: 22, textAlign: 'center' },
     // Never shrinks: 40pt is already the minimum a thumb can hit. `marginLeft:
     // auto` is what keeps the strip against the right edge on the wrapped
     // line, where `between` has nothing to push it away from.

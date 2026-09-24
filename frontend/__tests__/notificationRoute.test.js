@@ -58,8 +58,9 @@ describe('targetForNotification', () => {
     expect(params.screen).toBe('Club');
   });
 
-  test('a paser request opens Pasers with the profile underneath', () => {
+  test('a paser request opens Pasers with Home underneath', () => {
     const [, params] = targetForNotification({ screen: 'pasers' });
+    expect(params.screen).toBe('Home');
     expect(params.params).toEqual({ screen: 'Pasers', initial: false });
   });
 

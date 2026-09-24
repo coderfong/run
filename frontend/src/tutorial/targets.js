@@ -12,7 +12,7 @@
 
 export const TARGET = {
   // --- Home ---------------------------------------------------------------
-  // The LET'S RUN hero card on Home.
+  // The Start a run hero card on Home.
   HOME_START_RUN: 'home.startRun',
 
   // --- the run screen -----------------------------------------------------

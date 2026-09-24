@@ -7,11 +7,13 @@
 // shows, and it is the only number here that can fall.
 //
 // LAYOUT. A compact cream header (the old full width pink panel was chrome
-// standing on the thing it labelled), then the summary pinned under it (tier,
-// points, your percentile ONCE, what is next, and the one line about where
-// rank points come from, which used to sit orphaned under the ladder), then
-// the ladder itself. The summary and the post claim screen are built from the
-// same RankLadderKit parts, so the two read as one system.
+// standing on the thing it labelled), then ONE status row pinned under it
+// (your ranked portrait, tier, points and your percentile, each said once),
+// one line about where rank points come from, and then the ladder itself.
+// What is next lives on your own tier card, and "Top of the ladder" on the
+// track's open end — neither is repeated up here. The summary and the post
+// claim screen are built from the same RankLadderKit parts, so the two read as
+// one system.
 //
 // TWO REQUESTS, AND THE PAGE DRAWS WITH EITHER. The standing comes from the
 // progression payload, almost always cached. The percentiles are a slower
@@ -35,7 +37,10 @@ import { TIP, useTutorialTip } from '../tutorial';
 
 // Short and factual: points come from taking and holding land, and they fall
 // when land is lost or when you stop (decay). No dashes, one idea per line.
-export const RANK_NOTE = 'Rank points come from land you take and hold. They fall when you lose land or stop running.';
+// The first line is always shown; the second is folded behind the info row,
+// so the ladder starts one line after the summary instead of three.
+export const RANK_NOTE = 'Rank points come from land you take and hold.';
+export const RANK_NOTE_MORE = 'They fall when you lose land or stop running.';
 
 export default function RankLadderScreen({ navigation }) {
   // One card, the first time this screen is opened. See src/tutorial/tips.js.
@@ -74,6 +79,7 @@ export default function RankLadderScreen({ navigation }) {
           topPercent={myPercent}
           equipped={equipped}
           note={RANK_NOTE}
+          noteMore={RANK_NOTE_MORE}
         />
         <RankLadder
           standing={standing}

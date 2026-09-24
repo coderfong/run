@@ -11,25 +11,25 @@
 //   RankHeader          compact cream header with a pink accent rule
 //   RankTrack           one tier's slice of the vertical track
 //   RankThreshold       the notch and number on a tier's floor line
-//   RankMarker          YOU: the avatar medallion and your points
+//   RankMarker          YOU: your ranked portrait and your points
 //   RankTierCard        a tier's illustration with its plaque over it
-//   CurrentRankSummary  tier, points, percentile, what is next
+//   CurrentRankSummary  your ranked portrait, tier, points, percentile
 //
 // The screens do NOT share a tree. The ladder is for browsing and holds still;
 // the progression is for change and moves. What they share is the geometry
 // (RAIL_W, TRACK_W, TRACK_RIGHT, MARKER), the colours (tier data), the copy
 // helpers (config/rankLadder.js) and the marker.
 
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { Info } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ChevronDown, Info } from 'lucide-react-native';
 
 import BackButton from '../ui/BackButton';
 import { RankPlaque } from './RankBadge';
-import { CharacterBust } from '../character/CharacterRig';
-import { RankCrest, RunnerFigure } from '../identity/PlayerIdentity';
+import { RunnerFigure } from '../identity/PlayerIdentity';
+import RankedAvatar, { rankedAvatarSizeFor } from '../identity/RankedAvatar';
 import { rankArt } from '../../config/rankArt';
-import { fmtPoints, nextTierCopy } from '../../config/rankLadder';
+import { fmtPoints } from '../../config/rankLadder';
 import { Image } from '../../ui/image';
 import {
   NB,
@@ -54,7 +54,8 @@ export const TRACK_W = 8;
 export const TRACK_RIGHT = 14;
 // Centre of the track, from the rail's left edge.
 export const TRACK_X = RAIL_W - TRACK_RIGHT - TRACK_W / 2;
-// The avatar medallion. Fixed so a parent can position it before layout.
+// The marker's ranked portrait, as a footprint. Fixed so a parent can position
+// it before layout; the portrait inside is `rankedAvatarSizeFor(MARKER)`.
 export const MARKER = 30;
 
 // --- header ------------------------------------------------------------------
@@ -160,23 +161,27 @@ export function RankThreshold({ points, reached = true, bottom = 0 }) {
 // --- the marker --------------------------------------------------------------
 
 /**
- * YOU. The same mark on both screens and in every tier: the runner in a pink
- * medallion on the track, a YOU tag with your points to its left, and a short
- * stem pointing into the card you are standing on. Deliberately NOT the tier
- * colour: the tier changes, you do not.
+ * YOU. The same mark on both screens and in every tier: your RANKED PORTRAIT
+ * (the same RankedAvatar as the summary and the feed, so the face and its
+ * frame are the one drawing everywhere) centred on the track, a YOU tag with
+ * your points to its left on the same centre line, and a short pink stem
+ * pointing into the card you are standing on.
  *
  * Positioned by the parent (a box RAIL_W wide and MARKER tall); `points` can be
  * a node, which is how the progression screen puts a live count here.
  */
-export function RankMarker({ equipped, points, halo = null }) {
-  const { colors, scheme } = useTheme();
-  const ink = nbInk(scheme, colors.bg);
+export function RankMarker({ equipped, rankKey, points, halo = null }) {
+  const { colors } = useTheme();
   return (
     <View
       style={stylesStatic.marker}
       accessible
       accessibilityLabel="Current position on rank ladder"
     >
+      {/* The NUMBER sits on the marker's centre line — the same line as the
+          portrait's centre and the stem — so the reading and the mark are one
+          height. YOU hangs just above it rather than stacking the two, which
+          pushed the number half a line below the marker. */}
       <View style={[stylesStatic.markerLabel, { backgroundColor: colors.bg }]}>
         <Text style={stylesStatic.markerYou}>YOU</Text>
         {typeof points === 'number' || typeof points === 'string' ? (
@@ -189,9 +194,7 @@ export function RankMarker({ equipped, points, halo = null }) {
       </View>
       <View style={stylesStatic.medallionSlot}>
         {halo}
-        <View style={[stylesStatic.medallion, { borderColor: ink }]}>
-          <CharacterBust equipped={equipped} size={MARKER - 6} bg={colors.card} />
-        </View>
+        <RankedAvatar equipped={equipped} rankKey={rankKey} size={rankedAvatarSizeFor(MARKER)} bg={colors.card} />
       </View>
       <View style={[stylesStatic.stem, { backgroundColor: brand.pink }]} />
     </View>
@@ -216,9 +219,10 @@ function veilFor(emphasis, reached) {
 }
 
 /**
- * A tier as a card: the illustration, its plaque on a band along the bottom,
- * and at most two chips over the sky (YOU ARE HERE, and the tier's own
- * percentile when it has a distinct one).
+ * A tier as a card: the illustration, and a band along the bottom carrying
+ * its plaque and one quiet line (your gap to the next tier on your own card,
+ * the tier's percentile on a tier above you). The only chip over the sky is
+ * YOU ARE HERE.
  *
  * @param emphasis 'current' | 'near' | 'far'
  * @param runner   `{ equipped, pose }` to stand YOUR full body runner in the
@@ -294,11 +298,6 @@ export function RankTierCard({
           </View>
         ) : null}
 
-        {percent != null ? (
-          <View style={[styles.percentChip, { backgroundColor: withAlpha(tier.ink, 0.82) }]}>
-            <Text style={styles.percentText}>{`TOP ${percent}% OF RUNNERS`}</Text>
-          </View>
-        ) : null}
 
         <View style={[styles.band, { height: bandH, backgroundColor: withAlpha(tier.ink, 0.84) }]}>
           <RankPlaque
@@ -313,6 +312,12 @@ export function RankTierCard({
             <Text numberOfLines={1} style={styles.gap}>
               {gap}
             </Text>
+          ) : percent != null ? (
+            // How exclusive a tier above you is, said quietly on the band
+            // beside its name rather than as a chip over the illustration.
+            <Text numberOfLines={1} style={[styles.gap, styles.percentText]}>
+              {`Top ${percent}%`}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -323,53 +328,77 @@ export function RankTierCard({
 // --- current rank summary ----------------------------------------------------
 
 /**
- * Where you stand, in words, before any scrolling: the tier, your points, your
- * percentile (ONCE, here, rather than on every card), and what is next.
+ * Where you stand, ONCE, before any scrolling: your ranked portrait, the tier,
+ * your points and your percentile. Nothing here is said again below — what is
+ * next is on your own tier card, and the percentile appears nowhere else.
+ *
+ * The rank frame goes round your PORTRAIT (RankedAvatar), never round the tier
+ * numeral: the frame is a player status frame, and the numeral is already in
+ * the name beside it.
+ *
+ * `note` is one line under it; `noteMore` is the rest of the explanation,
+ * folded behind the info row so the ladder starts sooner.
  */
-export function CurrentRankSummary({ standing, topPercent = null, equipped, note, style }) {
+export function CurrentRankSummary({ standing, topPercent = null, equipped, note, noteMore, style }) {
   const styles = useThemedStyles(makeStyles);
+  const [open, setOpen] = useState(false);
   if (!standing) return null;
-  const next = nextTierCopy(standing);
   const spoken = [
     `Current rank ${standing.name}.`,
     `${fmtPoints(standing.points)} rank points.`,
     topPercent != null ? `Top ${topPercent}% of runners.` : null,
-    next ? `${next}.` : null,
   ].filter(Boolean).join(' ');
 
   return (
     <View style={[styles.summary, style]}>
       <View style={styles.summaryRow} accessible accessibilityLabel={spoken}>
-        {/* Rank as a crest: the runner itself stands on the current tier
-            card below, whole, rather than as a head in this ring. */}
-        <RankCrest standing={standing} size={48} />
+        <RankedAvatar
+          equipped={equipped}
+          rankKey={standing.key}
+          size={SUMMARY_PORTRAIT}
+          bg={styles.summaryDisc.backgroundColor}
+        />
         <View style={styles.summaryText}>
-          <View style={styles.summaryNameRow}>
-            <View style={[styles.tierDot, { backgroundColor: standing.color }]} />
-            <Text style={styles.summaryName} numberOfLines={1}>
-              {standing.name.toUpperCase()}
-            </Text>
-          </View>
+          <Text style={styles.summaryName} numberOfLines={1}>
+            {standing.name.toUpperCase()}
+          </Text>
           <Text style={styles.summaryLine} numberOfLines={1}>
             <Text style={styles.summaryPoints}>{`${fmtPoints(standing.points)} pts`}</Text>
-            {topPercent != null ? `  ·  Top ${topPercent}% of runners` : ''}
+            {topPercent != null ? `  ·  Top ${topPercent}%` : ''}
           </Text>
-          {next ? (
-            <Text style={styles.summaryNext} numberOfLines={1}>
-              {next}
-            </Text>
-          ) : null}
         </View>
       </View>
       {note ? (
-        <View style={styles.note}>
+        <Pressable
+          onPress={noteMore ? () => setOpen((v) => !v) : undefined}
+          disabled={!noteMore}
+          style={styles.note}
+          accessibilityRole={noteMore ? 'button' : 'text'}
+          accessibilityState={noteMore ? { expanded: open } : undefined}
+          accessibilityLabel={open && noteMore ? `${note} ${noteMore}` : note}
+          accessibilityHint={noteMore && !open ? 'Shows more about rank points' : undefined}
+          hitSlop={6}
+        >
           <Info size={14} color={styles.noteText.color} strokeWidth={2.4} />
-          <Text style={styles.noteText}>{note}</Text>
-        </View>
+          <Text style={styles.noteText} numberOfLines={open ? undefined : 2}>
+            {open && noteMore ? `${note} ${noteMore}` : note}
+          </Text>
+          {noteMore ? (
+            <ChevronDown
+              size={14}
+              color={styles.noteText.color}
+              strokeWidth={2.4}
+              style={open ? styles.chevronOpen : null}
+            />
+          ) : null}
+        </Pressable>
       ) : null}
     </View>
   );
 }
+
+// The summary's portrait diameter. Its footprint is 1.25x this (RankedAvatar).
+const SUMMARY_PORTRAIT = 48;
 
 // Theme free styles for the parts that are positioned against the geometry
 // above and read their colours from props.
@@ -408,6 +437,9 @@ const stylesStatic = StyleSheet.create({
     borderRadius: 6,
   },
   markerYou: {
+    position: 'absolute',
+    bottom: '100%',
+    right: 3,
     fontFamily: fonts.bold,
     fontSize: 9,
     letterSpacing: 1,
@@ -422,16 +454,6 @@ const stylesStatic = StyleSheet.create({
     height: MARKER,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  medallion: {
-    width: MARKER,
-    height: MARKER,
-    borderRadius: MARKER / 2,
-    borderWidth: NB.strokeThin,
-    backgroundColor: brand.pink,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
   },
   // From the medallion's right edge across the gap and a few points into the
   // card, so the marker points AT the tier it belongs to.
@@ -476,16 +498,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderColor: nbInk('light', brand.pink),
   },
   youChipText: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.8, color: '#ffffff' },
-  percentChip: {
-    position: 'absolute',
-    top: space.xs + 2,
-    right: space.xs + 2,
-    paddingHorizontal: space.sm,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-  },
-  // White on the tier's own ink: this sits on the art in both schemes.
-  percentText: { color: '#ffffff', fontFamily: fonts.bodyMedium, fontSize: 10, letterSpacing: 0.8 },
+  // Quieter than the gap line it stands in for: a fact about the tier, not a
+  // call to action. White on the band's own ink in both schemes.
+  percentText: { opacity: 0.78 },
   band: {
     position: 'absolute',
     left: 0,
@@ -499,24 +514,24 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   },
   gap: { flex: 1, textAlign: 'right', fontFamily: fonts.bodyMedium, fontSize: 11, color: '#ffffff' },
 
-  summary: { paddingHorizontal: space.gutter, paddingBottom: space.sm },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  summary: { paddingHorizontal: space.gutter, paddingBottom: space.xs },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   summaryText: { flex: 1 },
-  summaryNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  tierDot: { width: 10, height: 10, borderRadius: 5 },
-  summaryName: { ...type.title, fontSize: 19, lineHeight: 24, color: colors.text, flexShrink: 1 },
-  summaryLine: { ...type.captionMedium, color: colors.textMuted, marginTop: 1 },
+  // Only its colour is read: the disc behind the portrait.
+  summaryDisc: { backgroundColor: colors.cardAlt },
+  // The tier name is the card title of this block: the page title's face, a
+  // step down so RANK LADDER above it still leads.
+  summaryName: { ...type.pageTitle, fontSize: 19, lineHeight: 24, color: colors.text, flexShrink: 1 },
+  summaryLine: { ...type.secondary, color: colors.textMuted, marginTop: 1 },
   summaryPoints: { ...type.bodySmBold, color: colors.text },
-  summaryNext: { ...type.caption, color: colors.textMuted, marginTop: 1 },
+  // One quiet line, no box: it is a footnote to the summary, not a card.
   note: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: space.sm,
-    paddingHorizontal: space.sm,
-    paddingVertical: 6,
-    borderRadius: radius.md,
-    backgroundColor: colors.cardAlt,
+    marginTop: space.xs,
+    paddingVertical: 4,
   },
-  noteText: { ...type.caption, color: colors.textMuted, flex: 1 },
+  noteText: { ...type.metadata, color: colors.textMuted, flex: 1 },
+  chevronOpen: { transform: [{ rotate: '180deg' }] },
 });

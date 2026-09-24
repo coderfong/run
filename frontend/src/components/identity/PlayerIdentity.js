@@ -13,8 +13,8 @@
 //   portrait  TINY: notifications, reactions, chat, compact rows, far map
 //             markers, small activity headers. Head in a circle, and the RANK
 //             RING stays as its border, because at 30 to 50pt there is nowhere
-//             else to put rank. This is the old CharacterBust + PortraitBorder
-//             pairing, unchanged.
+//             else to put rank. This is RankedAvatar: CharacterBust inside
+//             PortraitBorder, both centred in one square.
 //
 //   bust      MEDIUM: bigger headers, club member previews, rival summaries,
 //             compact profile cards. Hat to hips in a rounded window, so the
@@ -38,7 +38,7 @@ import React from 'react';
 import { View } from 'react-native';
 
 import { CharacterBust } from '../character/CharacterRig';
-import PortraitBorder from '../PortraitBorder';
+import RankedAvatar from './RankedAvatar';
 import RunnerBust from './RunnerBust';
 import RunnerFigure from './RunnerFigure';
 import RankCrest from './RankCrest';
@@ -46,6 +46,7 @@ import RankCrest from './RankCrest';
 export { default as RunnerFigure, figureLayout, figureWidthFor } from './RunnerFigure';
 export { default as RunnerBust, bustLayout } from './RunnerBust';
 export { default as RankCrest } from './RankCrest';
+export { default as RankedAvatar, rankedAvatarBox, rankedAvatarSizeFor } from './RankedAvatar';
 export { POSES, resolvePose } from './poses';
 
 export const IDENTITY_MODES = ['portrait', 'bust', 'full'];
@@ -123,15 +124,12 @@ export default function PlayerIdentity({
     );
   }
 
-  const bust = <CharacterBust equipped={equipped} size={size} bg={bg} ring={ring} crisp={crisp} />;
   return (
     <View style={style} accessible={!!accessibilityLabel} accessibilityLabel={accessibilityLabel}>
       {showRank ? (
-        <PortraitBorder borderKey={key} size={size}>
-          {bust}
-        </PortraitBorder>
+        <RankedAvatar equipped={equipped} rankKey={key} size={size} bg={bg} crisp={crisp} />
       ) : (
-        bust
+        <CharacterBust equipped={equipped} size={size} bg={bg} ring={ring} crisp={crisp} />
       )}
     </View>
   );

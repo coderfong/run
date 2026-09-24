@@ -19,8 +19,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
-import PortraitBorder from '../PortraitBorder';
-import { CharacterBust } from '../character/CharacterRig';
+import RankedAvatar from '../identity/RankedAvatar';
 import { DIVISIONS } from '../../config/rankLadder';
 import { fonts, space, withAlpha } from '../../theme';
 
@@ -101,9 +100,7 @@ export default function RankBadge({
 }) {
   return (
     <View style={[styles.badge, dim && styles.dim, style]}>
-      <PortraitBorder borderKey={tierKey} size={size}>
-        <CharacterBust equipped={equipped} size={size} />
-      </PortraitBorder>
+      <RankedAvatar equipped={equipped} rankKey={tierKey} size={size} />
       {showStars ? (
         <View style={styles.stars}>
           {Array.from({ length: DIVISIONS }, (_, i) => (

@@ -17,6 +17,8 @@ export { default as SectionHeader, SectionLabel } from './SectionHeader';
 export { default as AccordionSection } from './Accordion';
 export { default as EmptyState } from './EmptyState';
 export { default as Skeleton } from './Skeleton';
+// The page indicator under a paged carousel (Home's hero and quick actions).
+export { default as PageDots } from './PageDots';
 export { default as Sheet } from './Sheet';
 export { default as Segmented } from './Segmented';
 // A TextInput that shows its focus ring. Drop-in: it keeps the caller's own

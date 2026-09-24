@@ -103,7 +103,7 @@ describe('TwoStepClaimFlow', () => {
     const all = texts(tree);
     expect(all).toContain('STEP 1 OF 2');
     expect(all).toContain('Choose where');
-    expect(all).toContain('Move your territory along your run.');
+    expect(all).toContain('Move your claim along your run.');
     expect(all).toContain('Position on your run');
     expect(tree.root.findAllByProps({ accessibilityLabel: 'Claim position along run' }).length).toBeGreaterThan(0);
     act(() => {

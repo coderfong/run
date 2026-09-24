@@ -9,11 +9,16 @@ import { Check, X } from 'lucide-react-native';
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
 import { brand, fonts, NB, nbInk, radius, space, useTheme, useThemedType, useThemedStyles } from '../theme';
-import { Screen, Skeleton, EmptyState, Button } from '../components/ui';
+import { Screen, Skeleton, EmptyState } from '../components/ui';
 import BackButton from '../components/ui/BackButton';
 import AppIcon, { STEAL_ICON_SIZE } from '../components/AppIcon';
-import PortraitBorder from '../components/PortraitBorder';
-import { CharacterBust } from '../components/character/CharacterRig';
+import RankedAvatar, { rankedAvatarBox } from '../components/identity/RankedAvatar';
+
+// The actor's face, and the slot every row's leading mark takes: the ranked
+// avatar's own square, so a row with a face and a row with a system sticker
+// start their text on the same edge.
+const ACTOR = 40;
+const ACTOR_SLOT = rankedAvatarBox(ACTOR);
 import { PressableScale, shouldStagger, staggerDelay, useReduceMotion } from '../ui/motion';
 import { timeAgo } from '../utils/time';
 import { targetForNotification } from '../notifications/route';
@@ -41,20 +46,16 @@ function Actor({ item, styles }) {
   const iconName = CATEGORY_ICON[item.category] || 'bell';
   if (!item.actor_avatar) {
     return (
-      <View style={styles.icon}>
-        <AppIcon name={iconName} size={iconName === 'steal' ? STEAL_ICON_SIZE : 22} faded={item.read} />
+      <View style={styles.iconSlot}>
+        <View style={styles.icon}>
+          <AppIcon name={iconName} size={iconName === 'steal' ? STEAL_ICON_SIZE : 22} faded={item.read} />
+        </View>
       </View>
     );
   }
   return (
     <View style={styles.actor}>
-      <PortraitBorder borderKey={item.actor_rank_key || 'wood'} size={40}>
-        <CharacterBust
-          equipped={item.actor_avatar}
-          size={40}
-          bg={item.actor_clan_color?.fill}
-        />
-      </PortraitBorder>
+      <RankedAvatar equipped={item.actor_avatar} rankKey={item.actor_rank_key || 'wood'} size={ACTOR} bg={item.actor_clan_color?.fill} />
       <View style={[styles.actorBadge, iconName === 'steal' && styles.stealActorBadge]}>
         <AppIcon name={iconName} size={iconName === 'steal' ? 19 : 14} />
       </View>
@@ -272,13 +273,15 @@ const makeStyles = (colors, scheme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    // The portrait needs room for the badge hanging off its corner, so it is
-    // sized past the frame rather than clipped to it.
-    actor: { width: 40, height: 40 },
+    // The slot is the ranked avatar's own box (face plus frame), so nothing
+    // is clipped and the badge sits on the frame's lower right, not on a box
+    // smaller than the thing drawn in it.
+    actor: { width: ACTOR_SLOT, height: ACTOR_SLOT },
+    iconSlot: { width: ACTOR_SLOT, height: ACTOR_SLOT, alignItems: 'center', justifyContent: 'center' },
     actorBadge: {
       position: 'absolute',
-      right: -5,
-      bottom: -3,
+      right: 0,
+      bottom: 2,
       width: 21,
       height: 21,
       borderRadius: 11,
@@ -288,7 +291,7 @@ const makeStyles = (colors, scheme) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    stealActorBadge: { width: 25, height: 25, borderRadius: 13, right: -7, bottom: -5 },
+    stealActorBadge: { width: 25, height: 25, borderRadius: 13, right: -2, bottom: 0 },
     icon: {
       width: 38,
       height: 38,

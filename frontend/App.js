@@ -240,6 +240,9 @@ function HomeStack() {
         options={{ headerShown: true, title: 'Rivalry' }}
       />
       <HomeStackNav.Screen name="Crossroads" component={CrossroadsScreen} />
+      {/* Your pasers: the friends showcase, opened from the Pasers shortcut on
+          Home. Draws its own header (with a back button). */}
+      <HomeStackNav.Screen name="Pasers" component={PasersScreen} />
       {/* Reachable from Crossroads, so it has to exist on this stack too. */}
       <HomeStackNav.Screen
         name="RunnerProfile"

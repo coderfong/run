@@ -1,4 +1,17 @@
-// Pasers — your runners. Reached from the You tab.
+// Pasers — your runners, shown off. Reached from the Pasers shortcut on Home.
+//
+// A SOCIAL SHOWCASE, NOT A SETTINGS LIST. Cosmetics are half of what PASER is,
+// and your pasers are who you dress up for, so the page leads with them: a
+// grid of cards, each one the runner WHOLE (head to shoes, in what they
+// actually wear), their name, their rank and their level. Tap one for their
+// profile. The park the page used to be painted on stays, faded, as a strip
+// behind the header — decoration, not the content.
+//
+// ADDING IS SECONDARY. It is one "+ Add" in the header (share your code, or
+// search) and the search box under it, and it only takes the page over while
+// you are typing. Somebody with pasers should not scroll past half a screen of
+// add controls to see them; somebody without gets an empty state that says,
+// in two buttons, what to do.
 //
 // One screen, three states driven by the search box:
 //   empty search  -> incoming requests (if any) + your pasers
@@ -6,41 +19,57 @@
 // Every mutation returns the other runner's fresh `state`, so rows re-render
 // from the response instead of us guessing the next state client-side.
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Linking,
   RefreshControl,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MessageCircle, Search } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { MessageCircle, Plus, Search } from 'lucide-react-native';
 
 import { api } from '../api/client';
 import { useQuery } from '../hooks/useQuery';
-import { NB_FOCUS, radius, space, toonRadius, toonSurface, useTheme, useThemedType, useThemedStyles } from '../theme';
 import {
-  Screen,
-  Card,
-  Row,
+  NB_FOCUS,
+  brand,
+  radius,
+  space,
+  tintOn,
+  toonRadius,
+  toonSurface,
+  useTheme,
+  useThemedType,
+  useThemedStyles,
+  withAlpha,
+} from '../theme';
+import {
+  BackButton,
   Button,
-  Pill,
-  SectionHeader,
-  Skeleton,
+  Card,
   EmptyState,
   Input,
+  OverflowMenu,
+  Pill,
+  Row,
   Sheet,
-  ToonHeader,
+  Skeleton,
   ToonRow,
   ToonRowGroup,
 } from '../components/ui';
-import { CharacterBust } from '../components/character/CharacterRig';
-import PortraitBorder from '../components/PortraitBorder';
-import { PressableScale, Reveal, staggerDelay } from '../ui/motion';
+import RankedAvatar from '../components/identity/RankedAvatar';
+import RankCrest from '../components/identity/RankCrest';
+import RunnerFigure from '../components/identity/RunnerFigure';
+import { tierByKey } from '../config/rankLadder';
+import { art } from '../config/onboardingArt';
+import { Reveal, staggerDelay } from '../ui/motion';
 import AppIcon from '../components/AppIcon';
 import { useAuth } from '../auth/AuthContext';
 import { toast } from '../ui/toast';
@@ -49,11 +78,24 @@ import { Image } from '../ui/image';
 
 const MIN_QUERY = 2;
 
-// One runner row: bust, name, club tag, and whatever action their state affords.
+// The showcase grid. Two across on a phone, three on anything wide enough
+// that two would make each runner taller than the screen wants.
+const GRID_GAP = space.md;
+function columnsFor(width) {
+  return width >= 640 ? 3 : 2;
+}
+// The runner's stage inside a card, as a share of the card's width. Tall
+// enough that shoes, a top and a hat all read; the figure is fitted inside it
+// whole (RunnerFigure contains, it never crops).
+const STAGE_RATIO = 1.12;
+// The strip of park painted behind the header and search box.
+const PARK_H = 176;
+
+// One runner row, for search results and requests: portrait in its rank
+// frame, name, club tag, and whatever action their state affords.
 function RunnerRow({ runner, onOpen, onAdd, onRespond, onRemove, busy }) {
   const type = useThemedType();
   const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
   const accent = runner.clan_color?.stroke || colors.textMuted;
 
   const action = () => {
@@ -64,12 +106,10 @@ function RunnerRow({ runner, onOpen, onAdd, onRespond, onRemove, busy }) {
       case 'pending_out':
         return <Button title="Requested" size="sm" variant="secondary" full={false} onPress={() => onRemove(runner)} />;
       case 'pending_in':
-        return (
-          <Row gap={6}>
-            <Button title="Accept" size="sm" full={false} onPress={() => onRespond(runner, 'accept')} />
-            <Button title="Decline" size="sm" variant="secondary" full={false} onPress={() => onRespond(runner, 'decline')} />
-          </Row>
-        );
+        // Two buttons are too wide to share a line with the name on a phone
+        // (the level was wrapping to two lines between them), so a request
+        // answers on its own line under who sent it.
+        return null;
       case 'paser':
         return <Button title="Remove" size="sm" variant="secondary" full={false} onPress={() => onRemove(runner)} />;
       default:
@@ -77,34 +117,101 @@ function RunnerRow({ runner, onOpen, onAdd, onRespond, onRemove, busy }) {
     }
   };
 
+  const request = runner.state === 'pending_in';
   return (
-    <Card style={{ marginBottom: space.sm }}>
+    <Card style={{ marginBottom: space.sm }} onPress={() => onOpen(runner)} accessibilityLabel={`${runner.username}'s profile`}>
       <Row between>
-        <PressableScale style={{ flex: 1 }} onPress={() => onOpen(runner)} accessibilityRole="button" accessibilityLabel={`${runner.username}'s profile`}>
-          <Row gap={12} style={{ flex: 1 }}>
-            <PortraitBorder borderKey={runner.rank_key || 'wood'} size={40}>
-              <CharacterBust equipped={runner.avatar} size={40} bg={colors.cardAlt} />
-            </PortraitBorder>
+        <Row gap={space.sm} style={{ flex: 1, minWidth: 0 }}>
+          <RankedAvatar equipped={runner.avatar} rankKey={runner.rank_key} size={40} bg={colors.cardAlt} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Row gap={6}>
+              <Text style={[type.cardTitle, { flexShrink: 1 }]} numberOfLines={1}>{runner.username}</Text>
+              {runner.clan_tag ? <Pill label={`[${runner.clan_tag}]`} color={accent} /> : null}
+            </Row>
+            <Text style={[type.metadata, { color: colors.textMuted }]} numberOfLines={1}>
+              {request ? `Level ${runner.level ?? 0} · wants to be your Paser` : `Level ${runner.level ?? 0}`}
+            </Text>
+          </View>
+        </Row>
+        {request ? null : <View style={{ marginLeft: space.sm }}>{action()}</View>}
+      </Row>
+      {request ? (
+        busy ? (
+          <ActivityIndicator size="small" color={colors.textMuted} style={{ marginTop: space.sm }} />
+        ) : (
+          <Row gap={space.sm} style={{ marginTop: space.sm }}>
             <View style={{ flex: 1 }}>
-              <Row gap={6}>
-                <Text style={type.bodyBold} numberOfLines={1}>{runner.username}</Text>
-                {runner.clan_tag ? <Pill label={`[${runner.clan_tag}]`} color={accent} /> : null}
-              </Row>
-              <Text style={type.caption}>Level {runner.level}</Text>
+              <Button title="Accept" variant="gradient" size="sm" onPress={() => onRespond(runner, 'accept')} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button title="Decline" variant="outline" size="sm" onPress={() => onRespond(runner, 'decline')} />
             </View>
           </Row>
-        </PressableScale>
-        <View style={{ marginLeft: space.sm }}>{action()}</View>
-      </Row>
+        )
+      ) : null}
     </Card>
   );
 }
 
-// "Find pasers from other apps" — pasers are added by username, so every row
-// shares the same invite text; the deep-link rows fall back to a toast when
-// the app isn't installed. (No copy-link row: that needs expo-clipboard,
-// which isn't a dependency yet.)
-function ShareCodeSheet({ visible, onClose, username }) {
+// One paser in the showcase: the whole runner on a stage washed in their
+// tier's colour, then who they are. The card is the button (their profile);
+// the corner menu holds the one thing you might do TO them.
+const PaserCard = React.memo(function PaserCard({ runner, width, busy, onOpen, onRemove }) {
+  const type = useThemedType();
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const tier = tierByKey(runner.rank_key);
+  const stageH = Math.round(width * STAGE_RATIO);
+  const name = runner.username || 'Runner';
+  return (
+    <Card
+      padded={false}
+      onPress={() => onOpen(runner)}
+      accessibilityLabel={`${name}, ${tier.label} rank, level ${runner.level ?? 0}. Open profile`}
+      style={[styles.paserCard, { width }]}
+    >
+      <View style={[styles.stage, { height: stageH, backgroundColor: tintOn(colors.card, tier.color, 0.16) }]}>
+        {/* A shadow to stand on, so the runner is ON the card, not floating. */}
+        <View style={[styles.floor, { backgroundColor: withAlpha(tier.ink, 0.18) }]} pointerEvents="none" />
+        <RunnerFigure
+          equipped={runner.avatar}
+          height={stageH - space.md}
+          width={width - space.md}
+          accessibilityLabel={`${name}'s runner`}
+        />
+        {busy ? (
+          <View style={[StyleSheet.absoluteFill, styles.busy]}>
+            <ActivityIndicator color={colors.text} />
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.paserInfo}>
+        <Text style={[type.cardTitle, { color: colors.text }]} numberOfLines={1}>
+          {runner.clan_tag ? `[${runner.clan_tag}] ` : ''}{name}
+        </Text>
+        <Row gap={6} style={styles.paserRank}>
+          <RankCrest tierKey={tier.key} size={14} />
+          <Text style={[type.secondary, { color: colors.textMuted, flexShrink: 1 }]} numberOfLines={1}>
+            {`${tier.label} · Level ${runner.level ?? 0}`}
+          </Text>
+        </Row>
+      </View>
+      <OverflowMenu
+        label={`More for ${name}`}
+        style={styles.paserMenu}
+        actions={[
+          { key: 'profile', label: 'View profile', icon: 'invite', onPress: () => onOpen(runner) },
+          { key: 'remove', label: 'Remove paser', destructive: true, onPress: () => onRemove(runner) },
+        ]}
+      />
+    </Card>
+  );
+});
+
+// "+ Add": the ways to get a new paser. Pasers are added by username, so the
+// share rows all send the same invite text; the deep-link rows fall back to a
+// toast when the app isn't installed.
+function AddPaserSheet({ visible, onClose, username, onSearch }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const message = `Add me on PASER. My username is @${username}. Run, claim ground, keep it.`;
@@ -122,15 +229,16 @@ function ShareCodeSheet({ visible, onClose, username }) {
   };
 
   return (
-    <Sheet visible={visible} onClose={onClose} closeLabel="Close sharing">
+    <Sheet visible={visible} onClose={onClose} closeLabel="Close">
       <View style={styles.shareHeading}>
         <AppIcon name="invite" size={42} />
-        <Text style={[styles.shareTitle, { color: colors.text }]}>SHARE YOUR PASER CODE</Text>
+        <Text style={[styles.shareTitle, { color: colors.text }]}>ADD A PASER</Text>
+        <Text style={[styles.shareHint, { color: colors.textMuted }]}>Your code is your username</Text>
         <Text style={[styles.code, { color: colors.text }]}>@{username}</Text>
-        <Text style={[styles.shareHint, { color: colors.textMuted }]}>Friends can search this username to add you as a Paser.</Text>
       </View>
       <ToonRowGroup style={{ marginTop: space.md, marginBottom: space.md }}>
-        <ToonRow icon={<AppIcon name="share" size={24} />} label="Share your code" onPress={() => Share.share({ message }).catch(() => {})} />
+        <ToonRow icon={<Search size={20} color={colors.text} />} label="Search by username" onPress={onSearch} />
+        <ToonRow icon={<AppIcon name="share" size={24} />} label="Share my code" onPress={() => Share.share({ message }).catch(() => {})} />
         <ToonRow icon={<MessageCircle size={20} color="#25D366" />} label="WhatsApp" onPress={() => openOr(`whatsapp://send?text=${encodeURIComponent(message)}`, 'WhatsApp')} />
         <ToonRow icon={<AppIcon name="comment" size={24} />} label="Messages" onPress={() => openOr(`sms:?&body=${encodeURIComponent(message)}`, 'Messages')} />
       </ToonRowGroup>
@@ -143,10 +251,12 @@ export default function PasersScreen({ navigation }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { user } = useAuth();
+  const searchRef = useRef(null);
 
-  // { pasers, incoming, outgoing } — shares the 'pasers' key with the badge on
-  // the profile, so arriving from You draws the list at once.
+  // { pasers, incoming, outgoing } — shares the 'pasers' key with the request
+  // badge on Home's Pasers shortcut, so arriving from it draws the list at once.
   const { data, loading, refresh: load } = useQuery('pasers', api.pasers, {
     fallback: { pasers: [], incoming: [], outgoing: [] },
   });
@@ -157,7 +267,7 @@ export default function PasersScreen({ navigation }) {
   const [pulling, setPulling] = useState(false);
   // Lifted out of the field and onto the box around it — see the search row.
   const [focused, setFocused] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   // Portraits warm up behind rows that are already on screen.
   useEffect(() => {
@@ -220,10 +330,19 @@ export default function PasersScreen({ navigation }) {
 
   const onOpen = (r) => navigation.navigate('RunnerProfile', { userId: r.user_id, username: r.username });
 
+  const focusSearch = () => {
+    setAddOpen(false);
+    // After the sheet has let go of the keyboard's focus.
+    setTimeout(() => searchRef.current?.focus?.(), 250);
+  };
+
   const rowProps = { onOpen, onAdd, onRespond, onRemove };
   const searchMode = q.trim().length >= MIN_QUERY;
   const pasers = data?.pasers || [];
   const incoming = data?.incoming || [];
+
+  const cols = columnsFor(width);
+  const cardW = Math.floor((width - space.gutter * 2 - GRID_GAP * (cols - 1)) / cols);
 
   const search = useMemo(() => (
     <View style={[styles.search, focused && { borderColor: NB_FOCUS }]}>
@@ -232,6 +351,7 @@ export default function PasersScreen({ navigation }) {
           stroke belongs to `styles.search` (the pill with the magnifier in it),
           and the input inside it has no edge of its own to recolour. */}
       <Input
+        ref={searchRef}
         style={[type.body, { flex: 1, color: colors.text, padding: 0 }]}
         focusable={false}
         onFocus={() => setFocused(true)}
@@ -250,69 +370,48 @@ export default function PasersScreen({ navigation }) {
   ), [q, searching, focused, colors, type, styles]);
 
   const header = (
-    <View style={{ paddingTop: insets.top, paddingHorizontal: space.gutter }}>
+    <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+      <View style={styles.titleRow}>
+        {navigation?.canGoBack?.() ? (
+          <BackButton size={36} onPress={() => navigation.goBack()} on={colors.bg} />
+        ) : null}
+        <Text style={[type.pageTitle, styles.title]} numberOfLines={1} accessibilityRole="header">
+          Pasers
+        </Text>
+        <Button
+          title="Add"
+          variant="outline"
+          size="sm"
+          full={false}
+          icon={<Plus size={16} color={brand.pink} strokeWidth={3} />}
+          onPress={() => setAddOpen(true)}
+          style={styles.addButton}
+        />
+      </View>
       {search}
-      <Button
-        title="Share your code"
-        size="sm"
-        onPress={() => setShareOpen(true)}
-        style={styles.shareCodeButton}
-      />
     </View>
   );
 
-  if (loading) {
-    return (
-      <View style={styles.page}>
-        <Image source={PASERS_PARK} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
-        <Screen gutter={false} edges={[]} style={styles.transparent}>
-        {header}
-        <View style={{ paddingHorizontal: space.gutter }}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} width="100%" height={72} style={{ borderRadius: radius.card, marginTop: space.sm }} />
-          ))}
-        </View>
-        </Screen>
-        <ShareCodeSheet visible={shareOpen} onClose={() => setShareOpen(false)} username={user?.username || 'you'} />
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.page}>
-      <Image source={PASERS_PARK} style={StyleSheet.absoluteFill} resizeMode="cover" accessibilityIgnoresInvertColors />
-      <Screen gutter={false} edges={[]} style={styles.transparent}>
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: space.xxl }}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={colors.textMuted} />}
-      >
-        {header}
-
-        <View style={{ paddingHorizontal: space.gutter }}>
-        {searchMode ? (
+  // Everything above the grid: the search results while typing, otherwise
+  // requests waiting on you and the grid's own heading.
+  const listHeader = (
+    <View>
+      {header}
+      <View style={styles.body}>
+        {loading ? null : searchMode ? (
           results === null ? (
-            <View style={{ paddingTop: space.xl }}>
-              {searching ? (
-                <View style={{ alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color={colors.textMuted} />
-                  <Text style={[type.caption, { color: colors.textMuted, marginTop: space.sm }]}>Searching...</Text>
-                </View>
-              ) : (
-                <EmptyState
-                  icon={<AppIcon name="invite" size={44} />}
-                  title="Start typing to search"
-                  body="Enter a username to find runners to add as pasers."
-                  style={{ paddingTop: space.xl }}
-                />
-              )}
-            </View>
+            searching ? (
+              <View style={styles.searching}>
+                <ActivityIndicator size="large" color={colors.textMuted} />
+                <Text style={[type.metadata, { color: colors.textMuted, marginTop: space.sm }]}>Searching...</Text>
+              </View>
+            ) : null
           ) : results.length === 0 ? (
             <EmptyState
               icon={<AppIcon name="invite" size={44} />}
               title="No runners found"
               body={`Nobody's username starts with "${q.trim()}". Usernames are exact, so ask them for theirs.`}
-              style={{ paddingTop: space.xl }}
+              style={{ paddingTop: space.lg }}
             />
           ) : (
             results.map((r, i) => (
@@ -323,58 +422,132 @@ export default function PasersScreen({ navigation }) {
           )
         ) : (
           <>
-            {incoming.length > 0 && (
+            {incoming.length > 0 ? (
               <>
-                <SectionHeader
-                  title="Paser requests"
-                  action={`${incoming.length}`}
-                  style={{ marginTop: space.md, marginBottom: space.md }}
-                />
+                <Row between style={styles.sectionHead}>
+                  <Text style={type.sectionTitle} accessibilityRole="header">Paser requests</Text>
+                  <Text style={[type.secondary, { color: colors.textMuted }]}>{incoming.length}</Text>
+                </Row>
                 {incoming.map((r, i) => (
                   <Reveal key={r.user_id} delay={staggerDelay(i)}>
                     <RunnerRow runner={r} busy={busyId === r.user_id} {...rowProps} />
                   </Reveal>
                 ))}
               </>
-            )}
-
-            <SectionHeader
-              title="Your pasers"
-              action={pasers.length ? `${pasers.length}` : undefined}
-              style={{ marginTop: space.xl, marginBottom: space.md }}
-            />
-            {pasers.length === 0 ? (
-              <EmptyState
-                icon={<AppIcon name="invite" size={64} />}
-                title="No pasers yet"
-                body="Search a username above, or send your own to a friend."
-                style={{ paddingTop: space.lg }}
-              />
-            ) : (
-              pasers.map((r, i) => (
-                <Reveal key={r.user_id} delay={staggerDelay(i)}>
-                  <RunnerRow runner={r} busy={busyId === r.user_id} {...rowProps} />
-                </Reveal>
-              ))
-            )}
-
+            ) : null}
+            {pasers.length > 0 ? (
+              <Row between style={styles.sectionHead}>
+                <Text style={type.sectionTitle} accessibilityRole="header">Your Pasers</Text>
+                <Text style={[type.secondary, { color: colors.textMuted }]}>{pasers.length}</Text>
+              </Row>
+            ) : null}
           </>
         )}
-        </View>
-      </ScrollView>
-      </Screen>
-      <ShareCodeSheet visible={shareOpen} onClose={() => setShareOpen(false)} username={user?.username || 'you'} />
+      </View>
+    </View>
+  );
+
+  const empty = loading ? (
+    <View style={[styles.body, styles.grid]}>
+      {Array.from({ length: cols * 2 }).map((_, i) => (
+        <Skeleton
+          key={i}
+          width={cardW}
+          height={Math.round(cardW * STAGE_RATIO) + 56}
+          style={{ borderRadius: radius.card, marginBottom: GRID_GAP }}
+        />
+      ))}
+    </View>
+  ) : searchMode ? null : (
+    // Nobody yet: say so, and say what to do, in two buttons.
+    <View style={styles.body}>
+      {/* The high five, sized here rather than through EmptyState's `bare`
+          art: that is tuned for Home's drawing, which carries wide
+          transparent margins, and this tightly cropped one came out oversized
+          and rode up over the search box. */}
+      <Image source={art('panelPasers')} style={styles.emptyArt} resizeMode="contain" accessible={false} />
+      <EmptyState
+        title="No Pasers yet"
+        body="Find runners or share your code."
+        style={styles.empty}
+      />
+      <View style={styles.emptyActions}>
+        <Button title="Find a Paser" variant="gradient" onPress={focusSearch} icon={<Search size={18} color="#fff" strokeWidth={2.6} />} />
+        <Button title="Share my code" variant="outline" onPress={() => setAddOpen(true)} />
+      </View>
+    </View>
+  );
+
+  // Under a full grid: one line and one button, not a second add screen.
+  const footer = !loading && !searchMode && pasers.length > 0 ? (
+    <View style={[styles.body, styles.findMore]}>
+      <Text style={type.sectionTitle} accessibilityRole="header">Find more Pasers</Text>
+      <Text style={[type.metadata, styles.findMoreHint]}>
+        Search a username above, or send yours to a friend.
+      </Text>
+      <Button title="Share my code" variant="outline" size="sm" full={false} onPress={() => setAddOpen(true)} />
+    </View>
+  ) : null;
+
+  return (
+    <View style={styles.page}>
+      {/* The park, as a faded strip behind the header: the page's place, not
+          its content. */}
+      <View style={styles.park} pointerEvents="none">
+        <Image source={PASERS_PARK} style={StyleSheet.absoluteFill} resizeMode="cover" accessible={false} />
+        <LinearGradient
+          colors={[withAlpha(colors.bg, 0.35), colors.bg]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </View>
+      <FlatList
+        key={`cols-${cols}`}
+        data={searchMode || loading ? [] : pasers}
+        keyExtractor={(r) => String(r.user_id)}
+        numColumns={cols}
+        columnWrapperStyle={cols > 1 ? styles.gridRow : undefined}
+        renderItem={({ item, index }) => (
+          <Reveal delay={staggerDelay(index)}>
+            <PaserCard
+              runner={item}
+              width={cardW}
+              busy={busyId === item.user_id}
+              onOpen={onOpen}
+              onRemove={onRemove}
+            />
+          </Reveal>
+        )}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={empty}
+        ListFooterComponent={footer}
+        contentContainerStyle={{ paddingBottom: space.xxl + insets.bottom }}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={cols * 3}
+        maxToRenderPerBatch={cols * 2}
+        windowSize={5}
+        refreshControl={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={colors.textMuted} />}
+      />
+      <AddPaserSheet
+        visible={addOpen}
+        onClose={() => setAddOpen(false)}
+        username={user?.username || 'you'}
+        onSearch={focusSearch}
+      />
     </View>
   );
 }
 
-// The supplied park is the page itself; cards and controls stand on its open
-// platforms rather than placing another hero illustration over the top.
 const PASERS_PARK = require('../../assets/art/pasers-park.png');
 
-const makeStyles = (colors, scheme) => StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#62BAF4' },
-  transparent: { backgroundColor: 'transparent' },
+const makeStyles = (colors, scheme, type) => StyleSheet.create({
+  page: { flex: 1, backgroundColor: colors.bg },
+  park: { position: 'absolute', left: 0, right: 0, top: 0, height: PARK_H, opacity: 0.55 },
+  header: { paddingHorizontal: space.gutter },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  title: { flex: 1, color: colors.text },
+  addButton: { height: 40, paddingHorizontal: space.md },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -386,11 +559,28 @@ const makeStyles = (colors, scheme) => StyleSheet.create({
     marginTop: space.md,
     ...toonSurface(colors, scheme).outline,
   },
-  shareCodeButton: {
-    marginTop: space.sm,
-  },
+  body: { paddingHorizontal: space.gutter },
+  searching: { alignItems: 'center', paddingTop: space.xl },
+  sectionHead: { alignItems: 'baseline', marginTop: space.lg, marginBottom: space.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: space.lg },
+  gridRow: { paddingHorizontal: space.gutter, gap: GRID_GAP, marginBottom: GRID_GAP },
+
+  paserCard: { overflow: 'hidden' },
+  stage: { alignItems: 'center', justifyContent: 'flex-end', paddingBottom: space.xs },
+  floor: { position: 'absolute', bottom: space.xs, width: '56%', height: 12, borderRadius: 6 },
+  busy: { alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(colors.bg, 0.5) },
+  paserInfo: { paddingHorizontal: space.sm + 2, paddingTop: space.sm, paddingBottom: space.sm + 2 },
+  paserRank: { marginTop: 2 },
+  paserMenu: { position: 'absolute', top: 2, right: 2 },
+
+  emptyArt: { width: 200, height: 156, alignSelf: 'center', marginTop: space.xl },
+  empty: { paddingTop: space.sm, paddingBottom: space.md },
+  emptyActions: { gap: space.sm },
+  findMore: { marginTop: space.lg, gap: space.xs, alignItems: 'flex-start' },
+  findMoreHint: { color: colors.textMuted, marginBottom: space.sm },
+
   shareHeading: { alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.sm },
-  shareTitle: { fontSize: 20, fontWeight: '900', marginTop: space.sm, textAlign: 'center' },
-  code: { fontSize: 28, fontWeight: '900', marginTop: space.sm },
-  shareHint: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: space.xs },
+  shareTitle: { ...type.pageTitle, marginTop: space.sm, textAlign: 'center' },
+  code: { ...type.display, textTransform: 'none', marginTop: 2 },
+  shareHint: { ...type.metadata, textAlign: 'center', marginTop: space.xs },
 });

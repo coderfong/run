@@ -12,11 +12,10 @@ import { BORDER_TIERS } from '../config/progression';
 import { BORDER_ART } from '../config/borderArt';
 import { MAP_FRAME_ART, MAP_FRAME_CREST, rankColor } from '../config/mapFrameArt';
 import { RANK_RANGES } from '../config/rankLadder';
-import PortraitBorder from '../components/PortraitBorder';
+import PortraitBorder, { FRAME_BOX } from '../components/PortraitBorder';
 
 import { api } from '../api/client';
 import { NB, nbInk, nbRadius, radius, shadow, space, useTheme, useThemedStyles, useThemedType } from '../theme';
-import { cityBbox } from '../config/cities';
 import { NEUTRAL } from '../state/clan';
 import { useAuth } from '../auth/AuthContext';
 import { useAvatar } from '../state/avatar';
@@ -24,7 +23,7 @@ import { useProfile } from '../state/profile';
 import { useAccent } from '../hooks/useAccent';
 import { useClan } from '../state/clan';
 import { Bar, Pop, ScreenIn, useOnScreen, useReduceMotion } from '../ui/motion';
-import { Button, Card, Pill, Sheet } from '../components/ui';
+import { Button, Card, Sheet } from '../components/ui';
 import { CharacterBust } from '../components/character/CharacterRig';
 import { RunnerBust, RunnerFigure } from '../components/identity/PlayerIdentity';
 import { landColor, ringCentroid } from '../components/territoryBoard';
@@ -166,7 +165,7 @@ const LandPortrait = React.memo(function LandPortrait({ marker: m, bg, onSelect,
 
 function RankMark({ tier }) {
   const art = BORDER_ART[tier.key];
-  if (!art) return <PortraitBorder tier={tier} size={RANK_MARK - 6} />;
+  if (!art) return <PortraitBorder tier={tier} size={RANK_MARK / FRAME_BOX} />;
   return (
     <Image
       source={art.src}

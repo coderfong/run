@@ -8,7 +8,7 @@
 //
 // WHAT IT TEACHES, AND ONLY THIS (about 30 seconds):
 //
-//   RUN     WELCOME → START_RUN (tap LET'S RUN on Home) → RUN_START (tap
+//   RUN     WELCOME → START_RUN (tap Start a run on Home) → RUN_START (tap
 //           Start run) → DEMO_RUN (a four second demo route) → FINISH_DEMO
 //           (tap Finish demo run)
 //   CLAIM   CLAIM_POSITION (slide) → CLAIM_NEXT (tap Choose angle) →
@@ -115,7 +115,7 @@ export const DEMO_RUN_PHASES = new Set([PHASE.RUN_START, PHASE.DEMO_RUN, PHASE.F
 //
 // The demo run and its claim live only in the run screen's memory, so a demo
 // phase that wakes up without that screen goes back to the one step that can
-// start a fresh demo: tap LET'S RUN on Home. Once the demo claim has landed
+// start a fresh demo: tap Start a run on Home. Once the demo claim has landed
 // there is nothing left to replay, so the payoff carries on forward to the
 // defend card, which is drawn wherever the runner is.
 export function resumePhase(phase) {

@@ -10,12 +10,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { brand, nbTextOn, space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
+import { space, toon, toonRadius, toonType, useTheme, useThemedType } from '../theme';
 import { haptic, PressableScale, Bar } from '../ui/motion';
-import { INK, framePose, frameVariant } from '../ui/frameRegistry';
-import { Framed, ToonButton, ToonCard, ToonGhostButton } from './ui';
-import { CharacterBust } from './character/CharacterRig';
-import PortraitBorder from './PortraitBorder';
+import { ToonButton, ToonCard } from './ui';
+import RankedAvatar from './identity/RankedAvatar';
 import { useAvatar } from '../state/avatar';
 import { RankCrest, RunnerFigure } from './identity/PlayerIdentity';
 
@@ -115,9 +113,7 @@ function Side({ label, avatar, rankKey, area, times, align = 'left', featured = 
     <View style={[styles.side, align === 'right' && { flexDirection: 'row-reverse' }]}>
       {/* No fixed clipping box around the bust — the frame is wider than the
           portrait, and a 44px overflow:hidden wrapper sheared it off. */}
-      <PortraitBorder borderKey={rankKey || 'wood'} size={44}>
-        <CharacterBust equipped={avatar} size={44} bg={colors.cardAlt} />
-      </PortraitBorder>
+      <RankedAvatar equipped={avatar} rankKey={rankKey || 'wood'} size={44} bg={colors.cardAlt} />
       <View style={{ flex: 1, alignItems: align === 'right' ? 'flex-end' : 'flex-start' }}>
         {/* toonType.sub centres by default — each side has to own its edge */}
         <Text

@@ -27,7 +27,7 @@ import { RunnerFigure } from '../components/identity/PlayerIdentity';
 import SceneBackdrop, { useSceneBackdrop } from '../components/SceneBackdrop';
 import StreakCalendar from '../components/StreakCalendar';
 import { Arrival, PressableScale, Reveal, haptic, useArrival } from '../ui/motion';
-import { brand, radius, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { radius, space, toon, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { Screen, Card, Row, Button, Framed, SectionHeader, Skeleton, OutlinedText } from '../components/ui';
 import RankRail from '../components/rank/RankRail';
 import YourLandCard from '../components/territory/YourLandCard';
@@ -155,7 +155,6 @@ export default function ProfileScreen({ navigation }) {
     fallback: { days: [] },
     select: (d) => d.days || [],
   });
-  const { data: paserInfo } = useQuery('pasers', api.pasers);
   // The pass query that used to live here is gone. It existed for exactly two
   // things: deciding whether to show the PRO poster, and reloading after a
   // purchase made from it. Both now come from the entitlement itself, which
@@ -172,7 +171,6 @@ export default function ProfileScreen({ navigation }) {
     return preloadScreenImagesAfterInteractions([
       'AvatarStudio',
       'Progression',
-      'Pasers',
       'Crossroads',
       // The ten tier scenes. Last in the queue because it is the heaviest
       // group in the app, and this is the only page that opens the ladder —
@@ -276,8 +274,9 @@ export default function ProfileScreen({ navigation }) {
           />
         )}
 
-        {/* the two runner actions sit as a pair; the badge on Add pasers is
-            requests waiting on you */}
+        {/* The one thing you DO with the runner above. You is about you:
+            managing friends moved to its own page, reached from the Pasers
+            shortcut on Home, and took its request badge with it. */}
         <Row gap={space.sm} style={styles.actions}>
           <Button
             title="Customize runner"
@@ -287,21 +286,6 @@ export default function ProfileScreen({ navigation }) {
             icon={<AppIcon name="customize" size={ACTION_ICON} />}
             onPress={() => navigation.navigate('AvatarStudio')}
           />
-          <View>
-            <Button
-              title="Add pasers"
-              variant="secondary"
-              size="sm"
-              full={false}
-              icon={<AppIcon name="invite" size={ACTION_ICON} />}
-              onPress={() => navigation.navigate('Pasers')}
-            />
-            {paserInfo?.incoming?.length ? (
-              <View style={[styles.badge, { backgroundColor: brand.pink, borderColor: colors.bg }]} pointerEvents="none">
-                <Text style={[type.captionMedium, { color: '#fff' }]}>{paserInfo.incoming.length}</Text>
-              </View>
-            ) : null}
-          </View>
         </Row>
 
         {/* No energy meter here. Energy is a thing you spend at the moment you
@@ -368,9 +352,10 @@ export default function ProfileScreen({ navigation }) {
       {/* The profile now stops at profile content: land, consistency and earned
           trophies. Settings live behind the gear, and run history remains on
           the app's history/detail surfaces instead of stretching this page. */}
+      {/* No "Statistics" heading over the wall above: six labelled numbers
+          say what they are, and the heading only pushed the page down. The
+          wall runs straight on into Your land. */}
       <View style={styles.sections}>
-        <SectionHeader framed={false} title="Statistics" style={{ marginBottom: space.md }} />
-
         <YourLandCard navigation={navigation} accent={accent} nested />
 
         <Reveal delay={150}>
@@ -477,8 +462,6 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-// How far the unread-requests badge hangs off the top of its button.
-const BADGE_OVERHANG = 7;
 // Sized to the heading it sits next to, not to the section — a medal taller
 // than "Trophies" is the block this used to be, just moved sideways.
 const TROPHY_MEDAL = 32;
@@ -487,7 +470,6 @@ const TROPHY_MEDAL = 32;
 const ACTION_ICON = 22;
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
-  nameRow: { alignItems: 'center', justifyContent: 'center', marginTop: space.md },
   // The header now ends at the scene's bottom edge rather than at the name, so
   // its old `xl` bottom margin read as a hole between the art and the runner
   // actions — `md` closes it up without letting the buttons touch the road.
@@ -513,28 +495,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   wallInner: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: { width: '31.5%', marginBottom: space.md },
 
-  // Customize runner / Add pasers sit close under the rank rail: they are what
-  // you do with the runner above them, so the pair reads as part of that block
-  // rather than as its own section. `sm` is measured from the BADGE, which
-  // hangs BADGE_OVERHANG above the button it rides on — the gap you see is the
-  // one below the overhang, not below the layout box.
-  // The rail carries its own bottom gap so the buttons under it are not
-  // sitting on the tier labels.
+  // Customize runner sits close under the rank rail: it is what you do with
+  // the runner above it, so it reads as part of that block rather than as its
+  // own section. The rail carries its own bottom gap so the button under it is
+  // not sitting on the tier labels.
   rankRail: { marginTop: space.lg },
-  actions: { marginTop: space.sm + BADGE_OVERHANG },
-  // sits over the top-right corner of the Add pasers button
-  badge: {
-    position: 'absolute',
-    top: -BADGE_OVERHANG,
-    right: -BADGE_OVERHANG,
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    paddingHorizontal: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  actions: { marginTop: space.sm },
   identity: { alignItems: 'center', marginTop: space.sm },
   name: { textAlign: 'center' },
   // Same outlined title voice as the name, one step down so the name leads.
@@ -573,10 +539,9 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     marginRight: -space.md,
   },
 
-  // The folded half of the page. The gap above the first heading is the join
-  // between who you are, which is drawn, and what you can change, which is a
-  // list — so it takes a section's worth of air rather than a card's.
-  sections: { marginTop: space.xl },
+  // The stat wall runs straight into Your land: the land card's own heading
+  // brings the gap, so this adds nothing on top of it.
+  sections: { marginTop: 0 },
 
   trophyRow: { flexDirection: 'row', gap: space.sm },
   trophy: { flex: 1, paddingVertical: space.md, alignItems: 'center', justifyContent: 'center', minHeight: 80 },

@@ -31,7 +31,7 @@ import {
   useThemedStyles,
 } from '../theme';
 import { useReduceMotion, PressableScale, PressableShift } from '../ui/motion';
-import { EmptyState, Framed, OutlinedText, Skeleton } from '../components/ui';
+import { EmptyState, Framed, OutlinedText, PageDots, Shape, Skeleton } from '../components/ui';
 import { INK, framePose, frameVariant } from '../ui/frameRegistry';
 import FeedCard from '../components/FeedCard';
 import EnergyMeter from '../components/EnergyMeter';
@@ -64,23 +64,61 @@ function countdown() {
   const ms = Math.max(0, SEASON_END - Date.now());
   const d = Math.floor(ms / 86400000);
   const h = Math.floor((ms % 86400000) / 3600000);
-  return `ENDS IN ${d}D ${String(h).padStart(2, '0')}H`;
+  return `Ends in ${d}d ${h}h`;
 }
 
+// THE HERO'S ONE HEIGHT. Every card in the carousel is exactly this tall, so
+// the carousel never changes height as you swipe, and it is a good deal
+// shorter than the 188pt the cards used to be: the Start Run card lost its
+// second headline ("LET'S RUN" said what "START A RUN" says), and what is left
+// is an eyebrow, a title and a verb. Sized off the card's width so it scales
+// with the phone, and clamped at the tallest content any card carries (the
+// leaderboard card: eyebrow, title, countdown and link, at 26pt titles).
+export function heroHeightFor(cardW) {
+  return Math.round(Math.min(152, Math.max(134, cardW * 0.4)));
+}
+
+// The hero's display line (a title, or Start Run's verb): 26pt on a 375pt
+// phone and up, and scaled down with the card below that, so on a 320pt phone
+// "START A RUN" and its arrow clear the runner and LEADERBOARD fits its column
+// without leaning on the shrink floor. One size for every card either way.
+export function heroDisplaySizeFor(cardW) {
+  return Math.round(Math.min(26, cardW * 0.075));
+}
+
+// Every hero card wears the SAME drawn frame in the same pose. They used to be
+// dealt one each off their titles, so swiping between them changed the box's
+// corners and wobble as well as its colour — two cards that were meant to be
+// one component read as two.
+const HERO_FRAME_SEED = 'home:hero';
+
+// The CTA arrows, sized to the cap height of the text they follow.
+const HERO_ARROW = 24;
+const HERO_ARROW_SM = 15;
+// How far the art may reach into the card's padding. Not all of it: bled to
+// the card's edge, the runner's hair sat on the frame's ink line.
+const HERO_ART_BLEED = space.sm;
+
 // A hero card: a SOLID flat brand-color panel (no photo, no dark scrim). The
-// illustration sits on the right and melts into the panel via a same-color
-// horizontal fade — so text lives on clean color, never fighting an image.
-// The art box is sized to what the DRAWING needs, not to half the card. At
-// height 190 the runner (430x640) comes out 128pt wide, so the old 52% box
-// held 34pt of empty air on a 375pt phone — air the text column was short of,
-// which is what drove the headline into `adjustsFontSizeToFit` in the first
-// place. 44% is 137pt there and 130pt on a 360, both of which still show the
-// drawing whole. The PRO card overrides it: its art is a 4:3 scene, not a
-// figure, and it is width-limited rather than height-limited.
-function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, title, sub, cta, primary = false, onPress, onPressIn, tutorialTarget }) {
+// illustration sits on the right, shown whole; text lives on clean colour.
+//
+// ONE COMPONENT, ONE GEOMETRY. Width, height, frame drawing, corner shape and
+// padding come from here and from `heroHeightFor`, never from the card, so the
+// Start Run card, the leaderboard card and the PRO card are the same box in
+// three colours. What varies is content: an eyebrow, an optional title, an
+// optional sub line, the verb, and how wide the art column is.
+//
+// The art box is sized to what the DRAWING needs at the hero's height: the
+// runner (430x640) is 90pt wide at 134pt tall, the podium (640x610) is
+// about square, and the PRO crew is a 4:3 scene that is width-limited.
+//
+// The WHOLE card is the button. The verb at the bottom is text in the card's
+// ink with an arrow, not a second button inside the first.
+function HeroCard({ width, height, displaySize = 26, bg, art, animatedArt, artWidth = '40%', eyebrow, title, sub, cta, primary = false, onPress, onPressIn, tutorialTarget }) {
   const type = useThemedType();
   const styles = useThemedStyles(makeStyles);
   const reduced = useReduceMotion();
+  const label = [eyebrow, title, sub, cta].filter(Boolean).join('. ');
   return (
     <View {...tutorialTarget} collapsable={false} style={{ width }}>
     <PressableScale
@@ -88,7 +126,7 @@ function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, titl
       onPressIn={onPressIn}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={title}
+      accessibilityLabel={title || label}
     >
       {/* `weight` in points, so the hero's line is the same pen as the chip
           inside it and as the buttons further down the page. Drawn at the art's
@@ -97,13 +135,13 @@ function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, titl
           corner bands swallowed a third of the card, and the eyebrow's first
           letters sat underneath the ink. */}
       <Framed
-        frame={frameVariant('featured', `${eyebrow}:${title}`)}
+        frame={frameVariant('featured', HERO_FRAME_SEED)}
         tint={toon.ink}
         fill={bg}
         weight={INK.bold}
-        pose={framePose(`${eyebrow}:${title}`)}
+        pose={framePose(HERO_FRAME_SEED)}
         inset={false}
-        style={styles.hero}
+        style={{ height }}
         contentStyle={styles.heroContent}
       >
         <View style={styles.heroText}>
@@ -118,30 +156,40 @@ function HeroCard({ width, bg, art, animatedArt, artWidth = '44%', eyebrow, titl
                 card ever has (see heroTitle); the shrink stays as a floor for
                 phones under 360pt, where it costs a few points rather than a
                 third of the headline. */}
-            <Text
-              style={[type.display, styles.heroTitle]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.85}
-            >
-              {title}
-            </Text>
-            {sub ? <Text style={[type.bodySm, styles.heroSub]}>{sub}</Text> : null}
+            {title ? (
+              <Text
+                style={[type.display, styles.heroTitle, { fontSize: displaySize, lineHeight: Math.round(displaySize * 1.3) }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+              >
+                {title}
+              </Text>
+            ) : null}
+            {sub ? <Text style={[type.bodySm, styles.heroSub]} numberOfLines={1}>{sub}</Text> : null}
           </View>
-          {primary ? (
-            <Text style={[type.display, styles.heroRunCta]} numberOfLines={1}>
-              {cta} ->
+          {/* The verb, and the app's own sticker arrow after it: a filled
+              block arrow in the card's ink line, the mark the rest of PASER's
+              stickers are drawn with. It was a typed "->", which Poppins
+              Black sets as a hyphen and a chevron. Sized off the text beside
+              it, so the two cards' arrows are one mark at two sizes. */}
+          <View style={[styles.heroCtaRow, primary ? styles.heroRunCtaRow : styles.heroTextCtaRow]}>
+            <Text style={primary ? [type.display, styles.heroRunCta, { fontSize: displaySize, lineHeight: Math.round(displaySize * 1.3) }] : [type.buttonSm, styles.heroTextCta]} numberOfLines={1}>
+              {cta}
             </Text>
-          ) : (
-            <Text style={[type.buttonSm, styles.heroTextCta]} numberOfLines={1}>
-              {cta} ->
-            </Text>
-          )}
+            <Shape
+              name="arrow"
+              size={primary ? Math.round(displaySize * (HERO_ARROW / 26)) : HERO_ARROW_SM}
+              color="#ffffff"
+              ink="#141414"
+              weight={primary ? 2.5 : 2}
+            />
+          </View>
         </View>
         {/* the transparent illustration, shown whole (contain) — no crop, no fade */}
         <Image
           source={animatedArt && !reduced ? animatedArt : art}
-          style={[styles.heroImg, { width: artWidth }]}
+          style={[styles.heroImg, { width: artWidth, height: height - (space.md - HERO_ART_BLEED) * 2 }]}
           resizeMode="contain"
           autoplay={Boolean(animatedArt && !reduced)}
         />
@@ -159,6 +207,8 @@ function HeroCarousel({ navigation, locked = false }) {
   const startTarget = useTutorialTarget(TARGET.HOME_START_RUN);
   const { width } = useWindowDimensions();
   const cardW = width - space.gutter * 2;
+  const heroH = heroHeightFor(cardW);
+  const heroType = heroDisplaySizeFor(cardW);
   const [page, setPage] = useState(0);
   const warmSeason = () => preloadScreenImages('Season');
   const { isPro, canShowPro, openPaywall } = useProEntitlement();
@@ -187,7 +237,7 @@ function HeroCarousel({ navigation, locked = false }) {
       <ScrollView
         horizontal
         pagingEnabled
-        // Held on the LET'S RUN card while the tutorial is pointing at it: a
+        // Held on the Start Run card while the tutorial is pointing at it: a
         // swipe inside the spotlight must not carry the card out of it.
         scrollEnabled={!locked}
         showsHorizontalScrollIndicator={false}
@@ -196,19 +246,17 @@ function HeroCarousel({ navigation, locked = false }) {
       >
         <HeroCard
           width={cardW}
+          height={heroH}
+          displaySize={heroType}
           bg={brand.teal}
           art={require('../../assets/art/card-solo.png')}
           animatedArt={require('../../assets/animations/seedance-home-runner.webp')}
-          /* The eyebrow gives the REASON, the title is the hook, the button is
-             the verb. It used to read "START A RUN TODAY" over a button that
-             said "Start a run", so the card said the same sentence twice in two
-             cases. Same rule on the two cards below it: the season card was
-             "LEADERBOARDS" over "View leaderboards", and the PRO card was
-             "PASER PRO" over "GO PRO".
-             At labelSm's 12pt with 0.6 tracking this measures 161.8pt against a
-             178pt column on a 375pt phone, so it holds one line. */
+          artWidth="34%"
+          /* The eyebrow gives the REASON, the verb is the hook. It used to
+             carry a headline as well, "LET'S RUN" over "START A RUN", which is
+             one sentence said twice; the verb is the headline now, set at
+             display size, so the card is two lines and a runner. */
           eyebrow="THERE'S LAND TO CLAIM"
-          title="LET'S RUN"
           cta="Start a run"
           primary
           onPressIn={() => preloadScreenImages('Record')}
@@ -217,11 +265,13 @@ function HeroCarousel({ navigation, locked = false }) {
         />
         <HeroCard
           width={cardW}
+          height={heroH}
+          displaySize={heroType}
           bg={brand.pink}
           art={require('../../assets/art/season-banner.png')}
           animatedArt={require('../../assets/animations/seedance-home-celebration.webp')}
           eyebrow={`${SEASON_CITY} SEASON ${SEASON_NO}`}
-          title="THE BOARD"
+          title="LEADERBOARD"
           sub={countdown()}
           cta="Standings"
           onPressIn={warmSeason}
@@ -230,12 +280,14 @@ function HeroCarousel({ navigation, locked = false }) {
         {showPro ? (
           <HeroCard
             width={cardW}
+            height={heroH}
+            displaySize={heroType}
             bg={GOLD}
             art={require('../../assets/art/card-pro.png')}
-            artWidth="66%"
+            artWidth="50%"
             eyebrow="UPGRADE"
             title="GO PRO"
-            sub="Strategy, insights and exclusive styles"
+            sub="Insights and styles"
             cta="Plans"
             onPress={() => {
               track(EVENTS.TEASER_TAP, { source: 'home', context: 'home', feature: 'home_hero' });
@@ -244,13 +296,7 @@ function HeroCarousel({ navigation, locked = false }) {
           />
         ) : null}
       </ScrollView>
-      {pages > 1 ? (
-        <View style={styles.dots}>
-          {Array.from({ length: pages }, (_, i) => (
-            <View key={i} style={[styles.dot, i === page ? styles.dotOn : styles.dotOff]} />
-          ))}
-        </View>
-      ) : null}
+      <PageDots count={pages} index={page} style={styles.dots} />
     </View>
   );
 }
@@ -676,6 +722,7 @@ export default function HomeScreen({ navigation }) {
       'Record',
       'Rivals',
       'Crossroads',
+      'Pasers',
       'Notifications',
       'Leaderboard',
       'SharedIcons',
@@ -782,20 +829,24 @@ export default function HomeScreen({ navigation }) {
 
       <HeroCarousel navigation={navigation} locked={tutorialHoldsHome} />
 
-      {/* These shortcuts replace the redundant Feed/Leaderboard switch and
-          scroll away with the season card instead of covering run cards. */}
+      {/* Six shortcuts on two swiped pages of three: Missions, Rewards and
+          Shop, then Rivals, Crossroads and Pasers. They scroll away with the
+          hero instead of covering run cards. See SideRail. */}
       <SideRail
-        inline
-        primaryOnly
+        paged
         firstRunComplete={runCount > 0}
         navigation={navigation}
         onOpenShop={() => navigation.navigate('Shop')}
         style={styles.shortcutRow}
       />
 
-      <View style={styles.activityHeading}>
-        <Text style={[type.heading, styles.activityTitle]}>Friends are claiming territory</Text>
-      </View>
+      {/* "Your feed", not a sentence about friends: the list carries your own
+          runs, your pasers', and later rivals, clubs and achievements, and a
+          title that names one of those stops being true the day the next
+          one lands. A plain section title, like every other on the app. */}
+      <Text style={[type.sectionTitle, styles.feedTitle]} accessibilityRole="header">
+        Your feed
+      </Text>
     </View>
   );
 
@@ -828,7 +879,10 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   list: { backgroundColor: 'transparent' },
   feedHeader: { paddingHorizontal: space.gutter, paddingTop: space.sm },
   feedRow: { paddingHorizontal: space.gutter },
-  shortcutRow: { marginTop: space.xl, marginBottom: space.xl },
+  // Tight to the hero's dots above and to the feed title below: the header's
+  // job is to get the reader into the feed, so it spends no more air than the
+  // rhythm needs.
+  shortcutRow: { marginTop: space.md, marginBottom: space.md },
   // Clear of the hero below it, plus the room the card's own drop falls into.
   pendingClaim: { marginBottom: space.md + NB.offset },
   header: {
@@ -876,50 +930,38 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     borderColor: colors.bg,
   },
 
-  // The art is ~square, so with resizeMode="contain" its size is capped by the
-  // card HEIGHT, not the art box's width — past ~65% width a wider box gains
-  // nothing and only starves the text. Height is the lever that actually works;
-  // the tighter padding buys back the text column that the wider art costs.
+  // The hero's height is `heroHeightFor`, passed in, never set per card. With
+  // resizeMode="contain" the art's size is capped by that height, so each card
+  // sets only as wide an art column as its drawing needs at it.
   // The hero panels are saturated brand colour in BOTH themes, so they take a
   // hard ink outline either way (unlike neutral cards — see toonSurface).
-  hero: { height: 188 },
   heroContent: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'stretch',
     padding: space.md,
   },
-  // flex-start, not center: the button below is left-aligned (`heroBtn` is
-  // `alignSelf: 'flex-start'`), so a centered text block sat on a different
-  // left edge than the CTA it belongs to.
+  // flex-start, not center: the verb below is left-aligned, so a centred text
+  // block sat on a different left edge than the verb it belongs to.
   heroText: { flex: 1, justifyContent: 'space-between', paddingRight: space.sm, alignItems: 'flex-start', paddingTop: space.sm },
   // bleed to the card edges (negative margins cancel the card padding) so the
   // illustration is as large as possible.
-  heroImg: { height: 188, marginVertical: -space.md, marginRight: -space.md },
+  heroImg: { marginVertical: -HERO_ART_BLEED, marginRight: -HERO_ART_BLEED },
   heroEyebrow: { color: '#141414', opacity: 0.75 },
-  // 26/34 rather than the token's 30/40. With the art box at 44% the text
-  // column comes out 178pt on a 375pt phone and 170pt on a 360 (the art's own
-  // negative margin hands back the card padding it bleeds over), and the widest
-  // headline the carousel carries — "THE BOARD" — measures 152pt of Poppins
-  // Black at 26 with the display token's 0.3 tracking. So every card draws its
-  // title at the size it was asked for and the three of them match, which is
-  // the whole reason the titles are short. lineHeight stays at the token's
-  // 1.3x: Poppins Black clips at tighter leading.
-  heroTitle: { color: '#141414', fontSize: 28, lineHeight: 36, marginTop: 2 },
+  // 26/34 rather than the token's 30/40, and the same on every card, which is
+  // also the Start Run verb's size — so the display line is one size across
+  // the carousel. LEADERBOARD, the widest, fits the leaderboard card's column
+  // on a 375pt phone; the shrink floor covers narrower ones. lineHeight stays
+  // at the token's 1.3x: Poppins Black clips at tighter leading.
+  heroTitle: { color: '#141414', fontSize: 26, lineHeight: 34, marginTop: 2 },
   heroSub: { color: '#141414', opacity: 0.72, marginTop: 4 },
-  heroRunCta: { color: '#141414', fontSize: 26, lineHeight: 34, marginTop: space.xs },
-  heroTextCta: { color: '#141414', marginTop: space.sm },
-  // Pagination as flat blocks with an edge, per the reference system sheet —
-  // the current page is a long pink bar, the others are small hollow squares.
-  // They were a pink lozenge next to two dots in `colors.border`, which on the
-  // paper page is a warm hairline grey: the inactive pages read as smudges.
-  // SQUARE, not round. These sit directly under the hero, which is the most
-  // hand-drawn thing on the screen, and a hard-edged row of blocks under a
-  // wobbly ink box is the contrast the whole style runs on.
-  dots: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5, marginTop: space.sm },
-  dot: { height: 6, borderRadius: 0, borderWidth: 1, borderColor: nbInk(scheme, colors.bg), opacity: 0.55 },
-  dotOn: { width: 16, backgroundColor: brand.pink },
-  dotOff: { width: 6, backgroundColor: 'transparent' },
-  activityHeading: { marginTop: space.xs, marginBottom: space.md },
-  activityTitle: { color: colors.text },
+  heroCtaRow: { flexDirection: 'row', alignItems: 'center' },
+  heroRunCtaRow: { gap: space.sm, marginTop: space.xs },
+  heroTextCtaRow: { gap: 6, marginTop: space.sm },
+  heroRunCta: { color: '#141414', fontSize: 26, lineHeight: 34 },
+  heroTextCta: { color: '#141414' },
+  // The hero's page indicator (components/ui/PageDots, shared with the
+  // shortcuts below): only a hint, so it sits close under the cards.
+  dots: { marginTop: space.sm },
+  feedTitle: { color: colors.text, marginBottom: space.md },
 });

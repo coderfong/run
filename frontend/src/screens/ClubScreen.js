@@ -13,7 +13,7 @@ import { invalidate } from '../api/cache';
 import { useQuery } from '../hooks/useQuery';
 import { useAuth } from '../auth/AuthContext';
 import { useClan } from '../state/clan';
-import { nbField, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
+import { NB, nbField, nbRadius, space, withAlpha, useTheme, useThemedType, useThemedStyles } from '../theme';
 import { art } from '../config/onboardingArt';
 import { Screen, Card, Framed, Row, Button, Input, Pill, SectionHeader, Segmented, Skeleton, EmptyState, ToonButton } from '../components/ui';
 import ClubAvatar from '../components/ClubAvatar';
@@ -28,6 +28,10 @@ import { INK } from '../ui/frameRegistry';
 import { TARGET, TIP, TutorialTarget, useTutorialTip } from '../tutorial';
 
 const km = (m) => (m / 1000).toFixed(1);
+// One height for every single-line field on the directory and for the button
+// that sits beside one, so the invite row and the search box line up.
+const FIELD_H = 48;
+
 const LEAGUE_LABEL = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', platinum: 'Platinum', diamond: 'Diamond' };
 
 const CLUB_INTRO_KEY = 'tr.clubIntro.v1';
@@ -115,11 +119,13 @@ function ClubSearch({
 
   return (
     <>
+      {/* The heading and the field's own placeholder are the whole
+          instruction. A helper line between them ("Search clubs by name or
+          tag") said the placeholder's sentence a second time. */}
       {showHeading ? (
-        <View style={styles.searchHeader}>
-          <Text style={type.heading}>Find a club</Text>
-          <Text style={[type.caption, styles.searchHelper]}>Search clubs by name or tag</Text>
-        </View>
+        <Text style={[type.sectionTitle, styles.searchHeader]} accessibilityRole="header">
+          Find a club
+        </Text>
       ) : null}
 
       <View style={styles.searchInputWrap}>
@@ -158,6 +164,9 @@ function ClubSearch({
               accessibilityLabel={`Open ${c.name}, ${c.member_count} members`}
             >
               <View style={[styles.clubAccent, { backgroundColor: c.color.stroke }]} />
+              {/* Three columns on one centre line: crest, name over count,
+                  and the season's ground on the right in a fixed-width
+                  column so every card's number sits on the same edge. */}
               <Row between style={styles.clubRow}>
                 <Row gap={space.md} style={styles.clubIdentity}>
                   <ClubAvatar
@@ -167,16 +176,19 @@ function ClubSearch({
                     style={styles.clubAvatar}
                   />
                   <View style={styles.clubCopy}>
-                    <Text style={type.bodyBold} numberOfLines={1}>[{c.tag}] {c.name}</Text>
-                    <Text style={[type.caption, styles.clubMeta]} numberOfLines={1}>
+                    <Text style={type.cardTitle} numberOfLines={1}>[{c.tag}] {c.name}</Text>
+                    <Text style={[type.metadata, styles.clubMeta]} numberOfLines={1}>
                       {c.member_count} members{c.league ? `, ${LEAGUE_LABEL[c.league]} league` : ''}
                       {c.privacy !== 'open' ? ', invite only' : ''}
                     </Text>
                   </View>
                 </Row>
-                <Text style={[type.statSm, styles.clubScore, { color: c.color.stroke }]}>
-                  {(c.season_area_m2 / 1e6).toFixed(1)}
-                </Text>
+                <View style={styles.clubScoreCol}>
+                  <Text style={[type.statValue, styles.clubScore, { color: c.color.stroke }]} numberOfLines={1}>
+                    {(c.season_area_m2 / 1e6).toFixed(1)}
+                  </Text>
+                  <Text style={[type.metadata, styles.clubScoreUnit]} numberOfLines={1}>km²</Text>
+                </View>
               </Row>
             </Card>
           ))
@@ -229,8 +241,12 @@ function Directory({ navigation }) {
       </TutorialTarget>
 
       <View style={styles.inviteGroup}>
-        <Text style={[type.captionMedium, styles.inviteLabel]}>Have an invite code?</Text>
-        {/* the Join button matches the input height and centres with it */}
+        <Text style={[type.secondary, styles.inviteLabel]}>Have an invite code?</Text>
+        {/* The Join button is the input's twin: the same height, the same
+            12pt corner and the same stroke weight, in the pink that marks an
+            action rather than the field's ink. It used to wear a hand-drawn
+            action frame beside a machine-cut field, so the two halves of one
+            control looked like they came from different kits. */}
         <View style={styles.inviteRow}>
           <Input
             style={[styles.input, styles.inviteInput]}
@@ -246,6 +262,7 @@ function Directory({ navigation }) {
             variant="outline"
             size="sm"
             full={false}
+            frame={false}
             onPress={joinCode}
             icon={<ArrowRight size={16} color="#ec4899" />}
             style={styles.joinButton}
@@ -773,7 +790,7 @@ export default function ClubScreen({ navigation }) {
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   // title and crew sit together on the left rather than pushed to opposite edges
-  dirHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm, marginBottom: space.lg },
+  dirHeader: { flexDirection: 'row', alignItems: 'center', gap: space.md, marginTop: space.sm, marginBottom: space.md },
   dirCrewWrap: { flex: 1, maxWidth: 170, aspectRatio: 2.57 },
   dirCrew: { width: '100%', height: '100%' },
   input: {
@@ -782,13 +799,25 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     ...nbField(scheme, { on: colors.card }),
   },
   createButton: { marginTop: space.xs },
-  inviteGroup: { marginTop: space.xl },
-  inviteLabel: { color: colors.textMuted, marginBottom: space.sm },
+  // The directory's rhythm: one `lg` between blocks (create, invite, find),
+  // `sm` between a label and its field. It ran xl and xxl, which spread four
+  // controls over most of a screen.
+  inviteGroup: { marginTop: space.lg },
+  inviteLabel: { color: colors.textMuted, marginBottom: space.xs },
   inviteRow: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
-  inviteInput: { flex: 1, height: 48 },
-  joinButton: { height: 48, minWidth: 88, justifyContent: 'center', paddingHorizontal: space.lg },
-  searchHeader: { marginTop: space.xxl, marginBottom: space.sm },
-  searchHelper: { color: colors.textMuted, marginTop: 2 },
+  // minWidth 0 so the field yields to the Join button on a narrow phone
+  // rather than holding its own intrinsic width.
+  inviteInput: { flex: 1, minWidth: 0, height: FIELD_H },
+  // Same box as the field: height, radius (nbField's 12) and stroke weight.
+  joinButton: {
+    height: FIELD_H,
+    minWidth: 88,
+    justifyContent: 'center',
+    paddingHorizontal: space.lg,
+    borderRadius: nbRadius.sm,
+    borderWidth: NB.stroke,
+  },
+  searchHeader: { marginTop: space.xl, marginBottom: space.sm },
   searchInputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -800,14 +829,14 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   searchInput: {
     ...type.body,
     flex: 1,
-    minHeight: 48,
+    minHeight: FIELD_H,
     paddingVertical: 12,
     paddingRight: space.md,
     color: colors.text,
     borderWidth: 0,
   },
-  results: { marginTop: space.lg },
-  clubCard: { marginBottom: space.md, overflow: 'hidden' },
+  results: { marginTop: space.md },
+  clubCard: { marginBottom: space.sm, overflow: 'hidden' },
   clubAccent: {
     position: 'absolute',
     left: 0,
@@ -816,12 +845,16 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
     width: 5,
     borderRadius: 3,
   },
-  clubRow: { alignItems: 'center', paddingLeft: space.xs },
+  // A fixed row height, so a club with a league line and one without are
+  // the same card; the crest, the text block and the score all centre on it.
+  clubRow: { alignItems: 'center', paddingLeft: space.xs, minHeight: 48 },
   clubIdentity: { flex: 1, minWidth: 0, paddingRight: space.sm },
   clubAvatar: { borderWidth: 2, borderColor: colors.text },
   clubCopy: { flex: 1, minWidth: 0 },
   clubMeta: { color: colors.textMuted, marginTop: 2 },
-  clubScore: { flexShrink: 0, minWidth: 42, textAlign: 'right' },
+  clubScoreCol: { flexShrink: 0, width: 56, alignItems: 'flex-end', justifyContent: 'center' },
+  clubScore: { textAlign: 'right' },
+  clubScoreUnit: { color: colors.textMuted, textAlign: 'right', marginTop: -2 },
   crestEdit: {
     position: 'absolute', right: -4, bottom: -4,
     width: 24, height: 24, borderRadius: 12,

@@ -260,6 +260,38 @@ export const type = {
 };
 
 // ---------------------------------------------------------------------------
+// Semantic roles. The scale above is SIZES; these are JOBS, and a screen should
+// reach for the job. Each is an alias of one scale step, never a new size, so
+// the app keeps one small set of sizes however many screens it grows.
+//
+//   pageTitle     the one title at the top of a screen (RANK LADDER, PASERS)
+//   sectionTitle  a plain bold heading over a block (Your feed, Find a club,
+//                 Your land, Running streak) — no box round it
+//   cardTitle     the name on a card or row (a runner, a club)
+//   body          running copy
+//   secondary     the line under a card title: a member count, a status
+//   statValue     a number in a stat row or tile
+//   statLabel     the small caps word under or over a number
+//   metadata      timestamps, footnotes, helper lines
+//   button        a control's label (already on the scale above)
+//
+// The rule of the visual language they serve: a SECTION HEADING is plain bold
+// text; an ACTION is a pink or outlined control; a CONTENT CARD is a neutral
+// surface with the hand-drawn line; the RANK FRAME goes round a player's
+// portrait and nothing else; a FULL-BODY RUNNER is for showcase surfaces.
+// ---------------------------------------------------------------------------
+
+Object.assign(type, {
+  pageTitle: type.title,
+  sectionTitle: type.heading,
+  cardTitle: type.bodyBold,
+  secondary: type.captionMedium,
+  statValue: { ...type.statSm, fontSize: 16 },
+  statLabel: type.labelSm,
+  metadata: type.caption,
+});
+
+// ---------------------------------------------------------------------------
 // Run-recording tuning (frontend magic numbers; backend thresholds live in
 // backend/app/config.py).
 // ---------------------------------------------------------------------------

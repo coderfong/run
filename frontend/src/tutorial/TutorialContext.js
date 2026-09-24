@@ -295,7 +295,7 @@ export function TutorialProvider({ children, navigationRef }) {
   // --- keeping the demo honest ---------------------------------------------
   // The demo run and its claim exist only inside the run screen. If the
   // runner leaves that screen (the close button, Back, a notification) the
-  // demo is gone, so the tutorial goes back to "tap LET'S RUN" rather than
+  // demo is gone, so the tutorial goes back to "tap Start a run" rather than
   // pointing at a screen that is no longer there. A claim step found on the
   // run screen (Back from the claim) goes back to Start, which plays a new
   // demo. Nothing here navigates.
@@ -314,7 +314,7 @@ export function TutorialProvider({ children, navigationRef }) {
   }, [active, phase, facts.route, goTo, setFacts]);
 
   // Picked up again after the app was closed. A demo phase has lost its demo
-  // and goes back to LET'S RUN; the payoff moves on to the defend card. Once
+  // and goes back to Start a run; the payoff moves on to the defend card. Once
   // per launch, the first time the record is readable.
   const resumedRef = useRef(false);
   useEffect(() => {

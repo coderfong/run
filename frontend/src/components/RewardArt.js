@@ -23,7 +23,7 @@ import { Gift } from 'lucide-react-native';
 import { toonType, useTheme } from '../theme';
 import AppIcon from './AppIcon';
 import Chest from './lootbox/Chest';
-import PortraitBorder from './PortraitBorder';
+import PortraitBorder, { FRAME_BOX } from './PortraitBorder';
 import { PartThumb } from './character/CharacterRig';
 import { getItem } from '../config/cosmetics';
 import INK_BOUNDS from '../config/itemInkBounds.json';
@@ -130,7 +130,7 @@ export default function RewardArt({ reward, size = 56, equipped, accent = '#ec48
   if (kind === 'border') {
     // The ring IS the reward — show it empty so the ring reads, not a face.
     return (
-      <PortraitBorder borderKey={key} size={size}>
+      <PortraitBorder borderKey={key} size={size / FRAME_BOX} anchor="art">
         <View
           style={[
             styles.borderCore,

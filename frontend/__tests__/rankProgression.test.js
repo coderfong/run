@@ -252,17 +252,27 @@ describe('the full ladder', () => {
   const SHARES = [100, 90, 70, 50, 30, 11, 11, 11, 11, 11];
   const MYTHIC = standingFrom({ key: 'mythic', points: 2484, floor: 2400, next_points: null });
 
-  test('a percentile is shown only where it is distinct, and never on your card', () => {
+  test('a percentile is shown only above you, only where it is distinct, never on your card', () => {
+    const GOLD = standingFrom({ key: 'gold', points: 1400, floor: 1350, next_points: 1500 });
+    // Your own tier, and every tier you have passed: nothing.
     expect(cardPercent(SHARES, 9, 9)).toBeNull();
-    expect(cardPercent(SHARES, 8, 9)).toBeNull();
-    expect(cardPercent(SHARES, 5, 9)).toBeNull();
-    expect(cardPercent(SHARES, 4, 9)).toBe(30);
-    expect(cardPercent(SHARES, 0, 9)).toBeNull();
+    expect(cardPercent(SHARES, 4, 9)).toBeNull();
+    expect(cardPercent(SHARES, 3, 3)).toBeNull();
+    expect(cardPercent(SHARES, 2, 3)).toBeNull();
+    // Ahead of you: the distinct ones only.
+    expect(cardPercent(SHARES, 4, 3)).toBe(30);
+    expect(cardPercent(SHARES, 5, 3)).toBeNull();
+    expect(cardPercent(SHARES, 9, 3)).toBe(11);
 
-    const tree = render(<RankLadder standing={MYTHIC} floors={FLOORS} shares={SHARES} equipped={{}} />);
+    let tree = render(<RankLadder standing={MYTHIC} floors={FLOORS} shares={SHARES} equipped={{}} />);
+    expect(texts(tree).filter((s) => /Top \d+%/.test(s))).toHaveLength(0);
+    act(() => tree.unmount());
+
+    tree = render(<RankLadder standing={GOLD} floors={FLOORS} shares={SHARES} equipped={{}} />);
     const t = texts(tree);
-    expect(t.filter((s) => s.includes('TOP 11%'))).toHaveLength(0);
-    expect(t.filter((s) => s.includes('TOP 30%'))).toHaveLength(1);
+    expect(t.filter((s) => s === 'Top 30%')).toHaveLength(1);
+    expect(t.filter((s) => s === 'Top 11%')).toHaveLength(1);
+    expect(t.join('|')).not.toContain('OF RUNNERS');
     act(() => tree.unmount());
   });
 
