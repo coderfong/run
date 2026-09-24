@@ -17,10 +17,10 @@
 // the reward for a finished day is the app's best moment rather than a fifth
 // pile of coins.
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import Animated, { Easing, FadeInDown, FadeInUp, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Image } from '../ui/image';
 
 import { api } from '../api/client';
 import { invalidate } from '../api/cache';
@@ -32,18 +32,32 @@ import Chest from '../components/lootbox/Chest';
 import { BackButton, Card, HardShadow, Row, Screen, Skeleton } from '../components/ui';
 import { ProgressTrack } from '../components/ui/toon';
 import MissionCard from '../components/missions/MissionCard';
+import MissionsBoard, { BEAM, PAPER, boardFrame } from '../components/missions/MissionsBoard';
+import GameAnimation from '../components/GameAnimation';
 import CoinFly from '../components/missions/CoinFly';
 import LootboxGamble, { warmLootReward } from '../components/lootbox/LootboxGamble';
 import { rollCosmetic } from '../config/lootboxRoll';
 import { toast } from '../ui/toast';
-import { CountUpText, Pulse, Reveal, haptic, useReduceMotion } from '../ui/motion';
+import { CountUpText, haptic, useReduceMotion } from '../ui/motion';
 import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
 import { TIP, useTutorialTip } from '../tutorial';
 
-// The user's board art: wood frame, carved "Daily Missions" title, and a torn
-// parchment sheet. It owns the screen chrome now; mission UI is laid over the
-// blank paper instead of living under a separate purple header.
-const MISSIONS_BG = require('../../assets/art/panel/missions-board.png');
+// The board art (components/missions/MissionsBoard.js) owns the screen chrome:
+// sky, wooden board, a torn parchment sheet and the grass with its worm. The
+// mission UI is laid over the blank paper and scrolls inside it.
+
+// Entrances, once, when the screen first draws its missions: the banner drops
+// in a few points, the cards rise a few points, a short stagger between them.
+// Layout animations run on mount only, so a refresh never replays them.
+const ENTER_MS = 340;
+const CARD_STAGGER = 55;
+const bannerIn = FadeInUp.duration(ENTER_MS)
+  .easing(Easing.out(Easing.quad))
+  .withInitialValues({ opacity: 0, transform: [{ translateY: -6 }] });
+const cardIn = (i) => FadeInDown.delay(90 + i * CARD_STAGGER)
+  .duration(ENTER_MS)
+  .easing(Easing.out(Easing.quad))
+  .withInitialValues({ opacity: 0, transform: [{ translateY: 8 }] });
 
 const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -75,11 +89,46 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
   // the box you get. It moves only when there is one to collect: a chest
   // jiggling at 0/4 is advertising something you cannot have yet.
   //
-  // `still` rather than nothing under Reduce Motion, and whenever the day is
-  // unfinished — the box IS the reward, so it has to be on screen either way.
+  // And it moves ONCE: a single hop and wiggle with a sparkle when the day is
+  // finished (or when you arrive at a finished day), then it sits still. The
+  // banner going green is what keeps saying "collect me"; a chest bouncing
+  // forever would compete with the worm for the only motion on the board.
+  const cheer = useSharedValue(0);
+  const [cheers, setCheers] = useState(0);
+  // Keyed on `ready` turning on, and nothing else: the effect sets state, so
+  // it must not be able to re-run off its own re-render.
+  const cheered = useRef(false);
+  useEffect(() => {
+    if (!ready) {
+      cheered.current = false;
+      return;
+    }
+    if (reduced || cheered.current) return;
+    cheered.current = true;
+    cheer.value = 0;
+    cheer.value = withTiming(1, { duration: 720, easing: Easing.inOut(Easing.quad) });
+    setCheers((n) => n + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, reduced]);
+  const cheerStyle = useAnimatedStyle(() => {
+    const c = cheer.value;
+    return {
+      transform: [
+        { scale: 1 + 0.08 * Math.sin(Math.PI * c) },
+        { rotate: `${-2 * Math.sin(2 * Math.PI * c)}deg` },
+      ],
+    };
+  });
   const chest = (
     <View ref={chestRef} collapsable={false} style={styles.chestSlot}>
-      <Chest width={54} />
+      <Animated.View style={cheerStyle}>
+        <Chest width={54} />
+      </Animated.View>
+      {cheers > 0 ? (
+        <View pointerEvents="none" style={styles.chestSparkle}>
+          <GameAnimation name="sparkleStar" size={44} trigger={cheers} />
+        </View>
+      ) : null}
     </View>
   );
 
@@ -117,11 +166,26 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
             </Text>
           </View>
         </View>
-        {ready && !busy ? <Pulse min={1} max={1.09} durationMs={1100}>{chest}</Pulse> : chest}
+        {chest}
       </Row>
     </Card>
   );
 }
+
+// One mission on the board. Memoised with stable handlers, so a claim on one
+// card (or the purse counting up) does not re-render the other three.
+const MissionRow = React.memo(function MissionRow({ mission, accent, busy, onClaim, rects }) {
+  const press = useCallback(() => onClaim(mission), [onClaim, mission]);
+  const layout = useCallback((e) => {
+    // measureInWindow, not the layout rect: the card's own layout is relative
+    // to the scroll content, and the coins are drawn in screen space over
+    // everything.
+    e.currentTarget?.measureInWindow?.((x, y, w, h) => {
+      rects.current[mission.id] = { x, y, w, h };
+    });
+  }, [rects, mission.id]);
+  return <MissionCard mission={mission} accent={accent} busy={busy} onClaim={press} onLayout={layout} />;
+});
 
 export default function MissionsScreen({ navigation }) {
   // One card, the first time this screen is opened. See src/tutorial/tips.js.
@@ -132,6 +196,7 @@ export default function MissionsScreen({ navigation }) {
   const { height, width } = useWindowDimensions();
   const accent = useAccent();
   const { equipped, isUnlocked, refreshUnlocks } = useAvatar();
+  const reduced = useReduceMotion();
 
   // Which day is on screen. Null means today, which is also what the endpoint
   // defaults to, so the common case sends no parameter and shares one cache
@@ -244,10 +309,27 @@ export default function MissionsScreen({ navigation }) {
   // of one player and read as the wallet being wrong. Null until the balance
   // lands, drawn as `·`: a placeholder 0 reads as "you are broke".
   const coins = wallet?.coins ?? null;
-  const titleTop = Math.max(insets.top + 52, height * 0.067);
-  const paperTop = Math.max(insets.top + 132, height * 0.15);
-  const paperSide = Math.max(40, width * 0.11);
-  const boardSide = Math.max(36, width * 0.1);
+  // Everything is placed off the art, mapped to this window (MissionsBoard).
+  // The back button, the title and the purse ride the top beam; the missions
+  // scroll inside the clear part of the parchment, clipped at its top and at
+  // its torn bottom edge, so they never run over the wood or the grass (or
+  // under the worm).
+  const board = boardFrame(width, height);
+  const beamMid = (board.y(BEAM.top) + board.y(BEAM.bottom)) / 2;
+  const titleTop = Math.max(insets.top + 4, beamMid - 18);
+  const boardSide = Math.max(16, board.x(PAPER.left) + 6);
+  const paperClipTop = Math.max(board.y(PAPER.top), titleTop + 44);
+  const paperClipBottom = Math.min(height - insets.bottom, board.y(PAPER.bottom));
+  const paperSide = Math.max(40, width * 0.11, board.x(PAPER.left) + 22);
+
+  // The worm only walks while this screen is the one being looked at.
+  const [focused, setFocused] = useState(true);
+  useEffect(() => {
+    if (!navigation?.addListener) return undefined;
+    const offFocus = navigation.addListener('focus', () => setFocused(true));
+    const offBlur = navigation.addListener('blur', () => setFocused(false));
+    return () => { offFocus?.(); offBlur?.(); };
+  }, [navigation]);
 
   // Keep the coin-flight destination in the fixed header.
   const purse = (
@@ -273,18 +355,12 @@ export default function MissionsScreen({ navigation }) {
 
   return (
     <Screen gutter={false} edges={[]} style={styles.screen}>
-      {/* The wanted-poster board. Behind everything: it's the first child, so
+      {/* The board and its worm. Behind everything: it's the first child, so
           the header and the scrolling body (both painted after it) sit on
           top of it. Non-interactive and absolutely filled, same as the other
           page backdrops (SceneBackdrop, PassBackdrop) — it adds no layout
           height of its own. */}
-      <Image
-        source={MISSIONS_BG}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-        fadeDuration={0}
-        pointerEvents="none"
-      />
+      <MissionsBoard active={focused} />
 
       <View
         pointerEvents="box-none"
@@ -299,17 +375,21 @@ export default function MissionsScreen({ navigation }) {
             size={36}
             style={styles.boardBack}
           />
-        ) : null}
+        ) : <View style={styles.boardBackSpacer} />}
+        <Text style={styles.boardTitle} numberOfLines={1} adjustsFontSizeToFit accessibilityRole="header">
+          DAILY MISSIONS
+        </Text>
         {purse}
       </View>
 
+      <View style={[styles.paperClip, { top: paperClipTop, height: Math.max(0, paperClipBottom - paperClipTop) }]}>
       <Screen
         scroll
-        edges={['bottom']}
+        edges={[]}
         style={[styles.body, styles.transparent]}
         contentStyle={[
           styles.paperContent,
-          { paddingTop: paperTop, paddingHorizontal: paperSide },
+          { paddingTop: space.md, paddingHorizontal: paperSide },
         ]}
         refreshControl={<RefreshControl refreshing={false} onRefresh={() => refresh()} tintColor={accent} />}
       >
@@ -331,7 +411,7 @@ export default function MissionsScreen({ navigation }) {
 
         {state ? (
           <>
-            <Reveal from="none">
+            <Animated.View entering={reduced ? undefined : bannerIn}>
               <DayBanner
                 state={state}
                 label={label}
@@ -339,25 +419,18 @@ export default function MissionsScreen({ navigation }) {
                 busy={busy === 'bonus'}
                 onClaim={claimBonus}
               />
-            </Reveal>
+            </Animated.View>
 
             {state.missions.map((mission, i) => (
-              <Reveal key={mission.id} delay={i * 50} from="none">
-                <MissionCard
+              <Animated.View key={mission.id} entering={reduced ? undefined : cardIn(i)}>
+                <MissionRow
                   mission={mission}
                   accent={accent}
                   busy={busy === mission.id}
-                  onClaim={() => claim(mission)}
-                  onLayout={(e) => {
-                    // measureInWindow, not the layout rect: the card's own
-                    // layout is relative to the scroll content, and the coins
-                    // are drawn in screen space over everything.
-                    e.currentTarget?.measureInWindow?.((x, y, w, h) => {
-                      cardRects.current[mission.id] = { x, y, w, h };
-                    });
-                  }}
+                  onClaim={claim}
+                  rects={cardRects}
                 />
-              </Reveal>
+              </Animated.View>
             ))}
 
             <Text style={[type.caption, { color: colors.textDim, marginTop: space.lg }]}>
@@ -366,6 +439,7 @@ export default function MissionsScreen({ navigation }) {
           </>
         ) : null}
       </Screen>
+      </View>
 
       <CoinFly from={from} to={to} flight={flight} />
 
@@ -400,6 +474,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   boardBack: { marginTop: 2 },
+  boardBackSpacer: { width: 36 },
+  // Carved-in look on the beam: dark brown ink with a pale lower edge.
+  boardTitle: {
+    flex: 1,
+    marginHorizontal: space.sm,
+    textAlign: 'center',
+    fontFamily: fonts.display,
+    fontSize: 22,
+    letterSpacing: 2,
+    color: '#3A1D0A',
+    textShadowColor: 'rgba(255, 214, 150, 0.55)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 0,
+  },
+  // The window onto the parchment the missions scroll in.
+  paperClip: { position: 'absolute', left: 0, right: 0, overflow: 'hidden' },
   purseWrap: { flexShrink: 0, alignSelf: 'flex-start' },
   purse: {
     flexDirection: 'row',
@@ -426,4 +516,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   chestSlot: { width: 58, alignItems: 'center' },
+  chestSparkle: { position: 'absolute', top: -14, right: -12 },
 });

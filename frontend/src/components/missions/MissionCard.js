@@ -10,13 +10,21 @@
 // is the fact. "3/24" over a bar that has barely moved is honest in a way that
 // either one alone is not.
 
-import React from 'react';
+//
+// THE CARD NEVER MOVES; ITS PAYOUT DOES. A claimable card breathes only its
+// reward chip, not the whole card, so the text you are reading stays still.
+// Finishing a mission while the screen is open pops the chip once (with a
+// success tap), and collecting it pops the tick once. Neither replays when the
+// screen is re-entered on a mission that was already in that state.
+
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
 import AppIcon from '../AppIcon';
 import { ProgressTrack } from '../ui/toon';
-import { PressableScale, Pulse } from '../../ui/motion';
+import { PressableScale, haptic, useOnScreen, useReduceMotion } from '../../ui/motion';
 import { brand, fonts, nbInk, nbRadius, radius, space, useTheme, useThemedType, withAlpha } from '../../theme';
 
 // The metric a goal is counted in decides how it is written. A distance
@@ -35,12 +43,61 @@ function formatPair(mission) {
   return `${Math.floor(value)} / ${goal}`;
 }
 
-export default function MissionCard({ mission, accent, onClaim, busy, onLayout }) {
+// True once `flag` has turned on AFTER the first render: a change witnessed,
+// not a state arrived in.
+function useTurnedOn(flag) {
+  const initial = useRef(flag);
+  return !initial.current && flag;
+}
+
+// The reward chip's (and the tick's) motion, on ONE view: a single pop
+// (0.8 → 1.1 → 1) when `pop` turns on, and a slow breath while `breathe`.
+// One view rather than Pop wrapped around Pulse: the product of two scales is
+// one scale, and the nested pair also wedged the jest Reanimated runtime.
+function ChipMotion({ pop = false, breathe = false, style, children }) {
+  const reduced = useReduceMotion();
+  const onScreen = useOnScreen(breathe && !reduced);
+  const hop = useSharedValue(1);
+  const breath = useSharedValue(1);
+
+  useEffect(() => {
+    if (!pop || reduced) return undefined;
+    hop.value = withSequence(
+      withTiming(0.8, { duration: 0 }),
+      withTiming(1.1, { duration: 170, easing: Easing.out(Easing.quad) }),
+      withTiming(1, { duration: 190, easing: Easing.inOut(Easing.quad) })
+    );
+    return () => {
+      cancelAnimation(hop);
+      hop.value = 1;
+    };
+  }, [pop, reduced, hop]);
+
+  useEffect(() => {
+    if (!breathe || reduced || !onScreen) {
+      cancelAnimation(breath);
+      breath.value = 1;
+      return undefined;
+    }
+    breath.value = withRepeat(withTiming(1.06, { duration: 1400, easing: Easing.inOut(Easing.quad) }), -1, true);
+    return () => cancelAnimation(breath);
+  }, [breathe, reduced, onScreen, breath]);
+
+  const animated = useAnimatedStyle(() => ({ transform: [{ scale: hop.value * breath.value }] }));
+  return <Animated.View style={[style, animated]}>{children}</Animated.View>;
+}
+
+function MissionCard({ mission, accent, onClaim, busy, onLayout }) {
   const { colors, scheme } = useTheme();
   const type = useThemedType();
 
   const claimable = mission.complete && !mission.claimed;
   const done = mission.claimed;
+  const justFinished = useTurnedOn(claimable);
+  const justCollected = useTurnedOn(done);
+  useEffect(() => {
+    if (justFinished) haptic.success();
+  }, [justFinished]);
 
   // Green is reserved for success everywhere else in the app (see the note on
   // NB_DECK in theme/nb.js), which is exactly what a finished mission is.
@@ -71,20 +128,22 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
         </View>
 
         <View style={styles.rewardWrap}>
-          <View
-            style={[
-              styles.reward,
-              { backgroundColor: colors.cardAlt, borderColor: nbInk(scheme, colors.cardAlt) },
-            ]}
-          >
-            <AppIcon name="coin" size={22} />
-            <Text style={[styles.rewardText, { color: colors.text }]}>{mission.reward}</Text>
-          </View>
+          <ChipMotion pop={justFinished} breathe={claimable && !busy}>
+              <View
+                style={[
+                  styles.reward,
+                  { backgroundColor: colors.cardAlt, borderColor: nbInk(scheme, colors.cardAlt) },
+                ]}
+              >
+                <AppIcon name="coin" size={22} />
+                <Text style={[styles.rewardText, { color: colors.text }]}>{mission.reward}</Text>
+              </View>
+          </ChipMotion>
           {claimable ? (
             <View style={[styles.claimTab, { backgroundColor: '#22c55e' }]} />
           ) : null}
           {done ? (
-            <View style={styles.tick}>
+            <ChipMotion pop={justCollected} style={styles.tick}>
               <Svg width={18} height={18} viewBox="0 0 24 24">
                 <Path
                   d="M5 13 L10 18 L19 6"
@@ -95,7 +154,7 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
                   strokeLinejoin="round"
                 />
               </Svg>
-            </View>
+            </ChipMotion>
           ) : null}
         </View>
       </View>
@@ -110,13 +169,12 @@ export default function MissionCard({ mission, accent, onClaim, busy, onLayout }
       accessibilityRole="button"
       accessibilityLabel={`${mission.text}. Finished. Collect ${mission.reward} coins.`}
     >
-      {/* The breath is what says "this one" across a screen of four. */}
-      <Pulse active={!busy} min={1} max={1.015} durationMs={1400}>
-        {body}
-      </Pulse>
+      {body}
     </PressableScale>
   );
 }
+
+export default React.memo(MissionCard);
 
 const styles = StyleSheet.create({
   wrap: { marginTop: space.md },
