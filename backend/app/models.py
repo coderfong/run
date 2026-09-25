@@ -165,11 +165,22 @@ class Run(Base):
     # be claimed twice.
     claimed_at = Column(DateTime, nullable=True)
 
+    # NULL = phone (every run before rev 0047, and every ordinary run since).
+    # 'watch' = a standalone Apple Watch workout submitted to /start-run after
+    # it already finished, with a backdated started_at — see rev 0047 and the
+    # comment on start_run in routes/runs.py for why this exists and what
+    # extra scrutiny it buys the run at /end-run.
+    source = Column(Text, nullable=True)
+
     # Anti-cheat: shadow flag. Flagged runs look normal to the submitter but
     # their territories are hidden from everyone else. flag_reasons is
     # server-side only — never returned by the API.
     verified = Column(Boolean, nullable=False, default=True, server_default="true")
     flag_reasons = Column(ARRAY(Text), nullable=True)
+    # The client run session's summary (time and distance by what each
+    # stretch was). Server-side only, for anti-cheat review and tester
+    # calibration — see migration 0046 and schemas.RunSessionIn.
+    session_summary = Column(JSONB, nullable=True)
 
     # What /end-run decided, frozen so a repeat call replays it rather than
     # recomputing (and re-paying) — see migration 0023.

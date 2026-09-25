@@ -51,6 +51,11 @@ class GpsPoint(BaseModel):
     accuracy_m: Optional[float] = None
     mocked: Optional[bool] = None       # Android mock-provider flag; iOS false
     speed_mps: Optional[float] = None   # platform-reported speed if available
+    # The accepted running segment this point belongs to (client run session,
+    # frontend/src/run/session). Segments are measured separately and never
+    # bridged, so a gap (a drive, a tunnel with no step evidence) is a break
+    # in the route, not distance. None on older clients: one segment.
+    seg: Optional[int] = Field(None, ge=0, le=100_000)
 
     @field_validator("t", mode="before")
     @classmethod
@@ -69,11 +74,45 @@ class GpsPoint(BaseModel):
 
 class StartRunIn(BaseModel):
     started_at: Optional[UtcDatetime] = None
+    # Set only by the watch-import flow (frontend src/run/watchRunImport.js),
+    # naming why `started_at` is being honoured for an account that is not on
+    # the dev allowlist. Any other value, or none, changes nothing — a plain
+    # backdated start is still silently dropped for everyone but a dev
+    # account. See start_run's own comment.
+    source: Optional[str] = None
 
 
 class StartRunOut(BaseModel):
     run_id: str
     started_at: UtcDatetime
+
+
+class RunSessionIn(BaseModel):
+    """The client run session's account of the run (see
+    frontend/src/run/session/finalizeSession.js): how long each kind of
+    stretch lasted and how much was left out. EVIDENCE for anti-cheat and for
+    tester calibration — nothing here is paid or trusted as a metric. Distance
+    and duration are always recomputed from the submitted points."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    classifier_version: Optional[int] = Field(None, ge=0, le=1000)
+    recorded_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    active_running_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    stationary_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    auto_paused_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    user_paused_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    cycling_suspect_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    vehicle_suspect_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    unknown_s: Optional[float] = Field(None, ge=0, le=14 * 86400)
+    running_distance_m: Optional[float] = Field(None, ge=0, le=5_000_000)
+    excluded_cycling_m: Optional[float] = Field(None, ge=0, le=5_000_000)
+    excluded_vehicle_m: Optional[float] = Field(None, ge=0, le=5_000_000)
+    excluded_stationary_m: Optional[float] = Field(None, ge=0, le=5_000_000)
+    uncertain_distance_m: Optional[float] = Field(None, ge=0, le=5_000_000)
+    segments: Optional[int] = Field(None, ge=0, le=100_000)
+    transitions: Optional[int] = Field(None, ge=0, le=100_000)
+    activity_end_ms: Optional[float] = None
 
 
 class EndRunIn(BaseModel):
@@ -85,6 +124,8 @@ class EndRunIn(BaseModel):
     # allowlisted dev account; ordinary clients cannot opt out of the daily
     # entitlement curve by sending the flag themselves.
     simulated: bool = False
+    # The run session summary (newer clients only).
+    session: Optional[RunSessionIn] = None
 
 
 # A single live-stream submission. The frontend can call /submit-path

@@ -111,6 +111,8 @@ function screenFromCategory(category) {
     case 'reminder':
       return 'record';
     case 'watch_run_saved':
+    case 'watch_run_syncing':
+    case 'watch_run_ready':
       return 'record';
     default:
       return null;

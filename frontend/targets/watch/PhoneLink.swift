@@ -47,6 +47,33 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         transmit(["cmd": "avatar", "have": WatchAvatarStore.shared.key])
     }
 
+    /// A run the phone is recording right now, heard from recently. While
+    /// this is true the watch mirrors and controls that run instead of
+    /// starting its own: one PASER run per person. The phone re-sends its
+    /// state every ten seconds while running or paused, so a minute of
+    /// silence means the phone run is gone (the app was closed or died).
+    var phoneRunActive: Bool {
+        let live: Set<RunPhase> = [.countdown, .running, .paused, .saving]
+        return live.contains(state.phase) && Date().timeIntervalSince(receivedAt) < 60
+    }
+
+    /// Tells the phone what this watch's own standalone workout is doing, so
+    /// the phone refuses to start a second run beside it. Sent as the
+    /// application context (the system keeps the latest for a phone app that
+    /// is not running) and live when the phone is reachable.
+    func reportWorkout(_ phase: String, runId: String) {
+        guard let session = session, session.activationState == .activated else { return }
+        let report: [String: Any] = [
+            "watchWorkout": phase,
+            "watchRunId": runId,
+            "at": Date().timeIntervalSince1970 * 1000,
+        ]
+        try? session.updateApplicationContext(report)
+        if session.isReachable {
+            session.sendMessage(report, replyHandler: nil, errorHandler: nil)
+        }
+    }
+
     func send(_ command: RunCommand) {
         guard pending == nil, reachable else { return }
         pending = command
@@ -58,7 +85,10 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     /// Delivers a standalone watch run to the phone even when PASER is not
-    /// open. The phone uses this durable payload to raise the attack prompt.
+    /// open. Durable (queued by the system), but summary numbers ONLY — the
+    /// phone must not tell the runner their run is ready to claim from this
+    /// alone, only that one finished and its route is on its way. The route
+    /// itself is `sendRoute`, below.
     func reportFinished(distanceKM: String, time: String, pace: String) {
         guard let session = session, session.activationState == .activated else { return }
         session.transferUserInfo([
@@ -68,6 +98,32 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
             "pace": pace,
             "finishedAt": Date().timeIntervalSince1970,
         ])
+    }
+
+    /// Roughly once a second while a standalone workout runs or is paused:
+    /// distance, elapsed time and pace, for the phone to mirror rather than
+    /// compute its own. Best-effort — `sendMessage`, not
+    /// `updateApplicationContext` — so a stream of these can never throttle
+    /// or wake a phone that is not reachable right now; the phone simply
+    /// keeps whatever it last heard until the next one lands. `state` also
+    /// carries "finished" once, the moment the workout ends.
+    func reportLiveState(_ state: [String: Any]) {
+        guard let session = session, session.activationState == .activated, session.isReachable else { return }
+        var message = state
+        message["kind"] = "watchRunState"
+        message["sentAt"] = Date().timeIntervalSince1970 * 1000
+        session.sendMessage(message, replyHandler: nil, errorHandler: nil)
+    }
+
+    /// The finished workout's own recorded GPS points, as a file transfer —
+    /// the mechanism WatchConnectivity actually means for a payload this
+    /// size (a run's worth of fixes is far past what `sendMessage` or
+    /// `transferUserInfo` are for). Queued by the system like `reportFinished`
+    /// above: this call returning is not delivery, and it can complete long
+    /// after the workout ended, including after this app process is gone.
+    func sendRoute(fileURL: URL, runId: String) {
+        guard let session = session, session.activationState == .activated else { return }
+        session.transferFile(fileURL, metadata: ["kind": "watchRunRoute", "runId": runId])
     }
 
     private func transmit(_ message: [String: Any]) {

@@ -75,6 +75,22 @@ export async function endRunSave() {
   try { await nativeWatch()?.endRunSave?.(); } catch {}
 }
 
+// The watch's own standalone workout as it last reported it, or null:
+// { phase: running | paused | ended, at: epoch ms, runId }. Read before the
+// phone starts a run, so one person never records two PASER runs at once
+// (run/session/runOwnership.js).
+export function watchWorkoutStatus() {
+  const mod = nativeWatch();
+  if (!mod || typeof mod.getWatchWorkout !== 'function') return null;
+  try {
+    const w = mod.getWatchWorkout() || {};
+    if (!w.phase) return null;
+    return { phase: String(w.phase), at: Number(w.at) || 0, runId: w.runId || null };
+  } catch (err) {
+    return null;
+  }
+}
+
 // Send the Run screen's state. Returns what was sent, or null when there is
 // no watch link in this build.
 export function publishToWatch(input, nowMs = Date.now()) {
@@ -116,4 +132,63 @@ export function addWatchCommandListener(handler) {
       }
     },
   };
+}
+
+// Listen for a standalone workout's live metrics, and for the one-shot
+// signal that its finished route has landed on disk (raw native shapes —
+// see src/watch/watchRunState.js for the parsing/validation every caller
+// should apply before trusting either). Same shape of contract as
+// addWatchCommandListener: always a remove(), a bad handler contained here.
+export function addWatchRunStateListener(handler) {
+  const mod = nativeWatch();
+  if (!mod || typeof mod.addListener !== 'function') return { remove() {} };
+  let sub = null;
+  try {
+    sub = mod.addListener('onWatchRunState', (event) => {
+      try {
+        handler(event);
+      } catch (err) {
+        // Same reasoning as addWatchCommandListener: a bad frame must not
+        // take down whatever is listening for the next one.
+      }
+    });
+  } catch (err) {
+    sub = null;
+  }
+  return {
+    remove() {
+      try {
+        sub?.remove?.();
+      } catch (err) {
+        // Already gone.
+      }
+    },
+  };
+}
+
+// Every completed watch run still waiting to be submitted, oldest first, as
+// raw native payloads. `[]` wherever there is no watch link in this build —
+// never throws, so a caller can check this on every launch without a guard.
+export async function getPendingWatchRuns() {
+  const mod = nativeWatch();
+  if (!mod || typeof mod.getPendingWatchRuns !== 'function') return [];
+  try {
+    const runs = await mod.getPendingWatchRuns();
+    return Array.isArray(runs) ? runs : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+// Discards a pending run. Call this ONLY after a run has been submitted
+// successfully (or the runner explicitly discarded it) — it is the one way
+// this data can be lost, and nothing here retries it for you.
+export async function consumePendingWatchRun(runId) {
+  const mod = nativeWatch();
+  if (!mod || typeof mod.consumePendingWatchRun !== 'function' || !runId) return false;
+  try {
+    return !!(await mod.consumePendingWatchRun(runId));
+  } catch (err) {
+    return false;
+  }
 }

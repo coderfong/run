@@ -30,8 +30,19 @@ final class WorkoutManager: NSObject, ObservableObject {
     private var pausedAt: Date?
     private var pausedDuration: TimeInterval = 0
     private var clock: Timer?
+    /// This workout's id, reported to the phone with its phase.
+    private var runId = UUID().uuidString
+    private var lastReportAt = Date.distantPast
     private var countdownTimer: Timer?
     private let maximumRunningSpeed: CLLocationSpeed = 8.5
+    /// Every accepted fix, in the shape PASER's own API points take — the
+    /// same filtering that feeds `routeBuilder` (HealthKit's copy of the
+    /// route), kept a second time because HealthKit's route is not something
+    /// this process can read back to send to the phone. See `sendRouteToPhone`.
+    private var recordedPoints: [[String: Any]] = []
+    /// Monotonic counter for the live state stream to the phone, so a message
+    /// delayed by a WatchConnectivity retry can never overwrite a newer one.
+    private var liveSeq: Double = 0
 
     override init() {
         super.init()
@@ -43,11 +54,19 @@ final class WorkoutManager: NSObject, ObservableObject {
         locationManager.startUpdatingLocation()
     }
 
-    var pace: String {
-        guard distance >= 20, elapsed > 0 else { return RunState.empty }
+    /// Raw seconds-per-km, for the phone to format itself (it already has its
+    /// own pace formatter, applied the same way to every other run) — never
+    /// sent as this watch's own formatted string, so the two devices cannot
+    /// end up rounding the same pace two different ways.
+    var paceSecondsPerKm: Double? {
+        guard distance >= 20, elapsed > 0 else { return nil }
         let secondsPerKm = elapsed / (distance / 1000)
-        guard secondsPerKm.isFinite, secondsPerKm < 3600 else { return RunState.empty }
-        return String(format: "%d:%02d", Int(secondsPerKm) / 60, Int(secondsPerKm) % 60)
+        guard secondsPerKm.isFinite, secondsPerKm < 3600 else { return nil }
+        return secondsPerKm
+    }
+    var pace: String {
+        guard let s = paceSecondsPerKm else { return RunState.empty }
+        return String(format: "%d:%02d", Int(s) / 60, Int(s) % 60)
     }
     /// Steps a second, for the portrait's stride (PortraitMotion.run). Real
     /// cadence needs the accelerometer; this is the run's own average speed
@@ -68,6 +87,13 @@ final class WorkoutManager: NSObject, ObservableObject {
 
     func start() {
         guard phase == .ready || phase == .error else { return }
+        // One PASER run per person. The Ready screen already swaps to the
+        // phone's run when there is one (RunScreen), so this only catches a
+        // phone run that began while the Start button was on screen.
+        guard !PhoneLink.shared.phoneRunActive else {
+            fail("Your iPhone is already recording a run.")
+            return
+        }
         guard HKHealthStore.isHealthDataAvailable() else { fail("Workouts are not available on this watch."); return }
         let workout = HKObjectType.workoutType()
         let route = HKSeriesType.workoutRoute()
@@ -114,6 +140,7 @@ final class WorkoutManager: NSObject, ObservableObject {
             routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: .local())
             let now = Date()
             startedAt = now
+            runId = UUID().uuidString
             pausedDuration = 0
             elapsed = 0
             distance = 0
@@ -122,11 +149,14 @@ final class WorkoutManager: NSObject, ObservableObject {
             elevationGain = 0
             currentSpeed = 0
             lastLocation = nil
+            recordedPoints = []
+            liveSeq = 0
             session.startActivity(with: now)
             builder.beginCollection(withStart: now) { _, _ in }
             locationManager.startUpdatingLocation()
             phase = .running
             startClock()
+            report("running")
             WKInterfaceDevice.current().play(.start)
         } catch { fail("PASER could not start the workout.") }
     }
@@ -136,6 +166,7 @@ final class WorkoutManager: NSObject, ObservableObject {
         workoutSession?.pause()
         pausedAt = Date()
         phase = .paused
+        report("paused")
         lastLocation = nil
         WKInterfaceDevice.current().play(.stop)
     }
@@ -146,6 +177,7 @@ final class WorkoutManager: NSObject, ObservableObject {
         self.pausedAt = nil
         workoutSession?.resume()
         phase = .running
+        report("running")
         WKInterfaceDevice.current().play(.start)
     }
 
@@ -155,6 +187,7 @@ final class WorkoutManager: NSObject, ObservableObject {
         self.pausedAt = nil
         phase = .saving
         stopClock()
+        report("ended")
         locationManager.stopUpdatingLocation()
         workoutSession?.end()
         let end = Date()
@@ -174,25 +207,103 @@ final class WorkoutManager: NSObject, ObservableObject {
         startedAt = nil; pausedAt = nil; pausedDuration = 0; lastLocation = nil
         elapsed = 0; distance = 0; heartRate = 0; activeCalories = 0
         elevationGain = 0; currentSpeed = 0; errorMessage = ""
+        recordedPoints = []; liveSeq = 0
         phase = .ready
         locationManager.startUpdatingLocation()
+    }
+
+    /// Keeps the phone told, including a heartbeat every 30 s while the
+    /// workout is live: a report that stops arriving stops blocking the phone.
+    private func report(_ phase: String) {
+        lastReportAt = Date()
+        PhoneLink.shared.reportWorkout(phase, runId: runId)
+    }
+
+    /// Distance, elapsed time and pace, roughly once a second while the
+    /// workout is running or paused — see PhoneLink.reportLiveState for why
+    /// this is a best-effort message rather than the durable application
+    /// context `report(_:)` above uses. The phone mirrors these numbers
+    /// exactly rather than computing its own (RunningScreen's `tutorialSim` /
+    /// watch-owned branch), so the two devices can never disagree.
+    private func reportLiveState() {
+        guard let start = startedAt else { return }
+        liveSeq += 1
+        var state: [String: Any] = [
+            "runId": runId,
+            "seq": liveSeq,
+            "state": phase == .paused ? "paused" : "running",
+            "startedAt": start.timeIntervalSince1970 * 1000,
+            "elapsedS": elapsed,
+            "distanceM": distance,
+        ]
+        if let pace = paceSecondsPerKm { state["paceSPerKm"] = pace }
+        if let last = lastLocation {
+            state["lat"] = last.coordinate.latitude
+            state["lon"] = last.coordinate.longitude
+        }
+        PhoneLink.shared.reportLiveState(state)
     }
 
     private func startClock() {
         clock?.invalidate()
         clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self = self, let start = self.startedAt else { return }
+            if Date().timeIntervalSince(self.lastReportAt) >= 30 {
+                self.report(self.phase == .paused ? "paused" : "running")
+            }
             let activePause = self.pausedAt.map { Date().timeIntervalSince($0) } ?? 0
             self.elapsed = max(0, Date().timeIntervalSince(start) - self.pausedDuration - activePause)
+            self.reportLiveState()
         }
     }
     private func stopClock() { clock?.invalidate(); clock = nil }
     private func showSummary() {
         phase = .summary
         PhoneLink.shared.reportFinished(distanceKM: distanceText, time: elapsedText, pace: pace)
+        PhoneLink.shared.reportLiveState([
+            "runId": runId,
+            "seq": liveSeq + 1,
+            "state": "finished",
+            "startedAt": (startedAt?.timeIntervalSince1970 ?? 0) * 1000,
+            "elapsedS": elapsed,
+            "distanceM": distance,
+        ])
+        sendRouteToPhone()
         WKInterfaceDevice.current().play(.success)
     }
-    private func fail(_ message: String) { stopClock(); errorMessage = message; phase = .error; WKInterfaceDevice.current().play(.failure) }
+
+    /// The completed route, handed to the phone as a file transfer — see
+    /// PhoneLink.sendRoute and PhoneWatchSession's receive side. Queued by
+    /// the system, so this is safe to fire even if the phone is unreachable
+    /// right now; it arrives whenever it can.
+    private func sendRouteToPhone() {
+        guard let start = startedAt else { return }
+        let end = Date()
+        let payload: [String: Any] = [
+            "schemaVersion": 1,
+            "runId": runId,
+            "source": "watch",
+            "startedAt": start.timeIntervalSince1970 * 1000,
+            "endedAt": end.timeIntervalSince1970 * 1000,
+            "totalDistanceMeters": distance,
+            "elapsedSeconds": elapsed,
+            "points": recordedPoints,
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload)
+        else { return }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("paserWatchRun-\(runId).json")
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch { return }
+        PhoneLink.shared.sendRoute(fileURL: url, runId: runId)
+    }
+    private func fail(_ message: String) {
+        let wasLive = phase == .running || phase == .paused
+        stopClock(); errorMessage = message; phase = .error
+        if wasLive { report("ended") }
+        WKInterfaceDevice.current().play(.failure)
+    }
 }
 
 extension WorkoutManager: CLLocationManagerDelegate {
@@ -229,6 +340,18 @@ extension WorkoutManager: CLLocationManagerDelegate {
             }
             lastLocation = location
             accepted.append(location)
+            // PASER's own canonical point shape (see run/watchRunImport.js
+            // and toApiPoints in RunningScreen.js) — the same fields a phone
+            // recording sends, so /end-run's anti-cheat runs unmodified.
+            recordedPoints.append([
+                "latitude": location.coordinate.latitude,
+                "longitude": location.coordinate.longitude,
+                "timestamp": location.timestamp.timeIntervalSince1970 * 1000,
+                "altitude": location.verticalAccuracy > 0 ? location.altitude : NSNull(),
+                "accuracyM": location.horizontalAccuracy,
+                "speedMps": location.speed >= 0 ? location.speed : NSNull(),
+                "mocked": false,
+            ])
         }
         if !accepted.isEmpty { routeBuilder?.insertRouteData(accepted) { _, _ in } }
     }

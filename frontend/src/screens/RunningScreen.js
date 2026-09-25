@@ -11,8 +11,6 @@ import DevRunSimulator from '../components/DevRunSimulator';
 import { useAvatar } from '../state/avatar';
 import { tierByKey } from '../config/rankLadder';
 import * as Location from 'expo-location';
-import { Pedometer } from 'expo-sensors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle } from 'react-native-svg';
 import { Lock } from 'lucide-react-native';
 import AppIcon from '../components/AppIcon';
@@ -34,11 +32,13 @@ import {
   startBackgroundTrack,
   stopBackgroundTrack,
 } from '../run/backgroundTrack';
-import { createGpsFilter, DROP, filterPoints, haversineM, pathDistanceM } from '../run/gpsFilter';
+import { createGpsFilter, DROP, haversineM, pathDistanceM, toApiPoints } from '../run/gpsFilter';
 import { buildSimulatedRun, FALLBACK_ORIGIN } from '../run/simulatedRun';
 import { buildTutorialResult, buildTutorialTrace } from '../run/tutorialRun';
-import { withoutPausedPoints } from '../run/pauseWindows';
-import { createVehicleGate } from '../run/vehicleGate';
+import { createRunSessionController, SESSION_EVENT } from '../run/session/runSessionController';
+import { RUN_SESSION } from '../run/session/config';
+import { canStartPhoneRun } from '../run/session/runOwnership';
+import RunRecoverySheet from '../components/run/RunRecoverySheet';
 import { useClan } from '../state/clan';
 import { landColor } from '../components/territoryBoard';
 import { useRecording } from '../state/recording';
@@ -46,7 +46,8 @@ import { useSettings } from '../state/settings';
 import { writeWorkout } from '../health';
 import { useIsFocused } from '@react-navigation/native';
 import useWatchRun from '../watch/useWatchRun';
-import { watchAppInstalled, beginRunSave, endRunSave } from '../watch/watchLink';
+import { watchAppInstalled, beginRunSave, endRunSave, watchWorkoutStatus } from '../watch/watchLink';
+import useWatchLiveMirror from '../watch/useWatchLiveMirror';
 import { commandAllowed, PHASE as WATCH_PHASE } from '../watch/watchState';
 import { NB, darkColors, nbInk, radius, runTuning as T, space, toon, type, withAlpha } from '../theme';
 import { ToonButton } from '../components/ui';
@@ -57,7 +58,6 @@ import { RunEventOverlay, RunStartOverlay } from '../components/run/RunGameplayF
 import { DEMO_RUN_PHASES, SIGNAL, TARGET, useTutorial, useTutorialState, useTutorialTarget } from '../tutorial';
 
 // In-progress run persisted here so an OS kill / crash can't lose a run.
-const ACTIVE_RUN_KEY = 'tr.activeRun';
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -106,16 +106,9 @@ const totalDistanceMeters = pathDistanceM;
 // Per-point sensor metadata rides along for server-side validation:
 // mocked (Android mock-provider flag; iOS has no equivalent -> false),
 // accuracy and speed when the platform reports them.
-function toApiPoints(points) {
-  return points.map((p) => ({
-    lat: p.latitude,
-    lon: p.longitude,
-    t: new Date(p.timestamp).toISOString(),
-    mocked: p.mocked ?? false,
-    accuracy_m: p.accuracyM ?? null,
-    speed_mps: p.speedMps ?? null,
-  }));
-}
+// `seg` is the accepted running segment a point belongs to (see
+// run/session/finalizeSession.js). The server measures each one separately and
+// never bridges two, so a gap in the run is a break, not distance.
 
 function formatDuration(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -146,7 +139,7 @@ function paceStr(seconds) {
 // down. It is shifted forward across a pause (see `resumeFromPause`) so that
 // elapsed time stays honest, and reading the ref is what keeps this from
 // disagreeing with the value the run is submitted with.
-const RunClock = React.memo(function RunClock({ startedAtRef, running, paused, style }) {
+const RunClock = React.memo(function RunClock({ getMs, running, style }) {
   const [ms, setMs] = useState(0);
 
   // STOPPING FREEZES, IT DOES NOT RESET. Both halves of that matter:
@@ -160,13 +153,16 @@ const RunClock = React.memo(function RunClock({ startedAtRef, running, paused, s
   //
   // A new run zeroes it on its own: `startRun` sets `startedAtRef` before it
   // flips running on, so the immediate tick below reads a few milliseconds.
+  // MOVING time, from the run session: a pause, an auto-pause and a stretch
+  // PASER judged to be a drive all hold it still, and a stop detected late is
+  // taken back off the clock the moment it is detected.
   useEffect(() => {
-    if (!running || paused) return undefined;
-    const tick = () => setMs(Date.now() - startedAtRef.current);
+    if (!running) return undefined;
+    const tick = () => setMs(getMs());
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [running, paused, startedAtRef]);
+  }, [running, getMs]);
 
   return <Text style={style}>{formatDuration(ms)}</Text>;
 });
@@ -322,6 +318,10 @@ export default function RunningScreen({ navigation, route }) {
   // Whether Start on the watch may begin a run here: not while Result sits on
   // top of this screen (see watchPhase below).
   const isFocused = useIsFocused();
+  // Whether a standalone Apple Watch workout is live right now, mirrored —
+  // see the file header on useWatchLiveMirror for why this screen only ever
+  // displays it rather than tracking a second, independent run alongside it.
+  const watchMirror = useWatchLiveMirror();
 
   const mapRef = useRef(null);
   const watchRef = useRef(null);
@@ -361,45 +361,18 @@ export default function RunningScreen({ navigation, route }) {
     // The filter's own defaults cover the GPS side; the one thing it has to
     // share with this screen is where "faster than a runner" sits, so a
     // segment the vehicle gate would refuse can never reach the trail either.
-    gpsFilterRef.current = createGpsFilter({ maxSpeedMps: T.vehicleSpeedMps });
+    // Only a physically impossible jump is refused here. Anything a person can
+    // do — a 2:30/km interval, a downhill sprint — is evidence for the run
+    // session to weigh, never a point to delete (run/session/config.js).
+    gpsFilterRef.current = createGpsFilter({ maxSpeedMps: RUN_SESSION.RUNNING_SPEED_HARD_IMPOSSIBLE_MPS });
   }
-  // Pedometer: cumulative steps during the run, sent with /end-run so the
-  // server can sanity-check stride length.
-  const stepCountRef = useRef(0);
-  const pedometerSubRef = useRef(null);
-  const pedometerOkRef = useRef(false);
-  // Vehicle/spoof gate: consecutive too-fast fixes + a distance-vs-steps
-  // watchdog. Either tripping RAISES A NOTICE. It does not pause, it does not
-  // block, and it says its piece once.
-  //
-  // It used to auto-pause behind a modal Alert, which is what testers hit as
-  // "the run screen locks up". Two things made that trap: `vehiclePause`
-  // guarded on `isRunningRef`, which is true from the first fix until FINISH
-  // and is not cleared by a pause, so the guard never bit; and the only other
-  // guard was `pauseRun`'s `if (paused) return` on React state, which is stale
-  // for the rest of the tick it is read in. Every extra call therefore pushed
-  // another entry into `pauseWindowsRef` (quietly corrupting pause accounting)
-  // and stacked another modal on top of a screen whose Pause and End controls
-  // were already behind it.
-  //
-  // It is also enforcement the client does not owe. `_check_stride` in
-  // backend/app/anticheat.py catches this exact signature (ground covered with
-  // no strides) when the run is submitted, and it is in HARD_REASONS, so the
-  // server unverifies the run on its own authority. The banner below is a
-  // courtesy telling the runner what the server is going to do.
-  // Decision logic in run/vehicleGate.js; this screen owns only the timer that
-  // asks it and the notice that answers. The "at most once per run" rule lives
-  // in there, where it is one function rather than a flag three call sites
-  // have to remember to check.
-  const vehicleTimerRef = useRef(null);
-  const vehicleGateRef = useRef(null);
-  if (!vehicleGateRef.current) {
-    vehicleGateRef.current = createVehicleGate({
-      fastPointsNeeded: T.vehicleFastPoints,
-      windowDistanceM: T.vehicleWindowDistanceM,
-      minStepsPerWindow: T.vehicleMinStepsPerWindow,
-    });
-  }
+  // The run session (run/session/): evidence, validity, persistence, the
+  // pedometer, Core Motion, reminders. It decides WHY a stretch counts or not
+  // — running, stopped, a drive, a bike, a pause — and this screen only reacts.
+  // It replaces the old vehicle gate (a one-shot banner) and the whole-trail
+  // crash snapshot.
+  const sessionRef = useRef(null);
+  if (!sessionRef.current) sessionRef.current = createRunSessionController();
   // Mirrors `paused` for the same reason isRunningRef mirrors isRunning: the
   // pause/resume guards are read inside timers and location callbacks that
   // outlive the render they closed over.
@@ -429,9 +402,16 @@ export default function RunningScreen({ navigation, route }) {
   // value actually moves.
   const [paceSPerKm, setPaceSPerKm] = useState(null);
   const [accuracyM, setAccuracyM] = useState(null);
-  // The vehicle notice. A line of text in the HUD, dismissible, over a screen
-  // that stays fully usable behind it.
-  const [vehicleNotice, setVehicleNotice] = useState(false);
+  // What the session just did, as one line in the HUD: AUTO PAUSED, RUNNING
+  // AGAIN, DRIVE DETECTED. Dismissible, never over the controls.
+  const [sessionNotice, setSessionNotice] = useState(null);
+  // PASER has paused the run itself (a long stop, a drive, a bike). Distinct
+  // from `paused`, which only the runner sets and only the runner clears.
+  const [autoPaused, setAutoPaused] = useState(false);
+  // The RUN STILL OPEN sheet: { lastActiveAt, distanceM } or null.
+  const [recovery, setRecovery] = useState(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const noticeTimerRef = useRef(null);
   const [permDenied, setPermDenied] = useState(false);
   // Dev harness only (see simulateRun / DevRunSimulator); false in every build
   // a player can install.
@@ -446,10 +426,6 @@ export default function RunningScreen({ navigation, route }) {
   const [paused, setPaused] = useState(false);
   const [locked, setLocked] = useState(false);
   const pausedAtRef = useRef(null);
-  // Every stretch this run spent paused, { from, to } in epoch ms. Fixes the
-  // background task recorded inside one never reach the trail (see
-  // run/pauseWindows.js and pauseRun).
-  const pauseWindowsRef = useRef([]);
   // True while a pause is holding the background location session open for
   // the watch (see pauseRun).
   const bgHeldRef = useRef(false);
@@ -501,7 +477,7 @@ export default function RunningScreen({ navigation, route }) {
     (async () => {
       const granted = await prepareLocation();
       if (granted) {
-        const foundOrphan = await checkOrphanedRun();
+        const foundOrphan = await restoreSession();
         const watchStartAt = Number(route?.params?.watchStartAt);
         const freshWatchStart = commandAllowed(
           { cmd: 'start', at: watchStartAt },
@@ -512,9 +488,11 @@ export default function RunningScreen({ navigation, route }) {
     })();
     return () => {
       stopWatchingLocation();
-      stopPedometer();
+      // Stops listening, keeps the run: a screen unmounting mid-run (the app
+      // navigated away) must not throw the evidence away.
+      sessionRef.current.detach();
       stopBackgroundTrack();
-      stopVehicleWatch();
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
       setRecording(false);
       if (tickRef.current) clearInterval(tickRef.current);
       if (tutorialSimTimerRef.current) clearInterval(tutorialSimTimerRef.current);
@@ -526,7 +504,14 @@ export default function RunningScreen({ navigation, route }) {
   // into the trail so there's no straight-line gap.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active' && isRunningRef.current) mergeBackgroundPoints();
+      if (!isRunningRef.current || tutorialSimRef.current) return;
+      if (s === 'active') {
+        // Fold in what the pocket recorded, then let the session catch up: it
+        // may have stopped, resumed, seen a drive, or gone stale meanwhile.
+        mergeBackgroundPoints().then(() => onSessionTick(Date.now()));
+      } else {
+        sessionRef.current.persist();
+      }
     });
     return () => sub.remove();
   }, []);
@@ -535,25 +520,69 @@ export default function RunningScreen({ navigation, route }) {
   // (a foreground fix can land before the drain finishes) and the same
   // jitter filter the live watcher applies.
   async function mergeBackgroundPoints() {
-    // Whatever the task recorded during a pause is not part of the run.
-    const pts = withoutPausedPoints(await drainBackgroundPoints(), pauseWindowsRef.current);
+    // Every background fix is evidence, pauses included: the session decides
+    // which stretches count, so nothing is filtered out here.
+    const pts = await drainBackgroundPoints();
     if (!pts.length || !runRef.current) return;
-    const merged = [...pathRef.current, ...pts].sort((a, b) => a.timestamp - b.timestamp);
-    // The background task writes raw fixes, so they get the same accuracy
-    // gate, smoothing and step gate the live watcher's do. Points that were
-    // already conditioned pass through untouched: re-smoothing them on every
-    // return to the foreground would shave a little off the total each time.
-    const { points: out, distanceM } = filterPoints(merged, {
-      maxSpeedMps: T.vehicleSpeedMps,
-    });
-    if (out.length > pathRef.current.length) {
-      pathRef.current = out;
-      setPath(out);
-      setDistance(distanceM);
-      distanceMRef.current = distanceM;
-      gpsFilterRef.current.seed(out, distanceM);
-      persistActiveRun(out);
+    sessionRef.current.addBackgroundFixes(pts);
+    rebuildTrail();
+  }
+
+  // The trail and distance, redrawn from the session's accepted running
+  // stretches. Called whenever a decision reaches back in time (a stop found
+  // 90 s after it began, a resume confirmed a few seconds late, a drive cut
+  // at the last step) or late evidence lands, so the map never shows ground
+  // the run no longer counts.
+  function rebuildTrail(now = Date.now()) {
+    const { points, distanceM } = sessionRef.current.trail(now);
+    pathRef.current = points;
+    setPath(points);
+    setDistance(distanceM);
+    distanceMRef.current = distanceM;
+    if (points.length) gpsFilterRef.current.seed(points, distanceM);
+    else gpsFilterRef.current.resume();
+  }
+
+  function showNotice(title, body, ms = 4000) {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setSessionNotice({ title, body });
+    noticeTimerRef.current = ms ? setTimeout(() => setSessionNotice(null), ms) : null;
+  }
+
+  // One tick of the session: advance it, and react to what it decided.
+  function onSessionTick(now) {
+    const out = sessionRef.current.tick(now);
+    if (!out) return;
+    let redraw = false;
+    for (const e of out.events) {
+      if (e.type === SESSION_EVENT.AUTO_PAUSED) {
+        setAutoPaused(true);
+        haptic.light();
+        showNotice('AUTO PAUSED', "Looks like you've stopped.");
+        redraw = true;
+      } else if (e.type === SESSION_EVENT.AUTO_RESUMED) {
+        setAutoPaused(false);
+        haptic.light();
+        showNotice('RUNNING AGAIN', 'Recording resumed.');
+        redraw = true;
+      } else if (e.type === SESSION_EVENT.VEHICLE) {
+        setAutoPaused(true);
+        haptic.medium();
+        showNotice('DRIVE DETECTED', 'PASER paused your run.', 0);
+        redraw = true;
+      } else if (e.type === SESSION_EVENT.CYCLING) {
+        setAutoPaused(true);
+        haptic.medium();
+        showNotice('LOOKS LIKE A RIDE', 'PASER paused your run. Resume if you are running.', 0);
+        redraw = true;
+      } else if (e.type === SESSION_EVENT.RECOVERY_REQUIRED) {
+        setRecovery((r) => r || { lastActiveAt: e.at, distanceM: distanceMRef.current });
+      }
     }
+    if (redraw) rebuildTrail(now);
+    setAutoPaused(!out.status.counting && out.status.stepState !== 'user_paused');
+    const secs = Math.max(0, Math.floor(sessionRef.current.movingMs(now) / 1000));
+    setElapsedS(secs);
   }
 
   // Nearby claimed land (others'), so a runner sees whose turf they're crossing
@@ -644,140 +673,98 @@ export default function RunningScreen({ navigation, route }) {
     currentRivalRef.current = nextId;
   }, [currentLocation, enqueueRunFx, isRunning]);
 
-  async function startPedometer() {
-    stepCountRef.current = 0;
-    try {
-      // Only trust the pedometer when it's present AND permitted — a denied
-      // motion permission must not make real runs look like bus rides.
-      const perm = await Pedometer.requestPermissionsAsync?.();
-      if (perm && !perm.granted) return;
-      if (!(await Pedometer.isAvailableAsync())) return;
-      pedometerOkRef.current = true;
-      pedometerSubRef.current = Pedometer.watchStepCount((result) => {
-        stepCountRef.current = result.steps;
-      });
-    } catch {
-      // No pedometer (or permission refused) — steps just stay null.
-    }
-  }
+  // ---- crash / stale recovery --------------------------------------------
+  // A run left open by a previous process is replayed from its evidence. If
+  // there is background evidence of running right up to now it simply
+  // carries on; otherwise the runner decides (RunRecoverySheet): finish at the
+  // last running movement, resume with the gap excluded, or discard.
 
-  // ---- vehicle / spoof gate ----------------------------------------------
-  // Buses and trains produce medium speeds the GPS filters won't reject, but
-  // (a) sustained > vehicleSpeedMps is never on foot, and (b) ground covered
-  // with no steps means wheels. Either raises the notice. See the refs above
-  // for why neither one pauses the run any more.
-
-  // `raised` is true only on the single call that flips the gate, so this
-  // cannot show the notice twice however many signals arrive.
-  function announceVehicle(raised) {
-    if (!raised || !isRunningRef.current) return;
-    haptic.light();
-    setVehicleNotice(true);
-  }
-
-  function startVehicleWatch() {
-    stopVehicleWatch();
-    vehicleGateRef.current.armWindow({
-      distanceM: distanceMRef.current,
-      steps: stepCountRef.current,
-    });
-    vehicleTimerRef.current = setInterval(() => {
-      // Nothing left to measure once the run is flagged: the server judges the
-      // trace either way, so the timer stops doing arithmetic rather than keep
-      // a windowed sum nobody reads.
-      if (vehicleGateRef.current.flagged) return;
-      announceVehicle(
-        vehicleGateRef.current.onWindow({
-          distanceM: distanceMRef.current,
-          steps: stepCountRef.current,
-          pedometerOk: pedometerOkRef.current,
-        })
-      );
-    }, T.vehicleCheckMs);
-  }
-
-  function stopVehicleWatch() {
-    if (vehicleTimerRef.current) {
-      clearInterval(vehicleTimerRef.current);
-      vehicleTimerRef.current = null;
-    }
-  }
-
-  function stopPedometer() {
-    pedometerSubRef.current?.remove?.();
-    pedometerSubRef.current = null;
-  }
-
-  // ---- crash resilience -------------------------------------------------
-  // The in-progress run is snapshotted every ~N points; if the OS killed
-  // the app mid-run, offer to resume or submit what was recorded.
-
-  function persistActiveRun(path) {
-    const run = runRef.current;
-    if (!run) return;
-    AsyncStorage.setItem(
-      ACTIVE_RUN_KEY,
-      JSON.stringify({ runId: run.id, startedAt: startedAtRef.current, path })
-    ).catch(() => {});
-  }
-
-  function clearActiveRun() {
-    AsyncStorage.removeItem(ACTIVE_RUN_KEY).catch(() => {});
-  }
-
-  async function checkOrphanedRun() {
-    let saved = null;
-    try {
-      saved = JSON.parse(await AsyncStorage.getItem(ACTIVE_RUN_KEY));
-    } catch {}
-    if (!saved || !saved.runId || !Array.isArray(saved.path) || saved.path.length < 2) {
-      clearActiveRun();
-      return false;
-    }
-    Alert.alert(
-      'Unfinished run found',
-      `A run with ${saved.path.length} recorded points didn't finish. Resume it, or submit what was recorded?`,
-      [
-        { text: 'Resume run', onPress: () => resumeRun(saved) },
-        {
-          text: 'Submit anyway',
-          onPress: () => commitRun({ id: saved.runId }, saved.path),
-        },
-        { text: 'Discard', style: 'destructive', onPress: clearActiveRun },
-      ]
-    );
-    return true;
-  }
-
-  async function resumeRun(saved) {
-    runRef.current = { id: saved.runId };
-    pathRef.current = saved.path;
-    startedAtRef.current = saved.startedAt || Date.now();
-    recentSpeedsRef.current = [];
-    gpsModeRef.current = 'high';
-    pauseWindowsRef.current = [];
-    bgHeldRef.current = false;
-    setAfterRun(null);
-
-    const resumedDistance = totalDistanceMeters(saved.path);
-    gpsFilterRef.current.seed(saved.path, resumedDistance);
-    setPaceSPerKm(null);
-    const resumedElapsed = Date.now() - startedAtRef.current;
-    lastKmRef.current = Math.floor(resumedDistance / 1000);
-    lastTierRef.current = runTier(resumedDistance, resumedElapsed / 1000);
-    setPath(saved.path);
-    setDistance(resumedDistance);
-    distanceMRef.current = resumedDistance;
-    setElapsedS(Math.max(0, Math.floor(resumedElapsed / 1000)));
+  async function restoreSession() {
+    const bg = await drainBackgroundPoints();
+    const restored = await sessionRef.current.restore({ backgroundFixes: bg });
+    if (!restored) return false;
+    runRef.current = { id: restored.runId };
+    startedAtRef.current = restored.startedAt;
+    const trail = restored.trail;
+    pathRef.current = trail.points;
+    setPath(trail.points);
+    setDistance(trail.distanceM);
+    distanceMRef.current = trail.distanceM;
+    gpsFilterRef.current.seed(trail.points, trail.distanceM);
+    lastKmRef.current = Math.floor(trail.distanceM / 1000);
     setIsRunning(true);
     isRunningRef.current = true;
     setRecording(true);
+    setAfterRun(null);
+    if (restored.decision.required) {
+      setRecovery({ lastActiveAt: restored.decision.lastActiveAt, distanceM: trail.distanceM });
+    } else {
+      await continueAfterRecovery();
+    }
+    return true;
+  }
 
+  // Recording again after a restore or a RESUME from the sheet.
+  async function continueAfterRecovery(gapFrom) {
+    await sessionRef.current.continueRecording({ gapFrom });
+    rebuildTrail();
     startClock();
     await startWatchingLocation('high');
-    await startPedometer();
     startBackgroundTrack();
-    startVehicleWatch();
+  }
+
+  async function resumeFromRecovery() {
+    if (!recovery) return;
+    setRecoveryBusy(true);
+    try {
+      await continueAfterRecovery(recovery.lastActiveAt);
+      setRecovery(null);
+      setAutoPaused(false);
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }
+
+  async function finishFromRecovery() {
+    setRecoveryBusy(true);
+    try {
+      setRecovery(null);
+      await finishRun();
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }
+
+  function discardFromRecovery() {
+    Alert.alert('Discard this run?', 'It will not be saved and cannot be recovered.', [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: async () => {
+          stopWatchingLocation();
+          await stopBackgroundTrack();
+          await drainBackgroundPoints();
+          if (tickRef.current) {
+            clearInterval(tickRef.current);
+            tickRef.current = null;
+          }
+          await sessionRef.current.close();
+          runRef.current = null;
+          pathRef.current = [];
+          setPath([]);
+          setDistance(0);
+          distanceMRef.current = 0;
+          setElapsedS(0);
+          setRecovery(null);
+          setAutoPaused(false);
+          setSessionNotice(null);
+          setIsRunning(false);
+          isRunningRef.current = false;
+          setRecording(false);
+        },
+      },
+    ]);
   }
 
   async function prepareLocation() {
@@ -805,6 +792,16 @@ export default function RunningScreen({ navigation, route }) {
 
   async function startRun() {
     if (startingRef.current) return;
+    // One PASER run per person: a workout the watch is recording right now
+    // is that run, and the phone does not start a second one beside it.
+    const owner = canStartPhoneRun({ watchWorkout: watchWorkoutStatus(), now: Date.now() });
+    if (!owner.allowed) {
+      Alert.alert(
+        'Run in progress on Apple Watch',
+        'Your watch is recording a run. Finish it there before starting one here.'
+      );
+      return;
+    }
     startingRef.current = true;
     setStarting(true);
     try {
@@ -822,13 +819,13 @@ export default function RunningScreen({ navigation, route }) {
       haptic.success();
       // API returns { run_id, started_at }; older builds returned { id }.
       runRef.current = { id: createdRun.run_id || createdRun.id };
-      pauseWindowsRef.current = [];
       bgHeldRef.current = false;
       pathRef.current = [];
       gpsFilterRef.current.reset();
       setPaceSPerKm(null);
       startedAtRef.current = Date.now();
-      persistActiveRun([]); // a fresh snapshot replaces any stale orphan
+      // A fresh session replaces any stale one on this device.
+      await sessionRef.current.begin({ runId: runRef.current.id, startedAt: startedAtRef.current });
 
       setPath([]);
       setDistance(0);
@@ -837,9 +834,10 @@ export default function RunningScreen({ navigation, route }) {
       setPaused(false);
       pausedRef.current = false;
       setLocked(false);
-      // A fresh run starts unflagged, with no stale notice from the last one.
-      vehicleGateRef.current.reset();
-      setVehicleNotice(false);
+      // A fresh run starts with no notice or pause left over from the last one.
+      setSessionNotice(null);
+      setAutoPaused(false);
+      setRecovery(null);
       setIsRunning(true);
       isRunningRef.current = true;
       setRecording(true);
@@ -854,9 +852,7 @@ export default function RunningScreen({ navigation, route }) {
       startClock();
 
       await startWatchingLocation('high');
-      await startPedometer();
       startBackgroundTrack();
-      startVehicleWatch();
     } catch (err) {
       toast.error(err.message || 'Could not start run');
     } finally {
@@ -900,10 +896,9 @@ export default function RunningScreen({ navigation, route }) {
         seed: Math.floor(Math.random() * 1e9),
       });
       tutorialTraceRef.current = trace;
-      // Never persisted: `persistActiveRun` is only reached from the real GPS
-      // watcher, which the demo never starts.
+      // Never persisted: the demo never begins a run session, and the real
+      // GPS watcher (the only thing that records evidence) never starts.
       runRef.current = { id: `tutorial-${trace.startedAtMs}` };
-      pauseWindowsRef.current = [];
       bgHeldRef.current = false;
       pathRef.current = [];
       setPath([]);
@@ -913,8 +908,8 @@ export default function RunningScreen({ navigation, route }) {
       setPaused(false);
       pausedRef.current = false;
       setLocked(false);
-      vehicleGateRef.current.reset();
-      setVehicleNotice(false);
+      setSessionNotice(null);
+      setAutoPaused(false);
       setIsRunning(true);
       isRunningRef.current = true;
       setRecording(true);
@@ -1078,12 +1073,12 @@ export default function RunningScreen({ navigation, route }) {
     // Spoofed fixes (mock providers) never enter the trail.
     if (rawFix.mocked) return;
 
-    // Vehicle gate, first half: the OS's own speed estimate needs no path
-    // context, so it is judged before the fix can reach the trail at all.
-    if (reportedSpeed != null && reportedSpeed > T.vehicleSpeedMps) {
-      announceVehicle(vehicleGateRef.current.onFastFix());
-      return;
-    }
+    // EVIDENCE FIRST. Every fix is recorded for the session whatever state the
+    // run is in: a stop, a drive or a bike ride is judged from these later,
+    // and an auto-pause resumes off them. Only a stretch the session is
+    // currently counting extends the trail.
+    sessionRef.current.recordFix(rawFix);
+    if (!sessionRef.current.status()?.counting) return;
 
     // Accuracy gate, Kalman smoothing and the noise-scaled step gate all live
     // in the filter. A fix that is merely too small a step still updates the
@@ -1091,17 +1086,8 @@ export default function RunningScreen({ navigation, route }) {
     // cover ride along into the next step that clears the gate.
     const res = gpsFilterRef.current.accept(rawFix);
 
-    // Second half: platforms that report no speed of their own fall back to
-    // the filter's, which is measured between two estimates and so is the
-    // runner's speed rather than the error's. Deriving it from a raw fix
-    // against the trail is what used to pause honest runs under a bridge.
-    if (res.reason === DROP.TELEPORT) {
-      if (reportedSpeed == null) {
-        announceVehicle(vehicleGateRef.current.onFastFix());
-      }
-      return;
-    }
-    vehicleGateRef.current.onGoodFix();
+    // A physically impossible jump. The session sees the raw fix anyway.
+    if (res.reason === DROP.TELEPORT) return;
     if (!res.advanced) return;
 
     const nextPoint = res.point;
@@ -1111,8 +1097,6 @@ export default function RunningScreen({ navigation, route }) {
     setDistance(res.distanceM);
     distanceMRef.current = res.distanceM;
 
-    // Crash snapshot every N accepted points.
-    if (newPath.length % T.persistEveryNPoints === 0) persistActiveRun(newPath);
 
     // Camera tracking: position player at 55-65% down screen instead of perfect center
     // This gives more visible map ahead of the runner
@@ -1184,30 +1168,30 @@ export default function RunningScreen({ navigation, route }) {
     if (tickRef.current) clearInterval(tickRef.current);
     tickRef.current = setInterval(() => {
       const now = Date.now();
-      const secs = Math.max(0, Math.floor((now - startedAtRef.current) / 1000));
-      setElapsedS(secs);
+      // Moving time and every session decision (stops, resumes, drives,
+      // staleness) come from the session tick.
+      if (!tutorialSimRef.current) onSessionTick(now);
       const p = gpsFilterRef.current.paceSPerKm(now);
       setPaceSPerKm(p == null ? null : Math.round(p));
     }, 1000);
   }
 
   // ---- pause / resume -----------------------------------------------------
-  // Pausing stops GPS + pedometer and freezes the elapsed clock; resuming
-  // shifts the start reference by the paused duration so time stays honest.
+  // The RUNNER's pause. Stops GPS; the session records the pause window, so
+  // moving time and distance exclude it, and it never ends on its own.
 
   function pauseRun() {
     // The ref, not the state. `paused` is whatever it was when this closure
     // was made, so two calls inside one tick both saw false and both opened a
     // pause window — a duplicate entry with `to: null` that resumeFromPause
-    // closes only one of, leaving the run permanently mid-pause as far as
-    // withoutPausedPoints is concerned.
+    // closes only one of, leaving the run permanently mid-pause.
     if (pausedRef.current) return;
     pausedRef.current = true;
     const now = Date.now();
     pausedAtRef.current = now;
-    pauseWindowsRef.current.push({ from: now, to: null });
+    // The runner's pause: never ends on its own (see run/session).
+    sessionRef.current.userPause(now);
     stopWatchingLocation();
-    stopPedometer();
     // With PASER on a paired watch, the background location session stays up
     // through the pause. With the phone locked in a pocket it is the one thing
     // keeping this app's process alive, and without it a Resume pressed on the
@@ -1217,40 +1201,38 @@ export default function RunningScreen({ navigation, route }) {
     // watch, no change: the session stops here as it always has.
     bgHeldRef.current = watchAppInstalled();
     if (!bgHeldRef.current) stopBackgroundTrack();
-    stopVehicleWatch();
-    // A pause is not evidence of anything: the run of fast fixes that was
-    // building when it started must not carry across the gap.
-    vehicleGateRef.current.onGoodFix();
-    if (tickRef.current) {
-      clearInterval(tickRef.current);
-      tickRef.current = null;
-    }
+    // The session tick keeps running through a pause: it is what notices a
+    // pause that has been forgotten.
     setPaused(true);
   }
 
   async function resumeFromPause() {
-    if (!pausedRef.current) return;
+    // Resume pressed while PASER itself had paused the run (a long stop, or
+    // motion it took for a drive or a bike): the runner's word wins.
+    if (!pausedRef.current) {
+      if (sessionRef.current.forceResume(Date.now())) {
+        setAutoPaused(false);
+        setSessionNotice(null);
+        rebuildTrail();
+      }
+      return;
+    }
     pausedRef.current = false;
     const now = Date.now();
-    const pausedFor = now - (pausedAtRef.current || now);
-    startedAtRef.current += pausedFor;
-    const openPause = pauseWindowsRef.current[pauseWindowsRef.current.length - 1];
-    if (openPause && openPause.to == null) openPause.to = now;
-    setElapsedS(Math.max(0, Math.floor((Date.now() - startedAtRef.current) / 1000)));
+    await sessionRef.current.userResume(now);
+    setElapsedS(Math.max(0, Math.floor(sessionRef.current.movingMs(now) / 1000)));
     // The estimate goes cold across a pause: reseeding stops the time gap
     // from reading as a teleport, and stops the stationary stretch from
     // dragging the pace window down.
     gpsFilterRef.current.resume();
     setPaceSPerKm(null);
-    startClock();
+    if (!tickRef.current) startClock();
     await startWatchingLocation(gpsModeRef.current);
-    await startPedometer();
     // A session held through the pause never stopped. Starting it again would
     // also empty its buffer, and with the phone in a pocket that buffer is the
     // only record of the stretch run just before the pause.
     if (bgHeldRef.current) bgHeldRef.current = false;
     else startBackgroundTrack();
-    startVehicleWatch();
     setPaused(false);
   }
 
@@ -1293,16 +1275,14 @@ export default function RunningScreen({ navigation, route }) {
       return;
     }
 
-    // Finishing while paused ends the run where it paused, the moment its
-    // clock stopped. Read before `paused` is cleared below.
-    const endedAt = paused && pausedAtRef.current ? pausedAtRef.current : Date.now();
+    // Where the run ends is the session's call: the last running movement if
+    // the runner had stopped, paused, driven off or forgotten, else now.
+    const finishAt = Date.now();
     pausedRef.current = false;
     setPaused(false);
     setLocked(false);
     // A REAL run never moves the tutorial: only the demo's finish does (above).
     stopWatchingLocation();
-    stopPedometer();
-    stopVehicleWatch();
     // Request bounded save time before stopping GPS. Location must not be
     // kept running after Finish just to prevent suspension during an upload.
     await beginRunSave();
@@ -1319,26 +1299,44 @@ export default function RunningScreen({ navigation, route }) {
       setRecording(false);
 
       const run = runRef.current;
-      const finalPath = pathRef.current;
       if (!run) {
         Alert.alert('No active run', 'Start a run first.');
         return;
       }
+      // The run as validated: accepted running segments only, each point
+      // tagged with its segment, plus the summary the server's anti-cheat
+      // reads. Distance, territory and rewards all come from these points.
+      const session = await sessionRef.current.finalize(finishAt);
+      const finalPath = session?.points || [];
+      setAutoPaused(false);
+      setSessionNotice(null);
       if (finalPath.length < 2) {
         // The phone is still on this screen, so the watch goes back to Start,
         // with a word about why nothing was saved.
+        await sessionRef.current.close();
         setAfterRun({ status: WATCH_PHASE.READY, notice: 'Too short to save. Move around first.' });
         Alert.alert('Too short', 'Move around first before ending the run.');
         return;
       }
+      pathRef.current = finalPath;
+      setPath(finalPath);
+      setDistance(session.distanceM);
       setAfterRun({
         status: WATCH_PHASE.SAVING,
-        distanceM: totalDistanceMeters(finalPath),
-        elapsedMs: Math.max(0, endedAt - (startedAtRef.current || endedAt)),
+        distanceM: session.distanceM,
+        elapsedMs: session.movingMs,
       });
+      if (__DEV__) {
+        // DEV ONLY: why each stretch of the run was classified as it was.
+        // eslint-disable-next-line no-console
+        console.log('[run-session]', JSON.stringify({ summary: session.summary, notice: session.notice, diagnostics: session.diagnostics }));
+      }
       await commitRun(run, finalPath, {
-        workoutStartMs: startedAtRef.current || endedAt,
-        workoutEndMs: endedAt,
+        steps: session.stepsInRunning,
+        sessionSummary: session.summary,
+        notice: session.notice,
+        workoutStartMs: session.startedAt,
+        workoutEndMs: session.endedAt,
       });
     } finally {
       bgHeldRef.current = false;
@@ -1356,6 +1354,7 @@ export default function RunningScreen({ navigation, route }) {
       steps = null, simulated = false, devScenario = 'open',
       workoutStartMs = startedAtRef.current || Date.now(),
       workoutEndMs = Date.now(),
+      sessionSummary = null, notice = null,
     } = {}
   ) {
     if (savingRef.current) return;
@@ -1365,13 +1364,15 @@ export default function RunningScreen({ navigation, route }) {
     // simulator) have no afterRun and leave the watch alone.
     setAfterRun((a) => (a ? { ...a, status: WATCH_PHASE.SAVING, notice: '' } : a));
     try {
-      // Steps are sent whenever a pedometer exists — INCLUDING zero, which is
-      // exactly the signature of covering distance in a vehicle.
+      // Steps are the ones taken inside the accepted running segments, sent
+      // whenever a pedometer exists — INCLUDING zero. Counting only those is
+      // what keeps a stride check honest across pauses and excluded drives.
       const result = await api.endRun(
         run.id,
         toApiPoints(finalPath),
-        steps ?? (pedometerOkRef.current ? stepCountRef.current : null),
-        simulated
+        steps,
+        simulated,
+        sessionSummary
       );
       if (simulated && devScenario === 'steal') {
         try {
@@ -1382,7 +1383,9 @@ export default function RunningScreen({ navigation, route }) {
           toast.error(error.message || 'Could not place the dev rival');
         }
       }
-      clearActiveRun();
+      if (!simulated) await sessionRef.current.close();
+      // A substantial stretch left out of the run is told, not hidden.
+      if (notice?.message) toast.show(notice.message, { durationMs: 6500 });
       // The feed, your stats and the boards all just changed. Drop them so the
       // tabs you come back to fetch fresh numbers instead of serving the
       // pre-run cache for the length of their staleness window.
@@ -1412,7 +1415,7 @@ export default function RunningScreen({ navigation, route }) {
           {
             text: 'Retry',
             onPress: () => commitRun(run, finalPath, {
-              steps, simulated, devScenario, workoutStartMs, workoutEndMs,
+              steps, simulated, devScenario, workoutStartMs, workoutEndMs, sessionSummary, notice,
             }),
           },
           { text: 'Later', style: 'cancel' },
@@ -1559,11 +1562,16 @@ export default function RunningScreen({ navigation, route }) {
   // Rough energy estimate: ~1.036 kcal per kg per km at a 70 kg default.
   const caloriesKcal = 1.036 * T.defaultWeightKg * (distance / 1000);
 
+  const getMovingMs = useCallback(
+    () => (startedAtRef.current ? sessionRef.current.movingMs(Date.now()) : 0),
+    []
+  );
+
   // The run as the wrist sees it (src/watch, docs/APPLE_WATCH.md). The watch's
   // buttons go through the same functions as the ones on this screen, and
   // useWatchRun lets each through only in the phase it makes sense in.
   const watchPhase = isRunning
-    ? paused
+    ? paused || autoPaused
       ? WATCH_PHASE.PAUSED
       : WATCH_PHASE.RUNNING
     : startCountdown != null
@@ -1578,11 +1586,7 @@ export default function RunningScreen({ navigation, route }) {
       phase: watchPhase,
       // Read when a state is sent, not when the screen renders: the heartbeat
       // sends between renders. Paused, the clock stands where it stopped.
-      getElapsedMs: () => {
-        if (!startedAtRef.current) return 0;
-        const end = paused && pausedAtRef.current ? pausedAtRef.current : Date.now();
-        return end - startedAtRef.current;
-      },
+      getElapsedMs: () => (startedAtRef.current ? sessionRef.current.movingMs(Date.now()) : 0),
       distanceM: distance,
       paceSPerKm,
       landM2: earningNothing ? null : claimArea,
@@ -1623,6 +1627,45 @@ export default function RunningScreen({ navigation, route }) {
         >
           <Text style={styles.deniedBackText}>I've enabled it, check again</Text>
         </PressableScale>
+      </View>
+    );
+  }
+
+  // A standalone Apple Watch workout owns this run right now. Deliberately
+  // NOT the full map/stats/controls tree below — that tree is built around
+  // this screen doing its own phone GPS tracking, and threading a second,
+  // watch-driven data source through every one of its displays would be how
+  // "one canonical owner" quietly grows a second one. This is a plain
+  // mirror: the watch's own numbers, read-only, and nothing here can start,
+  // pause or finish the run — that stays on the wrist, per PhoneRunView's
+  // own note the other direction in targets/watch/RunScreen.swift.
+  if (watchMirror.active && !isRunning) {
+    const mirrorPaceText = (() => {
+      if (watchMirror.paceSPerKm == null) return '·';
+      const m = Math.floor(watchMirror.paceSPerKm / 60);
+      const s = Math.round(watchMirror.paceSPerKm % 60);
+      const carry = s === 60;
+      return `${carry ? m + 1 : m}:${String(carry ? 0 : s).padStart(2, '0')} /km`;
+    })();
+    return (
+      <View style={[styles.container, styles.watchMirrorWrap]}>
+        <StatusBar hidden={true} />
+        <Text style={styles.watchMirrorEyebrow}>
+          {watchMirror.paused ? 'PAUSED ON APPLE WATCH' : 'RUNNING ON APPLE WATCH'}
+        </Text>
+        <Text style={[styles.watchMirrorDistance, { color: accent }]}>
+          {(watchMirror.distanceM / 1000).toFixed(2)}
+          <Text style={styles.watchMirrorUnit}> km</Text>
+        </Text>
+        <View style={styles.watchMirrorStatsRow}>
+          <Metric label="Time" value={formatDuration(watchMirror.elapsedS * 1000)} accent={D.text} />
+          <Metric label="Pace" value={mirrorPaceText} accent={D.text} />
+        </View>
+        <Text style={styles.watchMirrorHint}>
+          {watchMirror.stale
+            ? "Your watch hasn't checked in for a bit — this is its last known state."
+            : 'Pause, resume and finish from your watch. PASER is just watching.'}
+        </Text>
       </View>
     );
   }
@@ -1747,9 +1790,8 @@ export default function RunningScreen({ navigation, route }) {
         <View style={styles.compactStat}>
           <Text style={styles.compactLabel}>TIME</Text>
           <RunClock
-            startedAtRef={startedAtRef}
+            getMs={getMovingMs}
             running={isRunning}
-            paused={paused}
             style={styles.compactValue}
           />
         </View>
@@ -1785,23 +1827,18 @@ export default function RunningScreen({ navigation, route }) {
         </PressableScale>
       )}
 
-      {/* The vehicle notice. It sits UNDER the status bar and OVER the map,
-          never over the panel, so Pause, End run and the back control are all
-          still there and still tappable while it is up. Tapping it dismisses
-          it; nothing else about the run changes either way, because the run
-          was never stopped. It cannot come back a second time in one run (see
-          run/vehicleGate.js), so no overlay keeps reappearing. */}
-      {vehicleNotice ? (
+      {/* What the run session just did (AUTO PAUSED, RUNNING AGAIN, DRIVE
+          DETECTED). Under the status bar and over the map, never over the
+          panel, so Pause and Finish stay reachable. Tapping dismisses it. */}
+      {sessionNotice ? (
         <Pressable
           style={styles.vehicleNotice}
-          onPress={() => setVehicleNotice(false)}
+          onPress={() => setSessionNotice(null)}
           accessibilityRole="button"
-          accessibilityLabel="Possible vehicle movement detected. We will review this section when your run ends. Tap to dismiss."
+          accessibilityLabel={`${sessionNotice.title}. ${sessionNotice.body} Tap to dismiss.`}
         >
-          <Text style={styles.vehicleNoticeTitle}>Possible vehicle movement detected</Text>
-          <Text style={styles.vehicleNoticeBody}>
-            {"We'll review this section when your run ends."}
-          </Text>
+          <Text style={styles.vehicleNoticeTitle}>{sessionNotice.title}</Text>
+          <Text style={styles.vehicleNoticeBody}>{sessionNotice.body}</Text>
         </Pressable>
       ) : null}
 
@@ -1887,15 +1924,15 @@ export default function RunningScreen({ navigation, route }) {
         ) : (
           <View style={styles.controlsRow}>
             <PressableScale
-              style={[styles.roundCtl, paused && { backgroundColor: accent, borderColor: accent }]}
-              onPress={() => { haptic.light(); paused ? resumeFromPause() : pauseRun(); }}
+              style={[styles.roundCtl, (paused || autoPaused) && { backgroundColor: accent, borderColor: accent }]}
+              onPress={() => { haptic.light(); paused || autoPaused ? resumeFromPause() : pauseRun(); }}
               accessibilityRole="button"
-              accessibilityLabel={paused ? 'Resume run' : 'Pause run'}
+              accessibilityLabel={paused || autoPaused ? 'Resume run' : 'Pause run'}
             >
               {/* Sticker art, like every other action in the app. The lock
                   beside it stays lucide: there is no padlock sticker, and a
                   half-converted row would look worse than a consistent one. */}
-              <AppIcon name={paused ? 'play' : 'pause'} size={26} />
+              <AppIcon name={paused || autoPaused ? 'play' : 'pause'} size={26} />
             </PressableScale>
 
             <View style={{ flex: 1 }}>
@@ -1917,6 +1954,16 @@ export default function RunningScreen({ navigation, route }) {
       <RunEventOverlay
         event={runFxQueue[0]}
         onDone={dismissRunFx}
+      />
+      <RunRecoverySheet
+        visible={!!recovery}
+        lastActiveAt={recovery?.lastActiveAt}
+        distanceM={recovery?.distanceM || 0}
+        accent={accent}
+        busy={recoveryBusy}
+        onFinish={finishFromRecovery}
+        onResume={resumeFromRecovery}
+        onDiscard={discardFromRecovery}
       />
       <RunStartOverlay value={startCountdown} trigger={runFxTokenRef.current} />
 
@@ -2240,4 +2287,17 @@ const styles = StyleSheet.create({
   },
   deniedBack: { marginTop: space.lg },
   deniedBackText: { ...type.bodyMedium, color: D.muted },
+
+  watchMirrorWrap: { alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.sm },
+  watchMirrorEyebrow: { ...type.labelSm, color: D.muted, letterSpacing: 1 },
+  watchMirrorDistance: { fontSize: 56, fontWeight: '800', marginTop: space.md },
+  watchMirrorUnit: { fontSize: 22, fontWeight: '600', color: D.muted },
+  watchMirrorStatsRow: { flexDirection: 'row', gap: space.xl, marginTop: space.lg },
+  watchMirrorHint: {
+    ...type.body,
+    color: D.muted,
+    textAlign: 'center',
+    marginTop: space.xl,
+    lineHeight: 22,
+  },
 });

@@ -188,6 +188,80 @@ def clean_path(points: List[GpsPoint]) -> Optional[CleanedPath]:
 
 
 # ---------------------------------------------------------------------------
+# Segmented runs
+# ---------------------------------------------------------------------------
+
+
+def split_segments(points: List[GpsPoint]) -> List[List[GpsPoint]]:
+    """The submitted points, cut wherever `seg` changes. A client that sends
+    no segments (older builds) is one segment, exactly as before."""
+    groups: List[List[GpsPoint]] = []
+    current: List[GpsPoint] = []
+    last_seg = object()
+    for p in points:
+        if current and p.seg is not None and p.seg != last_seg:
+            groups.append(current)
+            current = []
+        current.append(p)
+        if p.seg is not None:
+            last_seg = p.seg
+    if current:
+        groups.append(current)
+    return groups
+
+
+@dataclass
+class SegmentedRun:
+    """A run as its accepted running segments.
+
+    distance_m   sum of each segment's own length; never a straight line
+                 between two segments
+    moving_s     sum of each segment's own time span — the run's moving
+                 time, measured from the points rather than from the clock
+                 the run was started and finished by
+    route        the longest chain of segments that meet end to end (within
+                 settings.segment_join_m), cleaned as one path: the geometry
+                 territory, splits and crossings are built from. Segments on
+                 the far side of an excluded drive are distance, not route.
+    """
+    parts: List[CleanedPath]
+    distance_m: float
+    moving_s: float
+    route: Optional[CleanedPath]
+
+
+def clean_segments(points: List[GpsPoint], join_m: float) -> Optional[SegmentedRun]:
+    groups = split_segments(points)
+    cleaned = [(g, clean_path(g)) for g in groups]
+    kept = [(g, c) for g, c in cleaned if c is not None and len(c.metric_coords) >= 2]
+    if not kept:
+        return None
+    parts = [c for _, c in kept]
+    distance = sum(c.distance_m for c in parts)
+    moving = sum(
+        max(0.0, (c.timestamps[-1] - c.timestamps[0]).total_seconds()) for c in parts
+    )
+
+    # Chains of segments whose ends meet; the one with the most distance is
+    # the route. One segment is one chain.
+    chains: List[List[int]] = [[0]]
+    for i in range(1, len(kept)):
+        prev_end = kept[i - 1][1].wgs_coords[-1]
+        start = kept[i][1].wgs_coords[0]
+        gap = _haversine_m(prev_end[1], prev_end[0], start[1], start[0])
+        if gap <= join_m:
+            chains[-1].append(i)
+        else:
+            chains.append([i])
+    best = max(chains, key=lambda ch: sum(parts[i].distance_m for i in ch))
+    if len(best) == 1:
+        route = parts[best[0]]
+    else:
+        route = clean_path([p for i in best for p in kept[i][0]])
+    return SegmentedRun(parts=parts, distance_m=distance, moving_s=moving, route=route)
+
+
+# ---------------------------------------------------------------------------
 # Loop detection
 # ---------------------------------------------------------------------------
 

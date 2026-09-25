@@ -156,12 +156,40 @@ class Settings(BaseSettings):
     cheat_teleport_speed_mps: float = 12.0  # sustained speed implying teleport
     cheat_teleport_min_points: int = 3      # ...over at least this many consecutive gaps
     cheat_pace_floor_s_per_km: float = 170.0  # 2:50/km — faster sustained is inhuman
-    cheat_pace_window_m: float = 500.0      # rolling window for the pace floor
+    cheat_pace_window_m: float = 500.0      # rolling window for the pace floor (SOFT)
+    # Faster than the floor sustained over THIS much is not a person. Shorter
+    # stretches are interval reps and downhill sprints: flagged for review,
+    # never unverified (speed is evidence, not a verdict).
+    cheat_pace_hard_window_m: float = 1500.0
+    # Two runs of one account overlapping in time by at least this share of
+    # the shorter one are one person recording twice (phone + watch).
+    cheat_overlap_share: float = 0.5
+    # Accepted running segments whose ends are this close are one route for
+    # the claim's geometry; further apart (a drive in between) they are not.
+    segment_join_m: float = 150.0
     cheat_stride_min_m: float = 0.5         # distance/steps below this -> flag
     cheat_stride_max_m: float = 2.0         # distance/steps above this -> flag
     cheat_clean_min_points: int = 120       # only long runs checked for "too clean"
     cheat_clean_spacing_cv: float = 0.05    # near-zero spacing variance = spoof-ish
     cheat_clean_accuracy_var: float = 0.01  # near-zero accuracy variance = spoof-ish
+
+    # ---- watch-submitted runs ----------------------------------------------
+    # A standalone Apple Watch workout is submitted to /start-run only once it
+    # has already finished (see routes/runs.py start_run and rev 0047). These
+    # bound how far EITHER end of that submission may be backdated/stale, so
+    # honouring a watch run's real started_at never becomes a general licence
+    # to declare an arbitrary duration.
+    #
+    # How long ago a watch run's claimed start may be. Generous enough for an
+    # ultra plus the time it takes WatchConnectivity to actually deliver the
+    # finished route (the phone can be out of range for a while).
+    watch_backdate_max_s: float = 6 * 60 * 60
+    # How closely the submitted points' own first/last timestamps must agree
+    # with the claimed started_at/ended_at. Loose: GPS can take a while to
+    # lock at the start of a watch workout, and this is a plausibility check,
+    # not a re-measurement — the points themselves are what /end-run actually
+    # prices the run from.
+    watch_timestamp_tolerance_s: float = 5 * 60
 
     # ---- development harness ---------------------------------------------
     # Comma-separated immutable user IDs allowed simulator access.

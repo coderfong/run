@@ -22,7 +22,19 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
   /// (commandAllowed in src/watch/watchState.js); nothing here does.
   var onCommand: ((String, Double) -> Void)?
 
+  /// Hands a live-state or route-ready message from a standalone watch
+  /// workout to JavaScript, exactly as received (src/watch/watchLink.js
+  /// parses and validates it — this side does no interpretation). Always
+  /// called on the main queue.
+  var onWatchRunState: (([String: Any]) -> Void)?
+
   private let lock = NSLock()
+
+  /// The watch's own standalone workout, as it last reported it: phase
+  /// (running, paused, ended), when, and its id. One PASER run per person:
+  /// while this is live and fresh, the phone does not start a second run
+  /// (canStartPhoneRun in src/run/session/runOwnership.js).
+  private var watchWorkout: [String: Any] = [:]
 
   /// Starts idle whatever the last context said: a run lives in JavaScript
   /// memory, so a process that has only just started cannot be in one, and a
@@ -63,6 +75,28 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
     latest = clean
     lock.unlock()
     push(clean, live: true)
+  }
+
+  /// Records a watch workout report. True if `dict` was one.
+  private func noteWatchWorkout(_ dict: [String: Any]) -> Bool {
+    guard let phase = dict["watchWorkout"] as? String else { return false }
+    let at = (dict["at"] as? NSNumber)?.doubleValue ?? Date().timeIntervalSince1970 * 1000
+    lock.lock()
+    watchWorkout = ["phase": phase, "at": at, "runId": dict["watchRunId"] as? String ?? ""]
+    lock.unlock()
+    return true
+  }
+
+  /// The last watch workout report, falling back to the context the watch left
+  /// with the system (so a phone app launched mid watch run still knows).
+  func watchWorkoutState() -> [String: Any] {
+    lock.lock()
+    let known = watchWorkout
+    lock.unlock()
+    if !known.isEmpty { return known }
+    guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return [:] }
+    let context = WCSession.default.receivedApplicationContext
+    return noteWatchWorkout(context) ? watchWorkoutState() : [:]
   }
 
   private func current() -> [String: Any] {
@@ -227,27 +261,111 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
     forward(message)
   }
 
+  func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+    _ = noteWatchWorkout(applicationContext)
+  }
+
+  /// The DURABLE half of "a watch run finished" — summary numbers only, sent
+  /// by `transferUserInfo` so it survives PASER not being open. This used to
+  /// fire a notification claiming the run was SAVED and the route was READY;
+  /// neither was true — nothing here, or anywhere else in this file before
+  /// today, ever turned a watch workout into a submittable PASER run. The
+  /// honest claim is narrower: a workout finished and its route is on its
+  /// way. `didReceive file:` below fires the real "ready" notification once
+  /// the route has actually landed.
   func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
     guard userInfo["event"] as? String == "watchRunFinished" else { return }
+    _ = noteWatchWorkout(["watchWorkout": "ended"])
     let distance = userInfo["distance"] as? String ?? "0.00"
-    let time = userInfo["time"] as? String ?? ""
-    let pace = userInfo["pace"] as? String ?? ""
-    
+
     let content = UNMutableNotificationContent()
-    content.title = "Run saved · \(distance) km"
-    content.body = "Your route is ready. Open PASER to plan your attack."
+    content.title = "Run finished on Apple Watch · \(distance) km"
+    content.body = "Syncing your route to PASER…"
     content.sound = .default
-    // Include more data for proper routing
-    content.userInfo = [
-      "category": "watch_run_saved",
-      "screen": "record",
-      "distance": distance,
-      "time": time,
-      "pace": pace,
-      "source": "watch"
-    ]
+    content.userInfo = ["category": "watch_run_syncing", "screen": "record", "source": "watch"]
     let request = UNNotificationRequest(
-      identifier: "watch-run-\(UUID().uuidString)",
+      identifier: "watch-run-syncing-\(UUID().uuidString)",
+      content: content,
+      trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+    )
+    UNUserNotificationCenter.current().add(request)
+  }
+
+  // MARK: The finished run's own GPS route
+
+  private var pendingRunDirectory: URL? {
+    guard let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+    else { return nil }
+    let dir = directory.appendingPathComponent("PaserWatchRuns", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+  }
+
+  private func pendingRunFile(runId: String) -> URL? {
+    guard !runId.isEmpty else { return nil }
+    return pendingRunDirectory?.appendingPathComponent("run-\(runId).json")
+  }
+
+  /// Every completed watch run still waiting to be submitted, oldest first.
+  /// Ordinarily at most one — a new watch workout is blocked while an
+  /// unfinished one is still live (canStartPhoneRun in
+  /// run/session/runOwnership.js) — but this reads whatever is actually on
+  /// disk rather than assuming that, so a rare double delivery stays visible
+  /// to JavaScript instead of one silently overwriting the other.
+  func pendingWatchRuns() -> [[String: Any]] {
+    guard let dir = pendingRunDirectory,
+          let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path)
+    else { return [] }
+    var runs: [[String: Any]] = []
+    for name in names where name.hasSuffix(".json") {
+      guard let data = try? Data(contentsOf: dir.appendingPathComponent(name)),
+            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      else { continue }
+      runs.append(obj)
+    }
+    return runs.sorted {
+      (($0["startedAt"] as? NSNumber)?.doubleValue ?? 0) < (($1["startedAt"] as? NSNumber)?.doubleValue ?? 0)
+    }
+  }
+
+  /// Discards a pending run once PASER has submitted it successfully, or the
+  /// runner explicitly discarded it. Never called merely because the app
+  /// closed or crashed — the file outlives both on its own, which is the
+  /// whole point of writing it to Application Support rather than /tmp.
+  @discardableResult
+  func consumePendingWatchRun(runId: String) -> Bool {
+    guard let url = pendingRunFile(runId: runId), FileManager.default.fileExists(atPath: url.path) else {
+      return false
+    }
+    try? FileManager.default.removeItem(at: url)
+    return true
+  }
+
+  /// The completed route, as a file transfer (PhoneLink.sendRoute on the
+  /// watch side). `file.fileURL` is the system's own copy and is deleted the
+  /// moment this returns, so it has to be MOVED into a place PASER controls
+  /// before anything else happens — see the avatar transfer's own note in
+  /// PhoneLink.swift for the same rule the other direction.
+  func session(_ session: WCSession, didReceive file: WCSessionFile) {
+    guard file.metadata?["kind"] as? String == "watchRunRoute" else { return }
+    let runId = (file.metadata?["runId"] as? String) ?? UUID().uuidString
+    guard let target = pendingRunFile(runId: runId) else { return }
+    try? FileManager.default.removeItem(at: target)
+    do {
+      try FileManager.default.copyItem(at: file.fileURL, to: target)
+    } catch {
+      return
+    }
+    DispatchQueue.main.async { [weak self] in
+      self?.onWatchRunState?(["kind": "watchRunState", "runId": runId, "state": "route_ready"])
+    }
+    let content = UNMutableNotificationContent()
+    content.title = "Your Apple Watch run is ready"
+    content.body = "Open PASER to plan your attack."
+    content.sound = .default
+    content.userInfo = ["category": "watch_run_ready", "screen": "record", "runId": runId, "source": "watch"]
+    let request = UNNotificationRequest(
+      identifier: "watch-run-ready-\(runId)",
       content: content,
       trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
     )
@@ -255,6 +373,14 @@ final class PhoneWatchSession: NSObject, WCSessionDelegate {
   }
 
   private func forward(_ message: [String: Any]) {
+    // A standalone workout's live metrics — not a command, and not the
+    // durable ownership report `noteWatchWorkout` tracks, so it is checked
+    // for first and never falls into either.
+    if message["kind"] as? String == "watchRunState" {
+      DispatchQueue.main.async { [weak self] in self?.onWatchRunState?(message) }
+      return
+    }
+    if noteWatchWorkout(message) { return }
     guard let command = message["cmd"] as? String else { return }
     // Asking for something is not a command to run. `sync` is answered by the
     // reply handler above, `avatar` here, and neither is anything JavaScript

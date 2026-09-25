@@ -53,8 +53,10 @@ export default function useWatchRun(input, handlers) {
     publishToWatch(liveRef.current);
   }, [key]);
 
+  // Paused too: the watch treats a phone run it has not heard from lately as
+  // over (PhoneLink.phoneRunActive), and a long pause is still a run.
   useEffect(() => {
-    if (phase !== PHASE.RUNNING) return undefined;
+    if (phase !== PHASE.RUNNING && phase !== PHASE.PAUSED) return undefined;
     const id = setInterval(() => publishToWatch(liveRef.current), WATCH_HEARTBEAT_MS);
     return () => clearInterval(id);
   }, [phase]);

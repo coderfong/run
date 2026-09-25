@@ -2,6 +2,10 @@ import SwiftUI
 
 struct RunScreen: View {
     @EnvironmentObject private var workout: WorkoutManager
+    @EnvironmentObject private var phoneLink: PhoneLink
+    /// Re-reads phoneRunActive now and then: it goes stale by time alone.
+    @State private var now = Date()
+    private let refresh = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -11,11 +15,14 @@ struct RunScreen: View {
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
         }
         .animation(.spring(response: 0.48, dampingFraction: 0.78), value: phaseID)
+        .onReceive(refresh) { now = $0 }
     }
 
     @ViewBuilder private var content: some View {
         switch workout.phase {
-        case .ready: ReadyView()
+        // One PASER run per person: with the phone recording, the watch shows
+        // and controls that run rather than offering to start another.
+        case .ready: if phoneLink.phoneRunActive { PhoneRunView() } else { ReadyView() }
         case .countdown: CountdownView()
         case .running: ActiveRunPager()
         case .paused: PausedView()
@@ -25,7 +32,50 @@ struct RunScreen: View {
         }
     }
 
-    private var phaseID: String { String(describing: workout.phase) }
+    private var phaseID: String {
+        _ = now // read, so the 15 s refresh re-evaluates staleness
+        let mirrored = workout.phase == .ready && phoneLink.phoneRunActive
+        return String(describing: workout.phase) + (mirrored ? ".phone" : "")
+    }
+}
+
+// MARK: - Run in progress on the iPhone
+
+/// The phone is recording this person's run. The watch mirrors it and sends
+/// Pause, Resume and Finish to it (the phone checks each one against its own
+/// state before acting). No Start here: that would be a second run.
+struct PhoneRunView: View {
+    @EnvironmentObject private var phoneLink: PhoneLink
+
+    var body: some View {
+        WatchScreen(spacing: WatchLayout.size(8)) {
+            PaserMark()
+            Text("RUN IN PROGRESS")
+                .font(.system(size: WatchLayout.font(15, floor: 13), weight: .black, design: .rounded))
+                .multilineTextAlignment(.center)
+            Text("Recording on your iPhone")
+                .font(.system(size: WatchLayout.font(11), weight: .semibold, design: .rounded))
+                .foregroundColor(PaserStyle.muted)
+                .multilineTextAlignment(.center)
+            Text("\(phoneLink.state.distance) KM")
+                .font(.system(size: WatchLayout.font(22, floor: 18), weight: .black, design: .rounded))
+                .foregroundColor(phoneLink.state.accent)
+            if phoneLink.state.phase == .paused {
+                Button("RESUME") { phoneLink.send(.resume) }
+                    .font(.system(size: WatchLayout.font(13), weight: .black, design: .rounded))
+                    .buttonStyle(PaserCapsuleStyle(color: PaserStyle.pink))
+            } else if phoneLink.state.phase == .running {
+                Button("PAUSE") { phoneLink.send(.pause) }
+                    .font(.system(size: WatchLayout.font(13), weight: .black, design: .rounded))
+                    .buttonStyle(PaserCapsuleStyle(color: PaserStyle.yellow))
+            }
+            if phoneLink.state.phase == .running || phoneLink.state.phase == .paused {
+                Button("FINISH") { phoneLink.send(.finish) }
+                    .font(.system(size: WatchLayout.font(13), weight: .black, design: .rounded))
+                    .buttonStyle(PaserCapsuleStyle(color: PaserStyle.cream))
+            }
+        }
+    }
 }
 
 // MARK: - Error View (Kept from original)
