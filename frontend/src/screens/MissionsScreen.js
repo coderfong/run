@@ -38,7 +38,7 @@ import CoinFly from '../components/missions/CoinFly';
 import LootboxGamble, { warmLootReward } from '../components/lootbox/LootboxGamble';
 import { rollCosmetic } from '../config/lootboxRoll';
 import { toast } from '../ui/toast';
-import { CountUpText, haptic, useReduceMotion } from '../ui/motion';
+import { CountUpText, PressableScale, haptic, useReduceMotion } from '../ui/motion';
 import { NB, brand, fonts, nbRadius, space, useTheme, useThemedType, withAlpha } from '../theme';
 import { TIP, useTutorialTip } from '../tutorial';
 
@@ -132,13 +132,17 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
     </View>
   );
 
+  // On the paper, like every mission below it now — see MissionCard.js. The
+  // banner keeps its one privilege (it is the only thing on the page that
+  // ever turns gold outright) as a wash under the text rather than a card
+  // fill, so "ready to collect" still reads instantly without the banner
+  // becoming a box sitting on a box.
+  const Wrap = ready && !busy ? PressableScale : View;
   return (
-    <Card
-      style={[
-        styles.banner,
-        ready && { borderColor: colors.ok, backgroundColor: withAlpha(colors.ok, 0.14) },
-      ]}
+    <Wrap
+      style={[styles.banner, ready && styles.bannerReady]}
       onPress={ready && !busy ? onClaim : undefined}
+      accessibilityRole={ready && !busy ? 'button' : undefined}
       accessibilityLabel={
         ready
           ? `Every mission for ${label} is done. Collect your box.`
@@ -147,7 +151,7 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
     >
       <Row gap={space.md} style={styles.bannerRow}>
         <View style={styles.bannerText}>
-          <Text style={[type.bodyBold, { color: colors.text }]}>
+          <Text style={[type.bodyBold, styles.bannerTitle]}>
             {done
               ? `${label}'s box is yours`
               : ready
@@ -159,16 +163,15 @@ function DayBanner({ state, label, accent, busy, onClaim, chestRef }) {
               value={state.total ? state.complete_count / state.total : 0}
               height={16}
               fill={ready || done ? colors.ok : accent || brand.pink}
-              on={colors.card}
             />
-            <Text style={[styles.bannerPair, { color: colors.text }]}>
+            <Text style={styles.bannerPair}>
               {`${state.complete_count}/${state.total}`}
             </Text>
           </View>
         </View>
         {chest}
       </Row>
-    </Card>
+    </Wrap>
   );
 }
 
@@ -505,15 +508,26 @@ const styles = StyleSheet.create({
   purseText: { fontFamily: fonts.bold, fontSize: 15, color: '#3A1D0A' },
   purseEmpty: { color: withAlpha('#3A1D0A', 0.45) },
 
-  banner: { padding: space.md, borderWidth: 2 },
+  // On the paper too, not a card: a hairline under it like every mission
+  // below, and a gold wash rather than a gold FILL for the ready state — the
+  // wash still reads instantly (this is the one thing on the page that ever
+  // turns gold) without printing a second surface on top of the parchment.
+  banner: {
+    paddingVertical: space.md,
+    borderBottomWidth: 1,
+    borderBottomColor: withAlpha('#3A1D0A', 0.18),
+  },
+  bannerReady: { backgroundColor: withAlpha('#F5C451', 0.22) },
   bannerRow: { alignItems: 'center' },
   bannerText: { flex: 1 },
+  bannerTitle: { color: '#3A1D0A' },
   bannerTrack: { marginTop: space.sm, justifyContent: 'center' },
   bannerPair: {
     position: 'absolute',
     alignSelf: 'center',
     fontFamily: fonts.bold,
     fontSize: 11,
+    color: '#3A1D0A',
   },
   chestSlot: { width: 58, alignItems: 'center' },
   chestSparkle: { position: 'absolute', top: -14, right: -12 },

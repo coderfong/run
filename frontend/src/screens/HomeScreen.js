@@ -260,7 +260,11 @@ function HeroCarousel({ navigation, locked = false }) {
           cta="Start a run"
           primary
           onPressIn={() => preloadScreenImages('Record')}
-          onPress={() => navigation.navigate('Record')}
+          // TEMP DEBUG (remove once the tutorial's Start Run tap is confirmed
+          // working on device): the very first link in the chain — did this
+          // real Pressable receive the press at all, before anything else
+          // downstream (navigation, the tutorial's own route watcher) runs.
+          onPress={() => { if (__DEV__) console.log('[home] Start a run pressed'); navigation.navigate('Record'); }}
           tutorialTarget={startTarget}
         />
         <HeroCard
@@ -270,10 +274,15 @@ function HeroCarousel({ navigation, locked = false }) {
           bg={brand.pink}
           art={require('../../assets/art/season-banner.png')}
           animatedArt={require('../../assets/animations/seedance-home-celebration.webp')}
+          /* Same shape as the Start Run card: eyebrow up top, the one big
+             line down at the bottom as both heading and the tap affordance.
+             It used to carry "LEADERBOARD" as a top title AND "Standings →"
+             as a small link at the bottom — two labels for one tap, and the
+             titles landed at different heights swiping between the two. */
           eyebrow={`${SEASON_CITY} SEASON ${SEASON_NO}`}
-          title="LEADERBOARD"
           sub={countdown()}
-          cta="Standings"
+          cta="Leaderboard"
+          primary
           onPressIn={warmSeason}
           onPress={() => navigation.navigate('Season')}
         />

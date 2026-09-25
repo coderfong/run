@@ -62,6 +62,7 @@ import Animated, {
   useDerivedValue,
   useSharedValue,
   withDelay,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -89,9 +90,10 @@ import { GAP_ID } from './leaderboardData';
 import { timingFor } from './timing';
 
 const DASH_SIZE = 56;
-// The runner who took the ground, stood beside the Done button. Big enough to
-// read as a character rather than an avatar chip.
-const FOOTER_BUST = 72;
+// The runner who took the ground, stood at the top of the board. Big enough
+// to read as a character rather than an avatar chip — this was 72 and read
+// as an afterthought beside a headline this size.
+const FOOTER_BUST = 108;
 
 // The sticker scatter behind the board.
 //
@@ -125,6 +127,10 @@ const CONFETTI_OPACITY = 0.16;
 function Confetti({ width, height, bleed, reducedMotion, playToken }) {
   const { colors } = useTheme();
   const enter = useSharedValue(0);
+  // One clock for the whole scatter, not one per mark: each mark reads the
+  // same drifting phase, offset by its own index, so ten marks cost one
+  // timer rather than ten. Never started under Reduce Motion.
+  const drift = useSharedValue(0);
 
   useEffect(() => {
     enter.value = 0;
@@ -132,39 +138,70 @@ function Confetti({ width, height, bleed, reducedMotion, playToken }) {
       reducedMotion ? 0 : 220,
       withTiming(1, { duration: reducedMotion ? 160 : 420 })
     );
+    cancelAnimation(drift);
+    if (reducedMotion) {
+      drift.value = 0;
+    } else {
+      drift.value = withRepeat(withTiming(1, { duration: 5200, easing: Easing.linear }), -1, false);
+    }
   }, [playToken, reducedMotion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const style = useAnimatedStyle(() => ({ opacity: enter.value * CONFETTI_OPACITY }));
 
   // Laid out once per screen size. Re-rolling this on every render is what
-  // would make the marks crawl as the rows land behind them.
+  // would make the marks crawl as the rows land behind them — the drift
+  // below moves each one gently in place, it never re-lays the scatter out.
   const marks = useMemo(
     () =>
       CONFETTI.map((mark, index) => (
-        <View
-          key={`${mark.name}-${index}`}
-          style={{
-            position: 'absolute',
-            left: Math.round(width * mark.x),
-            top: Math.round(height * mark.y),
-          }}
-        >
-          <Shape
-            name={mark.name}
-            size={mark.size}
-            color={mark.color}
-            on={colors.bg}
-            weight={NB.strokeThin}
-            rotate={mark.rotate}
-          />
-        </View>
+        <ConfettiMark key={`${mark.name}-${index}`} mark={mark} width={width} height={height} colors={colors} drift={drift} index={index} />
       )),
-    [width, height, colors.bg]
+    [width, height, colors, drift]
   );
 
   return (
     <Animated.View style={[styles.confetti, bleed, style]} pointerEvents="none">
       {marks}
+    </Animated.View>
+  );
+}
+
+// A slow, small bob-and-turn, out of phase per mark (the index spreads their
+// starting point around the same 5.2 s loop) so the whole scatter reads as
+// drifting rather than as one shape stamped ten times and pulsing together.
+// Faint and small on purpose — CONFETTI_OPACITY already keeps these as
+// wallpaper, and a wide swing would compete with the rows in front of them.
+function ConfettiMark({ mark, width, height, colors, drift, index }) {
+  const phase = (index / CONFETTI.length) * Math.PI * 2;
+  const style = useAnimatedStyle(() => {
+    const t = drift.value * Math.PI * 2 + phase;
+    return {
+      transform: [
+        { translateY: Math.sin(t) * 5 },
+        { translateX: Math.cos(t * 0.7) * 3 },
+        { rotate: `${mark.rotate + Math.sin(t * 0.5) * 5}deg` },
+      ],
+    };
+  });
+  return (
+    <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          left: Math.round(width * mark.x),
+          top: Math.round(height * mark.y),
+        },
+        style,
+      ]}
+    >
+      <Shape
+        name={mark.name}
+        size={mark.size}
+        color={mark.color}
+        on={colors.bg}
+        weight={NB.strokeThin}
+        rotate={0}
+      />
     </Animated.View>
   );
 }
@@ -280,6 +317,44 @@ function PlayerSummary({ data, reducedMotion }) {
         </Text>
       </Framed>
     </View>
+  );
+}
+
+// The runner standing at the top of the board, idling rather than posed
+// still — a gentle bob and a shoulder-tilt, like the character rigs
+// elsewhere in the app breathe while they wait (CharacterRig's own idle).
+// Off under Reduce Motion, where it holds still.
+function BobbingBust({ equipped, size, reducedMotion }) {
+  const idle = useSharedValue(0);
+
+  useEffect(() => {
+    cancelAnimation(idle);
+    if (reducedMotion) {
+      idle.value = 0;
+      return;
+    }
+    idle.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 900, easing: Easing.inOut(Easing.sin) }),
+        withTiming(0, { duration: 900, easing: Easing.inOut(Easing.sin) })
+      ),
+      -1,
+      false
+    );
+  }, [reducedMotion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const style = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: -idle.value * 7 },
+      { rotate: `${(idle.value - 0.5) * 6}deg` },
+      { scale: 1 + idle.value * 0.04 },
+    ],
+  }));
+
+  return (
+    <Animated.View style={style}>
+      <CharacterBust equipped={equipped} size={size} bg="transparent" />
+    </Animated.View>
   );
 }
 
@@ -428,7 +503,7 @@ export default function LeaderboardTransition({
           <View style={styles.header} pointerEvents="none">
             {/* The same runner who dashed the board in, now at the top */}
             <View style={styles.topBustSlot} pointerEvents="none">
-              <CharacterBust equipped={attacker || {}} size={FOOTER_BUST} bg="transparent" />
+              <BobbingBust equipped={attacker || {}} size={FOOTER_BUST} reducedMotion={reducedMotion} />
             </View>
             {rays ? (
               <Image source={rays} style={styles.rays} resizeMode="contain" fadeDuration={0} />

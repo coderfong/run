@@ -69,7 +69,7 @@ import RankCrest from '../components/identity/RankCrest';
 import RunnerFigure from '../components/identity/RunnerFigure';
 import { tierByKey } from '../config/rankLadder';
 import { art } from '../config/onboardingArt';
-import { Reveal, staggerDelay } from '../ui/motion';
+import { PressableScale, Reveal, staggerDelay } from '../ui/motion';
 import AppIcon from '../components/AppIcon';
 import { useAuth } from '../auth/AuthContext';
 import { toast } from '../ui/toast';
@@ -88,8 +88,79 @@ function columnsFor(width) {
 // enough that shoes, a top and a hat all read; the figure is fitted inside it
 // whole (RunnerFigure contains, it never crops).
 const STAGE_RATIO = 1.12;
-// The strip of park painted behind the header and search box.
-const PARK_H = 176;
+
+// --- the park showcase -------------------------------------------------
+// The art (assets/art/pasers-park.png) is five stacked levels — grass, then a
+// band of dirt, five times down a 941x1672 canvas — meant to be stood on, not
+// just looked at. This is the page now: pasers scattered across those levels
+// as their whole runner, not a grid of cards under a decorative sliver.
+//
+// LEVEL LINES, measured off the art (fraction of the image's own height from
+// its top, where each level's grass meets its dirt). Approximate — the bands
+// repeat close to evenly but were read off the picture rather than the export
+// coordinates, so nudge these first if a runner's feet don't land on the
+// grass on a real device.
+const PARK_LEVELS_Y = [0.18, 0.38, 0.57, 0.77, 0.97];
+const PARK_ASPECT = 1672 / 941;
+// Two runners to a level before the rest fall back to the plain grid below —
+// enough to fill the scene without it reading as a crowd scene, and a list of
+// any size still renders (see `showcased`/`gridRows` in the screen itself).
+const SHOWCASE_MAX = PARK_LEVELS_Y.length * 2;
+const SHOWCASE_FIGURE_H = 72;
+// Half the column's own width, so `left: x%` plus this (as a transform)
+// centres the figure on that x rather than starting its left edge there.
+const SHOWCASE_COL_W = 68;
+
+// One paser standing in the scene: the runner, and their name in a small tag
+// at their feet rather than a card wrapped around them — the environment is
+// the card here.
+function ShowcaseFigure({ runner, xFrac, yFrac, onOpen }) {
+  const styles = useThemedStyles(makeStyles);
+  const tier = tierByKey(runner.rank_key);
+  const name = runner.username || 'Runner';
+  return (
+    <PressableScale
+      onPress={() => onOpen(runner)}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}, ${tier.label} rank. Open profile`}
+      style={[
+        styles.showcaseFigure,
+        { left: `${xFrac * 100}%`, bottom: `${(1 - yFrac) * 100}%` },
+      ]}
+    >
+      <RunnerFigure equipped={runner.avatar} height={SHOWCASE_FIGURE_H} accessibilityLabel={`${name}'s runner`} />
+      <View style={styles.showcaseTag}>
+        <RankCrest tierKey={tier.key} size={11} />
+        <Text style={styles.showcaseTagText} numberOfLines={1}>{name}</Text>
+      </View>
+    </PressableScale>
+  );
+}
+
+// The scene itself: the park at its own aspect ratio, full width, with
+// whichever pasers are being shown off standing in it. `runners` is capped by
+// the caller at SHOWCASE_MAX — this component just places whatever it is given
+// two to a level, alternating left and right of centre so a level with both
+// slots filled reads as two runners who happen to be on the same path rather
+// than a queue.
+function ParkShowcase({ runners, onOpen, width, children }) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={[styles.parkShowcase, { height: Math.round(width * PARK_ASPECT) }]}>
+      <Image source={PASERS_PARK} style={StyleSheet.absoluteFill} resizeMode="cover" accessible={false} />
+      {runners.map((r, i) => (
+        <ShowcaseFigure
+          key={r.user_id}
+          runner={r}
+          xFrac={i % 2 === 0 ? 0.27 : 0.7}
+          yFrac={PARK_LEVELS_Y[Math.floor(i / 2) % PARK_LEVELS_Y.length]}
+          onOpen={onOpen}
+        />
+      ))}
+      {children}
+    </View>
+  );
+}
 
 // One runner row, for search results and requests: portrait in its rank
 // frame, name, club tag, and whatever action their state affords.
@@ -268,6 +339,11 @@ export default function PasersScreen({ navigation }) {
   // Lifted out of the field and onto the box around it — see the search row.
   const [focused, setFocused] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  // The search box itself is secondary: it does not exist on the page until
+  // the runner asks for it (+Add -> Find by username), and stays once they
+  // have, since backing out of a search they typed is a clear field, not a
+  // box that vanishes under their thumb.
+  const [searchOpen, setSearchOpen] = useState(false);
 
   // Portraits warm up behind rows that are already on screen.
   useEffect(() => {
@@ -332,6 +408,7 @@ export default function PasersScreen({ navigation }) {
 
   const focusSearch = () => {
     setAddOpen(false);
+    setSearchOpen(true);
     // After the sheet has let go of the keyboard's focus.
     setTimeout(() => searchRef.current?.focus?.(), 250);
   };
@@ -340,6 +417,11 @@ export default function PasersScreen({ navigation }) {
   const searchMode = q.trim().length >= MIN_QUERY;
   const pasers = data?.pasers || [];
   const incoming = data?.incoming || [];
+  // The scene shows the first SHOWCASE_MAX, two to a level; anyone past that
+  // keeps their own place in the plain grid below rather than the page
+  // pretending they do not exist.
+  const showcased = pasers.slice(0, SHOWCASE_MAX);
+  const gridRows = pasers.slice(SHOWCASE_MAX);
 
   const cols = columnsFor(width);
   const cardW = Math.floor((width - space.gutter * 2 - GRID_GAP * (cols - 1)) / cols);
@@ -388,15 +470,42 @@ export default function PasersScreen({ navigation }) {
           style={styles.addButton}
         />
       </View>
-      {search}
+      {/* Secondary, on purpose: this box does not exist on the page until the
+          runner has actually asked to search (+Add -> Find by username, or
+          the empty state's own CTA), both of which call focusSearch. */}
+      {searchOpen || searchMode ? search : null}
     </View>
   );
 
-  // Everything above the grid: the search results while typing, otherwise
-  // requests waiting on you and the grid's own heading.
+  // The main event: pasers standing in the park, two to a level. Search
+  // results replace it while typing — reading a results list and a scenic
+  // showcase in the same scroll would be two pages pretending to be one.
+  const showcase = !searchMode ? (
+    <ParkShowcase runners={showcased} onOpen={onOpen} width={width}>
+      {!loading && pasers.length === 0 ? (
+        <View style={styles.showcaseEmptyCta} pointerEvents="box-none">
+          <LinearGradient
+            colors={['transparent', withAlpha(colors.bg, 0.92)]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          <Image source={art('panelPasers')} style={styles.emptyArt} resizeMode="contain" accessible={false} />
+          <EmptyState title="No Pasers yet" body="Find runners or share your code." style={styles.empty} />
+          <View style={styles.emptyActions}>
+            <Button title="Find a Paser" variant="gradient" onPress={focusSearch} icon={<Search size={18} color="#fff" strokeWidth={2.6} />} />
+            <Button title="Share my code" variant="outline" onPress={() => setAddOpen(true)} />
+          </View>
+        </View>
+      ) : null}
+    </ParkShowcase>
+  ) : null;
+
+  // Everything above the grid: the scene, then the search results while
+  // typing, otherwise requests waiting on you and the grid's own heading.
   const listHeader = (
     <View>
       {header}
+      {showcase}
       <View style={styles.body}>
         {loading ? null : searchMode ? (
           results === null ? (
@@ -435,7 +544,10 @@ export default function PasersScreen({ navigation }) {
                 ))}
               </>
             ) : null}
-            {pasers.length > 0 ? (
+            {/* Only when someone overflows the scene into the plain grid
+                below — most runners' whole list fits in the showcase, and a
+                heading over an empty grid would be a caption for nothing. */}
+            {gridRows.length > 0 ? (
               <Row between style={styles.sectionHead}>
                 <Text style={type.sectionTitle} accessibilityRole="header">Your Pasers</Text>
                 <Text style={[type.secondary, { color: colors.textMuted }]}>{pasers.length}</Text>
@@ -447,6 +559,11 @@ export default function PasersScreen({ navigation }) {
     </View>
   );
 
+  // FlatList's own empty state now only ever needs to cover LOADING: the
+  // zero-pasers CTA moved into the scene itself (see `showcase`), and an
+  // empty grid under a full showcase is the ordinary case for anyone whose
+  // whole list fits on two levels — it is not "empty", it has nothing left
+  // over, which is not the same thing and needs no message of its own.
   const empty = loading ? (
     <View style={[styles.body, styles.grid]}>
       {Array.from({ length: cols * 2 }).map((_, i) => (
@@ -458,25 +575,7 @@ export default function PasersScreen({ navigation }) {
         />
       ))}
     </View>
-  ) : searchMode ? null : (
-    // Nobody yet: say so, and say what to do, in two buttons.
-    <View style={styles.body}>
-      {/* The high five, sized here rather than through EmptyState's `bare`
-          art: that is tuned for Home's drawing, which carries wide
-          transparent margins, and this tightly cropped one came out oversized
-          and rode up over the search box. */}
-      <Image source={art('panelPasers')} style={styles.emptyArt} resizeMode="contain" accessible={false} />
-      <EmptyState
-        title="No Pasers yet"
-        body="Find runners or share your code."
-        style={styles.empty}
-      />
-      <View style={styles.emptyActions}>
-        <Button title="Find a Paser" variant="gradient" onPress={focusSearch} icon={<Search size={18} color="#fff" strokeWidth={2.6} />} />
-        <Button title="Share my code" variant="outline" onPress={() => setAddOpen(true)} />
-      </View>
-    </View>
-  );
+  ) : null;
 
   // Under a full grid: one line and one button, not a second add screen.
   const footer = !loading && !searchMode && pasers.length > 0 ? (
@@ -491,20 +590,9 @@ export default function PasersScreen({ navigation }) {
 
   return (
     <View style={styles.page}>
-      {/* The park, as a faded strip behind the header: the page's place, not
-          its content. */}
-      <View style={styles.park} pointerEvents="none">
-        <Image source={PASERS_PARK} style={StyleSheet.absoluteFill} resizeMode="cover" accessible={false} />
-        <LinearGradient
-          colors={[withAlpha(colors.bg, 0.35), colors.bg]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </View>
       <FlatList
         key={`cols-${cols}`}
-        data={searchMode || loading ? [] : pasers}
+        data={searchMode || loading ? [] : gridRows}
         keyExtractor={(r) => String(r.user_id)}
         numColumns={cols}
         columnWrapperStyle={cols > 1 ? styles.gridRow : undefined}
@@ -543,7 +631,6 @@ const PASERS_PARK = require('../../assets/art/pasers-park.png');
 
 const makeStyles = (colors, scheme, type) => StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.bg },
-  park: { position: 'absolute', left: 0, right: 0, top: 0, height: PARK_H, opacity: 0.55 },
   header: { paddingHorizontal: space.gutter },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   title: { flex: 1, color: colors.text },
@@ -578,6 +665,46 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   emptyActions: { gap: space.sm },
   findMore: { marginTop: space.lg, gap: space.xs, alignItems: 'flex-start' },
   findMoreHint: { color: colors.textMuted, marginBottom: space.sm },
+
+  // The park itself: full width, its own aspect ratio (see PARK_ASPECT), and
+  // the ONLY thing behind the header from here down — not a faded strip
+  // fighting the page colour for attention, the scene the whole page is for.
+  parkShowcase: { width: '100%', marginTop: space.sm, overflow: 'hidden' },
+  // Anchored by `bottom` (a fraction of the scene's own height, from
+  // PARK_LEVELS_Y) rather than `top`, so the figure's FEET sit on the grass
+  // line regardless of how tall that runner's own outfit renders.
+  showcaseFigure: {
+    position: 'absolute',
+    alignItems: 'center',
+    width: SHOWCASE_COL_W,
+    transform: [{ translateX: -SHOWCASE_COL_W / 2 }],
+  },
+  showcaseTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 2,
+    maxWidth: SHOWCASE_COL_W,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: toonRadius.pill,
+    backgroundColor: withAlpha(colors.bg, 0.85),
+    ...toonSurface(colors, scheme).outline,
+  },
+  showcaseTagText: { ...type.metadata, fontSize: 10, color: colors.text, flexShrink: 1 },
+  // The zero-pasers CTA, read as part of the scene rather than a card dropped
+  // on it: a gradient up from the page's own colour so the buttons stay
+  // legible over whichever level ends up behind them, not a solid panel that
+  // hides the park it is supposed to be sitting in.
+  showcaseEmptyCta: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: '30%',
+    paddingHorizontal: space.gutter,
+    paddingBottom: space.lg,
+  },
 
   shareHeading: { alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.sm },
   shareTitle: { ...type.pageTitle, marginTop: space.sm, textAlign: 'center' },

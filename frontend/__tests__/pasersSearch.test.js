@@ -69,7 +69,22 @@ function mount() {
   return tree;
 }
 
+// The search box is secondary now: it does not exist on the page until asked
+// for (+Add -> Search by username), so a test that wants to type into it has
+// to open it exactly the way a runner would first.
+async function openSearch(tree) {
+  const add = tree.root.find(
+    (n) => n.props?.accessibilityLabel === 'Add' && typeof n.props.onPress === 'function'
+  );
+  await act(async () => { add.props.onPress(); });
+  const searchRow = tree.root.find(
+    (n) => n.props?.accessibilityLabel === 'Search by username' && typeof n.props.onPress === 'function'
+  );
+  await act(async () => { searchRow.props.onPress(); });
+}
+
 async function type(tree, text) {
+  await openSearch(tree);
   const field = tree.root.findAll(
     (n) => n.props && n.props.placeholder === 'Find a runner by username'
   )[0];
@@ -170,14 +185,18 @@ describe('PasersScreen showcase', () => {
     const tree = mount();
     await act(async () => {});
     const all = words(tree);
-    expect(all).toContain('Your Pasers');
+    // Both fit on the scene itself (well under SHOWCASE_MAX), so neither
+    // spills into the plain grid below it — no "Your Pasers" heading, because
+    // there is nothing left over for it to introduce.
+    expect(all).not.toContain('Your Pasers');
     expect(all).toContain('jonfong78');
     expect(all).toContain('runner123');
-    expect(all.some((w) => w.startsWith('Mythic'))).toBe(true);
     expect(figures(tree).length).toBe(2);
-    // Opening a card opens that runner's profile.
+    // Rank reads as the crest beside the name, not a text label, so it is
+    // asserted through accessibility rather than visible caption text.
     const card = tree.root.find((n) => typeof n.props?.accessibilityLabel === 'string'
       && n.props.accessibilityLabel.startsWith('jonfong78') && typeof n.props.onPress === 'function');
+    expect(card.props.accessibilityLabel).toContain('Mythic');
     act(() => card.props.onPress());
     expect(navigation.navigate).toHaveBeenCalledWith('RunnerProfile', { userId: 'p1', username: 'jonfong78' });
     act(() => tree.unmount());

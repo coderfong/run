@@ -57,11 +57,12 @@ const PORTRAIT = 42;
 // buttons wrap; any higher and they went to a second line on every row there.
 const HEADER_GAP = space.sm;
 const IDENTITY_TEXT_MIN = 96;
-// The runner sticker on a territory post's map: the whole outfit, small, stood
-// on the map's bottom right corner and breaking the frame like a sticker. Big
-// enough that shoes and a top read, small enough to keep off the claim, which
-// the map centres.
-const STICKER_H = 78;
+// The runner sticker on a territory post's map: the whole outfit, stood on
+// the map's bottom right corner and breaking the frame like a sticker. Big
+// enough that shoes, bottoms and accessories actually read (78 was too small
+// to tell an outfit apart at a glance), small enough to keep off the claim,
+// which the map centres.
+const STICKER_H = 94;
 const POST_PHOTO_W = 272;
 
 // The narrowest the who-and-when block is allowed to get before the buttons

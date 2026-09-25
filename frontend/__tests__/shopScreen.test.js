@@ -272,7 +272,7 @@ describe('the storefront panel', () => {
   test('one restock clock, in the panel, and no board over the scene', async () => {
     const tree = await mountShop();
     const t = texts(tree);
-    expect(t).toMatch(/Fresh stock in \d+m \d+s|Fresh stock in \d+h \d+m \d+s/);
+    expect(t).toMatch(/New items in \d+m \d+s|New items in \d+h \d+m \d+s/);
     expect(t).not.toContain('NEXT DROP');
     expect(t).not.toContain('YOUR PASER');
   });

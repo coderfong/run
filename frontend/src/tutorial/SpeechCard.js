@@ -53,9 +53,13 @@ function Copy({ text, style, accent }) {
   );
 }
 
-// RUN → CLAIM → DEFEND → READY. Subtle: small caps, the current stage in ink
-// and underlined (so it reads without colour), the rest faded.
-function StageStrip({ stage, accent }) {
+// RUN • CLAIM • DEFEND • READY. Metadata, not a second headline: it used to
+// carry an underline on the current word and near-full-strength ink, which
+// made it compete with the title sitting right under it for the first thing
+// read. Now it is one small faded line — dots rather than arrows, the current
+// word picked out by weight alone, nothing bordered or coloured — so it
+// still answers "how far along am I" without arguing with the instruction.
+function StageStrip({ stage }) {
   const at = STAGES.indexOf(stage);
   if (at < 0) return null;
   return (
@@ -66,12 +70,10 @@ function StageStrip({ stage, accent }) {
     >
       {STAGES.map((s, i) => (
         <React.Fragment key={s}>
-          {i > 0 ? <Text style={styles.stageArrow}>→</Text> : null}
-          <View style={[styles.stageItem, i === at && { borderBottomColor: accent }]}>
-            <Text style={[styles.stageWord, i === at && styles.stageWordOn, i < at && styles.stageWordDone]}>
-              {s}
-            </Text>
-          </View>
+          {i > 0 ? <Text style={styles.stageDot}>{'·'}</Text> : null}
+          <Text style={[styles.stageWord, i === at && styles.stageWordOn, i < at && styles.stageWordDone]}>
+            {s}
+          </Text>
         </React.Fragment>
       ))}
     </View>
@@ -158,7 +160,7 @@ export default function SpeechCard({
         inset={space.sm}
         contentStyle={[styles.body, kind === 'card' && styles.bodyCompact]}
       >
-        {stage ? <StageStrip stage={stage} accent={accent} /> : null}
+        {stage ? <StageStrip stage={stage} /> : null}
 
         {ack ? <Text style={styles.ack}>{ack}</Text> : null}
 
@@ -240,12 +242,11 @@ const styles = StyleSheet.create({
     gap: 6,
   },
 
-  stages: { flexDirection: 'row', alignItems: 'center', gap: 4, flexWrap: 'wrap' },
-  stageItem: { borderBottomWidth: 2, borderBottomColor: 'transparent', paddingBottom: 1 },
-  stageWord: { ...type.caption, fontSize: 10, letterSpacing: 0.8, color: INK_FADED },
-  stageWordOn: { color: NB.ink, fontFamily: fonts.bold },
-  stageWordDone: { color: 'rgba(12,12,16,0.7)' },
-  stageArrow: { ...type.caption, fontSize: 10, color: INK_FADED },
+  stages: { flexDirection: 'row', alignItems: 'center', gap: 3, flexWrap: 'wrap', opacity: 0.7 },
+  stageWord: { ...type.caption, fontSize: 9, letterSpacing: 0.5, color: INK_FADED },
+  stageWordOn: { color: NB.ink, fontFamily: fonts.semibold },
+  stageWordDone: { color: 'rgba(12,12,16,0.55)' },
+  stageDot: { ...type.caption, fontSize: 9, color: INK_FADED },
 
   ack: { ...type.bodySmBold, color: NB.ink },
 

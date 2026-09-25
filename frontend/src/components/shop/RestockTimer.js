@@ -50,7 +50,7 @@ const RestockTimer = memo(function RestockTimer({ expiresAt, onExpire, accent })
     onExpire?.();
   }, [left, expiresAt, onExpire]);
 
-  const text = expiresAt && left ? `Fresh stock in ${formatCountdown(left)}` : 'Fresh stock soon';
+  const text = expiresAt && left ? `New items in ${formatCountdown(left)}` : 'New items soon';
 
   return (
     <View
