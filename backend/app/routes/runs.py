@@ -17,7 +17,7 @@ streaming endpoint for partial GPS traces.
 import logging
 import math
 from collections import OrderedDict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
@@ -36,7 +36,7 @@ from .. import paserby
 from .. import ranks
 from .. import territory_history
 from .. import fitness, models, schemas
-from ..anticheat import is_verified, validate_run
+from ..anticheat import is_verified, overlap_share, resolve_run_start, validate_run, watch_start_mismatch
 from ..notifications import notify
 from .clans import clan_member_ids
 from .club_run_status import safe_club_run_status
@@ -52,6 +52,7 @@ from ..geospatial import (
     claim_rotation_offsets,
     clamp_t,
     clean_path,
+    clean_segments,
     metric_frame,
     normalise_rotation,
     route_unique_length_m,
@@ -82,23 +83,32 @@ def start_run(
     user: models.User = Depends(current_user),
     db: Session = Depends(get_db),
 ):
-    # A backdated start is the run simulator's, and only the run simulator's.
-    # Duration is measured from THIS row, so honouring it for anybody would let
-    # a caller declare a two-second submission to be a forty-minute run and
-    # clear the claim bar without moving. It is dropped silently rather than
-    # refused: the server clocking its own start is the documented behaviour,
-    # and a 403 would only tell a prober that the field does something.
-    started = datetime.utcnow()
-    if payload.started_at is not None and is_dev_account(user):
-        started = payload.started_at
-        # Run timestamps are naive UTC: the column carries no timezone and
-        # every duration in this file is measured against `datetime.utcnow()`.
-        # An ISO string ending in Z is the ordinary way for a client to write a
-        # time and it parses AWARE, which lands in a column with nowhere to
-        # keep the offset and makes the next subtraction raise.
-        if started.tzinfo is not None:
-            started = started.astimezone(timezone.utc).replace(tzinfo=None)
-    run = models.Run(user_id=user.id, started_at=started)
+    # A backdated start is the run simulator's, and only the run simulator's —
+    # with one further exception, resolved below. Duration is measured from
+    # THIS row, so honouring a claimed start for anybody would let a caller
+    # declare a two-second submission to be a forty-minute run and clear the
+    # claim bar without moving. It is dropped silently rather than refused:
+    # the server clocking its own start is the documented behaviour, and a
+    # 403 would only tell a prober that the field does something.
+    #
+    # The one exception: `source == "watch"`, a standalone Apple Watch
+    # workout already finished and handed to the phone by WatchConnectivity
+    # (see PhoneWatchSession.swift and watchRunImport.js), bounded to a
+    # recent window (resolve_run_start / watch_backdate_max_s) so this can
+    # never backdate an arbitrarily old claim. The ONLY thing it buys over
+    # the ordinary path is a start time that is not "now" — /end-run
+    # cross-checks it hard against the submitted points' own timestamps
+    # before it is allowed to widen duration_s at all (watch_start_mismatch),
+    # and every other anti-cheat check on this account's points still runs
+    # exactly as it does for a phone run.
+    started, source = resolve_run_start(
+        payload.started_at,
+        payload.source,
+        is_dev=is_dev_account(user),
+        now=datetime.utcnow(),
+        max_backdate_s=settings.watch_backdate_max_s,
+    )
+    run = models.Run(user_id=user.id, started_at=started, source=source)
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -198,6 +208,34 @@ def _lock_user(db: Session, user_id) -> None:
     db.execute(text("SELECT id FROM users WHERE id = :u FOR UPDATE"), {"u": user_id})
 
 
+def _overlaps_another_run(db: Session, run, points) -> bool:
+    """Does this run's activity overlap another finished, verified run of the
+    same account by at least settings.cheat_overlap_share of the shorter one?
+
+    Each run's activity window is [start, start + moving time]; this run's is
+    its first and last submitted point."""
+    if not points:
+        return False
+    first = min(p.t for p in points)
+    last = max(p.t for p in points)
+    if last <= first:
+        return False
+    rows = db.execute(
+        text(
+            "SELECT started_at, duration_s FROM runs "
+            "WHERE user_id = :u AND id <> :r AND ended_at IS NOT NULL AND verified "
+            "AND COALESCE(distance_m, 0) > 0 AND started_at < :last "
+            "AND started_at > :earliest"
+        ),
+        {"u": run.user_id, "r": run.id, "last": last, "earliest": first - timedelta(days=2)},
+    ).fetchall()
+    for started_at, duration_s in rows:
+        other_end = started_at + timedelta(seconds=float(duration_s or 0))
+        if overlap_share(first, last, started_at, other_end) >= settings.cheat_overlap_share:
+            return True
+    return False
+
+
 def _end_run_replay(db: Session, run) -> schemas.RunResultOut:
     """The stored outcome of a run that has already finished.
 
@@ -284,7 +322,11 @@ def end_run(
     # be paid in full against the same allowance.
     _lock_user(db, user.id)
 
-    cleaned = clean_path(payload.points)
+    # The run as its accepted running segments (see geospatial.clean_segments).
+    # Distance is the sum of the segments and never bridges two of them;
+    # territory, splits and crossings use the longest connected chain.
+    segmented = clean_segments(payload.points, settings.segment_join_m)
+    cleaned = segmented.route if segmented is not None else None
     if cleaned is None or len(cleaned.metric_coords) < 2:
         # No usable path. Mark run ended with zero metrics rather than 500.
         run.ended_at = datetime.utcnow()
@@ -306,16 +348,42 @@ def end_run(
     # A finished run keeps no live position (see migration 0047).
     run.live_lat = run.live_lon = run.live_at = None
     run.ended_at = datetime.utcnow()
-    run.distance_m = cleaned.distance_m
-    run.duration_s = (run.ended_at - run.started_at).total_seconds()
+    run.distance_m = segmented.distance_m
+    # MOVING time, measured from the points, never longer than the wall clock.
+    # It used to be end-run minus start-run, so a run left recording overnight
+    # was an eight hour run to every reward gate and every duration mission.
+    wall_s = (run.ended_at - run.started_at).total_seconds()
+    run.duration_s = max(0.0, min(segmented.moving_s, wall_s))
+    run.session_summary = (
+        payload.session.model_dump(exclude_none=True) if payload.session is not None else None
+    )
 
     # Anti-cheat on the RAW submitted points (clean_path scrubs exactly the
     # samples that betray a spoof). Shadow-flag: the response below looks
     # identical either way; flag_reasons never leaves the server.
     reasons = validate_run(
-        payload.points, cleaned.distance_m, payload.step_count,
-        started_at=run.started_at, ended_at=run.ended_at,
+        payload.points, run.distance_m, payload.step_count,
+        started_at=run.started_at, ended_at=run.ended_at, session=payload.session,
     )
+    # A watch-submitted run backdated started_at at /start-run time on the
+    # strength of a client claim alone (see start_run's own comment). THIS is
+    # where that claim is actually checked, against the one thing a client
+    # cannot retroactively edit — the points' own recorded timestamps. Only
+    # the START is checked against anything: `ended_at` is always the
+    # server's own clock at this call, and a watch run can legitimately be
+    # submitted long after it finished (the phone was closed, the transfer
+    # was slow), which `duration_s = min(moving_s, wall_s)` below already
+    # handles by taking the points' own moving time. A start that does not
+    # describe this route, whatever caused it, gets the same shadow-flag any
+    # other anti-cheat hit gets — never a wider duration than the points earn.
+    if run.source == "watch" and watch_start_mismatch(
+        payload.points, run.started_at, settings.watch_timestamp_tolerance_s
+    ):
+        reasons.append("watch_start_mismatch")
+    # One PASER run per person: a phone run and a watch run of the same
+    # stretch of time cannot both take territory.
+    if _overlaps_another_run(db, run, payload.points):
+        reasons.append("overlapping_run")
     run.flag_reasons = reasons or None
     run.verified = is_verified(reasons)
 

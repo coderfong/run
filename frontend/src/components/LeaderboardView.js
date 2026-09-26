@@ -55,6 +55,22 @@ const PODIUM = {
   3: { rankColor: '#9a3412', bg: 'rgba(180,83,9,0.08)' },
 };
 
+// A wash of `tint` over `base`, OPAQUE — unlike theme/tokens.js `withAlpha`,
+// which stays translucent and therefore see-through to whatever sits behind
+// the box wearing it. Needed here because `isMe`'s row is sometimes wrapped
+// in a HardShadow (LeaderboardTransition), and that component's whole effect
+// depends on its child being solid.
+function mixOpaque(baseHex, tintHex, amount) {
+  const base = parseInt(baseHex.replace('#', ''), 16);
+  const tint = parseInt(tintHex.replace('#', ''), 16);
+  const channel = (shift) => {
+    const b = (base >> shift) & 255;
+    const t = (tint >> shift) & 255;
+    return Math.round(b + (t - b) * amount);
+  };
+  return `rgb(${channel(16)},${channel(8)},${channel(0)})`;
+}
+
 function RankDelta({ delta, celebrate = false }) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
@@ -81,7 +97,16 @@ export function LeaderboardRow({ item, isMe = false, board = 'land', celebrateDe
       style={[
         styles.row,
         podium && { backgroundColor: podium.bg },
-        isMe && { backgroundColor: withAlpha(c.stroke, 0.08) },
+        // OPAQUE, not withAlpha: `row` already paints an opaque `colors.card`
+        // fill, and a translucent override here left this the one row with
+        // nothing solid behind it. Harmless in a plain list — but the
+        // post-claim standings screen wraps the runner's own row in a
+        // HardShadow, whose whole effect depends on the child painting its
+        // own background (see that component's note); a see-through row let
+        // the shadow's near-black block show straight through as if the row
+        // itself were black. `mixOpaque` gives the same gentle team-colour
+        // wash, solid.
+        isMe && { backgroundColor: mixOpaque(colors.card, c.stroke, 0.14) },
         style,
       ]}
     >
@@ -258,11 +283,12 @@ export default function LeaderboardView({ board = 'land' }) {
     <View style={styles.podium}>
       {art('headerLeaderboard') && (
         <Image
-          source={art('headerLeaderboard')}
+          source={art('headerLeaderboardAnimated') && !reduce ? art('headerLeaderboardAnimated') : art('headerLeaderboard')}
           style={styles.podiumArt}
           resizeMode="cover"
           fadeDuration={0}
           pointerEvents="none"
+          autoplay={Boolean(art('headerLeaderboardAnimated') && !reduce)}
         />
       )}
       {podiumOrder.map((r) => {
@@ -273,36 +299,24 @@ export default function LeaderboardView({ board = 'land' }) {
             {r.user_id === user.id && r.delta > 0 ? (
               <GameLottie name="rankUp" size={100} trigger={r.delta} style={styles.podiumRankFx} />
             ) : null}
-            {isFirst && <AppIcon name="crown" size={20} style={{ marginBottom: 4 }} />}
+            {isFirst && <AppIcon name="crown" size={34} style={styles.podiumCrown} />}
             {/* The whole runner, outfit and shoes, with their rank crest at
-                their feet. Initials only for a server that predates the
-                `avatar` field (the key is absent, not null: null is simply a
-                runner in the default outfit). Your own column reads your
-                live loadout, the rule every other surface follows. */}
-            {r.user_id === user.id || 'avatar' in r ? (
-              <View style={styles.podiumRunner}>
-                <RunnerFigure
-                  equipped={r.user_id === user.id ? myEquipped : r.avatar}
-                  height={PODIUM_H[r.rank] || PODIUM_H[3]}
-                  accessibilityLabel={`${r.username}'s runner`}
-                />
-                {r.rank_key ? (
-                  <RankCrest tierKey={r.rank_key} size={24} style={styles.podiumCrest} />
-                ) : null}
-              </View>
-            ) : (
-              <View
-                style={[
-                  styles.podiumAvatar,
-                  { backgroundColor: c.fill, borderColor: c.stroke },
-                  isFirst && { width: 72, height: 72, borderRadius: 36 },
-                ]}
-              >
-                <Text style={[isFirst ? type.title : type.bodyBold, { color: c.stroke }]}>
-                  {(r.username || '?').slice(0, 2).toUpperCase()}
-                </Text>
-              </View>
-            )}
+                their feet, always — no coloured-initials fallback: RunnerFigure
+                already draws the default outfit for a runner with no `avatar`
+                on the row (CharacterRig falls back to DEFAULT_EQUIPPED), so a
+                second, cruder representation beside it was only ever noise.
+                Your own column reads your live loadout, the rule every other
+                surface follows. */}
+            <View style={styles.podiumRunner}>
+              <RunnerFigure
+                equipped={r.user_id === user.id ? myEquipped : r.avatar}
+                height={PODIUM_H[r.rank] || PODIUM_H[3]}
+                accessibilityLabel={`${r.username}'s runner`}
+              />
+              {r.rank_key ? (
+                <RankCrest tierKey={r.rank_key} size={24} style={styles.podiumCrest} />
+              ) : null}
+            </View>
             {/* The medal, where the podium used to print "#1" under the
                 avatar. The rank is what these three columns ARE, so the badge
                 is the caption rather than an ornament beside one. */}
@@ -477,12 +491,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   podiumFirst: { marginBottom: space.sm },
   podiumRunner: { alignItems: 'center', justifyContent: 'flex-end' },
   podiumCrest: { position: 'absolute', right: -4, bottom: -2 },
-  podiumAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // ~1.7x the old 20pt icon — big enough to read as "the winner" at a glance
+  // without crowding the column; `podiumFirst`'s own marginBottom already
+  // keeps this whole column clear of the header above it.
+  podiumCrown: { marginBottom: 4 },
 });

@@ -237,13 +237,22 @@ export const api = {
   // runners, so it is the one that finds the instance asleep. Aborting it
   // means somebody stood in the street watching Start fail on a server that
   // was two seconds from ready.
-  startRun: (startedAtMs = null) =>
+  // `source: 'watch'` is the one other caller allowed to backdate a start —
+  // a standalone Apple Watch workout, submitted after it already finished
+  // (see run/watchRunImport.js). The server only honours it within a bounded
+  // recent window and then cross-checks it against the submitted points'
+  // own timestamps at /end-run; for anyone else, on any other value, it is
+  // silently ignored exactly as before.
+  startRun: (startedAtMs = null, { source = null } = {}) =>
     request('/start-run', {
       method: 'POST',
       timeoutMs: COLD_START_TIMEOUT_MS,
       body: JSON.stringify(
         startedAtMs
-          ? { started_at: new Date(startedAtMs).toISOString().replace('Z', '') }
+          ? {
+              started_at: new Date(startedAtMs).toISOString().replace('Z', ''),
+              ...(source ? { source } : {}),
+            }
           : {}
       ),
     }),
@@ -255,11 +264,16 @@ export const api = {
   // A finished run is unrecoverable if this call is abandoned, and the payload
   // (every GPS point) is the heaviest we send — so it gets a far longer
   // ceiling than the default.
-  endRun: (runId, points, stepCount = null, simulated = false) =>
+  // `session` is the run session's summary (run/session/finalizeSession.js):
+  // time and distance by what each stretch was. Evidence for the server's
+  // anti-cheat, never a claim it takes on trust.
+  endRun: (runId, points, stepCount = null, simulated = false, session = null) =>
     request('/end-run', {
       method: 'POST',
       timeoutMs: 60000,
-      body: JSON.stringify({ run_id: runId, points, step_count: stepCount, simulated }),
+      body: JSON.stringify({
+        run_id: runId, points, step_count: stepCount, simulated, ...(session ? { session } : {}),
+      }),
     }),
   // The run's one claim shape and where it can go: `base_ring` / `base_centre`
   // / `base_t` / `route` are what the client transforms locally to draw any

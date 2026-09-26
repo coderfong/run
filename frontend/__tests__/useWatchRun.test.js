@@ -110,7 +110,10 @@ describe('publishing', () => {
     expect(lastSent().distance).toBe('1.30');
   });
 
-  it('keeps a running state fresh on the heartbeat, and a paused one still', () => {
+  // Paused too: the watch treats a phone run it has not heard from for a
+  // minute as over (PhoneLink.phoneRunActive), and would otherwise offer to
+  // start a second run of its own during a long pause.
+  it('keeps a running or paused state fresh on the heartbeat, and a finished one still', () => {
     jest.useFakeTimers();
     mount(RUNNING);
     const count = sent().length;
@@ -120,7 +123,12 @@ describe('publishing', () => {
     update({ ...RUNNING, phase: PHASE.PAUSED });
     const paused = sent().length;
     act(() => jest.advanceTimersByTime(WATCH_HEARTBEAT_MS * 3));
-    expect(sent().length).toBe(paused);
+    expect(sent().length).toBe(paused + 3);
+
+    update({ ...RUNNING, phase: PHASE.SAVED });
+    const saved = sent().length;
+    act(() => jest.advanceTimersByTime(WATCH_HEARTBEAT_MS * 3));
+    expect(sent().length).toBe(saved);
   });
 });
 

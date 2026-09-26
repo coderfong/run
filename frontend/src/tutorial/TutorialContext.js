@@ -133,6 +133,10 @@ export function TutorialProvider({ children, navigationRef }) {
       if (!id) return;
       if (node) targets.current.set(id, node);
       else targets.current.delete(id);
+      // TEMP DEBUG (remove once the Start Run tap is confirmed working on
+      // device): the first link in the chain — did the real component even
+      // register itself as this target's node.
+      if (__DEV__) console.log('[tutorial] registerTarget', id, node ? 'mounted' : 'unmounted');
       bumpMeasure();
     },
     [bumpMeasure]
@@ -203,6 +207,12 @@ export function TutorialProvider({ children, navigationRef }) {
     if (!nav?.addListener) return undefined;
     const sync = () => {
       const name = nav.isReady?.() ? nav.getCurrentRoute?.()?.name || null : null;
+      // TEMP DEBUG: the navigator's own state listener. If tapping the hero
+      // never logs a change to 'Record' here, the tap isn't reaching
+      // navigation.navigate at all — that's the actual real-world proof that
+      // the touch reached the real Pressable, upstream of anything this file
+      // does with it.
+      if (__DEV__) console.log('[tutorial] route sync ->', name);
       setFactsState((prev) => (prev.route === name ? prev : { ...prev, route: name }));
     };
     sync();
@@ -268,6 +278,11 @@ export function TutorialProvider({ children, navigationRef }) {
   goToRef.current = goTo;
 
   const signal = useCallback((name) => {
+    // TEMP DEBUG: every real screen reports here on a real press (the run
+    // screen's Start, the claim's rotate/confirm, ...). If this never logs
+    // for SIGNAL.RUN_STARTED after tapping the run screen's Start button,
+    // that specific screen's own onPress isn't reaching tutorialSignal.
+    if (__DEV__) console.log('[tutorial] signal', name, 'active=', activeRef.current, 'phase=', phaseRef.current);
     if (!activeRef.current) return;
     const from = phaseRef.current;
     const current = stepFor(from);
@@ -287,6 +302,13 @@ export function TutorialProvider({ children, navigationRef }) {
   // on the real control, observed rather than reported.
   useEffect(() => {
     if (!step?.doneWhen || !step.doneWhen(facts)) return;
+    // TEMP DEBUG: the third link for a `doneWhen` step (START_RUN, CLAIM_NEXT)
+    // — this only logs once the fact it's waiting on (facts.route ===
+    // 'Record', for Start Run) has actually become true. If you tap the real
+    // hero and this NEVER logs, the hero's onPress isn't running at all, or
+    // navigation.navigate('Record') isn't reaching the navigator this
+    // provider is watching.
+    if (__DEV__) console.log('[tutorial] doneWhen fired for', step.phase, facts);
     if (ACTION_EVENTS[step.phase]) track(ACTION_EVENTS[step.phase], {});
     track(EVENTS.TUTORIAL_STEP_COMPLETED, { step: step.phase });
     goTo(nextPhase(step.phase));
@@ -372,6 +394,12 @@ export function TutorialProvider({ children, navigationRef }) {
           return;
         }
         if (width > 0 && height > 0 && Number.isFinite(x) && Number.isFinite(y)) {
+          // TEMP DEBUG: the second link — this is the exact rect the hole and
+          // its blocker slabs get drawn around. If this never logs for
+          // home.startRun, the step never draws (no highlight at all). If it
+          // logs coordinates that don't match where the card visually sits,
+          // the hole is in the wrong place and IS blocking the real button.
+          if (__DEV__) console.log('[tutorial] measured', targetId, { x, y, width, height });
           setRect((prev) =>
             prev &&
             prev.id === targetId &&

@@ -200,6 +200,17 @@ export const PIT_STOP_LAYOUT = {
   // drop, instead of on a second blue board over it.
   sign: { x: 548, y: 462, width: 552, height: 150 },
 
+  // The blank slate chalkboard hanging on the post to the right of the
+  // counter, baked into the same clip as everything else. Measured directly
+  // off water-point-still.jpg (also the video's first frame, 720x1280): the
+  // board's inner slate spans video x 600..688, y 615..722 -> scene x
+  // 1280..1468, y 1017..1245 (the same x*scale, y*scale-295 mapping the sign
+  // board above is measured with). It straddles `counterTop` (its lower
+  // third falls below it), which is harmless: both the backdrop and the
+  // counter-foreground crop draw the same clip, so nothing seams at that
+  // line, and the crew never reach this far right.
+  board: { x: 1280, y: 1017, width: 188, height: 228 },
+
   // Real PASER icons standing on the painted shelves, one per side. Both go
   // at the shelf ends the crew does NOT stand in front of — the restocker
   // covers the left shelf from x 311, the helper the right one to x 1222 —

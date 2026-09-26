@@ -88,8 +88,9 @@ export const STEPS = [
     copy: () => ({
       title: 'Welcome to *PASER*',
       lines: [
-        'Your run becomes claimable land.',
-        "Plan your claim. Defend what's yours.",
+        'Your runs become claimable land.',
+        'Plan your claim.',
+        "Defend what's yours.",
         'Be the one true PASER.',
       ],
     }),
@@ -105,10 +106,13 @@ export const STEPS = [
     dismiss: 'action',
     skippable: true,
     kind: 'card',
+    // ACTION-FIRST from here on: one title, one instruction, nothing else.
+    // The welcome card already made the case for why; a step is not the
+    // place to make it again.
     copy: () => ({
-      title: 'Run to *claim* land',
-      lines: ['Your run becomes claimable land.'],
-      action: 'Tap Start a run',
+      title: 'Run to *claim*',
+      lines: [],
+      action: 'Tap START A RUN.',
     }),
     // The hero's own onPress opens the run screen. The step ends when that
     // screen is really up, however it got there.
@@ -127,10 +131,12 @@ export const STEPS = [
     kind: 'card',
     gate: (facts) => facts.running !== true,
     copy: () => ({
-      ack: "Let's go.",
-      title: 'Start your run',
-      lines: ['PASER tracks your route as you go.'],
-      action: 'Tap Start run',
+      title: 'Start running',
+      lines: [],
+      // The real button says "Start run" (RunningScreen.js), not the bare
+      // "START" a first draft of this line used — same class of mismatch as
+      // the old "LET'S RUN" one, so it names the control it actually is.
+      action: 'Tap START RUN.',
     }),
     // Reported by the run screen when the runner presses Start and the demo
     // begins. Its Start button starts the demo, never a real run, while the
@@ -171,8 +177,8 @@ export const STEPS = [
     gate: (facts) => facts.running === true,
     copy: () => ({
       title: 'Finish your run',
-      lines: ['Your route is ready to become *land*.'],
-      action: 'Tap Finish demo run',
+      lines: [],
+      action: 'Tap FINISH DEMO RUN.',
     }),
     on: { [SIGNAL.RUN_FINISHED]: PHASE.CLAIM_POSITION },
   },
@@ -190,8 +196,9 @@ export const STEPS = [
     kind: 'card',
     gate: claimOn('place'),
     copy: () => ({
-      title: 'Move your *claim*',
-      lines: ['Pick where your land goes.'],
+      title: 'Place your *claim*',
+      lines: [],
+      action: 'Slide to pick where it lands.',
     }),
     // A real drag that ends somewhere other than where it started. A tap that
     // snaps back to the resting notch does not count.
@@ -210,10 +217,9 @@ export const STEPS = [
     kind: 'card',
     gate: claimOn('place'),
     copy: () => ({
-      ack: 'Nice.',
-      title: 'Now choose your angle',
+      title: 'Choose your angle',
       lines: [],
-      action: 'Tap Choose angle',
+      action: 'Tap CHOOSE ANGLE.',
     }),
     // The claim screen owns which step its chooser is on, and publishes it.
     doneWhen: (facts) => facts.claimStep === 'rotate',
@@ -231,8 +237,12 @@ export const STEPS = [
     kind: 'card',
     gate: claimOn('rotate'),
     copy: () => ({
-      title: 'Choose your angle',
-      lines: ['Turn it to fit your claim.'],
+      title: 'Set the angle',
+      lines: [],
+      // "Turn it to fit your attack" was the direction; "attack" is outside
+      // the four core words the copy is built on (RUN, CLAIM, DEFEND, RANK)
+      // and a test enforces that, so "claim" carries the same beat.
+      action: 'Turn it to fit your claim.',
     }),
     on: { [SIGNAL.CLAIM_ROTATION_CHANGED]: PHASE.CLAIM_CONFIRM },
   },
@@ -249,10 +259,9 @@ export const STEPS = [
     kind: 'card',
     gate: claimOn('rotate'),
     copy: () => ({
-      ack: 'Perfect.',
-      title: '*Claim* your land',
-      lines: ['Just practice. No energy spent.'],
-      action: 'Tap Claim',
+      title: 'Claim it',
+      lines: [],
+      action: 'Tap CLAIM.',
     }),
     on: { [SIGNAL.CLAIM_PLACED]: PHASE.CLAIM_SUCCESS },
   },
@@ -271,10 +280,7 @@ export const STEPS = [
     enterHaptic: 'success',
     copy: (facts) => ({
       title: '*Land* claimed!',
-      lines: [
-        facts.demoClaimM2 ? `*+${demoKm2(facts.demoClaimM2)}* is yours` : '*New land* is yours.',
-        'Just practice, for now.',
-      ],
+      lines: [facts.demoClaimM2 ? `*+${demoKm2(facts.demoClaimM2)}* is yours` : '*New land* is yours.'],
     }),
   },
 
@@ -293,7 +299,7 @@ export const STEPS = [
     kind: 'card',
     copy: () => ({
       title: 'Now *defend* it',
-      lines: ['Run it again to defend it.', 'Undefended land is fair game.'],
+      lines: ['Run your land again to keep it strong.'],
     }),
   },
 

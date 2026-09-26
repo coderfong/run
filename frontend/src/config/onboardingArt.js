@@ -86,6 +86,11 @@ const ART = {
   headerCrossroads: require('../../assets/art/ui/header-crossroads.png'),
   headerClub: require('../../assets/art/ui/header-club.png'),
   headerLeaderboard: require('../../assets/art/ui/header-leaderboard.png'),
+  // Same scene, animated: a Seedance-generated seamless ~5s loop (clouds,
+  // water shimmer, flag flutter, a touch of leaf/grass sway) — podium and
+  // skyline held rigid, no camera motion. `headerLeaderboard` above stays
+  // wired as the Reduce Motion fallback and the frame this one loops from.
+  headerLeaderboardAnimated: require('../../assets/animations/seedance-leaderboard-podium.webp'),
   profileBanner: require('../../assets/art/ui/profile-banner.png'),
   profileBannerDark: require('../../assets/art/ui/profile-banner-dark.png'),
   burstRays: require('../../assets/art/ui/burst-rays.png'),

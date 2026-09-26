@@ -42,7 +42,7 @@ RunningScreen ── useWatchRun ── watchLink ─┐   ┌── PhoneLink �
 | Hook | `frontend/src/watch/useWatchRun.js` | Publishes on change plus a 10 s heartbeat while running, routes commands, sends idle on unmount |
 | Native, phone | `frontend/modules/paser-watch/` | Local Expo module: WCSession, application context, live messages, replies without JS |
 | Watch app | `frontend/targets/watch/` | SwiftUI, watchOS 9+, built by `@bacons/apple-targets` at prebuild |
-| Pause windows | `frontend/src/run/pauseWindows.js` | Keeps fixes recorded during a pause out of the trail |
+| Run session | `frontend/src/run/session/` | Records every fix as evidence and decides which stretches count; a pause never covers ground (see docs/RUN_SESSION.md) |
 | Portrait | `frontend/src/watch/watchAvatar.js` | Rasterises the character on the phone and sends it over as a file |
 | Portrait key | `frontend/src/watch/avatarKey.js` | Names a look. Pure, so the rule for when to send one needs no art |
 
@@ -150,8 +150,9 @@ phone initiated runs, but the primary watch UI does not depend on reachability.
   paired watch.** With the phone locked in a pocket, that session is the only
   thing keeping the app process alive. Without it, a Resume pressed on the
   wrist would reach a suspended app that iOS will not let switch location back
-  on from the background. Fixes recorded during the pause are dropped by
-  `pauseWindows`, so a pause still covers no ground. With no watch, pause
+  on from the background. Fixes recorded during the pause are kept as
+  evidence but never counted (the run session, docs/RUN_SESSION.md), so a
+  pause still covers no ground. With no watch, pause
   behaves exactly as before.
 - **Finish from the watch** requests bounded execution time using UIKit's
   background task API, then stops location before saving. The grant is released
@@ -211,7 +212,7 @@ phone initiated runs, but the primary watch UI does not depend on reachability.
 - [ ] Lock the phone and pocket it. The watch keeps recording on its own: the
       distance keeps moving and the trail has no straight line gaps. (This
       item used to be a pause and resume test. Pause left the wrist on
-      2026-09-20; the phone still has it, and `pauseWindows` still keeps
+      2026-09-20; the phone still has it, and the run session still keeps
       fixes recorded during a phone pause out of the trail.)
 - [ ] Hold to finish from the watch with the phone still locked. The run saves,
       the watch shows Run saved, and unlocking the phone shows the result.

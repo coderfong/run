@@ -671,6 +671,11 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               back — it gates EXPORTING rather than picking, so nobody meets a
               paywall at the moment they press Share — but with no PRO style on
               the row it never fires today. */}
+          {/* Style and On the card share one line: two short chip rows side by
+              side, so the Share to row below is never pushed off the bottom
+              of the screen. */}
+          <View style={styles.rowPair}>
+          <View style={styles.rowPairItem}>
           <Row label="Style">
             <View style={styles.chipWrap}>
               {styleOptions.map((option) => {
@@ -686,6 +691,20 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               })}
             </View>
           </Row>
+          </View>
+          <View style={styles.rowPairItem}>
+          <Row label="On the card">
+            <View style={styles.chipWrap}>
+              <Chip label="Route" on={showRoute} onPress={() => setShowRoute((v) => !v)} />
+              <Chip
+                label="Runner"
+                on={showCharacter}
+                onPress={() => setShowCharacter((v) => !v)}
+              />
+            </View>
+          </Row>
+          </View>
+          </View>
           {styleLocked ? (
             <TouchableOpacity
               onPress={() => {
@@ -700,17 +719,6 @@ export default function RunShareSheet({ visible, onClose, closeLabel = 'Close', 
               <Text style={styles.proNote}>{PRO_NOTE}</Text>
             </TouchableOpacity>
           ) : null}
-
-          <Row label="On the card">
-            <View style={styles.chipWrap}>
-              <Chip label="Route" on={showRoute} onPress={() => setShowRoute((v) => !v)} />
-              <Chip
-                label="Runner"
-                on={showCharacter}
-                onPress={() => setShowCharacter((v) => !v)}
-              />
-            </View>
-          </Row>
 
         </View> : (
           <View style={styles.preparing}>
@@ -795,6 +803,8 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   previewWrap: { flex: 1, minHeight: 0, alignItems: 'center', justifyContent: 'center' },
 
   row: { marginTop: space.sm, alignSelf: 'stretch' },
+  rowPair: { flexDirection: 'row', gap: space.lg },
+  rowPairItem: { flexShrink: 1 },
   rowLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.sm },
   rowHead: { flexDirection: 'row', alignItems: 'center', gap: space.sm, marginBottom: space.sm },
   rowLabelInHead: { marginBottom: 0 },
@@ -851,12 +861,12 @@ const makeStyles = (colors, scheme, type) => StyleSheet.create({
   cardFallbackText: { ...type.bodySm, color: '#FFFFFF', textAlign: 'center' },
 
   actions: {
-    paddingTop: space.md,
+    paddingTop: space.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
     backgroundColor: colors.bg,
   },
-  actionsLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.md },
+  actionsLabel: { ...type.labelSm, color: colors.textDim, marginBottom: space.sm },
   destinations: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: space.xs },
   destination: { alignItems: 'center', flex: 1, minWidth: 0 },
   destinationDisc: {

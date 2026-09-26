@@ -9,14 +9,21 @@
 //
 // THE MOVIE IS THE STALL. A looping Seedance clip paints the sky, canopy,
 // sign board, shelves, hanging bottles and counter stock (see SHOP_VIDEO in
-// config/pitStop.js). Drawn over it, in order:
+// config/pitStop.js) — but it is one flat clip, so the counter and the crew
+// standing at it both come from the same layer. Drawn over it, in order:
 //
-//   the crew         live CharacterRigs, clipped at the counter's top edge
-//   the offered cup  the keeper's idle gesture
-//   the sign         the stall's name, lettered onto the movie's blank board
+//   the crew          live CharacterRigs, clipped at the counter's top edge
+//   the offered cup   the keeper's idle gesture
+//   the counter       the SAME clip, cropped to the counter strip and drawn
+//                      again on top, so the counter and its stock cut the
+//                      crew off at the hip instead of the crew painting over
+//                      them — what the old two-plate art did for free
+//   the chalkboard    a specials line, chalked onto the movie's blank slate
+//   the sign          the stall's name, lettered onto the movie's blank board
 //
-// The clip at the counter line does what the old painted counter plate did
-// (cut the crew off at the hip) without covering the movie's own counter.
+// The background layer and the counter crop share ONE video player
+// (`useVideoPlayer` in PitStopScene, passed down), so the two can never
+// drift out of sync with each other.
 
 import React, { memo, useEffect, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -82,13 +89,31 @@ const behindCounter = (scale) => ({
 });
 
 // The movie sits SHOP_VIDEO_OFFSET units above the scene origin; see that
-// constant for the measurement.
-const videoBox = (scale) => ({
+// constant for the measurement. `origin` is how far (scene units) the box
+// this is drawn inside sits below the stage itself — 0 for the full-scene
+// background, `SCENE.counterTop` for the counter crop below, which needs the
+// same video shifted up an extra `counterTop` to keep register with it.
+const videoBox = (scale, origin = 0) => ({
   position: 'absolute',
   left: 0,
-  top: -SHOP_VIDEO_OFFSET * scale,
+  top: (-SHOP_VIDEO_OFFSET - origin) * scale,
   width: SCENE.width * scale,
   height: SHOP_VIDEO_SCENE_HEIGHT * scale,
+});
+
+// From the counter's back edge down: the counter itself and whatever sits on
+// it. Painted plates used to ship as two crops (see PIT_STOP_PLATES) with the
+// counter drawn AFTER the crew, so it cut them off at the hip instead of the
+// crew painting over the counter stock. The Seedance movie replaced both
+// plates with one clip, which lost that ordering — this crops the SAME clip
+// to the counter strip and draws it again, on top, to put it back.
+const counterForeground = (scale) => ({
+  position: 'absolute',
+  left: 0,
+  top: SCENE.counterTop * scale,
+  width: SCENE.width * scale,
+  height: (SCENE.height - SCENE.counterTop) * scale,
+  overflow: 'hidden',
 });
 
 const SHOP_BACKGROUND_VIDEO = require('../../../assets/video/shop-water-point-loop.mp4');
@@ -96,21 +121,7 @@ const SHOP_BACKGROUND_VIDEO = require('../../../assets/video/shop-water-point-lo
 // that shows under Reduce Motion.
 const SHOP_BACKGROUND_STILL = require('../../../assets/art/shop/water-point-still.jpg');
 
-const AnimatedEnvironment = memo(function AnimatedEnvironment({ scale, active, reduced }) {
-  const player = useVideoPlayer(SHOP_BACKGROUND_VIDEO, (instance) => {
-    instance.loop = true;
-    instance.muted = true;
-  });
-
-  useEffect(() => {
-    if (active && !reduced) {
-      player.play();
-      return;
-    }
-    player.pause();
-    player.currentTime = 0;
-  }, [active, player, reduced]);
-
+const AnimatedEnvironment = memo(function AnimatedEnvironment({ player, scale, reduced }) {
   return (
     <>
       <Image
@@ -132,6 +143,36 @@ const AnimatedEnvironment = memo(function AnimatedEnvironment({ scale, active, r
         />
       ) : null}
     </>
+  );
+});
+
+// The same clip, cropped to just the counter strip and drawn AFTER the crew
+// (see `counterForeground` above). Bound to the SAME player as the
+// background layer — expo-video keeps every view a player drives in sync —
+// so the two crops never drift apart.
+const CounterForeground = memo(function CounterForeground({ player, scale, reduced }) {
+  const inner = videoBox(scale, SCENE.counterTop);
+  return (
+    <View style={counterForeground(scale)} pointerEvents="none">
+      <Image
+        source={SHOP_BACKGROUND_STILL}
+        style={inner}
+        resizeMode="stretch"
+        fadeDuration={0}
+        pointerEvents="none"
+      />
+      {!reduced ? (
+        <VideoView
+          player={player}
+          style={inner}
+          contentFit="fill"
+          nativeControls={false}
+          allowsFullscreen={false}
+          allowsPictureInPicture={false}
+          pointerEvents="none"
+        />
+      ) : null}
+    </View>
   );
 });
 
@@ -273,6 +314,38 @@ const StationSign = memo(function StationSign({ scale }) {
 });
 
 // ---------------------------------------------------------------------------
+// The chalkboard
+// ---------------------------------------------------------------------------
+
+/**
+ * A market-stall specials line, chalked onto the blank slate the movie hangs
+ * on the post beside the counter. White straight onto black already has all
+ * the contrast a real chalkboard has, so unlike the sign this carries no
+ * outline ring.
+ */
+const ChalkboardText = memo(function ChalkboardText({ scale }) {
+  const f = PIT_STOP_LAYOUT.board;
+  return (
+    <View
+      style={[layer(f, scale), styles.board]}
+      pointerEvents="none"
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel="Today's special"
+    >
+      <OutlinedText
+        style={[toonType.label, { color: '#FFFFFF', fontSize: Math.max(9, 26 * scale), lineHeight: Math.max(11, 30 * scale) }]}
+        width={0}
+        containerStyle={{ width: '100%' }}
+        numberOfLines={2}
+      >
+        {"TODAY'S\nSPECIAL"}
+      </OutlinedText>
+    </View>
+  );
+});
+
+// ---------------------------------------------------------------------------
 // The scene
 // ---------------------------------------------------------------------------
 
@@ -303,6 +376,22 @@ const PitStopScene = memo(function PitStopScene({
   const window = useWindowDimensions();
   const [width, setWidth] = useState(window.width);
   const scale = width / SCENE.width;
+
+  // One player drives both crops of the clip (the background and the
+  // counter foreground below) so they can never fall out of sync with one
+  // another.
+  const player = useVideoPlayer(SHOP_BACKGROUND_VIDEO, (instance) => {
+    instance.loop = true;
+    instance.muted = true;
+  });
+  useEffect(() => {
+    if (active && !reduced) {
+      player.play();
+      return;
+    }
+    player.pause();
+    player.currentTime = 0;
+  }, [active, player, reduced]);
 
   const { state, offerPhase } = useShopkeeperDirector({
     active,
@@ -339,7 +428,7 @@ const PitStopScene = memo(function PitStopScene({
           re-measured for it. */}
       <View style={stage(scale, cropTop)}>
         {/* 01 the fixed-camera movie: the whole stall, props and all. */}
-        <AnimatedEnvironment scale={scale} active={active} reduced={reduced} />
+        <AnimatedEnvironment player={player} scale={scale} reduced={reduced} />
 
         {/* 02 the crew, standing behind the movie's counter: clipped at its
             top edge so nothing below the hip is drawn over the counter. */}
@@ -374,8 +463,15 @@ const PitStopScene = memo(function PitStopScene({
           />
         ) : null}
 
-        {/* 04 the station's name on the movie's board, drawn last so nothing
-            crosses it. */}
+        {/* 04 the counter itself, cropped from the same clip and drawn after
+            the crew and the cup so it cuts them off at the hip instead of
+            the other way round (see `counterForeground` above). */}
+        <CounterForeground player={player} scale={scale} reduced={reduced} />
+
+        {/* 05 the specials line, chalked onto the movie's board beside the
+            counter, and the station's name on the sign above it — both
+            drawn last so nothing crosses them. */}
+        <ChalkboardText scale={scale} />
         <StationSign scale={scale} />
       </View>
     </View>
@@ -384,6 +480,7 @@ const PitStopScene = memo(function PitStopScene({
 
 const styles = StyleSheet.create({
   sign: { alignItems: 'center', justifyContent: 'center' },
+  board: { alignItems: 'center', justifyContent: 'center' },
   scene: {
     width: '100%',
     overflow: 'hidden',

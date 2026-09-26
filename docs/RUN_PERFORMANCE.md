@@ -7,7 +7,8 @@ on hardware**. It is written to be worked through in order: the top item is
 believed to dominate everything below it.
 
 The companion fix already landed: vehicle detection no longer blocks the screen
-(`src/run/vehicleGate.js`, and the notice in `RunningScreen`). Its one thermal
+(it is now part of the run session, `src/run/session/`; see
+docs/RUN_SESSION.md). Its one thermal
 component is fixed too and listed under *Done* below.
 
 ## What runs, and how often

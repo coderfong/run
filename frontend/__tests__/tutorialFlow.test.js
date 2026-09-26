@@ -404,7 +404,8 @@ describe('the core tutorial, driven by the runner', () => {
     expect(phase()).toBe(PHASE.CLAIM_NEXT);
     mountTarget(tree, TARGET.CLAIM_NEXT, { x: 16, y: 640, width: 340, height: 48 });
     expect(stepPhase()).toBe(PHASE.CLAIM_NEXT);
-    expect(state.step.copy(state.facts).ack).toMatch(/Nice/);
+    // Action-first: one title, one instruction, no ack line.
+    expect(state.step.copy(state.facts).action).toMatch(/CHOOSE ANGLE/);
 
     // Taps CHOOSE ANGLE: the chooser really moves to its second step.
     facts(tree, { claimStep: 'rotate' });

@@ -89,6 +89,7 @@ import { warmUp } from './src/api/client';
 import { preloadCriticalImages, preloadHomeFeedRunners, preloadStartupImages } from './src/config/screenAssets';
 import { addWatchCommandListener, publishToWatch } from './src/watch/watchLink';
 import WatchAvatarSync from './src/watch/watchAvatar';
+import useWatchRunSync from './src/watch/useWatchRunSync';
 import { commandAllowed, PHASE as WATCH_PHASE } from './src/watch/watchState';
 // No static `colors` here on purpose — App used to build the nav theme and the
 // header chrome from it, which pinned both to the dark palette. Everything
@@ -963,6 +964,14 @@ function WatchPortrait() {
   return <WatchAvatarSync equipped={equipped} />;
 }
 
+// Finds a finished Apple Watch run and submits it, wherever the runner is in
+// the app — see src/watch/useWatchRunSync.js for why this cannot live inside
+// RunningScreen. Renders nothing; it is a hook with a place to live.
+function WatchRunSync() {
+  useWatchRunSync({ navigationRef });
+  return null;
+}
+
 function App() {
   useBackendWarmUp();
   const [startupImagesReady, setStartupImagesReady] = useState(false);
@@ -1061,6 +1070,7 @@ function App() {
                         <TutorialProvider navigationRef={navigationRef}>
                           <ThemedStatusBar />
                           <WatchPortrait />
+                          <WatchRunSync />
                           <RootNavigator />
                           <OfflineBanner />
                           <ToastHost />

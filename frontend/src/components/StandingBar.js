@@ -31,17 +31,6 @@ function ordinal(n) {
   }
 }
 
-function amount(category, value) {
-  switch (category) {
-    case 'land':
-      return `${(value / 1e6).toFixed(2)} km²`;
-    case 'distance':
-      return `${(value / 1000).toFixed(1)} km`;
-    default:
-      return value.toLocaleString();
-  }
-}
-
 /**
  * @param {string} category  land | claims | captures | defenses | distance
  * @param {object} opts      { window, filter, lat, lon } — must match the board
@@ -92,7 +81,7 @@ export default function StandingBar({ category = 'land', opts = {}, style }) {
       </Text>
       <Text style={[type.caption, { color: colors.textMuted }]}>
         {ranked
-          ? `of ${data.field_size.toLocaleString()} with ${amount(category, data.value)}`
+          ? `of ${data.field_size.toLocaleString()}`
           : `${data.field_size.toLocaleString()} runners on this board`}
       </Text>
     </View>

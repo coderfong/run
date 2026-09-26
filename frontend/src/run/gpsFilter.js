@@ -49,7 +49,7 @@ export const GPS_DEFAULTS = {
   // in a row the position really has moved (a tunnel, a lift, a phone that
   // lost the constellation and refound it elsewhere) and the estimate
   // resyncs there. The ground in between is never credited. Kept above
-  // runTuning.vehicleFastPoints on purpose: a caller counting refusals to
+  // the run session's vehicle evidence on purpose: a caller counting refusals to
   // spot a bus has to reach its own verdict before the filter quietly
   // forgives the streak.
   teleportResyncFixes: 6,
@@ -91,6 +91,22 @@ export function haversineM(a, b) {
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
   return EARTH_R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+// The wire shape /submit-path and /end-run both take. One copy: RunningScreen
+// uses it for a phone-recorded run, run/watchRunImport.js for a watch one, and
+// neither may drift from the other without the server disagreeing with itself
+// about what a point looks like.
+export function toApiPoints(points) {
+  return points.map((p) => ({
+    lat: p.latitude,
+    lon: p.longitude,
+    t: new Date(p.timestamp).toISOString(),
+    mocked: p.mocked ?? false,
+    accuracy_m: p.accuracyM ?? null,
+    speed_mps: p.speedMps ?? null,
+    ...(p.seg != null ? { seg: p.seg } : {}),
+  }));
 }
 
 export function pathDistanceM(points) {

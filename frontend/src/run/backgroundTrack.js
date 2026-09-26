@@ -12,8 +12,49 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 
+import { armStillRunning } from './session/runReminders';
+
 export const RUN_LOCATION_TASK = 'pacer-run-location';
 const BUFFER_KEY = 'tr.bgRunPoints';
+// NO CAP. The buffer used to keep only the newest 4500 fixes (~6 h at 5 s),
+// which silently dropped the start of any longer pocketed run. Now a full
+// buffer is sealed into a numbered chunk and a fresh one begins, so a 24 h
+// run in a pocket keeps every fix and no single write grows without bound.
+const SEAL_AT = 500;
+const CHUNKS_KEY = 'tr.bgRunPoints.chunks';
+const chunkKey = (i) => `tr.bgRunPoints.c${i}`;
+// The dead man's switch (see session/runReminders.js): where the runner was
+// last seen moving, and when the "Still running?" nudge was last pushed back.
+const ANCHOR_KEY = 'tr.bgRunAnchor';
+const MOVED_M = 40;
+
+function metresBetween(a, b) {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const x = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLon / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+// Movement seen from the pocket pushes the forgotten-run nudge back. Only
+// movement: a phone left on a table stops delivering fixes (or delivers
+// drift inside the circle), and the nudge then fires on schedule.
+async function pushBackReminder(newest) {
+  try {
+    const anchor = JSON.parse((await AsyncStorage.getItem(ANCHOR_KEY)) || 'null');
+    if (anchor && metresBetween(anchor, newest) < MOVED_M) return;
+    // Re-scheduling costs an OS call, so it happens at most once a minute
+    // however often the runner clears the 40 m circle.
+    const rearm = !anchor || newest.timestamp - (anchor.armedAt || 0) > 60000;
+    await AsyncStorage.setItem(ANCHOR_KEY, JSON.stringify({
+      latitude: newest.latitude,
+      longitude: newest.longitude,
+      armedAt: rearm ? newest.timestamp : anchor.armedAt,
+    }));
+    if (rearm) await armStillRunning(newest.timestamp);
+  } catch {}
+}
 
 let TaskManager = null;
 try {
@@ -46,9 +87,18 @@ if (TaskManager) {
         const raw = await AsyncStorage.getItem(BUFFER_KEY);
         const buf = raw ? JSON.parse(raw) : [];
         buf.push(...pts);
-        // Hard cap so a forgotten task can't grow unbounded (~6h at 5s/fix).
-        await AsyncStorage.setItem(BUFFER_KEY, JSON.stringify(buf.slice(-4500)));
+        if (buf.length >= SEAL_AT) {
+          const n = Number(await AsyncStorage.getItem(CHUNKS_KEY)) || 0;
+          await AsyncStorage.multiSet([
+            [chunkKey(n), JSON.stringify(buf)],
+            [CHUNKS_KEY, String(n + 1)],
+            [BUFFER_KEY, '[]'],
+          ]);
+        } else {
+          await AsyncStorage.setItem(BUFFER_KEY, JSON.stringify(buf));
+        }
       } catch {}
+      await pushBackReminder(pts[pts.length - 1]);
     });
   } catch {
     // defineTask throws if called twice with a different body — safe to ignore.
@@ -62,7 +112,7 @@ if (TaskManager) {
 export async function startBackgroundTrack() {
   if (!available()) return false;
   try {
-    await AsyncStorage.removeItem(BUFFER_KEY);
+    await clearBuffer();
     try {
       await Location.requestBackgroundPermissionsAsync();
     } catch {}
@@ -97,12 +147,26 @@ export async function stopBackgroundTrack() {
 // Returns points sorted by timestamp (possibly empty).
 export async function drainBackgroundPoints() {
   try {
-    const raw = await AsyncStorage.getItem(BUFFER_KEY);
-    if (!raw) return [];
-    await AsyncStorage.removeItem(BUFFER_KEY);
-    const pts = JSON.parse(raw);
-    return Array.isArray(pts) ? pts.sort((a, b) => a.timestamp - b.timestamp) : [];
+    const n = Number(await AsyncStorage.getItem(CHUNKS_KEY)) || 0;
+    const keys = [...Array.from({ length: n }, (_, i) => chunkKey(i)), BUFFER_KEY];
+    const rows = await AsyncStorage.multiGet(keys);
+    await AsyncStorage.multiRemove([...keys, CHUNKS_KEY]);
+    const pts = [];
+    for (const [, raw] of rows) {
+      const arr = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(arr)) pts.push(...arr);
+    }
+    return pts.sort((a, b) => a.timestamp - b.timestamp);
   } catch {
     return [];
   }
+}
+
+async function clearBuffer() {
+  try {
+    const n = Number(await AsyncStorage.getItem(CHUNKS_KEY)) || 0;
+    await AsyncStorage.multiRemove([
+      BUFFER_KEY, CHUNKS_KEY, ANCHOR_KEY, ...Array.from({ length: n }, (_, i) => chunkKey(i)),
+    ]);
+  } catch {}
 }

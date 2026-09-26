@@ -740,7 +740,12 @@ describe('the Home street', () => {
     expect(all).not.toContain("LET'S RUN");
     expect(all).not.toContain('THE BOARD');
     expect(all).toContain("THERE'S LAND TO CLAIM");
-    expect(all).toContain('LEADERBOARD');
+    // "Leaderboard" is now the primary bottom CTA (same treatment as "Start a
+    // run"), not a top title — authored in natural case like every other
+    // primary CTA; the theme's own uppercase transform is what draws it in
+    // caps, the same as "Start a run" already is.
+    expect(all).toContain('Leaderboard');
+    expect(all).not.toContain('Standings');
 
     const heroes = tree.root.findAll(
       (n) => n.type === Framed && n.props.pose != null && n.props.weight != null && typeof n.props.style?.height === 'number'

@@ -319,20 +319,11 @@ export const runTuning = {
   gpsGoodM: 10,
   gpsOkM: 25,
 
-  persistEveryNPoints: 20,
   holdToFinishMs: 1200,
 
   // Calories estimate (until profile weight exists): kcal/kg/km × weight.
   defaultWeightKg: 70,
 
-  // Vehicle / spoof gating (buses, trains, mock GPS):
-  // a point faster than this is never on foot (6.5 m/s ≈ 2:34/km)…
-  vehicleSpeedMps: 6.5,
-  // …and this many consecutive fast fixes auto-pauses the run.
-  vehicleFastPoints: 4,
-  // Pedometer watchdog: covering this much ground with almost no steps
-  // within one check window means wheels, not feet.
-  vehicleCheckMs: 45000,
-  vehicleMinStepsPerWindow: 15,
-  vehicleWindowDistanceM: 250,
+  // Vehicle, cycling, stationary and forgotten-run handling moved to the run
+  // session, with every threshold documented in src/run/session/config.js.
 };

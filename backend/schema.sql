@@ -48,7 +48,11 @@ CREATE TABLE runs (
     flag_reasons TEXT[],
     -- Circle-claim model: when the run's claim circle was placed (null = not
     -- yet). Sticky even after territory rows merge/lose their run_id.
-    claimed_at   TIMESTAMP
+    claimed_at   TIMESTAMP,
+    -- NULL = phone (every run before rev 0047). 'watch' = a standalone Apple
+    -- Watch workout submitted after it finished; see rev 0047's own note for
+    -- why /end-run checks this one harder.
+    source       TEXT
 );
 
 CREATE INDEX runs_user_idx ON runs(user_id);

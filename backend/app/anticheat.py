@@ -20,14 +20,23 @@ only. All thresholds live in config.Settings.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Tuple
 
 from .config import settings
 from .schemas import GpsPoint
 
 # Reasons that unverify a run on their own.
-HARD_REASONS = {"mocked_points", "teleport", "pace_too_fast", "stride_implausible", "invalid_run_time"}
+HARD_REASONS = {
+    "mocked_points", "teleport", "pace_too_fast", "stride_implausible", "invalid_run_time",
+    "overlapping_run",
+    # A watch-submitted run whose claimed started_at does not agree with its
+    # own points' first timestamp — see the `source == "watch"` check in
+    # routes/runs.py end_run. Hard, because this is precisely the "declare a
+    # two-second submission a forty-minute run" case start_run's backdating
+    # comment exists to prevent.
+    "watch_start_mismatch",
+}
 
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -40,9 +49,16 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def _segment_speeds(points: List[GpsPoint]) -> List[Tuple[float, float]]:
-    """[(distance_m, dt_s)] for consecutive point pairs with positive dt."""
+    """[(distance_m, dt_s)] for consecutive point pairs with positive dt.
+
+    Pairs that straddle two accepted running segments are skipped: the gap
+    between segments is ground the client deliberately did NOT count (a drive,
+    a bike ride, a tunnel with no evidence), so it is neither a teleport nor
+    a sprint."""
     out = []
     for a, b in zip(points, points[1:]):
+        if a.seg is not None and b.seg is not None and a.seg != b.seg:
+            continue
         dt = (b.t - a.t).total_seconds()
         if dt <= 0:
             continue
@@ -74,12 +90,24 @@ def _check_teleport(points: List[GpsPoint]) -> Optional[str]:
 
 
 def _check_pace_floor(points: List[GpsPoint]) -> Optional[str]:
-    """(c) Any rolling window of >= cheat_pace_window_m covered at a pace
-    faster than the floor (default 2:50/km) — elite-sprint sustained over
-    half a kilometre is not a casual runner."""
+    """(c) Faster than the floor (default 2:50/km) over a rolling window.
+
+    Two tiers, because a fast stretch is evidence, not a verdict. Over
+    cheat_pace_hard_window_m (1.5 km) it is HARD: nobody casual holds that,
+    and a bike or a car does. Over only cheat_pace_window_m (500 m) it is the
+    SOFT `pace_fast_burst` — a 2:27/km interval rep or a downhill sprint
+    is a real runner, and unverifying it would punish them for being fast."""
+    if _pace_window_breached(points, settings.cheat_pace_hard_window_m):
+        return "pace_too_fast"
+    if _pace_window_breached(points, settings.cheat_pace_window_m):
+        return "pace_fast_burst"
+    return None
+
+
+def _pace_window_breached(points: List[GpsPoint], window_m: float) -> bool:
     segs = _segment_speeds(points)
     if not segs:
-        return None
+        return False
     # Prefix sums over segments; two-pointer window.
     n = len(segs)
     i = 0
@@ -88,15 +116,15 @@ def _check_pace_floor(points: List[GpsPoint]) -> Optional[str]:
     for j in range(n):
         dist_acc += segs[j][0]
         time_acc += segs[j][1]
-        while dist_acc - segs[i][0] >= settings.cheat_pace_window_m and i < j:
+        while dist_acc - segs[i][0] >= window_m and i < j:
             dist_acc -= segs[i][0]
             time_acc -= segs[i][1]
             i += 1
-        if dist_acc >= settings.cheat_pace_window_m:
+        if dist_acc >= window_m:
             s_per_km = time_acc / (dist_acc / 1000.0)
             if s_per_km < settings.cheat_pace_floor_s_per_km:
-                return "pace_too_fast"
-    return None
+                return True
+    return False
 
 
 def _check_stride(distance_m: float, step_count: Optional[int]) -> Optional[str]:
@@ -142,6 +170,32 @@ def _check_too_clean(points: List[GpsPoint]) -> Optional[str]:
     return None
 
 
+def _check_session(session) -> List[str]:
+    """SOFT reasons from the client run session's summary, for review and
+    tester calibration only. The client already left these stretches out of
+    the route it sent; this records THAT it did, never unverifies on it."""
+    if session is None:
+        return []
+    out = []
+    if (session.vehicle_suspect_s or 0) >= 60:
+        out.append("session_vehicle_excluded")
+    if (session.cycling_suspect_s or 0) >= 120:
+        out.append("session_cycling_excluded")
+    recorded = session.recorded_s or 0
+    if recorded >= 600 and (session.unknown_s or 0) > 0.5 * recorded:
+        out.append("session_mostly_unknown")
+    return out
+
+
+def overlap_share(a_start: datetime, a_end: datetime, b_start: datetime, b_end: datetime) -> float:
+    """How much of the shorter of two time spans the other one covers (0..1)."""
+    inter = (min(a_end, b_end) - max(a_start, b_start)).total_seconds()
+    shorter = min((a_end - a_start).total_seconds(), (b_end - b_start).total_seconds())
+    if inter <= 0 or shorter <= 0:
+        return 0.0
+    return min(1.0, inter / shorter)
+
+
 def validate_run(
     points: List[GpsPoint],
     distance_m: float,
@@ -149,6 +203,7 @@ def validate_run(
     *,
     started_at: Optional[datetime] = None,
     ended_at: Optional[datetime] = None,
+    session=None,
 ) -> List[str]:
     """Return all flag reasons for a submitted run (possibly empty)."""
     if len(points) < 2:
@@ -173,9 +228,71 @@ def validate_run(
     ):
         if check:
             reasons.append(check)
+    reasons.extend(_check_session(session))
     return reasons
 
 
 def is_verified(reasons: List[str]) -> bool:
     """A run stays verified unless a HARD reason fired."""
     return not any(r in HARD_REASONS for r in reasons)
+
+
+# --- watch-submitted runs ----------------------------------------------------
+#
+# A standalone Apple Watch workout reaches /start-run long after it actually
+# began — the watch records it, then hands the finished route to the phone
+# (frontend/targets/watch/WorkoutManager.swift,
+# frontend/modules/paser-watch/ios/PhoneWatchSession.swift) — so honouring its
+# real started_at needs an exception to the rule every other account is held
+# to (see start_run's own comment in routes/runs.py). Both functions below are
+# PURE: no database, same inputs always the same answer, so
+# test_watch_run_backend.py exercises the actual decision without a server.
+
+
+def resolve_run_start(
+    claimed_started_at: Optional[datetime],
+    source: Optional[str],
+    *,
+    is_dev: bool,
+    now: datetime,
+    max_backdate_s: float,
+) -> Tuple[datetime, Optional[str]]:
+    """What /start-run should store for `started_at`, and the `source` to
+    record alongside it (None for every ordinary run — NULL in the column).
+
+    A dev account's claimed start is always honoured (the run simulator,
+    which the server-side allowlist in devtools.py is the real gate for).
+    Anyone else's claimed start is honoured only when it names
+    `source == "watch"` AND falls inside the bounded recent window — outside
+    that window it is silently dropped, exactly like a bare backdated start
+    always has been for a non-dev account."""
+    if claimed_started_at is None:
+        return now, None
+    candidate = claimed_started_at
+    # Naive UTC, to match the column — see start_run's own note on why an
+    # aware value has nowhere to keep its offset.
+    if candidate.tzinfo is not None:
+        candidate = candidate.astimezone(timezone.utc).replace(tzinfo=None)
+    if is_dev:
+        return candidate, None
+    if source == "watch":
+        age_s = (now - candidate).total_seconds()
+        if 0 <= age_s <= max_backdate_s:
+            return candidate, "watch"
+    return now, None
+
+
+def watch_start_mismatch(points: List[GpsPoint], started_at: datetime, tolerance_s: float) -> bool:
+    """True when a watch run's claimed started_at does not agree with its own
+    points' first timestamp, within `tolerance_s` — the one thing a client
+    cannot retroactively edit once the points are recorded. This is what
+    actually stands behind `resolve_run_start` honouring the claim at all:
+    that function only decides whether a start is ELIGIBLE to be backdated,
+    this decides whether the points submitted alongside it corroborate it.
+
+    True (a mismatch) with no points at all — nothing to corroborate a claim
+    with is not the same as a claim that checked out."""
+    if not points:
+        return True
+    first_t = min(p.t for p in points)
+    return abs((first_t - started_at).total_seconds()) > tolerance_s
