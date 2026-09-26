@@ -11,13 +11,13 @@ submitted points.
 
 Server-side only, like flag_reasons. Nullable: older clients send none.
 
-Revision ID: 0046
-Revises: 0045
+Revision ID: 0049
+Revises: 0048
 """
 from alembic import op
 
-revision = "0046"
-down_revision = "0045"
+revision = "0049"
+down_revision = "0048"
 branch_labels = None
 depends_on = None
 

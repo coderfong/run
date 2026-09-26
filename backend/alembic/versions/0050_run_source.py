@@ -16,13 +16,13 @@ the validation every ordinary phone run already goes through.
 Nullable, and NULL means "phone" (every existing run): this is additional
 scrutiny for a new path, never a relaxation of an old one.
 
-Revision ID: 0047
-Revises: 0046
+Revision ID: 0050
+Revises: 0049
 """
 from alembic import op
 
-revision = "0047"
-down_revision = "0046"
+revision = "0050"
+down_revision = "0049"
 branch_labels = None
 depends_on = None
 
