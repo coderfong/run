@@ -200,6 +200,11 @@ class RunResultOut(BaseModel):
     # set, in the past, on a replay of a run that let it lapse, so the client
     # can tell "lapsed" from "never earned any"). Null when the window is off.
     claim_expires_at: Optional[UtcDatetime] = None
+    # Whether this run counted for the runner's club, as the server knows it
+    # at the moment of the response (see ClubRunStatus). Null from a server
+    # too old to know, or when the lookup could not be made; the client then
+    # asks GET /runs/{id}/club-run.
+    club_run: Optional["ClubRunStatus"] = None
 
     def model_post_init(self, __context) -> None:  # pydantic v2 hook
         # One source of truth, two names on the wire.
@@ -500,6 +505,10 @@ class ClaimVictim(BaseModel):
     area_m2: float = 0.0
     defended: bool = False
     reclaimed: bool = False
+    # The club they run for, so a club claim can say whose ground it took
+    # ("from NIGHT STRIDERS"). Membership, the same fact combat reads.
+    clan_tag: Optional[str] = None
+    clan_name: Optional[str] = None
 
 
 class ClaimOut(BaseModel):
@@ -568,6 +577,10 @@ class ClaimOut(BaseModel):
     rank_down: bool = False
     rank_key_before: str = "wood"
     rank_key_after: str = "wood"
+    # The club run this claim belongs to, AFTER the claim (so its ground and
+    # club XP are already in it). Null or state "solo" for a solo claim, which
+    # is exactly the case the payoff must not dress up as a club one.
+    club_run: Optional["ClubRunStatus"] = None
 
 
 class LeaderboardEntry(BaseModel):
@@ -768,11 +781,120 @@ class FeedItem(BaseModel):
     my_reaction: Optional[str] = None
     caption: Optional[str] = None
     media: List[str] = []
+    # kind "club_run": the whole group on one card (this row is the group's
+    # newest visible run). kind "event": a beat with no run card of its own in
+    # this feed, e.g. an attack on you or your club. Only sent to clients that
+    # ask for `events=1`; older builds keep getting plain run rows.
+    club_run: Optional["ClubRunStatus"] = None
+    event: Optional["GameEvent"] = None
 
 
 class FeedOut(BaseModel):
     items: List[FeedItem]
     next_cursor: Optional[UtcDatetime] = None
+
+
+# ---- game events (app/game_events.py) --------------------------------------
+#
+# One reading of what happened on the map, shared by the feed, rivals, the
+# map's territory card, run detail and the club page. SOLO and CLUB are told
+# apart by who the run counted for (club_run_logs) and whose club the ground
+# belonged to (territory_events.victim_clan_id), never by a badge.
+
+
+class EventPerson(BaseModel):
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    rank_key: str = "wood"
+    is_you: bool = False
+
+
+class ClubRef(BaseModel):
+    clan_id: str
+    name: str
+    tag: str
+    color: Optional[ClanColor] = None
+    badge_icon: str = "shield"
+    photo_url: Optional[str] = None
+    rank_key: str = "wood"
+    rank_label: str = "Wood"
+    # The viewer's own club, so a card can say "us" without comparing ids.
+    is_yours: bool = False
+
+
+class GameEvent(BaseModel):
+    id: str
+    # SOLO_CLAIM | SOLO_STEAL | SOLO_DEFEND | CLUB_RUN | CLUB_CLAIM |
+    # CLUB_STEAL | CLUB_DEFEND | CLUB_GOAL_COMPLETED
+    event_type: str
+    # "user" | "club": who the headline is about.
+    actor_type: str = "user"
+    actor: Optional[EventPerson] = None
+    actor_club: Optional[ClubRef] = None
+    target: Optional[EventPerson] = None
+    target_club: Optional[ClubRef] = None
+    # For a club event: the members who took part (the club run's runners for
+    # an attack, the members whose land held for a defence).
+    participants: List[EventPerson] = []
+    participant_count: int = 0
+    # captured | held | claimed | reinforced | completed
+    outcome: Optional[str] = None
+    # Relative to the viewer, or the viewer's club for a club event:
+    # "ours" (we did it), "theirs" (it was done to us), "neutral".
+    side: str = "neutral"
+    area_m2: float = 0.0
+    # A battle can take some ground and bounce off the rest.
+    held_m2: float = 0.0
+    distance_m: Optional[float] = None
+    # Rating the viewer's side moved on it, only where elo_events recorded it.
+    elo_delta: Optional[int] = None
+    run_id: Optional[str] = None
+    session_id: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    at: UtcDatetime
+
+
+class ClubRunBadge(BaseModel):
+    """Enough to mark a run in a list as a club run, and nothing more."""
+    session_id: Optional[str] = None
+    club_id: str
+    club_name: str
+    club_tag: str
+    club_color: Optional[ClanColor] = None
+    participant_count: int = 0
+
+
+class ClubRivalCard(BaseModel):
+    """Repeated territory conflict between the viewer's club and one other,
+    phrased from the viewer's club. Every count is a club battle: a club run's
+    claim that met another club's members' ground (app/game_events.py)."""
+    club: ClubRef
+    encounters: int = 0
+    exchanged_m2: float = 0.0
+    our_captures: int = 0
+    their_captures: int = 0
+    # Their attacks we held entirely, and ours they held.
+    our_defences: int = 0
+    their_defences: int = 0
+    our_taken_m2: float = 0.0
+    their_taken_m2: float = 0.0
+    last_at: Optional[UtcDatetime] = None
+    last_battle: Optional[GameEvent] = None
+    recent_ground: List[GameEvent] = []
+    recent_members: List[EventPerson] = []
+
+
+class ClubRivalsOut(BaseModel):
+    club: Optional[ClubRef] = None
+    rivals: List[ClubRivalCard] = []
+
+
+class ClubRivalDetail(BaseModel):
+    us: ClubRef
+    rival: ClubRivalCard
+    battles: List[GameEvent] = []
 
 
 class MeStats(BaseModel):
@@ -841,6 +963,9 @@ class RunSummary(BaseModel):
     created_at: UtcDatetime
     caption: Optional[str] = None
     media: List[str] = []
+    # Set only when this run is in the club run log: a compact badge, not the
+    # whole group (open the run for that).
+    club_run: Optional[ClubRunBadge] = None
 
 
 class RunSplit(BaseModel):
@@ -874,6 +999,14 @@ class RunDetail(BaseModel):
     # (null when there is no deadline). Always false on somebody else's run.
     claim_pending: bool = False
     claim_expires_at: Optional[UtcDatetime] = None
+    # The club run this was part of, told the same way the result screen told
+    # it (routes/club_run_status.py). Null for a solo run, and for a server
+    # that could not work it out.
+    club_run: Optional["ClubRunStatus"] = None
+    # What this run's claim did to other runners and clubs, and attacks its
+    # ground held off since. From the territory event log, so empty for runs
+    # older than the log.
+    battles: List[GameEvent] = []
 
 
 class PendingClaimOut(BaseModel):
@@ -1004,6 +1137,10 @@ class NotifPrefs(BaseModel):
     recap: bool = True
     pasers: bool = True
     paserby: bool = True
+    # "Your club run is confirmed" (migration 0047).
+    club_run: bool = True
+    # Club battles: your club captured, was attacked, or held (0048).
+    club_battles: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -1432,6 +1569,126 @@ class WeekGoalOut(BaseModel):
     my_claims: int = 0
 
 
+# ---- club runs (app/club_runs.py, migration 0047) -------------------------
+#
+# Every number on these models is read back from a record of what happened
+# (the run, the claim's stored result, the grant ledger that paid the club).
+# Anything with no record is null, and the client leaves it off rather than
+# showing a zero that never happened.
+
+
+class ClubRunPerson(BaseModel):
+    user_id: str
+    username: str
+    avatar: Optional[dict] = None
+    rank_key: str = "wood"
+    run_id: Optional[str] = None
+    distance_m: float = 0.0
+    is_you: bool = False
+
+
+class ClubRunStatus(BaseModel):
+    # "solo" | "potential" | "confirmed". CONFIRMED only once the server has
+    # logged this run for the club; POTENTIAL only with live evidence that a
+    # clubmate who could still match is out near the route (`waiting_for`).
+    state: str = "solo"
+    qualified: bool = False
+    session_id: Optional[str] = None
+    club_id: Optional[str] = None
+    club_name: Optional[str] = None
+    club_tag: Optional[str] = None
+    club_color: Optional[ClanColor] = None
+    badge_icon: Optional[str] = None
+    photo_url: Optional[str] = None
+    # EXACT participants, from the log, oldest start first. Never the
+    # approximate `club_run_logs.partners` count.
+    participants: List[ClubRunPerson] = []
+    participant_count: int = 0
+    # This runner's own measured stretch alongside a partner. Null for runs
+    # logged before the number was kept.
+    shared_distance_m: Optional[float] = None
+    your_distance_m: Optional[float] = None
+    # The longest run in the group, for the feed card.
+    distance_m: Optional[float] = None
+    # Ground the group's claims won (sum of each claim's gained_m2). Null
+    # until anyone in the group has claimed.
+    territory_gained_m2: Optional[float] = None
+    captured_m2: float = 0.0
+    captured_from: List[str] = []
+    club_xp_earned: int = 0
+    # What this group added to THIS week's goal, from the grants that paid it
+    # (zero if the run belongs to an earlier week), and the goal as it stands.
+    week_added_distance_m: float = 0.0
+    week_added_claims: int = 0
+    week_goal: Optional[WeekGoalOut] = None
+    started_at: Optional[UtcDatetime] = None
+    ended_at: Optional[UtcDatetime] = None
+    waiting_for: List[ClubRunPerson] = []
+
+
+class ClubActivityItem(BaseModel):
+    id: str
+    # "club_run" (one card per group, however many ran) | "goal"
+    kind: str
+    created_at: UtcDatetime
+    club_run: Optional[ClubRunStatus] = None
+    # For "goal": the week's targets, as reached.
+    goal_distance_m: Optional[float] = None
+    goal_claims: Optional[int] = None
+    # kind "battle": a club battle this club fought (app/game_events.py).
+    event: Optional[GameEvent] = None
+
+
+class ClubActivityOut(BaseModel):
+    items: List[ClubActivityItem] = []
+    next_cursor: Optional[UtcDatetime] = None
+
+
+class ClubTerritorySummary(BaseModel):
+    """The runner's own club on the club board: what it holds right now."""
+    club_id: str
+    name: str
+    tag: str
+    color: ClanColor
+    badge_icon: str = "shield"
+    photo_url: Optional[str] = None
+    territories: int = 0
+    area_m2: float = 0.0
+    # Of that, the land that came from the viewer's own runs.
+    my_area_m2: float = 0.0
+    rank_key: str = "wood"
+    rank_label: str = "Wood"
+    rank_tier: int = 0
+
+
+class TerritoryClubStory(BaseModel):
+    """Why a plot on the club board belongs to its club."""
+    territory_id: str
+    club_id: Optional[str] = None
+    club_name: Optional[str] = None
+    club_tag: Optional[str] = None
+    club_color: Optional[ClanColor] = None
+    # True when the plot came from a logged club run; the participants are
+    # that group. False for land whose run is not in the log (nothing to say).
+    club_run: bool = False
+    participants: List[ClubRunPerson] = []
+    claimed_at: Optional[UtcDatetime] = None
+    # Attacks on this plot's owner that bounced off this ground since it was
+    # claimed (territory_events 'defend' whose ground touches it).
+    defended_count: int = 0
+    # --- the fuller story (app/game_events.py `territory_story`) ---
+    owner: Optional[EventPerson] = None
+    area_m2: float = 0.0
+    # Everything the club holds right now, for "PASER CREW 142,820 m² total".
+    club_area_m2: Optional[float] = None
+    # Whose ground this claim took, where the log recorded it.
+    captured_from: List[GameEvent] = []
+    last_defended_at: Optional[UtcDatetime] = None
+    defended_by_clubs: List[ClubRef] = []
+    # Every recorded beat on this ground, newest first.
+    history: List[GameEvent] = []
+
+
 class ClanOut(BaseModel):
     id: str
     name: str
@@ -1465,6 +1722,9 @@ class ClanOut(BaseModel):
     elo_next_label: Optional[str] = None
     elo_points_to_next: int = 0
     elo_progress: float = 0.0
+    # The club battle that last moved the rating, from elo_events, so the rank
+    # card can say why it moved. Null when no club battle is recorded.
+    last_battle: Optional[GameEvent] = None
 
 
 class ClanSummary(BaseModel):
@@ -1523,3 +1783,13 @@ class MyClan(BaseModel):
     rank_tier: Optional[int] = None
     rank_label: Optional[str] = None
     rank_points: Optional[int] = None
+
+
+# RunResultOut and ClaimOut name ClubRunStatus before it is defined.
+RunResultOut.model_rebuild()
+ClaimOut.model_rebuild()
+
+
+# FeedItem and RunDetail name ClubRunStatus / GameEvent before they exist.
+FeedItem.model_rebuild()
+RunDetail.model_rebuild()

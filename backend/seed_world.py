@@ -770,7 +770,9 @@ def main() -> int:
                     {
                         "uid": user_id, "lat": home_lat, "lon": home_lon,
                         "rk": region["key"], "atk": is_attacker,
-                        "nra": bot_world.next_run_at(rng),
+                        # On the bot's own archetype cadence from the start,
+                        # the same schedule the cron keeps it on.
+                        "nra": bot_world.next_run_for(rng, datetime.utcnow(), user_id, clan_id),
                     },
                 )
 

@@ -39,6 +39,7 @@ from .. import fitness, models, schemas
 from ..anticheat import is_verified, validate_run
 from ..notifications import notify
 from .clans import clan_member_ids
+from .club_run_status import safe_club_run_status
 from .progression import sync_level_rewards
 from ..config import settings
 from ..database import get_db
@@ -68,9 +69,11 @@ from ..security import current_user, require_admin
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-# Rivalry ledger floor: a clipped sliver isn't a rivalry beat (see the insert
-# in claim_run and migration 0016). 25 m² ≈ a 5×5 m patch.
-STEAL_LEDGER_MIN_M2 = 25.0
+# Rivalry ledger floor: a clipped sliver isn't a rivalry beat (see migration
+# 0016). 25 m² ≈ a 5×5 m patch. Lives with the shared claim consequences so the
+# bot runs read the same number; re-exported here for existing importers.
+from ..claim_consequences import STEAL_LEDGER_MIN_M2  # noqa: E402
+from .. import claim_consequences  # noqa: E402
 
 
 @router.post("/start-run", response_model=schemas.StartRunOut)
@@ -133,6 +136,19 @@ def submit_path(
         "daily_claim_distance_m": banked,
     }
 
+    # CLUB PRESENCE: keep this run's newest fix (server side only) and say
+    # which clubmates are out beside it right now. Social status, never a
+    # verdict: a club run is still only decided at the finish
+    # (app/club_runs.py). Best effort, a failure here costs the badge only.
+    if user.clan_id and run.ended_at is None:
+        try:
+            club_runs.record_live(run, payload.points)
+            db.commit()
+            out["club_presence"] = club_runs.presence(db, run, user.clan_id)
+        except Exception:
+            log.warning("club presence failed for run %s", run.id, exc_info=True)
+            db.rollback()
+
     cleaned = clean_path(payload.points)
     if cleaned is None:
         return out
@@ -162,6 +178,12 @@ def submit_path(
         out["preview_area_m2"] = loop.area_m2
         out["preview_polygon"] = polygon_to_lonlat_ring(loop.polygon_wgs)
     return out
+
+
+def _clan_of(db: Session, user_id):
+    return db.execute(
+        text("SELECT clan_id::text FROM users WHERE id = :u"), {"u": user_id}
+    ).scalar()
 
 
 def _lock_user(db: Session, user_id) -> None:
@@ -222,6 +244,9 @@ def _end_run_replay(db: Session, run) -> schemas.RunResultOut:
         coins_gained=int(run.reward_coins or 0),
         energy_gained=int(run.reward_energy or 0),
         replayed=True,
+        # A replay is the recovery path for a lost response, so it carries the
+        # club verdict as it stands NOW (a partner may have finished since).
+        club_run=safe_club_run_status(db, run, run.user_id, _clan_of(db, run.user_id)),
         claim_expires_at=(
             economy.claim_deadline(run.ended_at) if waiting and area > 0 else None
         ),
@@ -278,6 +303,8 @@ def end_run(
     line_wgs = LineString(cleaned.wgs_coords)
     run.path = from_shape(line_wgs, srid=4326)
     run.together_trace = club_runs.record_trace(payload.points)
+    # A finished run keeps no live position (see migration 0047).
+    run.live_lat = run.live_lon = run.live_at = None
     run.ended_at = datetime.utcnow()
     run.distance_m = cleaned.distance_m
     run.duration_s = (run.ended_at - run.started_at).total_seconds()
@@ -368,14 +395,16 @@ def end_run(
     # anything cannot earn their club anything either, or walking fifty metres
     # with a clubmate ten times a day would be the cheapest club goal in the
     # game. Every anti-cheat rule already folded into `tier` gates this too.
-    club_id, club_partners = (None, [])
-    if run.verified and economy.rewards_earned(tier):
+    # ONE definition of that gate, shared with the claim and the probe:
+    # `club_runs.eligible` (so a run cannot be solo here and club there).
+    club_id, club_partners, club_newly = (None, [], [])
+    if club_runs.eligible(run):
         # The probe reads `runs` in SQL and the session does not autoflush, so
         # the path and the end time this handler just set are still sitting in
         # the identity map. Unflushed, the run has no route to match on and
         # every club run in the game would come back solo.
         db.flush()
-        club_id, club_partners, _newly = club_runs.log_run(
+        club_id, club_partners, club_newly = club_runs.log_run(
             db, run.id, run.user_id, user.clan_id
         )
 
@@ -445,10 +474,17 @@ def end_run(
             "Weekly goal reached!", "Your club hit this week's goal. Badge frame unlocked.",
         )
 
+    # Whoever finished first had nobody to match; this run just made theirs a
+    # club run. Each of them hears it once (club_runs.notify_confirmed).
+    club_runs.notify_confirmed(background, db, user.id, user.username, club_newly)
+
     return schemas.RunResultOut(
         run_id=run.id,
         distance_m=run.distance_m,
         duration_s=run.duration_s,
+        # The server's answer to "did this count for the club?", read after
+        # the commit so the group's credit is already in it.
+        club_run=safe_club_run_status(db, run, user.id, user.clan_id),
         claim_radius_m=radius,
         claim_area_m2=area,
         claim_ring=claim_ring,
@@ -1783,9 +1819,11 @@ def claim_territory(
     # trusted from /end-run because a clubmate can cross the line in between:
     # this is the last moment before the ground is written, so it is the
     # moment with the most of the group in it.
-    club_id, club_partners = (None, [])
-    if run.verified:
-        club_id, club_partners, _newly = club_runs.log_run(
+    # The same eligibility test /end-run applied (club_runs.eligible), so a run
+    # can never be solo there and club here.
+    club_id, club_partners, club_newly = (None, [], [])
+    if club_runs.eligible(run):
+        club_id, club_partners, club_newly = club_runs.log_run(
             db, run.id, run.user_id, user.clan_id
         )
         # Land a partner already claimed off the same route, handed to the
@@ -1819,34 +1857,7 @@ def claim_territory(
     # limit counts, and it is written only now, so a claim that failed
     # anywhere above never consumed the allowance.
     run.claim_action = action
-
-    # Rivalry ledger (migration 0016) — one row per victim, takes AND bounced
-    # attacks. Slivers are dropped: a 3 m² clip off a polygon edge is a
-    # rounding artefact, not a rivalry beat, and would drown the real ones.
-    # There is no placed centre any more, so a steal is pinned to the middle
-    # of the ground that changed hands.
     claim_centre = claim_poly.centroid
-    for ev in steal_events:
-        if ev["area_m2"] < STEAL_LEDGER_MIN_M2:
-            continue
-        db.execute(
-            text(
-                """
-                INSERT INTO territory_steals
-                    (attacker_id, victim_id, run_id, area_m2, defended, lat, lon)
-                VALUES (:a, :v, :r, :area, :defended, :lat, :lon)
-                """
-            ),
-            {
-                "a": user.id,
-                "v": ev["victim_id"],
-                "r": run.id,
-                "area": ev["area_m2"],
-                "defended": ev["defended"],
-                "lat": claim_centre.y,
-                "lon": claim_centre.x,
-            },
-        )
 
     # The claim landed — deduct the price of the move it actually made. The
     # spend is conditional in SQL, so if two claims raced for the last of the
@@ -1855,59 +1866,20 @@ def claim_territory(
         db.rollback()
         raise HTTPException(402, "Not enough Energy for this move.")
 
-    # ---- legacy rank points -----------------------------------------------
-    # Kept for already-shipped builds and historical rewards. The live ladder
-    # is Elo below; these additive points are no longer exposed as rank.
-    #
-    # The flat per-claim award is rationed daily: it is the one territorial
-    # reward a player can repeat at will, and until rank is scored against the
-    # opponent it would otherwise be a treadmill. Taking and defending ground
-    # are contested outcomes and stay uncapped.
-    claim_points = ranks.POINTS_CLAIM
-    if action == economy.ACTION_EMPTY:
-        claim_points = min(claim_points, economy.neutral_rank_allowance(db, user.id))
-        if claim_points > 0:
-            economy.claim_grant(
-                db, user.id, run.id, economy.KIND_NEUTRAL_RANK, claim_points
-            )
-    if claim_points > 0:
-        ranks.award(db, user.id, claim_points, "claim")
-    # Both sides of every steal_events row are in `rank_tier`'s bracket by
-    # construction (combat is rank-scoped — see the note on `rank_tier`
-    # above), so it alone picks the tier-scaled rate for both attacker and
-    # victim. See ranks.steal_reward/loss_penalty/defend_reward: flat through
-    # Gold, then the exchange tilts toward the defender as the tier rises, so
-    # the top of the ladder has to be held, not just reached.
-    for ev in steal_events:
-        if ev["area_m2"] < STEAL_LEDGER_MIN_M2:
-            continue
-        if ev["defended"]:
-            # The attack bounced — the DEFENDER is the one who earned here.
-            ranks.award(db, ev["victim_id"], ranks.defend_reward(rank_tier), "defend")
-        else:
-            # A steal moves points BOTH ways: the attacker gains, the victim
-            # loses. Without the loss side, rank could only ever go up and
-            # would just be a slower level.
-            ranks.award(db, user.id, ranks.steal_reward(rank_tier), "steal")
-            ranks.award(db, ev["victim_id"], ranks.loss_penalty(rank_tier), "lost_ground")
-
-    # One weighted solo encounter per rival, plus one per opposing club.
-    # This stays inside the claim transaction: a rating can never move for a
-    # territory update that later rolls back.
-    elo_result = elo.record_claim_matches(
-        db, user.id, run.id, steal_events, attacker_clan_id=club_id,
-        club_match=bool(club_id),
+    # Rivalry ledger, rank points both ways and the Elo match — the same code
+    # the seeded-world bot runs settle through (app/claim_consequences.py), so
+    # a steal means the same thing whoever made it. It stays inside the claim
+    # transaction: a rating can never move for a territory update that later
+    # rolls back. The tier either side is worked out from the rating movement
+    # rather than by re-reading the row, so it cannot disagree with the
+    # numbers reported below.
+    settled = claim_consequences.settle(
+        db, user_id=user.id, run_id=run.id, action=action,
+        steal_events=steal_events, ground=ground, stolen_m2=stolen_m2,
+        rank_tier=rank_tier, club_id=club_id, centre=claim_centre,
     )
-    open_area = max(0.0, ground["gained_m2"] - stolen_m2)
-    open_points = elo.open_claim_reward(open_area)
-    if open_points:
-        elo_result["solo_rating"] = elo.apply_land_delta(db, user.id, open_points)
-        elo_result["solo_delta"] += open_points
-    # Did that claim cross a tier boundary? Worked out from the rating either
-    # side of the encounter rather than by re-reading the row, so it cannot
-    # disagree with the numbers reported below.
-    rank_after = elo.tier_for_rating(elo_result["solo_rating"])
-    rank_before = elo.tier_for_rating(elo_result["solo_rating"] - elo_result["solo_delta"])
+    elo_result = settled["elo"]
+    rank_after, rank_before = settled["rank_after"], settled["rank_before"]
 
     xp_gain = 0
     # Snapshot XP before the award so the payoff screen can fill the bar from
@@ -2000,76 +1972,30 @@ def claim_territory(
 
     # Every side of the fight is notified: each victim who lost land
     # ("stolen"), each owner whose defence held ("defended"), and the attacker
-    # who actually took ground ("captured"). `stolen_from` is only the headline
-    # victim, so aggregate the real event list instead.
-    taken_by_victim: dict[str, float] = {}
-    defended_by_victim: dict[str, float] = {}
-    for ev in steal_events:
-        if ev["area_m2"] < STEAL_LEDGER_MIN_M2:
-            continue
-        victim_id = str(ev["victim_id"])
-        bucket = defended_by_victim if ev["defended"] else taken_by_victim
-        bucket[victim_id] = bucket.get(victim_id, 0.0) + float(ev["area_m2"])
-
-    # The attacker's own territory outline, so the victim's alert can box the
-    # EXACT ground the rival ran instead of the seeded-fan stand-in. Only the
-    # largest ring, decimated and rounded — a full multipolygon would blow past
-    # Expo's ~4KB push limit, and this is a plaback overlay, not a survey.
+    # who actually took ground ("captured"). The victim alerts are built by the
+    # same helper the bot runs use (app/claim_consequences.py).
+    #
+    # The attacker's own territory outline rides along, so the victim's alert
+    # can box the EXACT ground the rival ran instead of the seeded-fan
+    # stand-in. Only the largest ring, decimated and rounded — a full
+    # multipolygon would blow past Expo's ~4KB push limit. The capture id lets
+    # the victim's device pick the same capture animation the attacker's
+    # screen played (pickCaptureStyle hashes it).
     territory_ring = (
         _decimate_ring(territory_out.rings[0])
         if territory_out and territory_out.rings else None
     )
-
-    for victim_id, taken_m2 in taken_by_victim.items():
-        capture_id = f"{run.id}:{victim_id}"
-        background.add_task(
-            notify,
-            [victim_id],
-            "stolen",
-            "Your land was captured",
-            f"{user.username} took {taken_m2 / 1_000_000:.3f} km² of your territory.",
-            {
-                "kind": "territory_captured",
-                "screen": "map",
-                "capture_id": capture_id,
-                "taken_m2": taken_m2,
-                "lat": claim_centre.y,
-                "lon": claim_centre.x,
-                "attacker_id": str(user.id),
-                "attacker_username": user.username,
-                "attacker_avatar": user.avatar or {},
-                # Lets the victim's device pick the exact same capture-style
-                # animation the attacker's screen played — pickCaptureStyle
-                # and pickCaptureVariant are pure hashes of this id, so no
-                # further server round-trip is needed to keep the two in sync.
-                "territory_id": str(territory_out.id),
-                # [[lon, lat], ...] of the attacker's land — the alert projects
-                # this into its stage to box the real area, and "ZOOM TO THE
-                # LAND" fits the live map to it. Omitted when unavailable so the
-                # client keeps its point-and-fan fallback.
-                **({"territory_ring": territory_ring} if territory_ring else {}),
-            },
-            str(user.id),
-        )
-    for victim_id, defended_m2 in defended_by_victim.items():
-        background.add_task(
-            notify,
-            [victim_id],
-            "defended",
-            "Your defense held",
-            f"{user.username} attacked {defended_m2 / 1_000_000:.3f} km², but your territory held.",
-            {
-                "kind": "territory_defended",
-                "screen": "map",
-                "defended_m2": defended_m2,
-                "lat": claim_centre.y,
-                "lon": claim_centre.x,
-                "attacker_id": str(user.id),
-                "attacker_username": user.username,
-                "attacker_avatar": user.avatar or {},
-            },
-            str(user.id),
-        )
+    for args in claim_consequences.victim_notifications(
+        steal_events,
+        run_id=run.id,
+        attacker_id=user.id,
+        attacker_username=user.username,
+        attacker_avatar=user.avatar,
+        territory_id=territory_out.id if territory_out else None,
+        territory_ring=territory_ring,
+        centre=claim_centre,
+    ):
+        background.add_task(notify, *args)
     if stolen_m2 > 0:
         from_str = f" from {stolen_from}" if stolen_from else ""
         background.add_task(
@@ -2091,6 +2017,14 @@ def claim_territory(
             "Weekly goal reached!", "Your club hit this week's goal. Badge frame unlocked.",
             {"kind": "clan_goal_reached", "screen": "club"},
         )
+
+    # A clubmate who finished earlier and was still waiting: this claim is
+    # the moment their run became a club run. Told once each.
+    club_runs.notify_confirmed(background, db, user.id, user.username, club_newly)
+    # What the payoff dresses the claim as. Read after the commit, so the
+    # ground and club XP this claim just added are already in it; a solo claim
+    # comes back "solo" and is shown as one.
+    out.club_run = safe_club_run_status(db, run, user.id, user.clan_id)
 
     return out
 
@@ -2118,6 +2052,7 @@ def _claim_victims(db: Session, attacker_id, events) -> list[schemas.ClaimVictim
         text(
             """
             SELECT u.id::text, u.username, u.avatar, c.color_key,
+                   c.tag AS clan_tag, c.name AS clan_name,
                    EXISTS (
                        SELECT 1 FROM territory_steals s
                        WHERE s.attacker_id = u.id
@@ -2144,11 +2079,13 @@ def _claim_victims(db: Session, attacker_id, events) -> list[schemas.ClaimVictim
                 user_id=r[0],
                 username=r[1],
                 avatar=r[2],
-                rank_key=elo.key_for(r[5], r[6]),
+                rank_key=elo.key_for(r[7], r[8]),
                 clan_color=schemas.ClanColor(**color_triple(r[3])) if r[3] else None,
+                clan_tag=r[4],
+                clan_name=r[5],
                 area_m2=agg["area_m2"],
                 defended=agg["defended"],
-                reclaimed=bool(r[4]),
+                reclaimed=bool(r[6]),
             )
         )
     # Biggest loss first; runners who held their ground sink to the bottom.

@@ -6,7 +6,13 @@ the request that triggered it — but failures are now logged and a token
 Expo reports as dead is pruned, instead of being silently retried forever.
 
 Categories: stolen | defended | captured | reminder | clan_goal | kudos |
-season | recap | pasers | paserby.
+season | recap | pasers | paserby | club_run | club_battles.
+
+GROUPED EVENTS. A club run is several people and often several claims, and a
+battle it fights is one story however many of them landed. `dedupe_key` makes
+the inbox agree: the first call for a key writes each recipient's row and
+pushes; every later call with the same key rewrites that row's copy (the total
+grows) and pushes nothing, so a five person club run is one alert.
 """
 
 import json
@@ -29,7 +35,7 @@ EXPO_URL = "https://exp.host/--/api/v2/push/send"
 # whitelist is what keeps that true instead of just assumed.
 CATEGORIES = {
     "stolen", "defended", "captured", "reminder", "clan_goal", "kudos",
-    "season", "recap", "pasers", "paserby",
+    "season", "recap", "pasers", "paserby", "club_run", "club_battles",
 }
 
 # Alerts that describe somebody actively contesting the recipient's territory
@@ -78,7 +84,7 @@ def _expo_send(messages):
     return dead
 
 
-def notify(user_ids, category, title, body, data=None, actor_id=None):
+def notify(user_ids, category, title, body, data=None, actor_id=None, dedupe_key=None):
     """Open an own session (runs post-response), write every recipient's
     in-app inbox row, then push to recipients who allow this category.
 
@@ -90,7 +96,10 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
     `actor_id` is the user who CAUSED this — the runner who took your land,
     gave you kudos, sent the request. The inbox shows their portrait, so pass
     it wherever there is a person behind the event; leave it off for system
-    notices (season, recap) that nobody sent."""
+    notices (season, recap) that nobody sent.
+
+    `dedupe_key` groups calls into one row per recipient (see the module
+    docstring): repeats update the copy and are never pushed again."""
     if not user_ids:
         return
     if category not in CATEGORIES:
@@ -125,18 +134,42 @@ def notify(user_ids, category, title, body, data=None, actor_id=None):
         event_data = json.loads(event_json)
         # Inbox rows (the bell) — written for every recipient even if they
         # disabled this category's push or have no push token registered.
+        fresh = set()
         for uid in recipients:
-            db.execute(
+            params = {
+                "u": uid, "c": category, "t": title, "b": body,
+                # never point a row at its own recipient — "you did this to
+                # yourself" would just be your own face staring back
+                "a": str(actor_id) if actor_id and str(actor_id) != str(uid) else None,
+                "d": event_json, "k": dedupe_key,
+            }
+            if dedupe_key is None:
+                db.execute(
+                    text(
+                        "INSERT INTO notifications (user_id, category, title, body, actor_id, data) "
+                        "VALUES (:u, :c, :t, :b, CAST(:a AS uuid), CAST(:d AS jsonb))"
+                    ),
+                    params,
+                )
+                fresh.add(uid)
+                continue
+            inserted = db.execute(
                 text(
-                    "INSERT INTO notifications (user_id, category, title, body, actor_id, data) "
-                    "VALUES (:u, :c, :t, :b, CAST(:a AS uuid), CAST(:d AS jsonb))"
+                    """
+                    INSERT INTO notifications
+                        (user_id, category, title, body, actor_id, data, dedupe_key)
+                    VALUES (:u, :c, :t, :b, CAST(:a AS uuid), CAST(:d AS jsonb), :k)
+                    ON CONFLICT (user_id, dedupe_key) WHERE dedupe_key IS NOT NULL
+                    DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body,
+                                  data = EXCLUDED.data
+                    RETURNING (xmax = 0)
+                    """
                 ),
-                {"u": uid, "c": category, "t": title, "b": body,
-                 # never point a row at its own recipient — "you did this to
-                 # yourself" would just be your own face staring back
-                 "a": str(actor_id) if actor_id and str(actor_id) != str(uid) else None,
-                 "d": event_json},
-            )
+                params,
+            ).scalar()
+            if inserted:
+                fresh.add(uid)
+        push_allowed = [uid for uid in push_allowed if uid in fresh]
         db.commit()
         if not push_allowed:
             return

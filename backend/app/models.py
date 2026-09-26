@@ -155,6 +155,12 @@ class Run(Base):
     # The cleaned/simplified path the runner actually traced.
     path = Column(Geometry(geometry_type="LINESTRING", srid=4326), nullable=True)
     together_trace = Column(JSONB, nullable=True)
+    # The latest fix of a run IN PROGRESS (migration 0047), so clubmates out
+    # together can see each other on the running screen. Written by
+    # /submit-path, cleared by /end-run, never returned by any endpoint.
+    live_lat = Column(Float, nullable=True)
+    live_lon = Column(Float, nullable=True)
+    live_at = Column(DateTime, nullable=True)
 
     # Cached metrics — recomputed at end-run time from the projected geometry.
     distance_m = Column(Float, nullable=True)

@@ -23,6 +23,13 @@ actor's `claim`, and the `steal` naming who lost it. The steal is the specific
 truth and should win; the claim is the one to fall back on where no steal
 exists. They are not duplicates, they are the same beat at two resolutions.
 
+WHICH CLUBS WERE INVOLVED (migration 0047). `victim_clan_id` is written here,
+from the defender's membership at the moment of the beat. The attacker's club
+is NOT: it is the club the run counted for, which `club_run_logs` answers
+through `run_id`, and for the first finisher of a club run that answer only
+exists once a clubmate comes in. app/game_events.py is the one reader that
+puts the two together.
+
 FAILURE POLICY: never break a claim. A run that finished and a claim that
 landed are the product; the history of it is not worth losing either one over.
 Every write is wrapped in a SAVEPOINT, which is what makes "best effort" true
@@ -99,10 +106,16 @@ def record(
                         END AS geom
                     )
                     INSERT INTO territory_events
-                        (actor_id, victim_id, run_id, kind, area_m2, ground, lat, lon)
+                        (actor_id, victim_id, run_id, kind, area_m2, ground, lat, lon,
+                         victim_clan_id)
                     SELECT :actor, :victim, :run, :kind,
                            COALESCE(ST_Area(g.geom::geography), :area), g.geom,
-                           ST_Y(ST_Centroid(g.geom)), ST_X(ST_Centroid(g.geom))
+                           ST_Y(ST_Centroid(g.geom)), ST_X(ST_Centroid(g.geom)),
+                           -- The defender's club as it stands NOW, which is
+                           -- the only moment it can be read: a runner can
+                           -- change clubs later (migration 0047).
+                           (SELECT u.clan_id FROM users u
+                            WHERE u.id = CAST(:victim AS uuid))
                     FROM g
                     """
                 ),

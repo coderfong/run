@@ -424,7 +424,7 @@ def get_prefs(user: models.User = Depends(current_user), db: Session = Depends(g
     row = db.execute(
         text(
             "SELECT stolen, defended, captured, reminder, clan_goal, kudos, "
-            "season, recap, pasers, paserby "
+            "season, recap, pasers, paserby, club_run, club_battles "
             "FROM notif_prefs WHERE user_id = :u"
         ),
         {"u": user.id},
@@ -434,7 +434,8 @@ def get_prefs(user: models.User = Depends(current_user), db: Session = Depends(g
     return schemas.NotifPrefs(
         stolen=row[0], defended=row[1], captured=row[2], reminder=row[3],
         clan_goal=row[4], kudos=row[5], season=row[6], recap=row[7],
-        pasers=row[8], paserby=row[9],
+        pasers=row[8], paserby=row[9], club_run=row[10],
+        club_battles=row[11],
     )
 
 
@@ -445,11 +446,12 @@ def set_prefs(payload: schemas.NotifPrefs, user: models.User = Depends(current_u
             """
             INSERT INTO notif_prefs
                 (user_id, stolen, defended, captured, reminder, clan_goal, kudos,
-                 season, recap, pasers, paserby)
-            VALUES (:u, :s, :d, :cap, :rem, :g, :k, :se, :r, :p, :pb)
+                 season, recap, pasers, paserby, club_run, club_battles)
+            VALUES (:u, :s, :d, :cap, :rem, :g, :k, :se, :r, :p, :pb, :cr, :cb)
             ON CONFLICT (user_id) DO UPDATE SET stolen=:s, defended=:d,
                 captured=:cap, reminder=:rem, clan_goal=:g, kudos=:k,
-                season=:se, recap=:r, pasers=:p, paserby=:pb
+                season=:se, recap=:r, pasers=:p, paserby=:pb, club_run=:cr,
+                club_battles=:cb
             """
         ),
         # `pasers` was in the model and on the wire but was never written —
@@ -458,7 +460,8 @@ def set_prefs(payload: schemas.NotifPrefs, user: models.User = Depends(current_u
         {"u": user.id, "s": payload.stolen, "d": payload.defended,
          "cap": payload.captured, "rem": payload.reminder, "g": payload.clan_goal,
          "k": payload.kudos, "se": payload.season, "r": payload.recap,
-         "p": payload.pasers, "pb": payload.paserby},
+         "p": payload.pasers, "pb": payload.paserby, "cr": payload.club_run,
+         "cb": payload.club_battles},
     )
     db.commit()
     return payload

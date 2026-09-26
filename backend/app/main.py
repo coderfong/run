@@ -20,6 +20,8 @@ from .routes import (
     auth, clans, dev, feed, insights, leaderboard, missions, my_territory, paserby, pasers, pro,
     profile, progression, rivals, runs, shop, social, territories, users,
 )
+from .routes import club_run_status
+from .routes import club_activity
 
 # ---------------------------------------------------------------------------
 # Config hygiene — fail LOUDLY at boot, not quietly at 3am.
@@ -160,6 +162,8 @@ app.include_router(shop.router)
 app.include_router(pro.router, tags=["pro"])
 app.include_router(insights.router)
 app.include_router(my_territory.router)
+app.include_router(club_run_status.router)
+app.include_router(club_activity.router)
 
 
 @app.get("/health")

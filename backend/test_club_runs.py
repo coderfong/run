@@ -24,9 +24,11 @@ from app.config import settings
 from app.routes.runs import _claim_territory, _club_support_sql
 
 
-def _row(mine_shared, theirs_shared, mine_len, theirs_len, run="r1", user="u1", dist=5000.0):
+def _row(mine_shared, theirs_shared, mine_len, theirs_len, run="r1", user="u1", dist=5000.0,
+         start_delta_s=0.0, overlap_frac=1.0):
     return SimpleNamespace(
         run_id=run, user_id=user, distance_m=dist,
+        start_delta_s=start_delta_s, overlap_frac=overlap_frac,
         mine_shared_m=mine_shared, theirs_shared_m=theirs_shared,
         mine_len_m=mine_len, theirs_len_m=theirs_len,
         mine_trace=[[t, 1.3, 103.8 + t / 100000] for t in range(0, 601, 5)],
@@ -42,11 +44,19 @@ class _FakeDb:
         self.already_logged = set(already_logged)
         self.logged = []
         self.updates = []
+        self.sessions = []   # every statement that touched club_run_sessions
+        self.locks = []
 
     def execute(self, statement, params=None):
         sql = str(statement)
         params = params or {}
-        if "club_run_logs" in sql:
+        if "pg_advisory_xact_lock" in sql:
+            self.locks.append(params)
+            return SimpleNamespace(fetchall=lambda: [])
+        if "club_run_sessions" in sql or "SET session_id" in sql:
+            self.sessions.append((sql, params))
+            return SimpleNamespace(fetchall=lambda: [], scalar=lambda: "session-1")
+        if "INSERT INTO club_run_logs" in sql:
             run_id = params["run_id"]
             self.logged.append(params)
             if run_id in self.already_logged:

@@ -285,6 +285,13 @@ def record_clan_activity(db: Session, user_id, clan_id, distance_m: float,
     now_reached = db.execute(
         text("SELECT reached FROM clan_week_goals WHERE id = :gid"), {"gid": goal[0]}
     ).scalar()
+    if now_reached and not was_reached:
+        # The moment it tipped over, so the club feed can show it (0047).
+        db.execute(
+            text("UPDATE clan_week_goals SET reached_at = now() "
+                 "WHERE id = :gid AND reached_at IS NULL"),
+            {"gid": goal[0]},
+        )
     return (bool(now_reached) and not was_reached, clan_id)
 
 

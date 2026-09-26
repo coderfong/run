@@ -426,6 +426,12 @@ class Settings(BaseSettings):
     # turning out together is a group run, not a reason to run the geometry
     # fifty times.
     club_run_max_partners: int = 20
+    # How far the probe LOOKS, which is not a rule. Clubmates out at the same
+    # time within this radius are measured and their verdict logged with the
+    # rule they failed (app/club_runs.py `judge`), so false negatives can be
+    # read from the logs. Who qualifies is still decided by the tolerance
+    # above: a pair that never comes within it shares no metres.
+    club_run_diagnostic_radius_m: float = 250.0
 
     # ---- In-app purchases (PASER PRO + energy packs) ----------------------
     # MUST be true in production. With it off, /me/pass/purchase and

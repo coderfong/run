@@ -91,7 +91,7 @@ _RARITY_UP = {"common": "rare", "rare": "epic", "epic": "legendary", "legendary"
 # seventeen items unavailable from the free track or coin shop. Rarity skews
 # epic/legendary on purpose — a paid tier handing over a common tee reads as a scam.
 PREMIUM_ITEMS = {
-    2: ("headwear:laurel", "Laurel wreath"),
+    2: ("headwear:cur_tiara", "Tiara"),
     4: ("glasses:monocle", "Monocle"),
     6: ("top:cur_varsityjacket", "Varsity jacket"),
     8: ("top:cur_utilityvest", "Utility vest"),
@@ -146,7 +146,7 @@ def premium_rewards_for_level(level: int) -> list[dict]:
 # With no parallel shop/stat route, claiming a tier always adds something new.
 FREE_ITEMS = {
     1: ("face:grump", "Grump"),
-    2: ("headwear:catears", "Cat ears"),
+    2: ("headwear:cur_flowercrown", "Flower crown"),
     3: ("hair:messy", "Messy"),
     4: ("top:cur_whitestripepolo", "White stripe polo"),
     6: ("face:determined", "Game face"),
@@ -164,7 +164,7 @@ FREE_ITEMS = {
     21: ("headwear:cur_tropicalstrawhat", "Tropical straw hat"),
     22: ("bottom:cur_denimskirt", "Denim skirt"),
     23: ("glasses:cur_festivalmask", "Festival mask"),
-    24: ("headwear:tiara", "Tiara"),
+    24: ("headwear:cur_championlaurels", "Champion laurels"),
     26: ("top:cur_cloudpufferjacket", "Cloud puffer jacket"),
     27: ("bottom:cur_runclubraceshorts", "Run club race shorts"),
     28: ("footwear:wf010", "Purple and gold sneakers"),
@@ -182,7 +182,7 @@ FREE_ITEMS = {
     43: ("top:cur_championvarsityjacket", "Champion varsity jacket"),
     44: ("footwear:wf044", "Pink strap sneakers"),
     46: ("headwear:cur_knighthelmet", "Knight helmet"),
-    47: ("headwear:royalcrown", "Royal crown"),
+    47: ("headwear:cur_cloudhalo", "Cloud halo"),
     48: ("accessory:cur_neonwings", "Neon wings"),
     49: ("glasses:onimask", "Oni mask"),
 }

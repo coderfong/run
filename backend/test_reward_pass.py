@@ -45,8 +45,8 @@ check("every tier has free + premium rewards",
 check("premium lootbox at 5 is rarity-bumped (rare > common)",
       p["ladder"][4]["premium"][0] == {"kind": "lootbox", "key": "rare", "label": "Rare box"},
       str(p["ladder"][4]["premium"]))
-check("premium level 2 is the Laurel wreath cosmetic",
-      p["ladder"][1]["premium"][0]["key"] == "headwear:laurel",
+check("premium level 2 is the Tiara cosmetic",
+      p["ladder"][1]["premium"][0]["key"] == "headwear:cur_tiara",
       str(p["ladder"][1]["premium"]))
 check("premium level 10 is +50 energy... unless lootbox tier", p["ladder"][9]["premium"][0]["kind"] == "lootbox", str(p["ladder"][9]["premium"]))
 
@@ -93,7 +93,7 @@ check("premium tier 2 claims", r.status_code == 200, r.text[:120])
 e1 = r.json()["energy"]["energy"]
 check("cosmetic tier does not also grant energy", e1 == e0, f"{e0} -> {e1}")
 p = c.get("/me/progression", headers=h).json()
-check("Laurel wreath lands in the wardrobe", "headwear:laurel" in p["unlocks"], str(p["unlocks"]))
+check("Tiara lands in the wardrobe", "headwear:cur_tiara" in p["unlocks"], str(p["unlocks"]))
 r = c.post("/me/rewards/claim", json={"level": 5, "track": "premium"}, headers=h)
 check("premium tier 5 grants a RARE lootbox",
       r.status_code == 200 and any(rw["key"] == "rare" for rw in r.json()["rewards"]), r.text[:120])

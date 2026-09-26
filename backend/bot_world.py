@@ -16,10 +16,11 @@ Kept out of both scripts so seed and cron cannot drift apart on any of it.
 
 from __future__ import annotations
 
+import json
 import math
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Sequence, Tuple
 
 from sqlalchemy import text
@@ -505,6 +506,17 @@ def route_length_m(path_lonlat: Sequence[Tuple[float, float]]) -> float:
 
 _SGT_OFFSET_H = 8
 
+# Added to the Singapore offset by the simulator only (bot_simulate.py). The
+# simulator moves the WORLD back in time rather than the clock forward, so the
+# database's `now()` never changes; this shift is what makes "what hour is it
+# in Singapore" advance with the simulated day. Always zero in production.
+SIM_CLOCK_SHIFT = timedelta(0)
+
+
+def local_offset() -> timedelta:
+    """UTC -> Singapore local, as used by every live scheduling decision."""
+    return timedelta(hours=_SGT_OFFSET_H) + SIM_CLOCK_SHIFT
+
 # (start hour, end hour, weight) in Singapore local time.
 _RUN_WINDOWS = [
     (5.5, 8.0, 38),    # before work, the big one
@@ -550,6 +562,128 @@ def next_run_at(rng: random.Random, after: Optional[datetime] = None) -> datetim
     if utc <= now:
         utc = now + timedelta(hours=rng.uniform(6, 18))
     return utc
+
+
+# ---------------------------------------------------------------------------
+# Who runs how often
+# ---------------------------------------------------------------------------
+#
+# The flat 1-3 day gap above gave every bot the same habits, so the world had
+# no regulars and no occasional runners — just one population at one cadence.
+# A bot's ARCHETYPE is derived from its id rather than stored: permanent, free,
+# and identical in the seeder, the cron and the dry run without a migration.
+# Runs per week are a range per archetype and the exact rate is also derived
+# from the id, so two DAILY bots are not metronomes of each other.
+ARCHETYPE_WEEKLY_RUNS = {
+    "casual": (2.0, 4.0),
+    "regular": (4.0, 6.0),
+    "daily": (6.0, 8.0),
+    "hardcore": (8.0, 11.0),
+    # Runs the club's standing sessions plus a few of their own.
+    "club_runner": (4.0, 7.0),
+}
+_ARCHETYPE_SHARE = [("casual", 22), ("regular", 38), ("daily", 28), ("hardcore", 12)]
+_CLUB_RUNNER_SHARE = 0.35
+# Only these run twice in one day, and never inside the minimum gap.
+_DAILY_CAP = {"hardcore": 2, "daily": 2}
+
+
+def _hash_frac(user_id, salt: int) -> float:
+    """A stable 0..1 draw from an id. Different salts are independent draws."""
+    h = uuid.UUID(str(user_id)).int
+    return ((h >> (salt * 7)) % 10_007) / 10_007.0
+
+
+def archetype_for(user_id, in_club: bool) -> str:
+    if in_club and _hash_frac(user_id, 3) < _CLUB_RUNNER_SHARE:
+        return "club_runner"
+    r = _hash_frac(user_id, 5) * 100
+    acc = 0.0
+    for name, share in _ARCHETYPE_SHARE:
+        acc += share
+        if r < acc:
+            return name
+    return "regular"
+
+
+def weekly_runs(user_id, archetype: str) -> float:
+    lo, hi = ARCHETYPE_WEEKLY_RUNS[archetype]
+    return lo + (hi - lo) * _hash_frac(user_id, 9)
+
+
+def daily_cap(archetype: str) -> int:
+    return _DAILY_CAP.get(archetype, 1)
+
+
+def club_windows(clan_id) -> List[Tuple[int, float]]:
+    """A club's two standing sessions as (weekday, SGT hour), derived from its
+    id: one weeknight and one weekend morning, which is how running clubs
+    actually meet. Monday is 0."""
+    if not clan_id:
+        return []
+    weeknight = (int(_hash_frac(clan_id, 2) * 4), 18.5 + int(_hash_frac(clan_id, 4) * 4) * 0.5)
+    weekend = (5 + int(_hash_frac(clan_id, 6) * 2), 6.5 + int(_hash_frac(clan_id, 8) * 3) * 0.5)
+    return [weeknight, weekend]
+
+
+def in_club_window(clan_id, now_utc: datetime, slack_h: float = 1.5) -> bool:
+    local = now_utc + local_offset()
+    hour = local.hour + local.minute / 60.0
+    return any(
+        local.weekday() == wd and 0 <= hour - start <= slack_h
+        for wd, start in club_windows(clan_id)
+    )
+
+
+def _window_time(rng: random.Random, day_local: datetime) -> datetime:
+    idx = rng.choices(range(len(_RUN_WINDOWS)), weights=[w[2] for w in _RUN_WINDOWS], k=1)[0]
+    lo, hi = _RUN_WINDOWS[idx][0], _RUN_WINDOWS[idx][1]
+    return day_local + timedelta(hours=rng.uniform(lo, hi))
+
+
+def next_run_for(
+    rng: random.Random,
+    after: datetime,
+    user_id,
+    clan_id=None,
+    min_gap_h: float = 5.0,
+) -> datetime:
+    """The next run for this bot, as naive UTC, from its archetype's cadence.
+
+    The gap is drawn around the archetype's mean (a gamma with shape 4, so it
+    varies without going silly), then dropped into a Singapore running window
+    on that day. A club runner lands on the club's next standing session about
+    half the time, which is what lets group runs form naturally rather than by
+    the director herding strangers together.
+    """
+    arche = archetype_for(user_id, bool(clan_id))
+    mean_h = 24.0 * 7.0 / weekly_runs(user_id, arche)
+    earliest = after + timedelta(hours=min_gap_h)
+
+    if arche == "club_runner" and rng.random() < 0.5:
+        best = None
+        for wd, start in club_windows(clan_id):
+            local = earliest + local_offset()
+            day = local.replace(hour=0, minute=0, second=0, microsecond=0)
+            for add in range(8):
+                cand = day + timedelta(days=add)
+                if cand.weekday() != wd:
+                    continue
+                t = cand + timedelta(hours=start + rng.uniform(-0.1, 0.3)) - local_offset()
+                if t >= earliest and (best is None or t < best):
+                    best = t
+        if best is not None:
+            return best
+
+    gap_h = mean_h * rng.gammavariate(4.0, 0.25)
+    gap_h = max(min_gap_h, min(gap_h, mean_h * 3.0))
+    target_local = after + timedelta(hours=gap_h) + local_offset()
+    day = target_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    for add in range(3):
+        t = _window_time(rng, day + timedelta(days=add)) - local_offset()
+        if t >= earliest:
+            return t
+    return earliest + timedelta(hours=rng.uniform(0, 2))
 
 
 def recent_run_times(rng: random.Random, count: int, now: Optional[datetime] = None) -> List[datetime]:
@@ -665,7 +799,11 @@ def ability(user_id: str) -> float:
     return 0.82 + (h % 1000) / 1000.0 * 0.36
 
 
-def plan_run(rng: random.Random, user_id: Optional[str] = None) -> Tuple[float, float]:
+def plan_run(
+    rng: random.Random,
+    user_id: Optional[str] = None,
+    max_distance_m: Optional[float] = None,
+) -> Tuple[float, float]:
     """(distance_m, pace_s_per_km) for one session.
 
     A mixture, not a single triangular: recreational running is mostly short
@@ -683,6 +821,9 @@ def plan_run(rng: random.Random, user_id: Optional[str] = None) -> Tuple[float, 
         distance_m = rng.uniform(11000, 16000)
     else:
         distance_m = rng.uniform(16000, 25000)
+    if max_distance_m is not None:
+        # A second run on the same day is a short one: nobody doubles a long run.
+        distance_m = min(distance_m, max(2500.0, max_distance_m))
 
     # Base pace, slowing slightly with distance, scaled by who is running.
     base = 330.0 + (distance_m / 1000.0) * 4.5
@@ -704,6 +845,8 @@ def record_run(
     distance_m: float,
     duration_s: float,
     started_at: datetime,
+    together_trace: Optional[list] = None,
+    claimed_at: Optional[datetime] = None,
 ) -> str:
     """Insert the runs row behind a bot's claim and return its id.
 
@@ -711,26 +854,137 @@ def record_run(
     no history: an empty profile, no route thumbnail anywhere, and nothing a
     club-mate could ever see in the feed. The row is marked verified so it
     behaves like a clean human run everywhere downstream.
+
+    `together_trace` is the private timestamped trace club matching reads
+    (app/club_runs.py `nearby_in_time`). A human run always carries one; a bot
+    run used to carry none, and the matcher fails closed on a missing trace,
+    so no bot group run could ever be a club run. Only group runs need it, so
+    solo bot runs still leave it empty rather than paying the storage.
+
+    `claimed_at` defaults to the end of the run. The cron passes the tick's
+    own time: a person claims after they stop, not at the instant they do.
     """
     run_id = str(uuid.uuid4())
+    ended_at = started_at + timedelta(seconds=duration_s)
     db.execute(
         text(
             """
             INSERT INTO runs (id, user_id, started_at, ended_at, path,
                               distance_m, duration_s, claimed_at, verified,
-                              claim_distance_m, claim_area_m2, post_media)
+                              claim_distance_m, claim_area_m2, post_media,
+                              together_trace)
             VALUES (:id, :u, :start, :end, ST_GeomFromText(:wkt, 4326),
-                    :dist, :dur, :end, true, :dist, :area, '[]'::jsonb)
+                    :dist, :dur, :claimed, true, :dist, :area, '[]'::jsonb,
+                    CAST(:trace AS jsonb))
             """
         ),
         {
             "id": run_id, "u": user_id, "start": started_at,
-            "end": started_at + timedelta(seconds=duration_s),
+            "end": ended_at, "claimed": claimed_at or ended_at,
             "wkt": path_wkt(path_lonlat), "dist": distance_m,
             "dur": duration_s, "area": claim_area_m2(distance_m),
+            "trace": json.dumps(together_trace) if together_trace else None,
         },
     )
     return run_id
+
+
+# ---------------------------------------------------------------------------
+# Timestamped traces, for group runs
+# ---------------------------------------------------------------------------
+#
+# Club matching asks two questions (app/club_runs.py): did the two runs share
+# the ROUTE, and were the two runners actually beside each other at the same
+# MOMENT — timestamped fixes within 35 m for 60% of the run. The second is what
+# stops two people running the same loop an hour apart from counting, and a
+# bot group run has to answer it honestly rather than be waved through.
+#
+# So a group shares one route, one start (to within a few seconds, the way
+# watches get started by hand), one pace (the group runs at the pace it runs,
+# not each member at their own), and one speed profile along the way. Each
+# member's trace is then that shared motion seen through their own GPS noise.
+
+_TRACE_STEP_S = 5.0
+
+
+def _cumulative_m(path_lonlat: Sequence[Tuple[float, float]]) -> List[float]:
+    out = [0.0]
+    for i in range(len(path_lonlat) - 1):
+        out.append(out[-1] + route_length_m(path_lonlat[i:i + 2]))
+    return out
+
+
+def synth_trace(
+    path_lonlat: Sequence[Tuple[float, float]],
+    started_at: datetime,
+    duration_s: float,
+    profile_seed: int,
+    rng: random.Random,
+    skew_s: float = 0.0,
+    noise_m: float = 3.0,
+) -> list:
+    """[[epoch_s, lat, lon], ...] every five seconds, the shape
+    `club_runs.record_trace` stores for a human.
+
+    `profile_seed` fixes the speed variation along the route (a hill, a
+    crossing, a surge) so every member of a group shares it. `rng` supplies
+    only this member's GPS noise. `skew_s` is how late this member pressed
+    start.
+    """
+    if len(path_lonlat) < 2 or duration_s <= 0:
+        return []
+    cum = _cumulative_m(path_lonlat)
+    total = cum[-1]
+    if total <= 0:
+        return []
+    prof = random.Random(profile_seed)
+    # A progress warp: fraction of distance covered at fraction of time tau.
+    # Two small sines with amplitudes well under their frequencies' limits,
+    # so progress stays monotonic — nobody runs backwards.
+    a1, k1 = prof.uniform(0.01, 0.03), prof.choice([2, 3, 4])
+    a2, k2 = prof.uniform(0.005, 0.015), prof.choice([5, 7, 9])
+    p1, p2 = prof.uniform(0, 2 * math.pi), prof.uniform(0, 2 * math.pi)
+
+    def progress(tau: float) -> float:
+        f = (tau
+             + a1 * (math.sin(2 * math.pi * k1 * tau + p1) - math.sin(p1)) / (2 * math.pi * k1)
+             + a2 * (math.sin(2 * math.pi * k2 * tau + p2) - math.sin(p2)) / (2 * math.pi * k2))
+        return max(0.0, min(1.0, f))
+
+    lat0 = path_lonlat[0][1]
+    m_lat = 111_320.0
+    m_lon = 111_320.0 * max(0.1, math.cos(math.radians(lat0)))
+    epoch0 = started_at.replace(tzinfo=timezone.utc).timestamp() + skew_s
+
+    out = []
+    seg = 0
+    t = 0.0
+    while t <= duration_s + 1e-6:
+        d = progress(t / duration_s) * total
+        while seg < len(cum) - 2 and cum[seg + 1] < d:
+            seg += 1
+        span = cum[seg + 1] - cum[seg]
+        u = 0.0 if span <= 0 else (d - cum[seg]) / span
+        lon = path_lonlat[seg][0] + (path_lonlat[seg + 1][0] - path_lonlat[seg][0]) * u
+        lat = path_lonlat[seg][1] + (path_lonlat[seg + 1][1] - path_lonlat[seg][1]) * u
+        lat += rng.gauss(0, noise_m) / m_lat
+        lon += rng.gauss(0, noise_m) / m_lon
+        out.append([round(epoch0 + t, 1), round(lat, 6), round(lon, 6)])
+        t += _TRACE_STEP_S
+    return out
+
+
+def member_path(path_lonlat: Sequence[Tuple[float, float]], rng: random.Random,
+                noise_m: float = 2.0) -> List[Tuple[float, float]]:
+    """One group member's recorded route: the shared route through their own
+    phone's noise, so two members' stored paths are not byte-identical."""
+    if not path_lonlat:
+        return []
+    lat0 = path_lonlat[0][1]
+    m_lat = 111_320.0
+    m_lon = 111_320.0 * max(0.1, math.cos(math.radians(lat0)))
+    return [(lon + rng.gauss(0, noise_m) / m_lon, lat + rng.gauss(0, noise_m) / m_lat)
+            for lon, lat in path_lonlat]
 
 
 def claim_polygon(

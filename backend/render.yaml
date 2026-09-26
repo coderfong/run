@@ -111,13 +111,15 @@ services:
       - key: CORS_ORIGINS
         value: "https://coderfong.github.io"
 
-  # Seeded bot players going on runs and occasionally raiding a real player's
-  # territory — see bot_activity.py. Talks to the database directly, same
-  # reasoning as the sweep cron above.
+  # The seeded world's activity director — see bot_activity.py and
+  # docs/BOT_WORLD_DIRECTOR.md. Talks to the database directly, same reasoning
+  # as the sweep cron above. Every 15 minutes; BOT_TICK_MINUTES must match the
+  # schedule, because per-tick budgets are sized from it.
   #
-  # Every 15 minutes: with 384 bots running about once per 1.3 days, most ticks
-  # have roughly three due, with larger morning/evening peaks. The shorter tick
-  # prevents those peaks reading as one half-hourly scheduled batch.
+  # Tuned entirely by BOT_* env vars (bot_sim_config.py documents every one);
+  # BOT_ACTIVITY_SCALE=0 turns the simulated world off without a deploy.
+  # Before changing a number in production, run `python bot_activity.py
+  # --dry-run` from the cron's shell to see what the next tick would do.
   - type: cron
     name: territory-run-bots
     runtime: docker
