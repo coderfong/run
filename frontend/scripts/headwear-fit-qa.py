@@ -1,4 +1,10 @@
-"""Headwear-fit QA — mirror CharacterRig's head stack (plate, face, hair,
+"""SUPERSEDED for judging hair under hats: scripts/hair-headwear-qa/render.py
+draws what the APP resolves (src/config/headwearFit.js resolveHairClip),
+including the compatibility families, feature regions and the sky rule, none
+of which this Python port knows. Its measured-shape port was already behind
+the JS (flat seat line, no crown/taper). Kept for its legacy/problem grids.
+
+Headwear-fit QA — mirror CharacterRig's head stack (plate, face, hair,
 glasses, headwear) over the real assets, WITH the hair occlusion from
 src/config/headwearFit.js, so hat + hair pairs can be judged offline.
 

@@ -17,6 +17,7 @@
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { Image as SvgImage } from 'react-native-svg';
 
 import CharacterRig, { CharacterBust, PartThumb } from '../src/components/character/CharacterRig';
 import { getItem } from '../src/config/cosmetics';
@@ -98,11 +99,12 @@ describe('character art decode size', () => {
   });
 
   it('keeps hairstyle details visible beneath enclosing headwear', () => {
-    const bald = render(<CharacterRig equipped={{ hair: 'none', headwear: 'beanie' }} size={110} />);
-    const styled = render(<CharacterRig equipped={{ hair: 'highpony', headwear: 'beanie' }} size={110} />);
-    // Hair under a closed hat is drawn through the fit windows (three views of
-    // the art plus three inked seams — see OccludedHair), not dropped.
-    expect(layers(styled)).toHaveLength(layers(bald).length + 6);
+    const bald = render(<CharacterRig equipped={{ hair: 'none', headwear: 'cur_knitbeanie' }} size={110} />);
+    const styled = render(<CharacterRig equipped={{ hair: 'highpony', headwear: 'cur_knitbeanie' }} size={110} />);
+    // Hair under a closed hat is drawn as ONE svg image cut by the clip path
+    // (see OccludedHair), not dropped and not split into windows.
+    expect(layers(styled)).toHaveLength(layers(bald).length);
+    expect(styled.root.findAllByType(SvgImage)).toHaveLength(1);
     act(() => bald.unmount());
     act(() => styled.unmount());
   });

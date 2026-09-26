@@ -23,10 +23,10 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import Svg, { ClipPath, Defs, Image as SvgImage, Path, Polygon } from 'react-native-svg';
+import Svg, { ClipPath, Defs, Image as SvgImage, Path } from 'react-native-svg';
 
 import { BODY_IMG, DEFAULT_EQUIPPED, HAIR_COLORS, HEAD_IMG, getItem, itemBackImage, itemImage, itemPreviewImage, itemWornImage } from '../../config/cosmetics';
-import { getHairLayout, getHairOcclusion } from '../../config/headwearFit';
+import { getHairLayout, getHairOcclusion, resolveHairClip } from '../../config/headwearFit';
 import INK_BOUNDS from '../../config/itemInkBounds.json';
 import { useOnScreen, useReduceMotion } from '../../ui/motion';
 import { useTheme } from '../../theme';
@@ -172,69 +172,52 @@ function SwapLayer({ img, frame, entered, onSwapIn, captureSafe, crisp = false }
 }
 
 // ---------------------------------------------------------------------------
-// Hair occlusion (see config/headwearFit.js for the shape).
+// Hair occlusion (see config/headwearFit.js for the shape and the
+// hair + headwear compatibility rules).
 //
-// The visible hair is a flat CROWN band under the hat's own dome (fully
-// hidden), tapering on each side down to the hat's own physical edge (mostly
-// hidden near the crown, almost entirely kept by the time the hat's own edge
-// is reached), with everything beyond that edge never clipped at all. That
-// shape is one simple polygon — the full art rectangle with a hexagonal notch
-// cut from its top-centre — so it is drawn as exactly that: a single
-// `react-native-svg` clip path around the hair art, rather than RN's usual
-// stand-in for clipping (nested rotated `overflow: hidden` views).
+// headwearFit.js resolves everything a hat does to a hairstyle (its painted
+// cover or measured seat, the family's bun/tail rules, the hijab and full
+// enclosures) into ONE hidden region in the hair art's own fractions. It is
+// cut out of the art rectangle as a single even-odd `react-native-svg` path:
+// plain path data, the same on both platforms, never a ClipPath union (whose
+// children add rather than subtract) and never nested rotated windows.
 //
-// A ROTATED-WINDOW build of this was tried first and measured wrong: once the
-// taper needs a specific finite length rather than one shared category angle
+// A ROTATED-WINDOW build was tried first and measured wrong: once the taper
+// needs a specific finite length rather than one shared category angle
 // reaching to infinity, the window's height can no longer be an arbitrary
 // "far enough" constant — a long thin rectangle rotated by the taper's own
 // angle sweeps its far corner sideways by height × sin(angle), which for a
 // generous height reaches clean across the head and starts revealing crown
-// hair on the OTHER side. A real clip polygon has no such failure mode.
+// hair on the OTHER side. A real clip path has no such failure mode.
 // ---------------------------------------------------------------------------
 
-// Head-fraction x (0..1 across the skull) → body px.
-const headX = (f, bodyW) => bodyW / 2 + (f - 0.5) * (HEAD.w / 248) * bodyW;
-
-// The notch polygon, in the art's own local px (0,0 at its frame's top-left) —
-// what `react-native-svg`'s `<Polygon>` wants. Traced clockwise from the
-// frame's top-left corner, in across the top to skip the hidden notch, back
-// out, then straight round the rest of the frame — see the ASCII shape in
-// config/headwearFit.js for what the six inner points describe.
-function hairClipPoints(occlusion, frame, bodyW, bodyH) {
-  const W = frame.width, H = frame.height;
-  const clampX = (x) => Math.max(0, Math.min(W, x));
-  const clampY = (y) => Math.max(0, Math.min(H, y));
-  const elX = clampX(headX(occlusion.edgeX0, bodyW) - frame.left);
-  const crX0 = clampX(headX(occlusion.crownX0, bodyW) - frame.left);
-  const crX1 = clampX(headX(occlusion.crownX1, bodyW) - frame.left);
-  const erX = clampX(headX(occlusion.edgeX1, bodyW) - frame.left);
-  const crownYpx = clampY(headFrac(occlusion.crownY) * bodyH - frame.top);
-  const revealYpx = clampY(headFrac(occlusion.revealY) * bodyH - frame.top);
-  return [
-    [0, 0], [elX, 0], [elX, revealYpx], [crX0, crownYpx], [crX1, crownYpx],
-    [erX, revealYpx], [erX, 0], [W, 0], [W, H], [0, H],
-  ].map(([x, y]) => `${x},${y}`).join(' ');
+// The hair frame (body px) as a box in HEAD fractions — what the clip rules
+// are written in. Scale-free: the same box at every rig size.
+function frameInHead(frame, bodyW, bodyH) {
+  const headW = (HEAD.w / 248) * bodyW;
+  const headL = bodyW / 2 - headW / 2;
+  const toY = (px) => ((px / bodyH) * 640 - HEAD.top) / HEAD.h;
+  return {
+    x: (frame.left - headL) / headW,
+    y: toY(frame.top),
+    w: frame.width / headW,
+    h: toY(frame.top + frame.height) - toY(frame.top),
+  };
 }
 
-// A hand-painted cover (config/hairCover.json) instead of the measured notch:
-// the whole frame with every cover polygon cut out of it. Even-odd, so the
-// polygons are holes in the frame, and a hole traced inside a cover (hair
-// painted back in the middle of it) is visible again.
-function hairCoverPath(cover, frame, bodyW, bodyH) {
+// The art rectangle with every hidden ring cut out of it, even-odd.
+function hairClipPath(rings, W, H) {
   const r = (v) => Math.round(v * 100) / 100;
-  let d = `M0 0H${r(frame.width)}V${r(frame.height)}H0Z`;
-  for (const poly of cover) {
-    d += poly
-      .map(([x, y], i) => `${i ? 'L' : 'M'}${r(headX(x, bodyW) - frame.left)} ${r(headFrac(y) * bodyH - frame.top)}`)
-      .join('') + 'Z';
+  let d = `M0 0H${r(W)}V${r(H)}H0Z`;
+  for (const ring of rings) {
+    d += ring.map(([x, y], i) => `${i ? 'L' : 'M'}${r(x * W)} ${r(y * H)}`).join('') + 'Z';
   }
   return d;
 }
 
-function OccludedHair({ img, occlusion, frame, bodyW, bodyH, swap, entered, onSwapIn }) {
+function OccludedHair({ img, rings, frame, swap, entered, onSwapIn }) {
   const clipId = React.useId();
-  const points = occlusion.cover ? null : hairClipPoints(occlusion, frame, bodyW, bodyH);
-  const coverPath = occlusion.cover ? hairCoverPath(occlusion.cover, frame, bodyW, bodyH) : null;
+  const d = React.useMemo(() => hairClipPath(rings, frame.width, frame.height), [rings, frame.width, frame.height]);
 
   // The same swap-detection SwapLayer does for every other layer (see its own
   // comment above), inlined because there is only one image element to watch
@@ -261,7 +244,7 @@ function OccludedHair({ img, occlusion, frame, bodyW, bodyH, swap, entered, onSw
     >
       <Defs>
         <ClipPath id={clipId}>
-          {coverPath ? <Path d={coverPath} clipRule="evenodd" /> : <Polygon points={points} />}
+          <Path d={d} clipRule="evenodd" />
         </ClipPath>
       </Defs>
       <SvgImage
@@ -277,7 +260,9 @@ function OccludedHair({ img, occlusion, frame, bodyW, bodyH, swap, entered, onSw
   );
 }
 
-function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false, crisp = false, occlusion = null }) {
+// Where a layer's art lands in the body box (px). Shared by Layer and by the
+// hair clip, which needs the HAT's frame to place its underside.
+function layerFrame(img, slot, fit, layout, bodyW, bodyH) {
   if (!img) return null;
   const base = LAYOUT[fit || slot];
   if (!base) return null;
@@ -295,34 +280,45 @@ function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = f
   if (slot === 'hair') top += HAIR_LIFT * bodyH;
   // `dx` shifts asymmetric art (e.g. a side ponytail) off centre.
   const left = bodyW / 2 - w / 2 + (spec.dx || 0) * bodyW;
+  return { position: 'absolute', width: w, height: h, left, top };
+}
 
-  const frame = { position: 'absolute', width: w, height: h, left, top };
+function Layer({ img, slot, fit, layout, bodyW, bodyH, swap = false, entered = false, onSwapIn, captureSafe = false, crisp = false, hairFit = null }) {
+  const frame = layerFrame(img, slot, fit, layout, bodyW, bodyH);
+  if (!frame) return null;
 
-  // Hair under a crown-covering hat: draw only what the hat leaves showing
-  // (config/headwearFit.js has the shape and why). Nothing about the art or
+  // Hair under headwear: draw only what the hat leaves showing
+  // (config/headwearFit.js has the rules and why). Nothing about the art or
   // its placement changes — the same frame is clipped through an SVG path —
   // so taking the hat off restores the exact plain layer.
   //
   // captureSafe/crisp are expo-image-vs-core-Image concerns (see the prop's
   // own comment on CharacterRig below) and react-native-svg's Image is
   // neither, so they have no equivalent branch here. Untested: a runner in an
-  // occlusion-category hat, captured the instant their rig mounts (a fresh
-  // share card), could in principle race the same way expo-image once did —
-  // check a real capture if that ever needs ruling out.
-  if (occlusion) {
-    if (occlusion.hide) return null;
-    return (
-      <OccludedHair
-        img={img}
-        occlusion={occlusion}
-        frame={frame}
-        bodyW={bodyW}
-        bodyH={bodyH}
-        swap={swap}
-        entered={entered}
-        onSwapIn={onSwapIn}
-      />
+  // occluding hat, captured the instant their rig mounts (a fresh share
+  // card), could in principle race the same way expo-image once did — check
+  // a real capture if that ever needs ruling out.
+  if (hairFit) {
+    const hatFrame = layerFrame(hairFit.hatImg, 'headwear', null, hairFit.hat.layout, bodyW, bodyH);
+    const clip = resolveHairClip(
+      hairFit.hat,
+      hairFit.hair,
+      frameInHead(frame, bodyW, bodyH),
+      hatFrame && frameInHead(hatFrame, bodyW, bodyH)
     );
+    if (clip === 'hide') return null;
+    if (clip) {
+      return (
+        <OccludedHair
+          img={img}
+          rings={clip.rings}
+          frame={frame}
+          swap={swap}
+          entered={entered}
+          onSwapIn={onSwapIn}
+        />
+      );
+    }
   }
 
   if (swap) {
@@ -706,11 +702,13 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
     accessory: getItem('accessory', equipped.accessory || 'none'),
   };
   // What the equipped headwear leaves showing of this hair — see
-  // config/headwearFit.js. The shape comes from the HAT (its measured seat on
-  // the skull), never from the hairstyle's own box, and the hat's own layout
-  // never reads the hair: so one hat sits at the same skull position under
-  // every style, and only the hair visible around it changes.
-  const hairOcclusion = getHairOcclusion(it.headwear, it.hair);
+  // config/headwearFit.js. The scalp shape comes from the HAT (its painted
+  // cover or measured seat), never from the hairstyle's own box, and the
+  // hat's own layout never reads the hair: so one hat sits at the same skull
+  // position under every style, and only the hair visible around it changes.
+  // The hairstyle's own features (buns, a high tail) follow the hat family's
+  // rules on top. Resolved per layer, where the hair's frame is known.
+  const hairFit = { hat: it.headwear, hair: it.hair, hatImg: itemImage('headwear', it.headwear, equipped) };
   // Where the hair sits under this hat, which can differ from where it sits
   // bare-headed (config/headwearFit.js getHairLayout).
   const hairLayout = getHairLayout(it.headwear, it.hair);
@@ -778,7 +776,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
           </>
         )}
         {behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={hairLayout} occlusion={hairOcclusion} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={hairLayout} hairFit={hairFit} {...layerBox} />
         )}
         {behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />
@@ -853,7 +851,7 @@ const CharacterRig = React.memo(forwardRef(function CharacterRig(
             hair and tied hair falling out from under its edge. Open-top
             pieces (visor, headband, headphones) keep all of it. */}
         {!behind('hair') && (
-          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={hairLayout} occlusion={hairOcclusion} {...layerBox} />
+          <Layer img={itemImage('hair', it.hair, equipped)} slot="hair" layout={hairLayout} hairFit={hairFit} {...layerBox} />
         )}
         {!behind('glasses') && (
           <Layer img={itemImage('glasses', it.glasses, equipped)} slot="glasses" layout={it.glasses.layout} {...layerBox} />

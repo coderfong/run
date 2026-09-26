@@ -89,7 +89,7 @@ export const ITEMS = {
     { id: 'uneasy', label: 'Uneasy', img: require('../../assets/character/face/faceN4.png'), layout: { w: 0.4003, top: 0.1413, dx: 0 }, rarity: 'common', unlock: free },
     { id: 'glum', label: 'Glum', img: require('../../assets/character/face/faceN8.png'), layout: { w: 0.3781, top: 0.1412, dx: 0.0017 }, rarity: 'common', unlock: free },
     { id: 'smirk', label: 'Smirk', img: require('../../assets/character/face/faceN6.png'), layout: { w: 0.3926, top: 0.1425, dx: -0.005 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
-    { id: 'beam', label: 'Beaming', img: require('../../assets/character/face/faceN7.png'), layout: { w: 0.3669, top: 0.1437, dx: 0.005 }, rarity: 'common', unlock: runs(8, 'Finish 8 runs') },
+    { id: 'beam', label: 'Beaming', img: require('../../assets/character/face/faceN7.png'), layout: { w: 0.3702, top: 0.1437, dx: -0.0017 }, rarity: 'common', unlock: runs(8, 'Finish 8 runs') },
     { id: 'angry', label: 'Angry', img: require('../../assets/character/face/faceN10.png'), layout: { w: 0.3635, top: 0.1451, dx: -0.0017 }, rarity: 'common', unlock: runs(10, 'Finish 10 runs') },
   ],
   hair: [
@@ -118,7 +118,7 @@ export const ITEMS = {
     { id: 'curtainlong', label: 'Curtain long', art: ART.hairW17, layout: { w: 0.8732, top: -0.0253, dx: -0.0013 }, rarity: 'common', unlock: free },
     { id: 'twoblock', label: 'Two block', art: ART.hairM11, layout: { w: 0.9359, top: -0.0365, dx: 0.0071 }, rarity: 'common', unlock: free },
     { id: 'buzz', label: 'Buzz cut', art: ART.hairM12, layout: { w: 0.7606, top: -0.0012, dx: -0.003 }, rarity: 'common', unlock: free },
-    { id: 'braids', label: 'Braided pigtails', art: ART.hairW15, layout: { w: 0.7962, top: -0.0488, dx: 0.012 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
+    { id: 'braids', label: 'Braided pigtails', art: ART.hairW15, layout: { w: 0.7962, top: -0.0449, dx: 0.0087 }, rarity: 'common', unlock: runs(3, 'Finish 3 runs') },
     { id: 'bunstrands', label: 'Soft bun', art: ART.hairW16, layout: { w: 0.7808, top: -0.0747, dx: 0.0036 }, bulky: true, rarity: 'common', unlock: runs(5, 'Finish 5 runs') },
     { id: 'comma', label: 'Comma fringe', art: ART.hairM13, layout: { w: 0.9244, top: -0.0451, dx: 0.0032 }, rarity: 'rare', unlock: runs(10, 'Finish 10 runs') },
     { id: 'texturedcrop', label: 'Textured crop', art: ART.hairM14, layout: { w: 0.8815, top: -0.0390, dx: 0.0112 }, rarity: 'rare', unlock: dist(25, 'Run 25 km total') },
@@ -140,7 +140,7 @@ export const ITEMS = {
     { id: 'hardhat', label: 'Hard hat', img: require('../../assets/character/headwear/hat12.png'), layout: { w: 0.7067, top: -0.0679, dx: -0.005 }, hidesBulky: true, rarity: 'rare', unlock: zones(5, 'Hold 5 zones') },
     { id: 'bikehelmet', label: 'Bike helmet', img: require('../../assets/character/headwear/hat8.png'), layout: { w: 0.7633, top: -0.0669, dx: -0.0033 }, hideHair: true, rarity: 'epic', unlock: passOnly },
     { id: 'laurel', label: 'Laurel wreath', img: require('../../assets/character/headwear/hat13.png'), layout: { w: 0.8566, top: -0.0218, dx: -0.005 }, rarity: 'epic', unlock: premiumOnly },
-    { id: 'flamecrown', label: 'Flame crown', img: require('../../assets/character/headwear/hat14.png'), layout: { top: -0.0661, dx: 0.0067 }, rarity: 'legendary', unlock: premiumOnly },
+    { id: 'flamecrown', label: 'Flame crown', img: require('../../assets/character/headwear/hat14.png'), layout: { w: 0.8467, top: -0.0661, dx: 0.005 }, rarity: 'legendary', unlock: premiumOnly },
     { id: 'wolfears', label: 'Wolf ears', img: require('../../assets/character/headwear/hat16.png'), layout: { w: 0.7634, top: -0.075, dx: -0.0017 }, rarity: 'epic', unlock: premiumOnly },
     { id: 'frogbeanie', label: 'Frog beanie', img: require('../../assets/character/headwear/hat18.png'), hideHair: true, layout: { w: 0.75, top: -0.0842, dx: 0.0067 }, rarity: 'rare', unlock: runs(3, 'Finish 3 runs') },
     { id: 'wizardhat', label: 'Wizard hat', img: require('../../assets/character/headwear/hat19.png'), layout: { w: 0.86, top: -0.1394, dx: 0 }, rarity: 'epic', unlock: level(18) },
@@ -340,8 +340,8 @@ ITEMS.footwear = [
 export const FIRST_RUN_ITEMS = {
   face: ['smiley', 'chill', 'laugh'],
   hair: [
-    'none', 'hijab', 'buzz', 'twoblock', 'curtains', 'middlepart',
-    'swept', 'curls', 'pixie', 'bluntbob',
+    'none', 'hijab', 'hs11', 'twoblock', 'curtains', 'middlepart',
+    'swept', 'curls', 'pixie', 'fringebob',
   ],
   top: [
     'cur_everydaytechnicaltee', 'singlet', 'o56t',

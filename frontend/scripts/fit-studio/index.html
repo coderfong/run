@@ -359,8 +359,16 @@ function backImgOf(s, item) {
 // seat line — the crop that makes side hair look tucked under the brim rather
 // than floating beside it — never showed up while placing one.
 const HAT_DEFAULT_EXTENT = { x0: -0.08, x1: 1.08 };
+// The hat's compatibility family (hairHeadwearCompat.json via M.fit.compat),
+// as src/config/headwearFit.js getHeadwearFamily resolves it.
+function compatEntry(item) {
+  const e = item && M.fit.compat && M.fit.compat.headwear[item.id];
+  return !e ? null : typeof e === 'string' ? { family: e } : e;
+}
 function headwearCategory(item) {
   if (!item || !item.id || item.id === 'none') return null;
+  const e = compatEntry(item);
+  if (e) return M.fit.compat.families[e.family].profile;
   const override = M.fit.overrides[item.id];
   if (override) return override;
   if (item.hideHair) return 'beanie';
@@ -385,10 +393,26 @@ function hairRegionsOf(hair) {
 // A hand-painted cover (hairCover.json, M.fit.hairCover) wins over all of it:
 // the pair's own first, then the hat's cover for every hairstyle. See the
 // "Hair under hat" editor below.
+//
+// The compatibility rules the studio mirrors: the hijab is never cut, a full
+// enclosure hides all hair, and a crown-gathered style goes where its bun is
+// hidden. The per-feature bun/tail regions and the sky over a hat's underside
+// are applied by the app only; judge those on
+// scripts/hair-headwear-qa/render.py, which draws the app's own answer.
 function hairOcclusion(hat, hair) {
   if (!hair || hair.id === 'none') return null;
   const covers = (hat && M.fit.hairCover[hat.id]) || {};
   if (covers[hair.id]) return { cover: covers[hair.id] };
+  const e = compatEntry(hat);
+  const compatHair = (M.fit.compat && M.fit.compat.hair[hair.id]) || {};
+  if (e) {
+    const fam = M.fit.compat.families[e.family] || {};
+    if (compatHair.type === 'COVERING') return null;
+    if (fam.hideAll) return { hide: true };
+    if (compatHair.gathered && (e.topBun || fam.topBun) === 'hide') return { hide: true };
+    if (covers['*']) return { cover: covers['*'] };
+    return autoOcclusion(hat, hairRegionsOf(hair));
+  }
   const regions = hairRegionsOf(hair);
   const gathered = !!(regions && regions.gathered === 'crown');
   if (covers['*'] && !(headwearFitProfile(hat).occlude && gathered)) return { cover: covers['*'] };
@@ -399,7 +423,8 @@ function hairOcclusion(hat, hair) {
 function autoOcclusion(hat, regions, seat) {
   const profile = headwearFitProfile(hat);
   if (!profile.occlude) return null;
-  if (regions && regions.gathered === 'crown') return { hide: true };
+  // Classified hats decide `gathered` in hairOcclusion from the compat table.
+  if (!compatEntry(hat) && regions && regions.gathered === 'crown') return { hide: true };
   const m = seat || M.fit.hats[hat.id] || {};
   const edge = m.edgeY != null ? m.edgeY : profile.defaultEdgeY;
   let crownY = Math.min(edge, profile.maxEdgeY) - profile.edgeInset;

@@ -16602,5 +16602,39 @@
         "generated": false
       }
     ]
+  },
+  {
+    "at": "2026-09-26T11:44:38.822Z",
+    "slot": "headwear",
+    "id": "cur_foxears",
+    "label": "Fox Ears",
+    "file": "curatedCosmetics.js",
+    "line": 233,
+    "sourceLine": "{ id: 'cur_foxears', label: 'Fox Ears', img: require('../../assets/character/curated/headwear/foxears.png'), layout: { w: 0.8237, top: -0.1333, dx: 0.0143 }, sourceTag: 'BOX', rarity: 'legendary', unlock: { pass: true, label: 'Cosmetic lootbox chase item' } },",
+    "previewLine": null,
+    "art": [
+      "assets/character/curated/headwear/foxears.png"
+    ],
+    "artMoved": [
+      "assets/character/curated/headwear/foxears.png"
+    ],
+    "artKeptInUse": [],
+    "artEntriesRemoved": [],
+    "defaultMoved": null,
+    "shopCatalog": null,
+    "forcedPastRefs": [
+      {
+        "file": "frontend/src/config/cosmeticCuration.js",
+        "line": 391,
+        "text": "\"cur_foxears\": {\"status\":\"vault\",\"theme\":\"fantasy\",\"collection\":null,\"family\":null,\"acquisitionType\":\"lootbox\"},",
+        "generated": false
+      },
+      {
+        "file": "frontend/src/config/headwearFit.json",
+        "line": 1003,
+        "text": "\"cur_foxears\": {",
+        "generated": false
+      }
+    ]
   }
 ]

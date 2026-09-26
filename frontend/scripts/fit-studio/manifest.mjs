@@ -167,7 +167,10 @@ export async function buildManifest() {
     // (painted covers) and `fit.hairLayout` (with-hat hair positions).
     fit: (() => {
       const under = JSON.parse(fs.readFileSync(path.join(CONFIG, 'hairUnderHat.json'), 'utf8'));
-      return { ...JSON.parse(fs.readFileSync(HEADWEAR_FIT_FILE, 'utf8')), hairCover: under.cover, hairLayout: under.layout };
+      // The hair + headwear compatibility table (families, hair types) rides
+      // along as `fit.compat`, so the studio classifies hats the way the rig does.
+      const compat = JSON.parse(fs.readFileSync(path.join(CONFIG, 'hairHeadwearCompat.json'), 'utf8'));
+      return { ...JSON.parse(fs.readFileSync(HEADWEAR_FIT_FILE, 'utf8')), hairCover: under.cover, hairLayout: under.layout, compat };
     })(),
     slots,
     items,
